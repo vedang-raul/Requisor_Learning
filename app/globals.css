@@ -1,0 +1,70 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --heading-main: #23AE97;
+}
+
+html {
+  scroll-behavior: smooth;
+  background: #f3f4f6;
+}
+
+h1,h2,h3,h4 { color: var(--heading-main); }
+
+body {
+  @apply bg-background text-zinc-900 antialiased;
+  background-color: #f3f4f6; /* light gray */
+  color: #111827;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-zinc-300;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-zinc-400;
+}
+
+@layer components {
+  /* Plain light surfaces (kept class names from the old theme) */
+  .glass {
+    @apply border border-zinc-200 bg-white;
+  }
+  .glass-card {
+    @apply rounded-2xl border border-zinc-200 bg-card shadow-soft;
+  }
+  .gradient-border {
+    @apply rounded-2xl border border-zinc-200 bg-white;
+  }
+  .text-gradient {
+    color: var(--heading-main);
+  }
+  .bg-mesh {
+    background-image: none;
+  }
+  .skeleton {
+    @apply relative overflow-hidden rounded-lg bg-zinc-200;
+  }
+  .skeleton::after {
+    content: "";
+    @apply absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/60 to-transparent;
+  }
+}
+
+@layer utilities {
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+  }
+}
