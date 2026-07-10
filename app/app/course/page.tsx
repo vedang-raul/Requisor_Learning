@@ -13,6 +13,7 @@ import { ProgressBar } from "@/components/ui/progress";
 import { PageTransition, Reveal } from "@/components/motion";
 import { categoryMeta } from "@/components/category-icon";
 import { Button } from "@/components/ui/button";
+import { CourseReviews } from "@/components/course-reviews";
 
 type LessonFilter = "all" | "completed" | "in-progress" | "not-started";
 
@@ -190,6 +191,8 @@ function CourseView() {
           </div>
         ))}
       </div>
+
+      <CourseReviews courseSlug={course.slug} />
     </PageTransition>
   );
 }

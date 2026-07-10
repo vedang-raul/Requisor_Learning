@@ -61,6 +61,16 @@ export interface EarnedBadge {
   earnedAt: string;
 }
 
+export interface Review {
+  id: string;
+  courseSlug: string;
+  userEmail: string;
+  userName: string;
+  rating: number; // 1-5
+  comment: string;
+  at: string; // ISO date
+}
+
 export interface UserState {
   name: string;
   email: string;
@@ -79,4 +89,5 @@ export interface AppState {
   streak: { count: number; lastDay: string };
   notifications: Notification[];
   sidebarCollapsed: boolean;
+  reviews: Review[];
 }

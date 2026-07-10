@@ -1,4 +1,4 @@
-import { Course, Lesson, CategoryKey } from "./types";
+import { Course, Lesson, CategoryKey, Review } from "./types";
 import { PLACEHOLDER_VIDEO } from "./utils";
 
 /**
@@ -202,6 +202,21 @@ export const upcomingPaths = [
   { id: "u1", title: "System Design Basics", eta: "August 2026", icon: "network" },
   { id: "u2", title: "Effective Communication", eta: "September 2026", icon: "message" },
   { id: "u3", title: "Cloud Foundations (AWS)", eta: "October 2026", icon: "cloud" },
+];
+
+function review(id: string, courseSlug: string, userName: string, rating: number, comment: string, at: string): Review {
+  return { id, courseSlug, userEmail: `${userName.toLowerCase().replace(/\s+/g, ".")}@requisor.io`, userName, rating, comment, at };
+}
+
+export const seedReviews: Review[] = [
+  review("rev-pm-1", "product-management", "Aarav Mehta", 5, "The SPACE PEN case study alone is worth the whole path — completely changed how I think about requirements.", "2026-06-10T09:00:00.000Z"),
+  review("rev-pm-2", "product-management", "Sara Iyer", 4, "Solid fundamentals and great short-form lessons. Would love a few more hands-on exercises.", "2026-06-18T14:30:00.000Z"),
+  review("rev-pm-3", "product-management", "Nina Rao", 5, "Best onboarding content I've been through. The ICP walkthrough is gold.", "2026-06-25T11:15:00.000Z"),
+  review("rev-da-1", "data-analytics", "Dev Patel", 4, "Tableau section is thorough — LOD calculations finally make sense to me.", "2026-06-12T10:00:00.000Z"),
+  review("rev-da-2", "data-analytics", "Kabir Shah", 5, "Loved the data visualization history lessons, didn't expect them to be this engaging.", "2026-06-20T16:45:00.000Z"),
+  review("rev-ai-1", "agentic-ai", "Sara Iyer", 5, "Perfect primer before jumping into building agents at work. Clear and practical.", "2026-06-22T08:30:00.000Z"),
+  review("rev-ai-2", "agentic-ai", "Aarav Mehta", 4, "Great overview of the AI landscape. Wish there were more lessons on RAG specifically.", "2026-07-01T13:00:00.000Z"),
+  review("rev-cs-1", "cyber-security", "Dev Patel", 5, "The Q&A session covered exactly the questions our team had. Required watching for new hires.", "2026-06-28T09:45:00.000Z"),
 ];
 
 export const leaderboardSeed = [
