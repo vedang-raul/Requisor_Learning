@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Bot, Loader2, RotateCcw, Send, Sparkles, X } from "lucide-react";
+import { Bot, Compass, Flame, ListChecks, Loader2, RotateCcw, Send, Sparkles, TrendingUp, X } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { buildProgressContext } from "@/lib/ai-context";
 import { getNudge, markNudgeSeen, type Nudge } from "@/lib/nudges";
@@ -12,11 +12,21 @@ import { renderMarkdownLite, endsInOpenTag } from "@/components/markdown-lite";
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
 const QUICK_PROMPTS = [
-  "How am I doing overall?",
-  "What should I learn next?",
-  "Summarize my progress",
-  "Tips to keep my streak going?",
+  { icon: TrendingUp, label: "How am I doing overall?" },
+  { icon: Compass, label: "What should I learn next?" },
+  { icon: ListChecks, label: "Summarize my progress" },
+  { icon: Flame, label: "Tips to keep my streak going?" },
 ];
+
+function TypingDots() {
+  return (
+    <span className="flex items-center gap-1 px-0.5 py-1.5">
+      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-400 [animation-delay:-0.3s]" />
+      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-400 [animation-delay:-0.15s]" />
+      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-400" />
+    </span>
+  );
+}
 
 export function AiAssistant() {
   const { state, hydrated } = useStore();
@@ -27,6 +37,7 @@ export function AiAssistant() {
   const [retryText, setRetryText] = useState<string | null>(null);
   const [nudge, setNudge] = useState<Nudge | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Typewriter reveal: network chunks land in fullTextRef, a rAF loop
   // reveals them at a steady character rate so the reply always looks
@@ -38,6 +49,7 @@ export function AiAssistant() {
   const networkDoneRef = useRef(false);
 
   const progressContext = useMemo(() => buildProgressContext(state), [state]);
+  const initials = (state.user?.name ?? "U").slice(0, 1).toUpperCase();
 
   const resolveLesson = useMemo(
     () => (courseTitle: string, lessonTitle: string) => {
@@ -61,6 +73,14 @@ export function AiAssistant() {
   }, []);
 
   useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
+
+  // Auto-grow the composer textarea up to ~4 lines.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+  }, [input]);
 
   // Once hydrated, check for a rule-based nudge (streak at risk, stalled course).
   // Shown at most once per day per nudge id via localStorage.
@@ -147,62 +167,101 @@ export function AiAssistant() {
     }
   }
 
+  function newChat() {
+    setMessages([]);
+    setRetryText(null);
+  }
+
   return (
     <>
       {/* Floating trigger */}
       <motion.button
         onClick={() => (open ? setOpen(false) : openPanel())}
         aria-label={open ? "Close AI assistant" : "Open AI assistant"}
-        whileHover={{ scale: 1.05 }}
+        whileHover={{ scale: 1.06 }}
         whileTap={{ scale: 0.95 }}
-        className="focus-ring fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-primary to-secondary text-white shadow-glow-sm"
+        className="focus-ring fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-primary to-secondary text-white shadow-[0_8px_24px_-6px_rgba(35,174,151,0.55)] transition-shadow hover:shadow-[0_10px_30px_-6px_rgba(35,174,151,0.7)]"
       >
-        {open ? <X className="h-5 w-5" /> : <Bot className="h-6 w-6" />}
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.span
+            key={open ? "close" : "open"}
+            initial={{ opacity: 0, rotate: -45, scale: 0.7 }}
+            animate={{ opacity: 1, rotate: 0, scale: 1 }}
+            exit={{ opacity: 0, rotate: 45, scale: 0.7 }}
+            transition={{ duration: 0.15 }}
+            className="flex"
+          >
+            {open ? <X className="h-5 w-5" /> : <Bot className="h-6 w-6" />}
+          </motion.span>
+        </AnimatePresence>
         {nudge && !open && (
-          <span className="absolute -right-0.5 -top-0.5 h-3.5 w-3.5 animate-pulse rounded-full bg-amber-500 ring-2 ring-white" />
+          <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+            <span className="relative inline-flex h-3.5 w-3.5 rounded-full bg-amber-500 ring-2 ring-white" />
+          </span>
         )}
       </motion.button>
 
       <AnimatePresence>
         {open && (
           <motion.div
-            initial={{ opacity: 0, y: 16, scale: 0.97 }}
+            initial={{ opacity: 0, y: 20, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 16, scale: 0.97 }}
-            transition={{ duration: 0.18 }}
+            exit={{ opacity: 0, y: 20, scale: 0.96 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
             role="dialog"
             aria-label="AI learning assistant"
-            className="glass-card fixed bottom-24 right-5 z-40 flex h-[32rem] w-[23rem] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden p-0"
+            className="fixed bottom-24 right-5 z-40 flex h-[34rem] w-[23rem] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-3xl border border-zinc-100 bg-card shadow-[0_25px_60px_-15px_rgba(15,23,42,0.25)]"
           >
             {/* Header */}
-            <div className="flex items-center gap-2 border-b border-zinc-200 px-4 py-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary text-white">
-                <Sparkles className="h-4 w-4" />
+            <div className="flex items-center gap-2.5 bg-gradient-to-r from-primary/[0.06] via-white to-white px-4 py-3.5">
+              <div className="relative shrink-0">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary text-white shadow-glow-sm">
+                  <Sparkles className="h-4 w-4" />
+                </div>
+                <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-zinc-900">Requisor Assistant</p>
                 <p className="truncate text-xs text-zinc-500">Knows your progress across all paths</p>
               </div>
-              <button onClick={() => setOpen(false)} aria-label="Close" className="text-zinc-500 hover:text-zinc-900">
+              {messages.length > 0 && (
+                <button
+                  onClick={newChat}
+                  aria-label="Start a new chat"
+                  title="New chat"
+                  className="focus-ring shrink-0 rounded-lg p-1.5 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                </button>
+              )}
+              <button
+                onClick={() => setOpen(false)}
+                aria-label="Close"
+                className="focus-ring shrink-0 rounded-lg p-1.5 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
+              >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             {/* Messages */}
-            <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+            <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
               {messages.length === 0 && (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   <p className="text-sm font-light text-zinc-600">
                     Hi {state.user?.name?.split(" ")[0] ?? "there"} 👋 Ask me about your progress, or what to learn next.
                   </p>
-                  <div className="flex flex-wrap gap-2">
-                    {QUICK_PROMPTS.map((p) => (
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {QUICK_PROMPTS.map(({ icon: Icon, label }) => (
                       <button
-                        key={p}
-                        onClick={() => send(p)}
-                        className="focus-ring rounded-full border border-border bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 transition hover:border-primary/60 hover:text-primary"
+                        key={label}
+                        onClick={() => send(label)}
+                        className="focus-ring group flex items-center gap-2.5 rounded-xl border border-border bg-white px-3 py-2.5 text-left text-xs font-medium text-zinc-700 shadow-soft transition hover:-translate-y-0.5 hover:border-primary/50 hover:text-primary"
                       >
-                        {p}
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition group-hover:bg-primary group-hover:text-white">
+                          <Icon className="h-3.5 w-3.5" />
+                        </span>
+                        {label}
                       </button>
                     ))}
                   </div>
@@ -210,33 +269,55 @@ export function AiAssistant() {
               )}
               {messages.map((m, i) => {
                 const isLastAssistant = streaming && m.role === "assistant" && i === messages.length - 1;
+                const isUser = m.role === "user";
                 return (
-                  <div key={i} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className={cn("flex items-end gap-2", isUser ? "justify-end" : "justify-start")}
+                  >
+                    {!isUser && (
+                      <div className="mb-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-secondary text-white">
+                        <Sparkles className="h-3 w-3" />
+                      </div>
+                    )}
                     <div
                       className={cn(
-                        "max-w-[85%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-sm font-light leading-relaxed",
-                        m.role === "user" ? "bg-primary text-white" : "border border-zinc-200 bg-white text-zinc-800"
+                        "max-w-[80%] whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-sm font-light leading-relaxed",
+                        isUser
+                          ? "rounded-br-md bg-gradient-to-br from-primary to-secondary text-white shadow-glow-sm"
+                          : "rounded-bl-md bg-white text-zinc-800 shadow-soft"
                       )}
                     >
-                      {m.role === "assistant"
-                        ? renderMarkdownLite(
-                            m.content,
-                            isLastAssistant ? (
-                              <span className="ml-0.5 inline-block h-3.5 w-[2px] animate-pulse-cursor bg-zinc-400 align-middle" />
-                            ) : null,
-                            resolveLesson
-                          )
-                        : m.content}
-                      {isLastAssistant && !m.content && <Loader2 className="h-4 w-4 animate-spin text-zinc-400" />}
+                      {isLastAssistant && !m.content ? (
+                        <TypingDots />
+                      ) : m.role === "assistant" ? (
+                        renderMarkdownLite(
+                          m.content,
+                          isLastAssistant ? (
+                            <span className="ml-0.5 inline-block h-3.5 w-[2px] animate-pulse-cursor bg-zinc-400 align-middle" />
+                          ) : null,
+                          resolveLesson
+                        )
+                      ) : (
+                        m.content
+                      )}
                     </div>
-                  </div>
+                    {isUser && (
+                      <div className="mb-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-[10px] font-bold text-zinc-700">
+                        {initials}
+                      </div>
+                    )}
+                  </motion.div>
                 );
               })}
               {retryText && !streaming && (
-                <div className="flex justify-start">
+                <div className="flex justify-start pl-8">
                   <button
                     onClick={() => send(retryText)}
-                    className="focus-ring flex items-center gap-1.5 rounded-full border border-border bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 transition hover:border-primary/60 hover:text-primary"
+                    className="focus-ring flex items-center gap-1.5 rounded-full border border-border bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-soft transition hover:border-primary/60 hover:text-primary"
                   >
                     <RotateCcw className="h-3 w-3" />
                     Retry
@@ -251,23 +332,33 @@ export function AiAssistant() {
                 e.preventDefault();
                 send(input);
               }}
-              className="flex items-center gap-2 border-t border-zinc-200 p-3"
+              className="border-t border-zinc-100 p-3"
             >
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask about your progress…"
-                disabled={streaming}
-                className="h-10 flex-1 rounded-xl border border-border bg-white px-3 text-sm text-zinc-900 placeholder:text-zinc-500 focus:outline-none disabled:opacity-60"
-              />
-              <button
-                type="submit"
-                disabled={streaming || !input.trim()}
-                aria-label="Send message"
-                className="focus-ring flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-white transition disabled:opacity-40"
-              >
-                {streaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              </button>
+              <div className="flex items-end gap-1.5 rounded-2xl border border-border bg-zinc-50 p-1.5 pl-3.5 transition focus-within:border-primary/50 focus-within:bg-white focus-within:ring-2 focus-within:ring-primary/15">
+                <textarea
+                  ref={textareaRef}
+                  rows={1}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      send(input);
+                    }
+                  }}
+                  placeholder="Ask about your progress…"
+                  disabled={streaming}
+                  className="max-h-[120px] flex-1 resize-none bg-transparent py-1.5 text-sm text-zinc-900 placeholder:text-zinc-500 focus:outline-none disabled:opacity-60"
+                />
+                <button
+                  type="submit"
+                  disabled={streaming || !input.trim()}
+                  aria-label="Send message"
+                  className="focus-ring flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-white transition hover:bg-secondary disabled:opacity-40 disabled:hover:bg-primary"
+                >
+                  {streaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                </button>
+              </div>
             </form>
           </motion.div>
         )}
