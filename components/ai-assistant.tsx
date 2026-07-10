@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Bot, Compass, Flame, ListChecks, Loader2, RotateCcw, Send, Sparkles, TrendingUp, X } from "lucide-react";
+import { Compass, Flame, ListChecks, Loader2, RotateCcw, Send, TrendingUp, X } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { buildProgressContext } from "@/lib/ai-context";
 import { getNudge, markNudgeSeen, type Nudge } from "@/lib/nudges";
@@ -180,7 +180,10 @@ export function AiAssistant() {
         aria-label={open ? "Close AI assistant" : "Open AI assistant"}
         whileHover={{ scale: 1.06 }}
         whileTap={{ scale: 0.95 }}
-        className="focus-ring fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-primary to-secondary text-white shadow-[0_8px_24px_-6px_rgba(35,174,151,0.55)] transition-shadow hover:shadow-[0_10px_30px_-6px_rgba(35,174,151,0.7)]"
+        className={cn(
+          "focus-ring fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center overflow-hidden rounded-full text-white shadow-[0_8px_24px_-6px_rgba(35,174,151,0.55)] transition-shadow hover:shadow-[0_10px_30px_-6px_rgba(35,174,151,0.7)]",
+          open ? "bg-gradient-to-br from-primary to-secondary" : "bg-white"
+        )}
       >
         <AnimatePresence mode="wait" initial={false}>
           <motion.span
@@ -189,9 +192,14 @@ export function AiAssistant() {
             animate={{ opacity: 1, rotate: 0, scale: 1 }}
             exit={{ opacity: 0, rotate: 45, scale: 0.7 }}
             transition={{ duration: 0.15 }}
-            className="flex"
+            className="flex h-full w-full items-center justify-center"
           >
-            {open ? <X className="h-5 w-5" /> : <Bot className="h-6 w-6" />}
+            {open ? (
+              <X className="h-5 w-5" />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src="/requisor.png" alt="Requisor" className="h-full w-full rounded-full object-cover" />
+            )}
           </motion.span>
         </AnimatePresence>
         {nudge && !open && (
@@ -216,8 +224,9 @@ export function AiAssistant() {
             {/* Header */}
             <div className="flex items-center gap-2.5 bg-gradient-to-r from-primary/[0.06] via-white to-white px-4 py-3.5">
               <div className="relative shrink-0">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary text-white shadow-glow-sm">
-                  <Sparkles className="h-4 w-4" />
+                <div className="h-9 w-9 overflow-hidden rounded-xl shadow-glow-sm">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/requisor.png" alt="Requisor" className="h-full w-full object-cover" />
                 </div>
                 <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
               </div>
@@ -279,8 +288,9 @@ export function AiAssistant() {
                     className={cn("flex items-end gap-2", isUser ? "justify-end" : "justify-start")}
                   >
                     {!isUser && (
-                      <div className="mb-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-secondary text-white">
-                        <Sparkles className="h-3 w-3" />
+                      <div className="mb-0.5 h-6 w-6 shrink-0 overflow-hidden rounded-full">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src="/requisor.png" alt="" className="h-full w-full object-cover" />
                       </div>
                     )}
                     <div
