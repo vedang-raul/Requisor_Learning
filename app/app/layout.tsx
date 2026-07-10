@@ -7,6 +7,7 @@ import { Topbar } from "@/components/topbar";
 import { useStore } from "@/lib/store";
 import { Skeleton } from "@/components/ui/skeleton";
 import { GradientBlobs } from "@/components/gradient-blobs";
+import { AiAssistant } from "@/components/ai-assistant";
 
 function Shell({ children }: { children: React.ReactNode }) {
   const { state, hydrated } = useStore();
@@ -44,6 +45,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         <Topbar />
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 md:px-8">{children}</main>
       </div>
+      <AiAssistant />
     </div>
   );
 }

@@ -10,6 +10,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
     "clsx": "^2.1.1",
     "framer-motion": "^11.11.0",
     "lucide-react": "^0.453.0",
