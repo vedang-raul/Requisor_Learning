@@ -16,6 +16,7 @@ import { Tag } from "@/components/ui/badge";
 import { PageTransition } from "@/components/motion";
 import { ProgressBar } from "@/components/ui/progress";
 import { leaderboardSeed } from "@/lib/data";
+import { TeamInsights } from "@/components/team-insights";
 
 type TabKey = "analytics" | "content" | "users";
 
@@ -152,6 +153,8 @@ function Analytics() {
           <p className="mt-3 text-[11px] text-zinc-600">Recent logins: Aarav (9:14), Sara (8:02), Dev (yesterday). Demo data — wire to your HRIS/SSO for real activity.</p>
         </Card>
       </div>
+
+      <TeamInsights courses={state.courses} progress={state.progress} mockUsers={mockUsers} />
     </div>
   );
 }

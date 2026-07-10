@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   CheckCircle2, ChevronLeft, ChevronRight, Circle, Clock, FileText, Link2,
-  ListChecks, MessageSquare, NotebookPen, PlayCircle, Bookmark, BookmarkCheck, Sparkles, SearchX, FileDown,
+  ListChecks, MessageSquare, NotebookPen, PlayCircle, Bookmark, BookmarkCheck, Sparkles, SearchX, FileDown, GraduationCap,
 } from "lucide-react";
 import { useStore, useCourseProgress } from "@/lib/store";
 import { cn, formatMinutes } from "@/lib/utils";
@@ -18,6 +18,7 @@ import { Textarea } from "@/components/ui/input";
 import { VideoEmbed } from "@/components/video-embed";
 import { Confetti } from "@/components/confetti";
 import { PageTransition } from "@/components/motion";
+import { LessonQuiz } from "@/components/lesson-quiz";
 
 type TabKey = "description" | "resources" | "notes" | "assignment" | "discussion";
 
@@ -44,6 +45,7 @@ function LearnView() {
   const [courseDone, setCourseDone] = useState(false);
   const [comments, setComments] = useState(seedComments);
   const [newComment, setNewComment] = useState("");
+  const [quizOpen, setQuizOpen] = useState(false);
 
   const course = state.courses.find((c) => c.slug === courseSlug);
   const lesson = course?.lessons.find((l) => l.id === lessonId);
@@ -88,6 +90,7 @@ function LearnView() {
   return (
     <PageTransition>
       <Confetti fire={celebrate} onDone={() => setCelebrate(false)} />
+      <AnimatePresence>{quizOpen && <LessonQuiz lesson={lesson} onClose={() => setQuizOpen(false)} />}</AnimatePresence>
 
       {/* Course completion banner */}
       <AnimatePresence>
@@ -139,6 +142,10 @@ function LearnView() {
             <Button onClick={onToggleComplete} variant={completed ? "secondary" : "primary"}>
               <CheckCircle2 className="h-4 w-4" />
               {completed ? "Completed ✓ (click to undo)" : "Mark as Complete"}
+            </Button>
+            <Button onClick={() => setQuizOpen(true)} variant="outline">
+              <GraduationCap className="h-4 w-4" />
+              Test yourself
             </Button>
             <div className="min-w-[160px] flex-1">
               <div className="mb-1 flex justify-between text-[11px] text-zinc-500">

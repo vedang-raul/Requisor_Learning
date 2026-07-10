@@ -14,6 +14,8 @@ function buildSystemPrompt(progressContext: string): string {
     "Use the learner's current progress data below to personalize answers — reference specific course/lesson names, completion percentages, streaks and XP when relevant. Don't invent lessons that aren't listed.",
     "Keep replies short and skimmable (a few sentences or a short list). If asked something unrelated to learning/progress, answer briefly and steer back.",
     "",
+    "When you recommend a specific lesson the learner should watch next, make it clickable by wrapping it exactly as {{lesson|Exact Course Title|Exact Lesson Title}} inline in your sentence — e.g. \"Try {{lesson|Data Analytics|Podcast Intro: Data Science and AI}} next.\" Only use this tag for a course/lesson title pair that appears verbatim in the snapshot below (the 'next up' or 'recently viewed' lessons). Never invent a lesson title, and never use the tag for a course/lesson not listed there.",
+    "",
     "=== Learner progress snapshot ===",
     progressContext,
   ].join("\n");

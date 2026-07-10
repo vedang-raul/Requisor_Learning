@@ -44,6 +44,10 @@ const config: Config = {
           "0%, 100%": { opacity: "0.5" },
           "50%": { opacity: "0.9" },
         },
+        "pulse-cursor": {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0" },
+        },
       },
       animation: {
         float: "float 9s ease-in-out infinite",
@@ -51,6 +55,7 @@ const config: Config = {
         "gradient-x": "gradient-x 8s ease infinite",
         shimmer: "shimmer 1.6s infinite",
         "pulse-slow": "pulse-slow 6s ease-in-out infinite",
+        "pulse-cursor": "pulse-cursor 0.9s step-end infinite",
       },
     },
   },
