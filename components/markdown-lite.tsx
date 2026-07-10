@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { PlayCircle } from "lucide-react";
+import { ChevronRight, PlayCircle } from "lucide-react";
 
 /** Resolves a {{lesson|Course Title|Lesson Title}} tag to a real link, or null if no match. */
 export type LessonResolver = (courseTitle: string, lessonTitle: string) => string | null;
@@ -18,14 +18,19 @@ function formatInline(text: string, keyPrefix: string, resolveLesson?: LessonRes
         const [courseTitle, lessonTitle] = seg.slice(9, -2).split("|");
         const href = resolveLesson?.(courseTitle?.trim() ?? "", lessonTitle?.trim() ?? "");
         if (href) {
+          const title = lessonTitle?.trim() ?? "";
           return (
             <Link
               key={key}
               href={href}
-              className="mx-0.5 inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[13px] font-medium text-primary transition hover:border-primary/60 hover:bg-primary/15"
+              title={title}
+              className="my-1.5 flex max-w-full items-center gap-2 rounded-xl border border-primary/20 bg-primary/[0.06] px-2.5 py-2 text-[13px] font-medium text-zinc-800 shadow-soft transition hover:border-primary/40 hover:bg-primary/10"
             >
-              <PlayCircle className="h-3 w-3" />
-              {lessonTitle?.trim()}
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                <PlayCircle className="h-3.5 w-3.5" />
+              </span>
+              <span className="min-w-0 flex-1 truncate">{title}</span>
+              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
             </Link>
           );
         }
