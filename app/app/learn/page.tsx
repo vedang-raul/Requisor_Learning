@@ -121,7 +121,9 @@ function LearnView() {
         </div>
         <div className="flex items-center gap-2 text-xs text-zinc-600">
           <Tag><Clock className="h-3 w-3" />{formatMinutes(lesson.durationMin)} est.</Tag>
-          <Tag tone={completed ? "success" : "default"}>{completed ? "Completed" : progress?.watchPct ? `${progress.watchPct}% watched` : "Not started"}</Tag>
+          <Tag tone={completed ? "success" : "default"}>
+            {completed ? "Completed" : progress?.watchPct ? `${progress.watchPct}% ${lesson.format === "reading" ? "read" : "watched"}` : "Not started"}
+          </Tag>
           <button
             onClick={() => toggleSavedLesson(lesson.id)}
             aria-label={saved ? "Remove from saved" : "Save lesson"}
@@ -135,7 +137,7 @@ function LearnView() {
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_340px]">
         {/* Main column */}
         <div className="min-w-0 space-y-5">
-          <VideoEmbed youtubeId={lesson.youtubeId} title={lesson.title} />
+          <VideoEmbed youtubeId={lesson.youtubeId} title={lesson.title} format={lesson.format} resourceUrl={lesson.format === "reading" ? lesson.resources[0]?.url : undefined} />
 
           {/* Action bar */}
           <Card className="flex flex-wrap items-center gap-4 py-4">

@@ -5,7 +5,7 @@ import { AppState, Course, EarnedBadge, Lesson, Notification, Review, UserState 
 import { seedCourses, seedReviews } from "./data";
 import { todayKey } from "./utils";
 
-const STORAGE_KEY = "requisor-learning-v10"; // v10: added course reviews
+const STORAGE_KEY = "requisor-learning-v13"; // v13: added "AI Prompting for Everyone" lesson to Agentic AI
 const XP_PER_LESSON = 50;
 const XP_PER_COURSE = 200;
 

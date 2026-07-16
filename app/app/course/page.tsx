@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Suspense, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
-import { CheckCircle2, Circle, Clock, PlayCircle, Video, Bookmark, BookmarkCheck, ChevronRight, SearchX } from "lucide-react";
+import { CheckCircle2, Circle, Clock, FileText, PlayCircle, Video, Bookmark, BookmarkCheck, ChevronRight, SearchX } from "lucide-react";
 import { useStore, useCourseProgress } from "@/lib/store";
 import { cn, formatMinutes, isPlaceholder, youTubeThumb } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
@@ -159,7 +159,11 @@ function CourseView() {
                 >
                   <span className="w-7 shrink-0 text-center text-sm font-semibold text-zinc-600">{String(idx + 1).padStart(2, "0")}</span>
                   <div className="relative hidden h-14 w-24 shrink-0 overflow-hidden rounded-lg sm:block">
-                    {isPlaceholder(lesson.youtubeId) ? (
+                    {lesson.format === "reading" ? (
+                      <div className={cn("flex h-full w-full items-center justify-center bg-gradient-to-br", course.cover)}>
+                        <FileText className="h-6 w-6 text-white/80" />
+                      </div>
+                    ) : isPlaceholder(lesson.youtubeId) ? (
                       <div className={cn("flex h-full w-full items-center justify-center bg-gradient-to-br", course.cover)}>
                         <PlayCircle className="h-6 w-6 text-white/80" />
                       </div>
@@ -174,7 +178,7 @@ function CourseView() {
                     <div className="mt-1.5 flex items-center gap-3 text-[11px] text-zinc-500">
                       <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{formatMinutes(lesson.durationMin)}</span>
                       {lesson.assignment && <Tag tone="warning" className="text-[10px]">Assignment</Tag>}
-                      {started && <Tag tone="accent" className="text-[10px]">{p?.watchPct ?? 0}% watched</Tag>}
+                      {started && <Tag tone="accent" className="text-[10px]">{p?.watchPct ?? 0}% {lesson.format === "reading" ? "read" : "watched"}</Tag>}
                     </div>
                   </div>
                   {done ? (

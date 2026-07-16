@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BarChart3, BookPlus, Check, Download, Users, Pencil, Plus,
-  Trash2, TrendingUp, X, Youtube, LayoutGrid, Clock,
+  Trash2, TrendingUp, X, Youtube, LayoutGrid, Clock, FileText,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { Course, Lesson, CategoryKey } from "@/lib/types";
@@ -230,7 +230,9 @@ function ContentManager() {
                 <div key={l.id} className="flex items-center gap-3 rounded-xl border border-zinc-100 bg-card/60 p-3">
                   <span className="w-6 text-center text-xs font-semibold text-zinc-600">{i + 1}</span>
                   <div className="relative hidden h-10 w-16 shrink-0 overflow-hidden rounded-md sm:block">
-                    {isPlaceholder(l.youtubeId) ? (
+                    {l.format === "reading" ? (
+                      <div className="flex h-full w-full items-center justify-center bg-zinc-200"><FileText className="h-4 w-4 text-zinc-600" /></div>
+                    ) : isPlaceholder(l.youtubeId) ? (
                       <div className="flex h-full w-full items-center justify-center bg-zinc-200"><Youtube className="h-4 w-4 text-zinc-600" /></div>
                     ) : (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -239,9 +241,11 @@ function ContentManager() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm text-zinc-900">{l.title}</p>
-                    <p className="text-[11px] text-zinc-500">{formatMinutes(l.durationMin)} · {isPlaceholder(l.youtubeId) ? "No video yet" : `youtu.be/${l.youtubeId}`}</p>
+                    <p className="text-[11px] text-zinc-500">
+                      {formatMinutes(l.durationMin)} · {l.format === "reading" ? "Reading lesson" : isPlaceholder(l.youtubeId) ? "No video yet" : `youtu.be/${l.youtubeId}`}
+                    </p>
                   </div>
-                  {isPlaceholder(l.youtubeId) && <Tag tone="warning">Needs video</Tag>}
+                  {l.format === "reading" ? <Tag tone="accent">Reading</Tag> : isPlaceholder(l.youtubeId) && <Tag tone="warning">Needs video</Tag>}
                   <Button size="icon" variant="ghost" aria-label={`Edit ${l.title}`} onClick={() => { setEditingLesson(l); setCreatingLesson(false); }}><Pencil className="h-4 w-4" /></Button>
                   <Button size="icon" variant="ghost" aria-label={`Delete ${l.title}`} onClick={() => { if (confirm(`Delete lesson "${l.title}"?`)) deleteLesson(course.slug, l.id); }}><Trash2 className="h-4 w-4 text-red-600" /></Button>
                 </div>
@@ -346,6 +350,7 @@ function LessonForm({ courseSlug, lesson, nextIndex, onSave, onClose }: { course
               resources: lesson?.resources ?? [],
               keyTakeaways: lesson?.keyTakeaways ?? [],
               assignment: lesson?.assignment,
+              format: lesson?.format,
             })
           }
         >

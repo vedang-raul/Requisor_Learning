@@ -1,9 +1,42 @@
 "use client";
 
 import { isPlaceholder } from "@/lib/utils";
-import { MonitorPlay } from "lucide-react";
+import { ExternalLink, FileText, MonitorPlay } from "lucide-react";
 
-export function VideoEmbed({ youtubeId, title }: { youtubeId: string; title: string }) {
+export function VideoEmbed({
+  youtubeId,
+  title,
+  format = "video",
+  resourceUrl,
+}: {
+  youtubeId: string;
+  title: string;
+  format?: "video" | "reading";
+  resourceUrl?: string;
+}) {
+  if (format === "reading") {
+    return (
+      <div className="glass flex aspect-video w-full flex-col items-center justify-center gap-3 rounded-2xl text-center">
+        <div className="rounded-2xl bg-primary/15 p-4">
+          <FileText className="h-10 w-10 text-primary" />
+        </div>
+        <p className="text-sm font-medium text-zinc-800">This lesson is a reading, not a video</p>
+        <p className="max-w-sm px-6 text-xs leading-relaxed text-zinc-500">
+          Open the source below and work through it — mark the lesson complete once you&apos;re done.
+        </p>
+        {resourceUrl && (
+          <a
+            href={resourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="focus-ring inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white transition hover:bg-secondary"
+          >
+            Open article <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        )}
+      </div>
+    );
+  }
   if (isPlaceholder(youtubeId)) {
     return (
       <div className="glass flex aspect-video w-full flex-col items-center justify-center gap-3 rounded-2xl text-center">

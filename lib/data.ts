@@ -17,7 +17,9 @@ function lesson(
   keyTakeaways: string[],
   assignment?: string,
   youtubeId?: string,
-  section?: string
+  section?: string,
+  /** For reading-based lessons (an article/tool, not a video): links resources to the real source instead of the generic placeholders. */
+  resourceUrl?: string
 ): Lesson {
   return {
     id: `${courseSlug}-${String(index + 1).padStart(2, "0")}`,
@@ -26,10 +28,13 @@ function lesson(
     youtubeId: youtubeId ?? PLACEHOLDER_VIDEO,
     section,
     durationMin,
-    resources: [
-      { label: `${title} — Slides (PDF)`, url: "#", type: "pdf" },
-      { label: `${title} — Further reading`, url: "#", type: "link" },
-    ],
+    format: resourceUrl ? "reading" : "video",
+    resources: resourceUrl
+      ? [{ label: `${title} — Read the source`, url: resourceUrl, type: "link" }]
+      : [
+          { label: `${title} — Slides (PDF)`, url: "#", type: "pdf" },
+          { label: `${title} — Further reading`, url: "#", type: "link" },
+        ],
     keyTakeaways,
     assignment,
   };
@@ -44,7 +49,7 @@ function buildCourse(
   tags: string[],
   cover: string,
   addedAt: string,
-  topics: Array<[string, number, string, string[], string?, string?, string?]>
+  topics: Array<[string, number, string, string[], string?, string?, string?, string?]>
 ): Course {
   return {
     slug,
@@ -55,8 +60,8 @@ function buildCourse(
     tags,
     cover,
     addedAt,
-    lessons: topics.map(([t, d, desc, takeaways, assignment, youtubeId, section], i) =>
-      lesson(slug, i, t, d, desc, takeaways, assignment, youtubeId, section)
+    lessons: topics.map(([t, d, desc, takeaways, assignment, youtubeId, section, resourceUrl], i) =>
+      lesson(slug, i, t, d, desc, takeaways, assignment, youtubeId, section, resourceUrl)
     ),
   };
 }
@@ -172,6 +177,7 @@ export const seedCourses: Course[] = [
       ["Getting the Best out of ChatGPT: Privacy & Hidden Content", 4, "Using ChatGPT effectively while staying safe with your data.", ["Better prompts, better answers", "What not to paste into a chatbot", "Privacy settings that matter"], undefined, "XZ4RlIOxaYE"],
       ["AI vs ML vs Deep Learning vs LLM: The Real Difference", 4, "Untangling the terms people use interchangeably.", ["AI is the umbrella", "ML learns from data", "LLMs are one kind of deep learning"], undefined, "eCWEzubJ4iI"],
       ["AI for Organizational Efficiency: Course Introduction", 8, "Applying AI to make organizations measurably more efficient.", ["Efficiency use-cases for AI", "Start with the process, not the model", "Measuring impact"], undefined, "HKOodPFP6S8"],
+      ["AI Prompting for Everyone", 10, "DeepLearning.AI's hub of prompting and applied-AI courses — including the widely used \"ChatGPT Prompt Engineering for Developers\" — built for both technical and non-technical learners.", ["Effective prompting: summarizing, inferring, transforming and expanding text with LLMs", "Courses span every level, from no-code AI literacy to hands-on developer prompting", "Built with OpenAI and other AI labs, used by 7M+ learners"], undefined, undefined, undefined, "https://www.deeplearning.ai"],
     ]
   ),
 ];
@@ -188,6 +194,14 @@ seedCourses.push(
   "2026-06-15",
   [
     ["Powerful Cybersecurity Talk: Essential Security Tips + Q&A", 83, "A full security-awareness talk covering essential tips everyone should follow, with an interactive Q&A session.", ["Everyday security habits that matter", "How attackers actually target people", "Answers to common security questions"], "Note three security habits from the talk you will adopt this week and share them with your team.", "sFAWpeA0u2Y"],
+    // Sub-part: Application Security & DevSecOps
+    ["Mozilla Web Security Guidelines: Securing the Basics", 12, "Mozilla's reference guide to the web security fundamentals every engineer should apply — HTTPS, security headers, cookies and Content Security Policy.", ["Enforce HTTPS everywhere, including third-party resources", "A strict Content Security Policy is the strongest defense against XSS", "Set Secure, HttpOnly and SameSite on every cookie"], undefined, undefined, "Application Security & DevSecOps", "https://infosec.mozilla.org/guidelines/web_security"],
+    ["OWASP Top 10 (2025): The Ten Risks to Know", 15, "The industry-standard awareness list of the ten most critical web application security risks, updated for 2025.", ["Broken Access Control and Security Misconfiguration top the list", "Software Supply Chain Failures is a newly elevated, higher-priority category", "Use it as shared vocabulary between engineering and security teams"], undefined, undefined, "Application Security & DevSecOps", "https://owasp.org/Top10/2025/"],
+    ["SAST vs DAST: Two Halves of Application Security", 8, "How static and dynamic application security testing differ, and why an effective DevSecOps pipeline needs both.", ["SAST scans source code early; DAST attacks a running app like a real attacker would", "SAST catches code-level bugs, DAST catches runtime issues neither alone would find", "Automate both in CI/CD and block merges on critical findings"], undefined, undefined, "Application Security & DevSecOps", "https://about.gitlab.com/topics/devsecops/sast-vs-dast/"],
+    ["Semgrep: Static Analysis Developers Actually Use", 10, "An AI-assisted SAST, SCA and secrets-detection platform built to cut false positives and catch real vulnerabilities in code review.", ["Combines rule-based scanning with AI reasoning to catch logic and authorization flaws", "Automatically triages false positives so real issues surface first", "Runs in CI/CD, IDEs and pull requests without slowing developers down"], undefined, undefined, "Application Security & DevSecOps", "https://semgrep.dev/"],
+    ["Getting Started with OWASP ZAP", 10, "A hands-on introduction to the free, open-source penetration testing proxy for finding vulnerabilities in running web applications.", ["Run a Quick Start automated scan against a target URL to begin", "Pair automated scanning with manual browsing for authenticated flows", "Review the Alerts tab by risk level before acting on findings"], "Run a ZAP Quick Start scan against a staging app you have permission to test and note the top 3 alerts.", undefined, "Application Security & DevSecOps", "https://www.zaproxy.org/getting-started/"],
+    ["Case Study: The Axios npm Supply Chain Compromise", 9, "Microsoft's incident write-up on malicious Axios package versions used by a state-sponsored actor to plant remote access trojans across npm installs.", ["Pin exact dependency versions — drop ^ and ~ to block malicious auto-updates", "Roll back to known-safe versions and rotate any exposed credentials immediately", "Watch CI/CD logs and outbound traffic for indicators of compromise"], undefined, undefined, "Application Security & DevSecOps", "https://www.microsoft.com/en-us/security/blog/2026/04/01/mitigating-the-axios-npm-supply-chain-compromise/"],
+    ["OWASP Top 10 for LLM Applications", 12, "The OWASP framework for the security and safety risks unique to generative AI systems — directly relevant to the agents and tools built in our Agentic AI path.", ["Prompt injection and insecure output handling are the top input/output risks", "Training data and model supply chains can be compromised or stolen", "Limit LLM autonomy and validate outputs — don't over-trust agent decisions"], undefined, undefined, "Application Security & DevSecOps", "https://owasp.org/www-project-top-10-for-large-language-model-applications/"],
     ]
   )
 );
