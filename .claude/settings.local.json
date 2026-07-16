@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx next *)",
+      "Bash(curl -s \"https://www.youtube.com/playlist?list=PLtGsMKufi2UGXEVY3fV67pqTe5yaxtIbW\" -H \"User-Agent: Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\)\" -H \"Accept-Language: en\")",
+      "Bash(awk '!seen[$0]++')",
+      "Bash(curl -s \"https://www.youtube.com/playlist?list=PLtGsMKufi2UEjDtD64uloo5OkLTwmiM1j\" -H \"User-Agent: Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\)\" -H \"Accept-Language: en\")",
+      "Bash(npx tsc *)"
+    ]
+  }
+}
