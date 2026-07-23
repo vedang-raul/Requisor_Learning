@@ -8,14 +8,18 @@ import { sendVerificationEmail } from "@/lib/email";
 
 export async function POST(req: Request) {
   try {
-    const { name, email, password } = await req.json().catch(() => ({}));
+    const { name, email, password, employmentType, position } = await req.json().catch(() => ({}));
     const cleanEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
     const cleanName = typeof name === "string" ? name.trim() : "";
+    const cleanType = typeof employmentType === "string" && ["intern", "job"].includes(employmentType.toLowerCase()) ? employmentType.toLowerCase() : "";
+    const cleanPosition = typeof position === "string" ? position.trim() : "";
 
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cleanEmail)) {
       return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
     }
     if (!cleanName) return NextResponse.json({ error: "Enter your name." }, { status: 400 });
+    if (!cleanType) return NextResponse.json({ error: "Select a valid employment type." }, { status: 400 });
+    if (!cleanPosition) return NextResponse.json({ error: "Enter your position." }, { status: 400 });
     if (typeof password !== "string" || password.length < 8) {
       return NextResponse.json({ error: "Password must be at least 8 characters." }, { status: 400 });
     }
@@ -32,12 +36,13 @@ export async function POST(req: Request) {
     const expires = new Date(Date.now() + 24 * 3600 * 1000);
 
     await db.query(
-      `INSERT INTO users (email, name, password_hash, role, verification_token, verification_expires)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO users (email, name, password_hash, role, employment_type, position, verification_token, verification_expires)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (email) DO UPDATE
          SET name = EXCLUDED.name, password_hash = EXCLUDED.password_hash,
+             employment_type = EXCLUDED.employment_type, position = EXCLUDED.position,
              verification_token = EXCLUDED.verification_token, verification_expires = EXCLUDED.verification_expires`,
-      [cleanEmail, cleanName, hash, roleForEmail(cleanEmail), sha256(token), expires]
+      [cleanEmail, cleanName, hash, roleForEmail(cleanEmail), cleanType, cleanPosition, sha256(token), expires]
     );
 
     await sendVerificationEmail(cleanEmail, cleanName, token);

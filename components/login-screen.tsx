@@ -31,6 +31,8 @@ export function LoginScreen() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [employmentType, setEmploymentType] = useState("");
+  const [position, setPosition] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
@@ -87,10 +89,20 @@ export function LoginScreen() {
           setLoading(false);
           return;
         }
+        if (!employmentType) {
+          setError("Select your employment type.");
+          setLoading(false);
+          return;
+        }
+        if (!position.trim()) {
+          setError("Enter your position.");
+          setLoading(false);
+          return;
+        }
         const res = await fetch("/api/auth/signup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, email, password }),
+          body: JSON.stringify({ name, email, password, employmentType, position }),
         });
         const data = await res.json();
         if (!res.ok) setError(data.error ?? "Signup failed.");
@@ -167,13 +179,32 @@ export function LoginScreen() {
 
         <form onSubmit={submit} className="space-y-4" noValidate>
           {mode === "signup" && (
-            <div className="space-y-1.5">
-              <label htmlFor="name" className="text-xs font-medium text-zinc-700">Full name</label>
-              <div className="relative">
-                <User className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
-                <Input id="name" autoComplete="name" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} className="pl-10" />
+            <>
+              <div className="space-y-1.5">
+                <label htmlFor="name" className="text-xs font-medium text-zinc-700">Full name</label>
+                <div className="relative">
+                  <User className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                  <Input id="name" autoComplete="name" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} className="pl-10" />
+                </div>
               </div>
-            </div>
+              <div className="space-y-1.5">
+                <label htmlFor="employmentType" className="text-xs font-medium text-zinc-700">Type</label>
+                <select
+                  id="employmentType"
+                  value={employmentType}
+                  onChange={(e) => setEmploymentType(e.target.value)}
+                  className="w-full rounded-lg border border-zinc-200 bg-white px-3.5 py-2.5 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-primary/40"
+                >
+                  <option value="">Select type…</option>
+                  <option value="intern">Intern</option>
+                  <option value="job">Job</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="position" className="text-xs font-medium text-zinc-700">Position</label>
+                <Input id="position" autoComplete="organization-title" placeholder="e.g. Product Manager" value={position} onChange={(e) => setPosition(e.target.value)} />
+              </div>
+            </>
           )}
 
           <div className="space-y-1.5">
