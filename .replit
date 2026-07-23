@@ -37,3 +37,8 @@ externalPort = 80
 deploymentTarget = "autoscale"
 run = ["npm", "run", "start", "--", "-p", "5000"]
 build = ["npm", "run", "build"]
+
+[userenv]
+
+[userenv.shared]
+NEXTAUTH_URL = "https://learning.requisor.io"
