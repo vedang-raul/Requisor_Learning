@@ -1,0 +1,2 @@
+- [Imported zip quirks](imported-zip-quirks.md) — original files are CRLF (strip before exact-string edits); node_modules/.bin may need `chmod +x`.
+- [Auth decisions](auth-decisions.md) — NextAuth JWT; admin role derived strictly from email support@requisor.io; tokens stored SHA-256 hashed; emails via Gmail connector.

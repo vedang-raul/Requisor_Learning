@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { navItems } from "@/components/sidebar";
 
 export function MobileNav() {
-  const { logout } = useStore();
+  const { state, logout } = useStore();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -62,7 +62,7 @@ export function MobileNav() {
               </div>
 
               <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4" aria-label="Main navigation">
-                {navItems.map((item) => {
+                {navItems.filter((item) => !("adminOnly" in item && item.adminOnly) || state.user?.role === "admin").map((item) => {
                   const isCoursePage = pathname?.startsWith("/app/course");
                   const active = item.slug
                     ? isCoursePage && currentSlug === item.slug

@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BarChart3, BookPlus, Check, Download, Users, Pencil, Plus,
-  Trash2, TrendingUp, X, Youtube, LayoutGrid, Clock, FileText,
+  Trash2, TrendingUp, X, Youtube, LayoutGrid, Clock, FileText, Send,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { Course, Lesson, CategoryKey } from "@/lib/types";
@@ -29,8 +30,16 @@ const mockUsers = [
 ];
 
 export default function AdminPage() {
-  const { state } = useStore();
+  const { state, hydrated } = useStore();
   const [tab, setTab] = useState<TabKey>("analytics");
+  const router = useRouter();
+
+  // Admin-only page: bounce everyone else back to the dashboard.
+  useEffect(() => {
+    if (hydrated && state.user && state.user.role !== "admin") router.replace("/app/dashboard/");
+  }, [hydrated, state.user, router]);
+
+  if (!hydrated || !state.user || state.user.role !== "admin") return null;
 
   return (
     <PageTransition className="space-y-6">
@@ -159,6 +168,46 @@ function Analytics() {
   );
 }
 
+/* ---------------- Notify learners about a new video ---------------- */
+
+function NotifyButton({ course, lesson }: { course: Course; lesson: Lesson }) {
+  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+
+  const notify = async () => {
+    if (status === "sending") return;
+    if (!confirm(`Email all learners about "${lesson.title}"? Sent from support@requisor.io.`)) return;
+    setStatus("sending");
+    try {
+      const res = await fetch("/api/admin/notify-video", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ courseSlug: course.slug, courseTitle: course.title, lessonId: lesson.id, lessonTitle: lesson.title }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setStatus("sent");
+      setTimeout(() => setStatus("idle"), 4000);
+    } catch (e) {
+      console.error(e);
+      setStatus("error");
+      setTimeout(() => setStatus("idle"), 4000);
+    }
+  };
+
+  return (
+    <Button
+      size="icon"
+      variant="ghost"
+      aria-label={`Email learners about ${lesson.title}`}
+      title="Email all learners about this video"
+      onClick={notify}
+      disabled={status === "sending"}
+    >
+      {status === "sent" ? <Check className="h-4 w-4 text-emerald-600" /> : status === "error" ? <X className="h-4 w-4 text-red-600" /> : <Send className={cn("h-4 w-4", status === "sending" && "animate-pulse")} />}
+    </Button>
+  );
+}
+
 /* ---------------- Content manager ---------------- */
 
 function ContentManager() {
@@ -246,6 +295,7 @@ function ContentManager() {
                     </p>
                   </div>
                   {l.format === "reading" ? <Tag tone="accent">Reading</Tag> : isPlaceholder(l.youtubeId) && <Tag tone="warning">Needs video</Tag>}
+                  {l.format !== "reading" && !isPlaceholder(l.youtubeId) && <NotifyButton course={course} lesson={l} />}
                   <Button size="icon" variant="ghost" aria-label={`Edit ${l.title}`} onClick={() => { setEditingLesson(l); setCreatingLesson(false); }}><Pencil className="h-4 w-4" /></Button>
                   <Button size="icon" variant="ghost" aria-label={`Delete ${l.title}`} onClick={() => { if (confirm(`Delete lesson "${l.title}"?`)) deleteLesson(course.slug, l.id); }}><Trash2 className="h-4 w-4 text-red-600" /></Button>
                 </div>

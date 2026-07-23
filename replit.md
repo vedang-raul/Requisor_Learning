@@ -22,10 +22,22 @@ The configured Replit workflow (`Start application`) runs `npm run dev -- -p 500
 | Secret | Purpose |
 |---|---|
 | `ANTHROPIC_API_KEY` | Powers the AI learning assistant chat widget (`app/api/chat/route.ts`). Without it the widget opens but replies with a config-missing message — the rest of the app is unaffected. |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth login (NextAuth). |
+| `SESSION_SECRET` | Used as the NextAuth JWT secret. |
 
-## Auth
+## Auth (real)
 
-Dummy auth — any email + password works. State lives entirely in `localStorage` via `lib/store.tsx`.
+NextAuth (JWT sessions) with two providers — see `lib/auth.ts`:
+- **Email + password**: signup at `/api/auth/signup` (bcrypt, email verification required before login), forgot/reset password flows. Verification & reset tokens are stored SHA-256-hashed.
+- **Google OAuth**: `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` secrets. Redirect URI must be `<base-url>/api/auth/callback/google` — **add the production URL in Google Cloud Console when publishing**.
+
+Users live in the `users` table (Replit PostgreSQL). **support@requisor.io is the only admin** (`roleForEmail` in `lib/db.ts`); the Admin Panel nav item and `/app/admin` page are hidden/blocked for everyone else.
+
+Learning state (progress, notes, XP) still lives in `localStorage`, namespaced per user email (`lib/store.tsx`).
+
+## Email
+
+All emails are sent from **support@requisor.io** via the Replit Gmail integration (`lib/email.ts`): verification, welcome, password reset, and "new learning video" announcements (admin panel → Courses & Lessons → send icon on a lesson → emails all verified users via `/api/admin/notify-video`).
 
 ## Key files
 

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { StoreProvider } from "@/lib/store";
+import { Providers } from "@/components/providers";
 
 export const metadata: Metadata = {
   title: "Requisor Learning",
@@ -12,7 +13,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="min-h-screen bg-background font-sans text-[#111827]">
-        <StoreProvider>{children}</StoreProvider>
+        <Providers>
+          <StoreProvider>{children}</StoreProvider>
+        </Providers>
       </body>
     </html>
   );

@@ -20,7 +20,7 @@ export const navItems = [
   { href: "/app/course/?slug=cyber-security", label: "Cyber Security", icon: Shield, slug: "cyber-security" },
   { href: "/app/my-learning/", label: "My Learning", icon: MonitorPlay },
   { href: "/app/badges/", label: "Badges", icon: Trophy },
-  { href: "/app/admin/", label: "Admin Panel", icon: ShieldCheck },
+  { href: "/app/admin/", label: "Admin Panel", icon: ShieldCheck, adminOnly: true },
   { href: "/app/settings/", label: "Settings", icon: Settings },
 ];
 
@@ -51,7 +51,7 @@ export function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4" aria-label="Main navigation">
-        {navItems.map((item) => {
+        {navItems.filter((item) => !("adminOnly" in item && item.adminOnly) || state.user?.role === "admin").map((item) => {
           const isCoursePage = pathname?.startsWith("/app/course");
           const active = item.slug
             ? isCoursePage && currentSlug === item.slug

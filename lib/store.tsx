@@ -1,11 +1,14 @@
 "use client";
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { useSession, signOut } from "next-auth/react";
 import { AppState, Course, EarnedBadge, Lesson, Notification, Review, UserState } from "./types";
 import { seedCourses, seedReviews } from "./data";
 import { todayKey } from "./utils";
 
-const STORAGE_KEY = "requisor-learning-v14"; // v14: added 4 DeepLearning.AI agent-building courses to Agentic AI
+const STORAGE_KEY_BASE = "requisor-learning-v14"; // v14: added 4 DeepLearning.AI agent-building courses to Agentic AI
+// State is namespaced per signed-in user so accounts sharing a browser never see each other's data.
+const storageKeyFor = (email: string) => `${STORAGE_KEY_BASE}:${email.toLowerCase()}`;
 const XP_PER_LESSON = 50;
 const XP_PER_COURSE = 200;
 
@@ -30,7 +33,6 @@ const initialState: AppState = {
 interface StoreApi {
   state: AppState;
   hydrated: boolean;
-  login: (name: string, email: string) => void;
   logout: () => void;
   toggleSidebar: () => void;
   recordView: (courseSlug: string, lessonId: string) => void;
@@ -55,30 +57,48 @@ const StoreContext = createContext<StoreApi | null>(null);
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AppState>(initialState);
   const [hydrated, setHydrated] = useState(false);
+  const { data: session, status } = useSession();
 
-  // Hydrate from localStorage
+  // Real auth: the signed-in user comes from the NextAuth session, not localStorage.
+  const sessionUser: UserState | null = useMemo(() => {
+    if (!session?.user?.email) return null;
+    return {
+      name: session.user.name ?? session.user.email.split("@")[0],
+      email: session.user.email,
+      role: session.user.role === "admin" ? "admin" : "employee",
+    };
+  }, [session]);
+
+  const email = sessionUser?.email ?? null;
+
+  // Hydrate from the signed-in user's own localStorage bucket (re-runs on account switch).
   useEffect(() => {
+    if (status === "loading") return;
+    if (!email) {
+      setState(initialState);
+      setHydrated(true);
+      return;
+    }
+    setHydrated(false);
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const saved = JSON.parse(raw) as Partial<AppState>;
-        setState((s) => ({ ...s, ...saved, courses: saved.courses?.length ? saved.courses : seedCourses }));
-      }
+      const raw = localStorage.getItem(storageKeyFor(email));
+      const saved = raw ? (JSON.parse(raw) as Partial<AppState>) : null;
+      setState(saved ? { ...initialState, ...saved, user: null, courses: saved.courses?.length ? saved.courses : seedCourses } : initialState);
     } catch {
-      // corrupted storage — start fresh
+      setState(initialState); // corrupted storage — start fresh
     }
     setHydrated(true);
-  }, []);
+  }, [email, status]);
 
-  // Persist
+  // Persist to the signed-in user's bucket only.
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || !email) return;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      localStorage.setItem(storageKeyFor(email), JSON.stringify({ ...state, user: null }));
     } catch {
       // storage full or unavailable — non-fatal
     }
-  }, [state, hydrated]);
+  }, [state, hydrated, email]);
 
   const bumpStreak = (s: AppState): AppState["streak"] => {
     const today = todayKey();
@@ -87,13 +107,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     return { count: s.streak.lastDay === yesterday ? s.streak.count + 1 : 1, lastDay: today };
   };
 
-  const login = useCallback((name: string, email: string) => {
-    // Dummy auth: everyone gets in; admin panel is open in this demo build.
-    const role: UserState["role"] = "admin";
-    setState((s) => ({ ...s, user: { name, email, role }, streak: bumpStreak(s) }));
+  const logout = useCallback(() => {
+    setState((s) => ({ ...s, user: null }));
+    void signOut({ callbackUrl: "/" });
   }, []);
-
-  const logout = useCallback(() => setState((s) => ({ ...s, user: null })), []);
 
   const toggleSidebar = useCallback(() => setState((s) => ({ ...s, sidebarCollapsed: !s.sidebarCollapsed })), []);
 
@@ -228,17 +245,19 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const resetAll = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY);
+    if (email) localStorage.removeItem(storageKeyFor(email));
     setState({ ...initialState, user: null });
-  }, []);
+  }, [email]);
 
   const api = useMemo<StoreApi>(
     () => ({
-      state, hydrated, login, logout, toggleSidebar, recordView, setWatchPct, toggleComplete,
+      state: { ...state, user: sessionUser },
+      hydrated: hydrated && status !== "loading",
+      logout, toggleSidebar, recordView, setWatchPct, toggleComplete,
       toggleBookmark, toggleSavedLesson, setNote, markNotificationsRead, upsertReview, deleteReview,
       upsertCourse, deleteCourse, upsertLesson, deleteLesson, resetAll,
     }),
-    [state, hydrated, login, logout, toggleSidebar, recordView, setWatchPct, toggleComplete, toggleBookmark, toggleSavedLesson, setNote, markNotificationsRead, upsertReview, deleteReview, upsertCourse, deleteCourse, upsertLesson, deleteLesson, resetAll]
+    [state, sessionUser, hydrated, status, logout, toggleSidebar, recordView, setWatchPct, toggleComplete, toggleBookmark, toggleSavedLesson, setNote, markNotificationsRead, upsertReview, deleteReview, upsertCourse, deleteCourse, upsertLesson, deleteLesson, resetAll]
   );
 
   return <StoreContext.Provider value={api}>{children}</StoreContext.Provider>;
