@@ -28,6 +28,8 @@ export const authOptions: NextAuthOptions = {
         const ok = await bcrypt.compare(password, user.password_hash);
         if (!ok) throw new Error("Invalid email or password.");
         if (!user.email_verified) throw new Error("EMAIL_NOT_VERIFIED");
+        // Record login time
+        db.query("UPDATE users SET last_login_at = NOW() WHERE id = $1", [user.id]).catch(() => {});
         return { id: String(user.id), email: user.email, name: user.name ?? undefined };
       },
     }),
@@ -44,13 +46,13 @@ export const authOptions: NextAuthOptions = {
          ON CONFLICT (email) DO UPDATE
            SET google_id = EXCLUDED.google_id,
                email_verified = TRUE,
-               name = COALESCE(users.name, EXCLUDED.name)
+               name = COALESCE(users.name, EXCLUDED.name),
+               last_login_at = NOW()
          RETURNING *, (xmax = 0) AS is_new`,
         [email, name, account.providerAccountId, roleForEmail(email)]
       );
       const row = rows[0] as DbUser & { is_new?: boolean };
       if (row.is_new) {
-        // First-time Google signup — send welcome email (best-effort).
         sendWelcomeEmail(email, name).catch((e) => console.error("Welcome email failed:", e));
       }
       return true;
@@ -60,7 +62,7 @@ export const authOptions: NextAuthOptions = {
         const email = user.email.toLowerCase();
         const { rows } = await db.query<DbUser>("SELECT id, role, name FROM users WHERE email = $1", [email]);
         token.uid = rows[0] ? String(rows[0].id) : undefined;
-        token.role = roleForEmail(email); // role is derived strictly from the email
+        token.role = roleForEmail(email);
         if (rows[0]?.name) token.name = rows[0].name;
       }
       return token;

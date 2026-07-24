@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   CheckCircle2, ChevronLeft, ChevronRight, Circle, Clock, FileText, Link2,
-  ListChecks, MessageSquare, NotebookPen, PlayCircle, Bookmark, BookmarkCheck, Sparkles, SearchX, FileDown, GraduationCap,
+  ListChecks, MessageSquare, NotebookPen, PlayCircle, Bookmark, BookmarkCheck,
+  Sparkles, SearchX, FileDown, GraduationCap, SkipForward, Trash2,
 } from "lucide-react";
 import { useStore, useCourseProgress } from "@/lib/store";
 import { cn, formatMinutes } from "@/lib/utils";
@@ -30,28 +31,59 @@ const tabs: { key: TabKey; label: string; icon: typeof FileText }[] = [
   { key: "discussion", label: "Discussion", icon: MessageSquare },
 ];
 
-const seedComments = [
-  { author: "Sara Iyer", at: "2d ago", text: "The examples in this one made it click for me — recommend watching at 1.25x." },
-  { author: "Dev Patel", at: "5d ago", text: "Sharing my notes in the #learning channel if anyone wants them." },
-];
+interface Comment {
+  id: number;
+  user_id: number;
+  user_name: string;
+  user_email: string;
+  body: string;
+  created_at: string;
+}
+
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+/** Sync a completion/un-completion event to the DB (best-effort). */
+function syncCompletion(lessonId: string, courseSlug: string, completed: boolean) {
+  fetch("/api/completions", {
+    method: completed ? "POST" : "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ lessonId, courseSlug }),
+  }).catch(() => {});
+}
 
 function LearnView() {
   const params = useSearchParams();
+  const router = useRouter();
   const courseSlug = params.get("course");
   const lessonId = params.get("lesson");
   const { state, toggleComplete, recordView, setNote, toggleSavedLesson, setWatchPct } = useStore();
+
   const [tab, setTab] = useState<TabKey>("description");
   const [celebrate, setCelebrate] = useState(false);
   const [courseDone, setCourseDone] = useState(false);
-  const [comments, setComments] = useState(seedComments);
-  const [newComment, setNewComment] = useState("");
   const [quizOpen, setQuizOpen] = useState(false);
+  // Auto-advance countdown (seconds remaining, null = not counting)
+  const [autoAdvance, setAutoAdvance] = useState<number | null>(null);
+
+  // Discussion comments
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [newComment, setNewComment] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const course = state.courses.find((c) => c.slug === courseSlug);
   const lesson = course?.lessons.find((l) => l.id === lessonId);
   const { pct } = useCourseProgress(course);
 
-  // Record the view + simulate watch progress accruing while the page is open
+  // ── View tracking ─────────────────────────────────────────────────────
   useEffect(() => {
     if (course && lesson) {
       recordView(course.slug, lesson.id);
@@ -59,6 +91,67 @@ function LearnView() {
       return () => clearTimeout(t);
     }
   }, [course, lesson, recordView, setWatchPct]);
+
+  // Reset auto-advance when lesson changes
+  useEffect(() => {
+    setAutoAdvance(null);
+  }, [lessonId]);
+
+  // ── Auto-advance countdown ────────────────────────────────────────────
+  useEffect(() => {
+    if (autoAdvance === null) return;
+    if (autoAdvance <= 0) {
+      if (course && lesson) {
+        const next = course.lessons[course.lessons.indexOf(lesson) + 1];
+        if (next) router.push(`/app/learn/?course=${course.slug}&lesson=${next.id}`);
+      }
+      return;
+    }
+    const t = setTimeout(() => setAutoAdvance((a) => (a !== null ? a - 1 : null)), 1000);
+    return () => clearTimeout(t);
+  }, [autoAdvance, course, lesson, router]);
+
+  // ── Lesson comments ───────────────────────────────────────────────────
+  const loadComments = useCallback((lid: string) => {
+    setCommentsLoading(true);
+    fetch(`/api/comments?lessonId=${encodeURIComponent(lid)}`)
+      .then((r) => r.json())
+      .then((d) => setComments(d.comments ?? []))
+      .catch(() => {})
+      .finally(() => setCommentsLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (tab === "discussion" && lessonId) loadComments(lessonId);
+  }, [tab, lessonId, loadComments]);
+
+  const postComment = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!newComment.trim() || !lessonId || submitting) return;
+      setSubmitting(true);
+      try {
+        const res = await fetch("/api/comments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lessonId, body: newComment.trim() }),
+        });
+        if (res.ok) {
+          const { comment } = await res.json();
+          setComments((cs) => [comment, ...cs]);
+          setNewComment("");
+        }
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [newComment, lessonId, submitting]
+  );
+
+  const deleteComment = useCallback(async (commentId: number) => {
+    await fetch(`/api/comments/${commentId}`, { method: "DELETE" });
+    setComments((cs) => cs.filter((c) => c.id !== commentId));
+  }, []);
 
   const idx = useMemo(() => (course && lesson ? course.lessons.indexOf(lesson) : -1), [course, lesson]);
 
@@ -80,11 +173,24 @@ function LearnView() {
   const saved = state.savedLessons.includes(lesson.id);
 
   const onToggleComplete = () => {
+    const nowCompleting = !completed;
     const { courseCompleted } = toggleComplete(course.slug, lesson.id);
-    if (!completed) {
+    if (nowCompleting) {
       setCelebrate(true);
       setCourseDone(courseCompleted);
     }
+    syncCompletion(lesson.id, course.slug, nowCompleting);
+  };
+
+  // Called by VideoEmbed when the YouTube video finishes playing
+  const onVideoEnded = () => {
+    if (!state.progress[lesson.id]?.completed) {
+      const { courseCompleted } = toggleComplete(course.slug, lesson.id);
+      setCelebrate(true);
+      if (courseCompleted) setCourseDone(true);
+      syncCompletion(lesson.id, course.slug, true);
+    }
+    if (next) setAutoAdvance(5);
   };
 
   return (
@@ -137,7 +243,39 @@ function LearnView() {
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_340px]">
         {/* Main column */}
         <div className="min-w-0 space-y-5">
-          <VideoEmbed youtubeId={lesson.youtubeId} title={lesson.title} format={lesson.format} resourceUrl={lesson.format === "reading" ? lesson.resources[0]?.url : undefined} />
+          <VideoEmbed
+            youtubeId={lesson.youtubeId}
+            title={lesson.title}
+            format={lesson.format}
+            resourceUrl={lesson.format === "reading" ? lesson.resources[0]?.url : undefined}
+            onEnded={onVideoEnded}
+          />
+
+          {/* Auto-advance banner */}
+          <AnimatePresence>
+            {autoAdvance !== null && next && (
+              <motion.div
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3"
+              >
+                <div className="flex items-center gap-2.5">
+                  <SkipForward className="h-4 w-4 text-primary" />
+                  <span className="text-sm text-zinc-800">
+                    Next: <span className="font-medium">{next.title}</span>
+                    <span className="ml-1.5 text-zinc-500">— starting in {autoAdvance}s</span>
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={() => router.push(`/app/learn/?course=${course.slug}&lesson=${next.id}`)}>
+                    <SkipForward className="h-3.5 w-3.5" />Play now
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setAutoAdvance(null)}>Stay</Button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Action bar */}
           <Card className="flex flex-wrap items-center gap-4 py-4">
@@ -260,26 +398,58 @@ function LearnView() {
                   )}
                   {tab === "discussion" && (
                     <div className="space-y-4">
-                      {comments.map((c, i) => (
-                        <div key={i} className="flex gap-3">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-secondary text-xs font-bold text-white">{c.author[0]}</div>
-                          <div className="flex-1 rounded-xl border border-zinc-100 bg-white/[0.03] p-3">
-                            <div className="flex justify-between text-xs"><span className="font-medium text-zinc-800">{c.author}</span><span className="text-zinc-600">{c.at}</span></div>
-                            <p className="mt-1 text-sm leading-relaxed text-zinc-700">{c.text}</p>
-                          </div>
+                      {commentsLoading ? (
+                        <div className="space-y-3">
+                          {[1, 2].map((i) => (
+                            <div key={i} className="flex gap-3 animate-pulse">
+                              <div className="h-8 w-8 shrink-0 rounded-lg bg-zinc-200" />
+                              <div className="flex-1 space-y-2 rounded-xl border border-zinc-100 p-3">
+                                <div className="h-3 w-24 rounded bg-zinc-200" />
+                                <div className="h-3 w-full rounded bg-zinc-200" />
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                      <form
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          if (!newComment.trim()) return;
-                          setComments((cs) => [...cs, { author: state.user?.name ?? "You", at: "just now", text: newComment.trim() }]);
-                          setNewComment("");
-                        }}
-                        className="flex gap-2"
-                      >
-                        <Textarea value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder="Add to the discussion…" className="min-h-[44px] flex-1" aria-label="New comment" />
-                        <Button type="submit" size="md" className="self-end">Post</Button>
+                      ) : comments.length === 0 ? (
+                        <p className="py-4 text-center text-sm text-zinc-500">No comments yet — be the first to start the discussion.</p>
+                      ) : (
+                        comments.map((c) => (
+                          <div key={c.id} className="flex gap-3 group">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-secondary text-xs font-bold text-white">
+                              {c.user_name[0]}
+                            </div>
+                            <div className="flex-1 rounded-xl border border-zinc-100 bg-white/[0.03] p-3">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex items-baseline gap-2">
+                                  <span className="text-xs font-medium text-zinc-800">{c.user_name}</span>
+                                  <span className="text-[11px] text-zinc-500">{relativeTime(c.created_at)}</span>
+                                </div>
+                                {(String(c.user_id) === String(state.user?.email) || state.user?.role === "admin") && (
+                                  <button
+                                    onClick={() => deleteComment(c.id)}
+                                    aria-label="Delete comment"
+                                    className="opacity-0 group-hover:opacity-100 focus-ring rounded p-0.5 text-zinc-400 transition hover:text-red-600"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                              <p className="mt-1 text-sm leading-relaxed text-zinc-700">{c.body}</p>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                      <form onSubmit={postComment} className="flex gap-2">
+                        <Textarea
+                          value={newComment}
+                          onChange={(e) => setNewComment(e.target.value)}
+                          placeholder="Add to the discussion…"
+                          className="min-h-[44px] flex-1"
+                          aria-label="New comment"
+                        />
+                        <Button type="submit" size="md" className="self-end" disabled={submitting || !newComment.trim()}>
+                          {submitting ? "Posting…" : "Post"}
+                        </Button>
                       </form>
                     </div>
                   )}

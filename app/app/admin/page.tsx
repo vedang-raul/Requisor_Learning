@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   BarChart3, BookPlus, Check, Download, Users, Pencil, Plus,
   Trash2, TrendingUp, X, Youtube, LayoutGrid, Clock, FileText, Send,
+  RefreshCw,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { Course, Lesson, CategoryKey } from "@/lib/types";
@@ -16,28 +17,63 @@ import { Input, Textarea } from "@/components/ui/input";
 import { Tag } from "@/components/ui/badge";
 import { PageTransition } from "@/components/motion";
 import { ProgressBar } from "@/components/ui/progress";
-import { leaderboardSeed } from "@/lib/data";
 import { TeamInsights } from "@/components/team-insights";
 
 type TabKey = "analytics" | "content" | "users";
 
-const mockUsers = [
-  { name: "Aarav Mehta", email: "aarav@requisor.io", progress: 82, lastLogin: "Today, 9:14", assigned: ["agentic-ai", "product-management"] },
-  { name: "Sara Iyer", email: "sara@requisor.io", progress: 74, lastLogin: "Today, 8:02", assigned: ["data-analytics"] },
-  { name: "Dev Patel", email: "dev@requisor.io", progress: 61, lastLogin: "Yesterday, 18:40", assigned: ["cyber-security", "agentic-ai"] },
-  { name: "Nina Rao", email: "nina@requisor.io", progress: 48, lastLogin: "Yesterday, 11:22", assigned: ["product-management"] },
-  { name: "Kabir Shah", email: "kabir@requisor.io", progress: 35, lastLogin: "Mon, 16:05", assigned: ["data-analytics", "cyber-security"] },
-];
+interface AnalyticsUser {
+  id: number;
+  name: string;
+  email: string;
+  employment_type: string | null;
+  position: string | null;
+  last_login_at: string | null;
+  completion_count: number;
+}
+
+interface AnalyticsData {
+  totalUsers: number;
+  activeThisWeek: number;
+  totalCompletions: number;
+  users: AnalyticsUser[];
+  completionsByCourse: Array<{ courseSlug: string; count: number }>;
+}
+
+function formatLoginTime(iso: string | null): string {
+  if (!iso) return "Never";
+  const d = new Date(iso);
+  const diff = Date.now() - d.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  if (hrs < 48) return "Yesterday";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
 
 export default function AdminPage() {
   const { state, hydrated } = useStore();
   const [tab, setTab] = useState<TabKey>("analytics");
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const router = useRouter();
 
-  // Admin-only page: bounce everyone else back to the dashboard.
   useEffect(() => {
     if (hydrated && state.user && state.user.role !== "admin") router.replace("/app/dashboard/");
   }, [hydrated, state.user, router]);
+
+  const loadAnalytics = () => {
+    setAnalyticsLoading(true);
+    fetch("/api/admin/analytics")
+      .then((r) => r.json())
+      .then((d) => setAnalytics(d))
+      .catch(() => {})
+      .finally(() => setAnalyticsLoading(false));
+  };
+
+  useEffect(() => {
+    if (hydrated && state.user?.role === "admin") loadAnalytics();
+  }, [hydrated, state.user]);
 
   if (!hydrated || !state.user || state.user.role !== "admin") return null;
 
@@ -69,9 +105,9 @@ export default function AdminPage() {
 
       <AnimatePresence mode="wait">
         <motion.div key={tab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.22 }}>
-          {tab === "analytics" && <Analytics />}
+          {tab === "analytics" && <Analytics analytics={analytics} loading={analyticsLoading} onRefresh={loadAnalytics} />}
           {tab === "content" && <ContentManager />}
-          {tab === "users" && <UserManager />}
+          {tab === "users" && <UserManager analytics={analytics} loading={analyticsLoading} />}
         </motion.div>
       </AnimatePresence>
     </PageTransition>
@@ -80,11 +116,12 @@ export default function AdminPage() {
 
 /* ---------------- Analytics ---------------- */
 
-function Analytics() {
+function Analytics({ analytics, loading, onRefresh }: { analytics: AnalyticsData | null; loading: boolean; onRefresh: () => void }) {
   const { state } = useStore();
+
+  // Local admin's own completion stats
   const totalLessons = state.courses.reduce((a, c) => a + c.lessons.length, 0);
   const completed = Object.values(state.progress).filter((p) => p.completed).length;
-  const completionRate = totalLessons ? Math.round((completed / totalLessons) * 100) : 0;
   const watchMin = state.courses.flatMap((c) => c.lessons).filter((l) => state.progress[l.id]?.completed).reduce((a, l) => a + l.durationMin, 0);
   const popular = [...state.courses].sort((a, b) => {
     const pa = a.lessons.filter((l) => state.progress[l.id]?.completed).length;
@@ -93,10 +130,9 @@ function Analytics() {
   })[0];
 
   const exportReport = () => {
-    const rows = [["Course", "Lessons", "Completed", "Completion %"]];
-    for (const c of state.courses) {
-      const done = c.lessons.filter((l) => state.progress[l.id]?.completed).length;
-      rows.push([c.title, String(c.lessons.length), String(done), String(c.lessons.length ? Math.round((done / c.lessons.length) * 100) : 0)]);
+    const rows = [["Employee", "Email", "Position", "Completions", "Last Login"]];
+    for (const u of (analytics?.users ?? [])) {
+      rows.push([u.name, u.email, u.position ?? "", String(u.completion_count), formatLoginTime(u.last_login_at)]);
     }
     const csv = rows.map((r) => r.map((v) => `"${v.replaceAll('"', '""')}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -107,14 +143,38 @@ function Analytics() {
     URL.revokeObjectURL(a.href);
   };
 
+  // Max completions per course for normalising bar width
+  const maxCourseCompletions = Math.max(1, ...(analytics?.completionsByCourse.map((c) => c.count) ?? [0]));
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
-          { label: "Completion Rate", value: `${completionRate}%`, icon: TrendingUp, tint: "text-emerald-600 from-emerald-500/20 to-emerald-500/5" },
-          { label: "Watch Time", value: formatMinutes(watchMin), icon: Clock, tint: "text-cyan-400 from-cyan-500/20 to-cyan-500/5" },
-          { label: "Most Popular", value: popular?.title ?? "—", icon: BarChart3, tint: "text-primary from-indigo-500/20 to-indigo-500/5", small: true },
-          { label: "Active Employees", value: "23", icon: Users, tint: "text-amber-600 from-amber-500/20 to-amber-500/5" },
+          {
+            label: "Registered Employees",
+            value: loading ? "…" : String(analytics?.totalUsers ?? 0),
+            icon: Users,
+            tint: "text-primary from-indigo-500/20 to-indigo-500/5",
+          },
+          {
+            label: "Active This Week",
+            value: loading ? "…" : String(analytics?.activeThisWeek ?? 0),
+            icon: TrendingUp,
+            tint: "text-emerald-600 from-emerald-500/20 to-emerald-500/5",
+          },
+          {
+            label: "Total Completions",
+            value: loading ? "…" : String(analytics?.totalCompletions ?? 0),
+            icon: BarChart3,
+            tint: "text-cyan-400 from-cyan-500/20 to-cyan-500/5",
+          },
+          {
+            label: "Most Popular",
+            value: popular?.title ?? "—",
+            icon: Clock,
+            tint: "text-amber-600 from-amber-500/20 to-amber-500/5",
+            small: true,
+          },
         ].map((s) => {
           const Icon = s.icon;
           return (
@@ -130,40 +190,74 @@ function Analytics() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Team completions by course (real DB data) */}
         <Card>
-          <CardTitle className="mb-4">Completion by course</CardTitle>
-          <div className="space-y-4">
-            {state.courses.map((c) => {
-              const done = c.lessons.filter((l) => state.progress[l.id]?.completed).length;
-              const pct = c.lessons.length ? Math.round((done / c.lessons.length) * 100) : 0;
-              return (
-                <div key={c.slug}>
-                  <div className="mb-1.5 flex justify-between text-xs"><span className="text-zinc-700">{c.title}</span><span className="text-zinc-500">{pct}%</span></div>
-                  <ProgressBar value={pct} />
+          <CardTitle className="mb-4">Team completions by course</CardTitle>
+          {loading ? (
+            <div className="space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="animate-pulse space-y-1.5">
+                  <div className="h-3 w-1/2 rounded bg-zinc-200" />
+                  <div className="h-2 w-full rounded bg-zinc-200" />
                 </div>
-              );
-            })}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {state.courses.map((c) => {
+                const dbCount = analytics?.completionsByCourse.find((x) => x.courseSlug === c.slug)?.count ?? 0;
+                const pct = Math.round((dbCount / maxCourseCompletions) * 100);
+                return (
+                  <div key={c.slug}>
+                    <div className="mb-1.5 flex justify-between text-xs">
+                      <span className="text-zinc-700">{c.title}</span>
+                      <span className="text-zinc-500">{dbCount} completions</span>
+                    </div>
+                    <ProgressBar value={pct} />
+                  </div>
+                );
+              })}
+              {(analytics?.totalCompletions ?? 0) === 0 && (
+                <p className="text-xs text-zinc-500">No completions recorded yet — data updates as employees finish lessons.</p>
+              )}
+            </div>
+          )}
         </Card>
+
+        {/* Most active employees (real DB data) */}
         <Card>
           <div className="mb-4 flex items-center justify-between">
             <CardTitle>Most active employees</CardTitle>
-            <Button size="sm" variant="outline" onClick={exportReport}><Download className="h-3.5 w-3.5" />Export CSV</Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="ghost" onClick={onRefresh} disabled={loading} aria-label="Refresh">
+                <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+              </Button>
+              <Button size="sm" variant="outline" onClick={exportReport}><Download className="h-3.5 w-3.5" />Export CSV</Button>
+            </div>
           </div>
-          <div className="space-y-2">
-            {leaderboardSeed.map((u, i) => (
-              <div key={u.name} className="flex items-center gap-3 rounded-xl border border-zinc-100 bg-white/[0.03] px-3.5 py-2.5">
-                <span className="w-5 text-center text-xs font-bold text-zinc-500">{i + 1}</span>
-                <span className="flex-1 text-sm text-zinc-800">{u.name}</span>
-                <Tag tone="primary">{u.xp.toLocaleString()} XP</Tag>
-              </div>
-            ))}
-          </div>
-          <p className="mt-3 text-[11px] text-zinc-600">Recent logins: Aarav (9:14), Sara (8:02), Dev (yesterday). Demo data — wire to your HRIS/SSO for real activity.</p>
+          {loading ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map((i) => <div key={i} className="h-10 animate-pulse rounded-xl bg-zinc-100" />)}
+            </div>
+          ) : (analytics?.users ?? []).length === 0 ? (
+            <p className="py-4 text-sm text-zinc-500">No employees have signed up yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {(analytics?.users ?? []).slice(0, 8).map((u, i) => (
+                <div key={u.email} className="flex items-center gap-3 rounded-xl border border-zinc-100 bg-white/[0.03] px-3.5 py-2.5">
+                  <span className="w-5 text-center text-xs font-bold text-zinc-500">{i + 1}</span>
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-secondary text-xs font-bold text-white">{u.name[0]}</div>
+                  <span className="flex-1 truncate text-sm text-zinc-800">{u.name}</span>
+                  <span className="text-xs text-zinc-500">{formatLoginTime(u.last_login_at)}</span>
+                  <Tag tone="primary">{u.completion_count} done</Tag>
+                </div>
+              ))}
+            </div>
+          )}
         </Card>
       </div>
 
-      <TeamInsights courses={state.courses} progress={state.progress} mockUsers={mockUsers} />
+      <TeamInsights courses={state.courses} progress={state.progress} mockUsers={[]} />
     </div>
   );
 }
@@ -195,14 +289,7 @@ function NotifyButton({ course, lesson }: { course: Course; lesson: Lesson }) {
   };
 
   return (
-    <Button
-      size="icon"
-      variant="ghost"
-      aria-label={`Email learners about ${lesson.title}`}
-      title="Email all learners about this video"
-      onClick={notify}
-      disabled={status === "sending"}
-    >
+    <Button size="icon" variant="ghost" aria-label={`Email learners about ${lesson.title}`} title="Email all learners about this video" onClick={notify} disabled={status === "sending"}>
       {status === "sent" ? <Check className="h-4 w-4 text-emerald-600" /> : status === "error" ? <X className="h-4 w-4 text-red-600" /> : <Send className={cn("h-4 w-4", status === "sending" && "animate-pulse")} />}
     </Button>
   );
@@ -220,7 +307,6 @@ function ContentManager() {
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[300px_1fr]">
-      {/* Course list */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <CardTitle>Courses</CardTitle>
@@ -247,7 +333,6 @@ function ContentManager() {
         {creatingCourse && <CourseForm onClose={() => setCreatingCourse(false)} onSave={(c) => { upsertCourse(c); setSelected(c.slug); setCreatingCourse(false); }} />}
       </div>
 
-      {/* Lessons of selected course */}
       <div className="space-y-3">
         {course ? (
           <>
@@ -413,30 +498,59 @@ function LessonForm({ courseSlug, lesson, nextIndex, onSave, onClose }: { course
 
 /* ---------------- Users ---------------- */
 
-function UserManager() {
+function UserManager({ analytics, loading }: { analytics: AnalyticsData | null; loading: boolean }) {
   const { state } = useStore();
   const [assignOpen, setAssignOpen] = useState<string | null>(null);
-  const [assignments, setAssignments] = useState<Record<string, string[]>>(Object.fromEntries(mockUsers.map((u) => [u.email, u.assigned])));
+  const [assignments, setAssignments] = useState<Record<string, string[]>>({});
+
+  if (loading) {
+    return (
+      <Card className="space-y-3 p-5">
+        {[1, 2, 3, 4].map((i) => <div key={i} className="h-12 animate-pulse rounded-xl bg-zinc-100" />)}
+      </Card>
+    );
+  }
+
+  const users = analytics?.users ?? [];
+
+  if (users.length === 0) {
+    return (
+      <Card className="py-12 text-center">
+        <p className="text-sm text-zinc-500">No employees have signed up yet.</p>
+      </Card>
+    );
+  }
 
   return (
     <Card className="overflow-x-auto p-0">
-      <table className="w-full min-w-[720px] text-left text-sm">
+      <table className="w-full min-w-[760px] text-left text-sm">
         <thead>
           <tr className="border-b border-zinc-200 text-xs uppercase tracking-wider text-zinc-500">
             <th className="px-5 py-3.5 font-medium">Employee</th>
+            <th className="px-5 py-3.5 font-medium">Type / Position</th>
             <th className="px-5 py-3.5 font-medium">Assigned courses</th>
-            <th className="px-5 py-3.5 font-medium">Progress</th>
+            <th className="px-5 py-3.5 font-medium">Completions</th>
             <th className="px-5 py-3.5 font-medium">Last login</th>
             <th className="px-5 py-3.5 font-medium">Actions</th>
           </tr>
         </thead>
         <tbody>
-          {mockUsers.map((u) => (
+          {users.map((u) => (
             <tr key={u.email} className="border-b border-zinc-100 transition hover:bg-white/[0.03]">
               <td className="px-5 py-3.5">
                 <div className="flex items-center gap-3">
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-secondary text-xs font-bold text-white">{u.name[0]}</div>
-                  <div><p className="font-medium text-zinc-900">{u.name}</p><p className="text-xs text-zinc-500">{u.email}</p></div>
+                  <div>
+                    <p className="font-medium text-zinc-900">{u.name}</p>
+                    <p className="text-xs text-zinc-500">{u.email}</p>
+                  </div>
+                </div>
+              </td>
+              <td className="px-5 py-3.5">
+                <div className="space-y-0.5">
+                  {u.employment_type && <p className="text-xs font-medium text-zinc-700">{u.employment_type}</p>}
+                  {u.position && <p className="text-[11px] text-zinc-500">{u.position}</p>}
+                  {!u.employment_type && !u.position && <span className="text-xs text-zinc-400">—</span>}
                 </div>
               </td>
               <td className="px-5 py-3.5">
@@ -445,6 +559,7 @@ function UserManager() {
                     const c = state.courses.find((x) => x.slug === slug);
                     return c ? <Tag key={slug} tone="primary">{c.title}</Tag> : null;
                   })}
+                  {(assignments[u.email] ?? []).length === 0 && <span className="text-xs text-zinc-400">None</span>}
                 </div>
                 {assignOpen === u.email && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
@@ -464,9 +579,9 @@ function UserManager() {
                 )}
               </td>
               <td className="px-5 py-3.5">
-                <div className="w-28"><ProgressBar value={u.progress} /><p className="mt-1 text-[11px] text-zinc-500">{u.progress}%</p></div>
+                <Tag tone={u.completion_count > 0 ? "success" : "default"}>{u.completion_count} lessons</Tag>
               </td>
-              <td className="px-5 py-3.5 text-xs text-zinc-600">{u.lastLogin}</td>
+              <td className="px-5 py-3.5 text-xs text-zinc-600">{formatLoginTime(u.last_login_at)}</td>
               <td className="px-5 py-3.5">
                 <Button size="sm" variant="outline" onClick={() => setAssignOpen(assignOpen === u.email ? null : u.email)}>
                   {assignOpen === u.email ? "Done" : "Assign"}
@@ -476,7 +591,6 @@ function UserManager() {
           ))}
         </tbody>
       </table>
-      <p className="px-5 py-3 text-[11px] text-zinc-600">Demo user data — connect your SSO/HRIS to manage real employees. Assignments here are session-only.</p>
     </Card>
   );
 }

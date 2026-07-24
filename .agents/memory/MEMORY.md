@@ -1,2 +1,4 @@
 - [Imported zip quirks](imported-zip-quirks.md) — original files are CRLF (strip before exact-string edits); node_modules/.bin may need `chmod +x`.
 - [Auth decisions](auth-decisions.md) — NextAuth JWT; admin role derived strictly from email support@requisor.io; tokens stored SHA-256 hashed; emails via Gmail connector.
+- [DB schema additions](db-schema-additions.md) — lesson_completions, lesson_comments tables + last_login_at on users; post-merge.sh is idempotent source of truth.
+- [Video auto-complete](video-auto-complete.md) — YouTube IFrame API used (not plain iframe) so onEnded fires; onEnded stored in ref to avoid player recreation on re-renders.
