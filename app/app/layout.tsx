@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
 import { useStore } from "@/lib/store";
-import { Skeleton } from "@/components/ui/skeleton";
 import { GradientBlobs } from "@/components/gradient-blobs";
 import { AiAssistant } from "@/components/ai-assistant";
 
@@ -17,28 +16,14 @@ function Shell({ children }: { children: React.ReactNode }) {
     if (hydrated && !state.user) router.replace("/");
   }, [hydrated, state.user, router]);
 
+  // Plain white screen while session resolves or redirect is in-flight —
+  // no skeleton structure means no layout shift (shake) during transitions.
   if (!hydrated || !state.user) {
-    return (
-      <div className="flex min-h-screen">
-        <div className="hidden w-64 border-r border-zinc-200 p-4 md:block">
-          <Skeleton className="h-10 w-full" />
-          <div className="mt-6 space-y-3">
-            {Array.from({ length: 8 }).map((_, i) => (<Skeleton key={i} className="h-9 w-full" />))}
-          </div>
-        </div>
-        <div className="flex-1 p-6">
-          <Skeleton className="h-10 w-1/3" />
-          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, i) => (<Skeleton key={i} className="h-28 w-full" />))}
-          </div>
-          <Skeleton className="mt-6 h-64 w-full" />
-        </div>
-      </div>
-    );
+    return <div className="min-h-screen bg-white" />;
   }
 
   return (
-    <div className="relative flex min-h-screen">
+    <div className="relative flex min-h-screen animate-in fade-in duration-200">
       <GradientBlobs />
       <Sidebar />
       <div className="relative flex min-w-0 flex-1 flex-col">

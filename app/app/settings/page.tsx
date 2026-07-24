@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Bell, Moon, RotateCcw, Shield, User } from "lucide-react";
+import { Bell, RotateCcw, Shield, User } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { Card, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,15 +45,6 @@ export default function SettingsPage() {
             <p className="text-xs text-zinc-500">{state.user?.email}</p>
             <p className="mt-0.5 text-[11px] uppercase tracking-wider text-primary">{state.user?.role}</p>
           </div>
-        </div>
-      </Card>
-
-      <Card>
-        <div className="mb-1 flex items-center gap-2"><Moon className="h-4 w-4 text-primary" /><CardTitle>Appearance</CardTitle></div>
-        <CardDescription>Requisor Learning ships in dark mode by design — easy on the eyes for long study sessions.</CardDescription>
-        <div className="mt-4 flex items-center justify-between rounded-xl border border-zinc-100 bg-white/[0.03] p-3.5">
-          <span className="text-sm text-zinc-800">Dark mode</span>
-          <Toggle on={true} onChange={() => {}} label="Dark mode (always on)" />
         </div>
       </Card>
 
