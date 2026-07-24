@@ -42,3 +42,7 @@ build = ["npm", "run", "build"]
 
 [userenv.shared]
 NEXTAUTH_URL = "https://learning.requisor.io"
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 120000
