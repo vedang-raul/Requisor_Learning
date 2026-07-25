@@ -39,7 +39,7 @@ export default function BadgesPage() {
               <Card className="flex items-center gap-4">
                 <div className={cn("rounded-2xl bg-gradient-to-br p-3", s.tint)}><Icon className="h-6 w-6" /></div>
                 <div>
-                  <p className="text-2xl font-bold text-zinc-900"><Counter to={s.value} suffix={s.suffix ?? ""} /></p>
+                  <p className="text-2xl font-bold text-zinc-900"><Counter to={s.value} suffix="" /></p>
                   <p className="text-xs text-zinc-600">{s.label}</p>
                 </div>
               </Card>
