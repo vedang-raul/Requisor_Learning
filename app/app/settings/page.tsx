@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bell, Pencil, RotateCcw, Shield, User, X, Check, Loader2 } from "lucide-react";
+import { Bell, Pencil, User, X, Check, Loader2 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useStore } from "@/lib/store";
-import { Card, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/motion";
 import { cn } from "@/lib/utils";
@@ -304,9 +304,8 @@ function ProfileCard() {
 
 /* ─── Page ───────────────────────────────────────────────────────────────── */
 export default function SettingsPage() {
-  const { resetAll } = useStore();
+  useStore();
   const [notif, setNotif] = useState({ courses: true, assignments: true, badges: true, announcements: true });
-  const [confirmReset, setConfirmReset] = useState(false);
 
   return (
     <PageTransition className="mx-auto max-w-3xl space-y-6">
@@ -334,20 +333,6 @@ export default function SettingsPage() {
         </div>
       </Card>
 
-      <Card>
-        <div className="mb-1 flex items-center gap-2"><Shield className="h-4 w-4 text-red-600" /><CardTitle>Danger zone</CardTitle></div>
-        <CardDescription>Reset all local data — progress, notes, bookmarks, XP and admin edits. This cannot be undone.</CardDescription>
-        <div className="mt-4 flex gap-2">
-          {confirmReset ? (
-            <>
-              <Button variant="danger" onClick={() => { resetAll(); }}>Yes, wipe everything</Button>
-              <Button variant="ghost" onClick={() => setConfirmReset(false)}>Cancel</Button>
-            </>
-          ) : (
-            <Button variant="danger" onClick={() => setConfirmReset(true)}><RotateCcw className="h-4 w-4" />Reset all data</Button>
-          )}
-        </div>
-      </Card>
     </PageTransition>
   );
 }
