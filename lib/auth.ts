@@ -3,7 +3,7 @@ import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
-import { db, roleForEmail, type DbUser } from "./db";
+import { db, roleForEmail, ADMIN_EMAIL, type DbUser } from "./db";
 import { sendWelcomeEmail } from "./email";
 
 export const authOptions: NextAuthOptions = {
