@@ -27,6 +27,10 @@ export interface DbUser {
   reset_token: string | null;
   reset_expires: Date | null;
   created_at: Date;
+  employment_type: string | null;
+  position: string | null;
+  date_of_birth: Date | null;
+  gender: string | null;
 }
 
 export const ADMIN_EMAIL = "support@requisor.io";

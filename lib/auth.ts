@@ -80,7 +80,11 @@ export const authOptions: NextAuthOptions = {
       }
       return true;
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
+      // Live profile update — client called useSession().update({ name })
+      if (trigger === "update" && (session as { name?: string })?.name) {
+        token.name = (session as { name: string }).name;
+      }
       if (user?.email) {
         const email = user.email.toLowerCase();
         const { rows } = await db.query<DbUser>("SELECT id, role, name FROM users WHERE email = $1", [email]);
@@ -94,6 +98,7 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         session.user.id = (token.uid as string) ?? "";
         session.user.role = (token.role as "employee" | "admin") ?? "employee";
+        if (token.name) session.user.name = token.name as string;
       }
       return session;
     },

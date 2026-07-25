@@ -18,7 +18,9 @@ p.query(\`
     ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP,
     ADD COLUMN IF NOT EXISTS xp INT DEFAULT 0,
     ADD COLUMN IF NOT EXISTS streak_count INT DEFAULT 0,
-    ADD COLUMN IF NOT EXISTS streak_last_day DATE;
+    ADD COLUMN IF NOT EXISTS streak_last_day DATE,
+    ADD COLUMN IF NOT EXISTS date_of_birth DATE,
+    ADD COLUMN IF NOT EXISTS gender VARCHAR(20);
 
   CREATE TABLE IF NOT EXISTS lesson_completions (
     id SERIAL PRIMARY KEY,
