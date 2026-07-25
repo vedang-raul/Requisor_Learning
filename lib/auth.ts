@@ -15,6 +15,29 @@ export const authOptions: NextAuthOptions = {
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     }),
+    // ─── DEV-ONLY bypass — never active in production ───────────────────
+    ...(process.env.NODE_ENV !== "production"
+      ? [
+          CredentialsProvider({
+            id: "dev-admin",
+            name: "Dev Admin",
+            credentials: {},
+            async authorize() {
+              // Auto-sign in as the admin account — no password needed.
+              const { rows } = await db.query<DbUser>(
+                "SELECT * FROM users WHERE email = $1",
+                [ADMIN_EMAIL]
+              );
+              if (!rows[0]) {
+                // Admin row doesn't exist yet (fresh DB); return a minimal object.
+                return { id: "0", email: ADMIN_EMAIL, name: "Admin" };
+              }
+              db.query("UPDATE users SET last_login_at = NOW() WHERE id = $1", [rows[0].id]).catch(() => {});
+              return { id: String(rows[0].id), email: rows[0].email, name: rows[0].name ?? "Admin" };
+            },
+          }),
+        ]
+      : []),
     CredentialsProvider({
       name: "Email & password",
       credentials: { email: { label: "Email", type: "email" }, password: { label: "Password", type: "password" } },

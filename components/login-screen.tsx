@@ -282,6 +282,23 @@ export function LoginScreen() {
         <p className="mt-6 text-center text-[11px] leading-relaxed text-zinc-500">
           Internal use only · <span className="text-zinc-600">Requisor © 2026</span>
         </p>
+
+        {/* Dev-only quick-access — stripped out in production builds */}
+        {process.env.NODE_ENV !== "production" && (
+          <div className="mt-4 border-t border-dashed border-zinc-200 pt-4">
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => {
+                setLoading(true);
+                void signIn("dev-admin", { callbackUrl: "/app/dashboard/" });
+              }}
+              className="focus-ring flex w-full items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 py-2 text-xs font-medium text-amber-700 transition hover:bg-amber-100 disabled:opacity-60"
+            >
+              ⚡ Dev: sign in as support@requisor.io
+            </button>
+          </div>
+        )}
       </motion.div>
     </div>
   );
