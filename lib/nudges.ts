@@ -10,22 +10,12 @@ const SEEN_KEY = "requisor-nudge-seen";
 const STALE_MS = 1000 * 60 * 60 * 24 * 3; // 3 days
 
 /**
- * Rule-based (no LLM call) nudge detection: a streak about to lapse, or a
- * course with progress that's gone cold. Returns at most one nudge — the
- * caller is responsible for suppressing repeats via markNudgeSeen.
+ * Rule-based (no LLM call) nudge detection: a course with progress that's
+ * gone cold. Returns at most one nudge — the caller is responsible for
+ * suppressing repeats via markNudgeSeen.
  */
 export function getNudge(state: AppState): Nudge | null {
   const today = todayKey();
-
-  if (state.streak.count > 0 && state.streak.lastDay !== today) {
-    const id = `streak-${state.streak.lastDay}`;
-    if (!wasSeenToday(id)) {
-      return {
-        id,
-        message: `You're on a **${state.streak.count}-day streak** — don't let it slip! Finish one short lesson today to keep it alive. 🔥`,
-      };
-    }
-  }
 
   for (const course of state.courses) {
     const started = course.lessons.some((l) => {

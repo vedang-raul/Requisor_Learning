@@ -71,7 +71,7 @@ export async function sendWelcomeEmail(to: string, name: string) {
     "Welcome to Requisor Learning 🎉",
     shell(
       `Welcome aboard, ${name || "there"}!`,
-      "Your account is verified and ready. Explore curated learning paths in Product Management, Data Analytics, Agentic AI and Cyber Security — your progress, XP and streaks are saved automatically.",
+      "Your account is verified and ready. Explore curated learning paths in Product Management, Data Analytics, Agentic AI and Cyber Security — your progress and XP are saved automatically.",
       { label: "Start learning", href: `${getBaseUrl()}/` }
     )
   );

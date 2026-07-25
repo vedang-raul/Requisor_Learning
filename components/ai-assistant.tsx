@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Compass, Flame, ListChecks, Loader2, RotateCcw, Send, TrendingUp, X } from "lucide-react";
+import { Compass, ListChecks, Loader2, RotateCcw, Send, TrendingUp, X } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { buildProgressContext } from "@/lib/ai-context";
 import { getNudge, markNudgeSeen, type Nudge } from "@/lib/nudges";
@@ -15,7 +15,7 @@ const QUICK_PROMPTS = [
   { icon: TrendingUp, label: "How am I doing overall?" },
   { icon: Compass, label: "What should I learn next?" },
   { icon: ListChecks, label: "Summarize my progress" },
-  { icon: Flame, label: "Tips to keep my streak going?" },
+  { icon: TrendingUp, label: "How do I earn more XP?" },
 ];
 
 function TypingDots() {
@@ -82,7 +82,7 @@ export function AiAssistant() {
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   }, [input]);
 
-  // Once hydrated, check for a rule-based nudge (streak at risk, stalled course).
+  // Once hydrated, check for a rule-based nudge (stalled course).
   // Shown at most once per day per nudge id via localStorage.
   useEffect(() => {
     if (!hydrated || !state.user) return;

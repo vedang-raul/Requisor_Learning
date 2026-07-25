@@ -239,9 +239,9 @@ export const seedReviews: Review[] = [
 ];
 
 export const leaderboardSeed = [
-  { name: "Aarav Mehta", xp: 3250, streak: 12 },
-  { name: "Sara Iyer", xp: 2980, streak: 9 },
-  { name: "Dev Patel", xp: 2410, streak: 15 },
-  { name: "Nina Rao", xp: 2100, streak: 6 },
-  { name: "Kabir Shah", xp: 1875, streak: 4 },
+  { name: "Aarav Mehta", xp: 3250 },
+  { name: "Sara Iyer", xp: 2980 },
+  { name: "Dev Patel", xp: 2410 },
+  { name: "Nina Rao", xp: 2100 },
+  { name: "Kabir Shah", xp: 1875 },
 ];

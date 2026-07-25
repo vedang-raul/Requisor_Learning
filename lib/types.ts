@@ -88,7 +88,6 @@ export interface AppState {
   savedLessons: string[]; // lesson ids
   notes: Record<string, string>; // lessonId -> note text
   xp: number;
-  streak: { count: number; lastDay: string };
   notifications: Notification[];
   sidebarCollapsed: boolean;
   reviews: Review[];

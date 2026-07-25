@@ -4,7 +4,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { useSession, signOut } from "next-auth/react";
 import { AppState, Course, EarnedBadge, Lesson, Notification, Review, UserState } from "./types";
 import { seedCourses, seedReviews } from "./data";
-import { todayKey } from "./utils";
+
 
 const STORAGE_KEY_BASE = "requisor-learning-v14"; // v14: added 4 DeepLearning.AI agent-building courses to Agentic AI
 // State is namespaced per signed-in user so accounts sharing a browser never see each other's data.
@@ -21,7 +21,6 @@ const initialState: AppState = {
   savedLessons: [],
   notes: {},
   xp: 0,
-  streak: { count: 0, lastDay: "" },
   notifications: [
     { id: "n1", kind: "announcement", title: "Welcome to Requisor Learning", body: "Your curated learning paths are ready. Start anywhere — progress is saved automatically.", at: new Date().toISOString(), read: false },
     { id: "n2", kind: "course", title: "New path: Agentic AI", body: "18 lessons on LLMs, agents, RAG and MCP are now available.", at: new Date().toISOString(), read: false },
@@ -102,48 +101,28 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state, hydrated, email]);
 
-  // On hydration, pull authoritative XP + streak from the DB and override local values.
+  // On hydration, pull authoritative XP from the DB and override local value.
   useEffect(() => {
     if (!hydrated || !email) return;
     dbSynced.current = false;
     fetch("/api/xp")
       .then((r) => r.json())
-      .then((data: { xp?: number; streakCount?: number; streakLastDay?: string }) => {
-        setState((s) => ({
-          ...s,
-          xp: data.xp ?? s.xp,
-          streak: {
-            count: data.streakCount ?? s.streak.count,
-            lastDay: data.streakLastDay ?? s.streak.lastDay,
-          },
-        }));
+      .then((data: { xp?: number }) => {
+        setState((s) => ({ ...s, xp: data.xp ?? s.xp }));
         dbSynced.current = true;
       })
-      .catch(() => {
-        dbSynced.current = true; // fall back to localStorage values silently
-      });
+      .catch(() => { dbSynced.current = true; });
   }, [hydrated, email]);
 
-  // Sync XP + streak to DB whenever they change (after the initial DB load).
+  // Sync XP to DB whenever it changes (after the initial DB load).
   useEffect(() => {
     if (!hydrated || !email || !dbSynced.current) return;
     void fetch("/api/xp", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        xp: state.xp,
-        streakCount: state.streak.count,
-        streakLastDay: state.streak.lastDay,
-      }),
+      body: JSON.stringify({ xp: state.xp }),
     });
-  }, [state.xp, state.streak, hydrated, email]);
-
-  const bumpStreak = (s: AppState): AppState["streak"] => {
-    const today = todayKey();
-    if (s.streak.lastDay === today) return s.streak;
-    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-    return { count: s.streak.lastDay === yesterday ? s.streak.count + 1 : 1, lastDay: today };
-  };
+  }, [state.xp, hydrated, email]);
 
   const logout = useCallback(() => {
     setState((s) => ({ ...s, user: null }));
@@ -155,7 +134,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const recordView = useCallback((courseSlug: string, lessonId: string) => {
     setState((s) => {
       const history = [{ courseSlug, lessonId, at: new Date().toISOString() }, ...s.history.filter((h) => h.lessonId !== lessonId)].slice(0, 50);
-      return { ...s, history, streak: bumpStreak(s) };
+      return { ...s, history };
     });
   }, []);
 
@@ -196,7 +175,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             notifications = [note, ...notifications];
           }
         }
-        return { ...s, progress, xp: Math.max(0, xp), notifications, streak: bumpStreak(s) };
+        return { ...s, progress, xp: Math.max(0, xp), notifications };
       });
       return { courseCompleted };
     },

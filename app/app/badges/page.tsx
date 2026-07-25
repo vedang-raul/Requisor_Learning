@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Award, Flame, Medal, Sparkles, Trophy } from "lucide-react";
+import { Award, Medal, Sparkles, Trophy } from "lucide-react";
 import { useStore, useEarnedBadges, useOverallStats } from "@/lib/store";
 import { leaderboardSeed } from "@/lib/data";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -16,7 +16,7 @@ export default function BadgesPage() {
   const badges = useEarnedBadges();
   const stats = useOverallStats();
 
-  const leaderboard = [...leaderboardSeed, { name: `${state.user?.name ?? "You"} (you)`, xp: state.xp, streak: state.streak.count }]
+  const leaderboard = [...leaderboardSeed, { name: `${state.user?.name ?? "You"} (you)`, xp: state.xp }]
     .sort((a, b) => b.xp - a.xp)
     .slice(0, 6);
 
@@ -24,14 +24,13 @@ export default function BadgesPage() {
     <PageTransition className="space-y-8">
       <div>
         <h1 className="text-2xl font-bold md:text-3xl">Badges & <span className="text-gradient">Achievements</span></h1>
-        <p className="mt-1 text-sm text-zinc-600">Complete learning paths to earn badges. Keep the streak alive.</p>
+        <p className="mt-1 text-sm text-zinc-600">Complete learning paths to earn badges and rack up XP.</p>
       </div>
 
       {/* Gamification stats */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {[
           { label: "XP Points", value: state.xp, icon: Sparkles, tint: "text-primary from-indigo-500/20 to-indigo-500/5" },
-          { label: "Daily Streak", value: state.streak.count, icon: Flame, tint: "text-amber-600 from-amber-500/20 to-amber-500/5", suffix: " days" },
           { label: "Badges Earned", value: badges.length, icon: Trophy, tint: "text-emerald-600 from-emerald-500/20 to-emerald-500/5" },
         ].map((s, i) => {
           const Icon = s.icon;
@@ -99,7 +98,6 @@ export default function BadgesPage() {
                   <span className={cn("w-6 text-center text-sm font-bold", i === 0 ? "text-amber-600" : i === 1 ? "text-zinc-700" : i === 2 ? "text-amber-700" : "text-zinc-600")}>{i + 1}</span>
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary/60 to-secondary/60 text-xs font-bold text-white">{p.name[0]}</div>
                   <span className="min-w-0 flex-1 truncate text-sm text-zinc-800">{p.name}</span>
-                  <span className="flex items-center gap-1 text-[11px] text-amber-600"><Flame className="h-3 w-3" />{p.streak}</span>
                   <span className="text-xs font-semibold text-primary">{p.xp.toLocaleString()} XP</span>
                 </div>
               ))}

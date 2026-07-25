@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { Bell, ChevronRight, Flame, Search, Sparkles, X } from "lucide-react";
+import { Bell, ChevronRight, Search, Sparkles, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "@/lib/store";
 import { cn, formatMinutes } from "@/lib/utils";
@@ -85,10 +85,9 @@ export function Topbar() {
         <kbd className="hidden rounded-md border border-border bg-white px-1.5 py-0.5 text-[10px] text-zinc-500 lg:block">Ctrl K</kbd>
       </button>
 
-      {/* XP + streak */}
+      {/* XP */}
       <div className="hidden items-center gap-2 lg:flex">
         <Tag tone="primary"><Sparkles className="h-3 w-3" />{state.xp} XP</Tag>
-        <Tag tone="warning"><Flame className="h-3 w-3" />{state.streak.count}d streak</Tag>
       </div>
 
       {/* Notifications */}
