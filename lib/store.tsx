@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { AppState, Course, EarnedBadge, Lesson, Notification, Review, UserState } from "./types";
 import { seedCourses, seedReviews } from "./data";
@@ -58,6 +58,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AppState>(initialState);
   const [hydrated, setHydrated] = useState(false);
   const { data: session, status } = useSession();
+  // Tracks whether the initial DB fetch has completed so we don't sync stale values back.
+  const dbSynced = useRef(false);
 
   // Real auth: the signed-in user comes from the NextAuth session, not localStorage.
   const sessionUser: UserState | null = useMemo(() => {
@@ -99,6 +101,42 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       // storage full or unavailable — non-fatal
     }
   }, [state, hydrated, email]);
+
+  // On hydration, pull authoritative XP + streak from the DB and override local values.
+  useEffect(() => {
+    if (!hydrated || !email) return;
+    dbSynced.current = false;
+    fetch("/api/xp")
+      .then((r) => r.json())
+      .then((data: { xp?: number; streakCount?: number; streakLastDay?: string }) => {
+        setState((s) => ({
+          ...s,
+          xp: data.xp ?? s.xp,
+          streak: {
+            count: data.streakCount ?? s.streak.count,
+            lastDay: data.streakLastDay ?? s.streak.lastDay,
+          },
+        }));
+        dbSynced.current = true;
+      })
+      .catch(() => {
+        dbSynced.current = true; // fall back to localStorage values silently
+      });
+  }, [hydrated, email]);
+
+  // Sync XP + streak to DB whenever they change (after the initial DB load).
+  useEffect(() => {
+    if (!hydrated || !email || !dbSynced.current) return;
+    void fetch("/api/xp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        xp: state.xp,
+        streakCount: state.streak.count,
+        streakLastDay: state.streak.lastDay,
+      }),
+    });
+  }, [state.xp, state.streak, hydrated, email]);
 
   const bumpStreak = (s: AppState): AppState["streak"] => {
     const today = todayKey();
