@@ -41,6 +41,8 @@ build = ["npm", "run", "build"]
 [userenv]
 
 [userenv.shared]
+
+[userenv.production]
 NEXTAUTH_URL = "https://learning.requisor.io"
 
 [postMerge]
