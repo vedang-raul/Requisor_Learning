@@ -1,13 +1,15 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Lock, Mail, ArrowRight, Sparkles, User, CheckCircle2, AlertCircle } from "lucide-react";
+import { Mail, ArrowRight, Sparkles, User, CheckCircle2, AlertCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { useStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
+import { PasswordStrength } from "@/components/ui/password-strength";
 import { cn } from "@/lib/utils";
 
 type Mode = "login" | "signup" | "forgot";
@@ -31,6 +33,7 @@ export function LoginScreen() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [employmentType, setEmploymentType] = useState("");
   const [position, setPosition] = useState("");
   const [error, setError] = useState("");
@@ -99,6 +102,11 @@ export function LoginScreen() {
           setLoading(false);
           return;
         }
+        if (password !== confirmPassword) {
+          setError("Passwords don't match.");
+          setLoading(false);
+          return;
+        }
         const res = await fetch("/api/auth/signup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -110,6 +118,7 @@ export function LoginScreen() {
           setNotice("Account created! Check your inbox — we sent a verification link from support@requisor.io.");
           setMode("login");
           setPassword("");
+          setConfirmPassword("");
         }
       } else {
         const res = await signIn("credentials", { email, password, redirect: false });
@@ -225,10 +234,28 @@ export function LoginScreen() {
                   </button>
                 )}
               </div>
-              <div className="relative">
-                <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
-                <Input id="password" type="password" autoComplete={mode === "signup" ? "new-password" : "current-password"} placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="pl-10" />
-              </div>
+              <PasswordInput
+                id="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete={mode === "signup" ? "new-password" : "current-password"}
+              />
+              {mode === "signup" && <PasswordStrength password={password} />}
+            </div>
+          )}
+
+          {mode === "signup" && (
+            <div className="space-y-1.5">
+              <label htmlFor="confirmPassword" className="text-xs font-medium text-zinc-700">Confirm password</label>
+              <PasswordInput
+                id="confirmPassword"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                autoComplete="new-password"
+              />
+              {confirmPassword && password !== confirmPassword && (
+                <p className="text-xs text-red-500">Passwords don't match.</p>
+              )}
             </div>
           )}
 

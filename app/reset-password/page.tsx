@@ -2,10 +2,11 @@
 
 import { Suspense, useState } from "react";
 import { motion } from "framer-motion";
-import { Lock, ArrowRight, CheckCircle2, AlertCircle } from "lucide-react";
+import { ArrowRight, CheckCircle2, AlertCircle } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
+import { PasswordStrength } from "@/components/ui/password-strength";
 
 function ResetForm() {
   const router = useRouter();
@@ -63,18 +64,30 @@ function ResetForm() {
           </p>
         ) : (
           <form onSubmit={submit} className="space-y-4" noValidate>
-            {[
-              { id: "password", label: "New password", value: password, set: setPassword },
-              { id: "confirm", label: "Confirm password", value: confirm, set: setConfirm },
-            ].map((f) => (
-              <div key={f.id} className="space-y-1.5">
-                <label htmlFor={f.id} className="text-xs font-medium text-zinc-700">{f.label}</label>
-                <div className="relative">
-                  <Lock className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
-                  <Input id={f.id} type="password" autoComplete="new-password" placeholder="••••••••" value={f.value} onChange={(e) => f.set(e.target.value)} className="pl-10" />
-                </div>
-              </div>
-            ))}
+            <div className="space-y-1.5">
+              <label htmlFor="password" className="text-xs font-medium text-zinc-700">New password</label>
+              <PasswordInput
+                id="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="new-password"
+              />
+              <PasswordStrength password={password} />
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="confirm" className="text-xs font-medium text-zinc-700">Confirm password</label>
+              <PasswordInput
+                id="confirm"
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                autoComplete="new-password"
+              />
+              {confirm && password !== confirm && (
+                <p className="text-xs text-red-500">Passwords don't match.</p>
+              )}
+            </div>
+
             {error && (
               <p className="flex items-start gap-1.5 text-xs text-red-600" role="alert">
                 <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{error}
