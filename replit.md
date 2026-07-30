@@ -21,7 +21,7 @@ The configured Replit workflow (`Start application`) runs `npm run dev -- -p 500
 
 | Secret | Purpose |
 |---|---|
-| `ANTHROPIC_API_KEY` | Powers the AI learning assistant chat widget (`app/api/chat/route.ts`). Without it the widget opens but replies with a config-missing message — the rest of the app is unaffected. |
+| `XAI_API_KEY` | Powers the AI learning assistant chat widget and admin team-insights summary (`app/api/chat/route.ts`, `app/api/team-insights/route.ts`). Without it the widget opens but replies with a config-missing message — the rest of the app is unaffected. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth login (NextAuth). |
 | `SESSION_SECRET` | Used as the NextAuth JWT secret. |
 

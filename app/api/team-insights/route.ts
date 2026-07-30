@@ -1,8 +1,11 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { ADMIN_EMAIL } from "@/lib/db";
 
 export const runtime = "nodejs";
 
-const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
+const MODEL = process.env.XAI_MODEL || "grok-3-mini";
+const XAI_API_BASE = "https://api.x.ai/v1";
 
 function buildSystemPrompt(): string {
   return [
@@ -13,10 +16,18 @@ function buildSystemPrompt(): string {
 }
 
 export async function POST(req: Request) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const session = await getServerSession(authOptions);
+  if (
+    !session?.user?.email ||
+    session.user.email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()
+  ) {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const apiKey = process.env.XAI_API_KEY;
   if (!apiKey) {
     return Response.json(
-      { error: "The AI assistant isn't configured yet. Ask an admin to set ANTHROPIC_API_KEY on the server." },
+      { error: "The AI assistant isn't configured yet. Ask an admin to set XAI_API_KEY on the server." },
       { status: 503 }
     );
   }
@@ -31,18 +42,29 @@ export async function POST(req: Request) {
     return Response.json({ error: "Missing context." }, { status: 400 });
   }
 
-  const anthropic = new Anthropic({ apiKey });
   try {
-    const res = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: 500,
-      system: buildSystemPrompt(),
-      messages: [{ role: "user", content: body.context }],
+    const res = await fetch(`${XAI_API_BASE}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 500,
+        messages: [
+          { role: "system", content: buildSystemPrompt() },
+          { role: "user", content: body.context },
+        ],
+      }),
     });
-    const text = res.content
-      .filter((block): block is Anthropic.TextBlock => block.type === "text")
-      .map((block) => block.text)
-      .join("");
+
+    if (!res.ok) {
+      throw new Error(`xAI API error: ${res.status}`);
+    }
+
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content ?? "";
     return Response.json({ summary: text });
   } catch {
     return Response.json({ error: "Couldn't generate insights right now. Please try again." }, { status: 500 });

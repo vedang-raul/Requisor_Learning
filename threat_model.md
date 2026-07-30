@@ -7,16 +7,16 @@ Requisor Learning is an internal employee LMS for Citrus Innovations, built with
 ## Assets
 
 - **User accounts and sessions** — email addresses, bcrypt-hashed passwords, NextAuth JWT tokens, Google OAuth identifiers. Compromise allows impersonation or account takeover.
-- **Anthropic API key** — `ANTHROPIC_API_KEY` authorizes all Claude calls. Unrestricted access to the key leads to financial abuse and quota exhaustion.
+- **xAI API key** — `XAI_API_KEY` authorizes all Grok calls (chat widget + team-insights). Unrestricted access to the key leads to financial abuse and quota exhaustion.
 - **User PII** — names, email addresses, employment type, position stored in PostgreSQL. Email addresses are transmitted during notification flows.
-- **Application secrets** — `DATABASE_URL`, `NEXTAUTH_SECRET`/`SESSION_SECRET`, `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, `ANTHROPIC_API_KEY`. Exposure of any of these has direct security or financial impact.
+- **Application secrets** — `DATABASE_URL`, `NEXTAUTH_SECRET`/`SESSION_SECRET`, `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, `XAI_API_KEY`. Exposure of any of these has direct security or financial impact.
 - **Learning progress and notes** — stored in `localStorage`, namespaced per user email. No server-side privacy enforcement for this data.
 
 ## Trust Boundaries
 
 - **Public Internet → Next.js API routes** — all `/api/*` routes are reachable unauthenticated unless they explicitly call `getServerSession`. No middleware enforces authentication globally.
 - **Browser → Server** — the client is untrusted. Admin role checks on the admin page (`/app/admin`) are client-side only (redirect via `useEffect`), not enforced server-side for all API calls.
-- **API server → Anthropic** — the server calls Anthropic with `ANTHROPIC_API_KEY`. Any route that proxies to Anthropic without auth allows third parties to consume the key.
+- **API server → xAI** — the server calls xAI Grok with `XAI_API_KEY`. Any route that proxies to xAI without auth allows third parties to consume the key.
 - **API server → PostgreSQL** — parameterized queries used throughout; direct injection risk is low.
 - **Authenticated user → Admin** — only `support@requisor.io` is admin. Enforced by `roleForEmail()` on the server for the notify-video route, but not for all admin-adjacent API routes.
 

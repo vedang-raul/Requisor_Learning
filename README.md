@@ -21,11 +21,11 @@ Login is dummy auth — any email + password works.
 
 ### AI assistant setup
 
-The floating "Requisor Assistant" chat widget (bottom-right of every `/app/*` page) is powered by Claude via `app/api/chat/route.ts`. To enable it:
+The floating "Requisor Assistant" chat widget (bottom-right of every `/app/*` page) is powered by xAI Grok via `app/api/chat/route.ts`. To enable it:
 
 ```bash
 cp .env.example .env.local
-# then set ANTHROPIC_API_KEY=sk-ant-... in .env.local
+# then set XAI_API_KEY=xai-... in .env.local
 ```
 
 Without a key set, the widget still opens and chats, but replies with a message asking an admin to configure it — the rest of the app is unaffected. The assistant reads live progress (courses, completion %, streak, XP, recent activity) from `lib/ai-context.ts` and sends it as context on every turn; it never sees the API key, which stays server-side only.
