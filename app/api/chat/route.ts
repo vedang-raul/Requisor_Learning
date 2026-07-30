@@ -1,8 +1,7 @@
-import Anthropic from "@anthropic-ai/sdk";
-
 export const runtime = "nodejs";
 
-const MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
+const BASE_URL = "https://api.x.ai/v1";
+const MODEL = process.env.XAI_MODEL || "grok-3-mini";
 const MAX_HISTORY = 20;
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
@@ -22,10 +21,10 @@ function buildSystemPrompt(progressContext: string): string {
 }
 
 export async function POST(req: Request) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.XAI_API_KEY;
   if (!apiKey) {
     return new Response(
-      "The AI assistant isn't configured yet. Ask an admin to set ANTHROPIC_API_KEY on the server.",
+      "The AI assistant isn't configured yet. Ask an admin to set XAI_API_KEY on the server.",
       { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } }
     );
   }
@@ -38,30 +37,76 @@ export async function POST(req: Request) {
   }
 
   const messages = (body.messages ?? [])
-    .filter((m) => (m.role === "user" || m.role === "assistant") && typeof m.content === "string" && m.content.trim().length > 0)
+    .filter(
+      (m) =>
+        (m.role === "user" || m.role === "assistant") &&
+        typeof m.content === "string" &&
+        m.content.trim().length > 0
+    )
     .slice(-MAX_HISTORY);
 
   if (messages.length === 0) {
     return new Response("No message provided.", { status: 400 });
   }
 
-  const anthropic = new Anthropic({ apiKey });
   const system = buildSystemPrompt(body.progressContext ?? "No progress data available.");
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        const anthropicStream = anthropic.messages.stream({
-          model: MODEL,
-          max_tokens: 1024,
-          system,
-          messages,
+        const res = await fetch(`${BASE_URL}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: MODEL,
+            max_tokens: 1024,
+            stream: true,
+            messages: [{ role: "system", content: system }, ...messages],
+          }),
         });
-        anthropicStream.on("text", (text) => controller.enqueue(encoder.encode(text)));
-        await anthropicStream.finalMessage();
+
+        if (!res.ok || !res.body) {
+          const errText = await res.text().catch(() => `HTTP ${res.status}`);
+          console.error("[chat] xAI API error:", res.status, errText);
+          controller.enqueue(
+            encoder.encode("\n\n_Sorry, I couldn't reach the AI assistant just now. Please try again._")
+          );
+          return;
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+          for (const line of lines) {
+            const trimmed = line.replace(/^data:\s*/, "");
+            if (!trimmed || trimmed === "[DONE]") continue;
+            try {
+              const chunk = JSON.parse(trimmed) as {
+                choices?: { delta?: { content?: string } }[];
+              };
+              const text = chunk.choices?.[0]?.delta?.content;
+              if (text) controller.enqueue(encoder.encode(text));
+            } catch {
+              // ignore malformed SSE lines
+            }
+          }
+        }
       } catch (err) {
-        controller.enqueue(encoder.encode("\n\n_Sorry, I couldn't reach the AI assistant just now. Please try again._"));
+        console.error("[chat] Streaming error:", err);
+        controller.enqueue(
+          encoder.encode("\n\n_Sorry, I couldn't reach the AI assistant just now. Please try again._")
+        );
       } finally {
         controller.close();
       }
