@@ -24,14 +24,14 @@ export const authOptions: NextAuthOptions = {
             credentials: {},
             async authorize() {
               // Auto-sign in as the admin account — no password needed.
+              // Ensure the admin row exists so session.user.id is always a real DB id.
               const { rows } = await db.query<DbUser>(
-                "SELECT * FROM users WHERE email = $1",
+                `INSERT INTO users (email, name, email_verified, role)
+                 VALUES ($1, 'Admin', TRUE, 'admin')
+                 ON CONFLICT (email) DO UPDATE SET email_verified = TRUE
+                 RETURNING *`,
                 [ADMIN_EMAIL]
               );
-              if (!rows[0]) {
-                // Admin row doesn't exist yet (fresh DB); return a minimal object.
-                return { id: "0", email: ADMIN_EMAIL, name: "Admin" };
-              }
               db.query("UPDATE users SET last_login_at = NOW() WHERE id = $1", [rows[0].id]).catch(() => {});
               return { id: String(rows[0].id), email: rows[0].email, name: rows[0].name ?? "Admin" };
             },
@@ -85,8 +85,10 @@ export const authOptions: NextAuthOptions = {
       if (trigger === "update" && (session as { name?: string })?.name) {
         token.name = (session as { name: string }).name;
       }
-      if (user?.email) {
-        const email = user.email.toLowerCase();
+      // Resolve the DB user id on first sign-in, and retry on later requests
+      // if it's still missing (e.g. the users row was created after sign-in).
+      const email = (user?.email ?? token.email)?.toLowerCase();
+      if (email && (user?.email || !token.uid)) {
         const { rows } = await db.query<DbUser>("SELECT id, role, name FROM users WHERE email = $1", [email]);
         token.uid = rows[0] ? String(rows[0].id) : undefined;
         token.role = roleForEmail(email);

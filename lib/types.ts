@@ -90,5 +90,4 @@ export interface AppState {
   xp: number;
   notifications: Notification[];
   sidebarCollapsed: boolean;
-  reviews: Review[];
 }

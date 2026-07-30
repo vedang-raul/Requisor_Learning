@@ -31,6 +31,18 @@ p.query(\`
     UNIQUE(user_id, lesson_id)
   );
 
+  CREATE TABLE IF NOT EXISTS course_reviews (
+    id SERIAL PRIMARY KEY,
+    user_id INT REFERENCES users(id) ON DELETE CASCADE,
+    user_name TEXT NOT NULL,
+    user_email TEXT NOT NULL,
+    course_slug TEXT NOT NULL,
+    rating INT NOT NULL CHECK (rating BETWEEN 1 AND 5),
+    comment TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(user_id, course_slug)
+  );
+
   CREATE TABLE IF NOT EXISTS lesson_comments (
     id SERIAL PRIMARY KEY,
     user_id INT REFERENCES users(id) ON DELETE CASCADE,

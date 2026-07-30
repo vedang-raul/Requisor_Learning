@@ -76,6 +76,7 @@ function LearnView() {
   // Discussion comments
   const [comments, setComments] = useState<Comment[]>([]);
   const [commentsLoading, setCommentsLoading] = useState(false);
+  const [commentsError, setCommentsError] = useState<string | null>(null);
   const [newComment, setNewComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -114,22 +115,33 @@ function LearnView() {
   // ── Lesson comments ───────────────────────────────────────────────────
   const loadComments = useCallback((lid: string) => {
     setCommentsLoading(true);
+    setCommentsError(null);
     fetch(`/api/comments?lessonId=${encodeURIComponent(lid)}`)
-      .then((r) => r.json())
+      .then(async (r) => {
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}));
+          throw new Error(d.error || `Failed to load comments (${r.status})`);
+        }
+        return r.json();
+      })
       .then((d) => setComments(d.comments ?? []))
-      .catch(() => {})
+      .catch((e: Error) => setCommentsError(e.message || "Failed to load comments."))
       .finally(() => setCommentsLoading(false));
   }, []);
 
+  // Load comments as soon as the lesson loads so the Discussion tab
+  // shows persisted comments immediately after a refresh.
   useEffect(() => {
-    if (tab === "discussion" && lessonId) loadComments(lessonId);
-  }, [tab, lessonId, loadComments]);
+    setComments([]);
+    if (lessonId) loadComments(lessonId);
+  }, [lessonId, loadComments]);
 
   const postComment = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
       if (!newComment.trim() || !lessonId || submitting) return;
       setSubmitting(true);
+      setCommentsError(null);
       try {
         const res = await fetch("/api/comments", {
           method: "POST",
@@ -140,7 +152,16 @@ function LearnView() {
           const { comment } = await res.json();
           setComments((cs) => [comment, ...cs]);
           setNewComment("");
+        } else {
+          const d = await res.json().catch(() => ({} as { error?: string }));
+          setCommentsError(
+            res.status === 401
+              ? "Your session has expired — please sign in again to post."
+              : d.error || `Couldn't post your comment (${res.status}). Please try again.`
+          );
         }
+      } catch {
+        setCommentsError("Couldn't post your comment — check your connection and try again.");
       } finally {
         setSubmitting(false);
       }
@@ -149,8 +170,18 @@ function LearnView() {
   );
 
   const deleteComment = useCallback(async (commentId: number) => {
-    await fetch(`/api/comments/${commentId}`, { method: "DELETE" });
-    setComments((cs) => cs.filter((c) => c.id !== commentId));
+    setCommentsError(null);
+    try {
+      const res = await fetch(`/api/comments/${commentId}`, { method: "DELETE" });
+      if (res.ok) {
+        setComments((cs) => cs.filter((c) => c.id !== commentId));
+      } else {
+        const d = await res.json().catch(() => ({} as { error?: string }));
+        setCommentsError(d.error || `Couldn't delete the comment (${res.status}).`);
+      }
+    } catch {
+      setCommentsError("Couldn't delete the comment — check your connection and try again.");
+    }
   }, []);
 
   const idx = useMemo(() => (course && lesson ? course.lessons.indexOf(lesson) : -1), [course, lesson]);
@@ -398,6 +429,11 @@ function LearnView() {
                   )}
                   {tab === "discussion" && (
                     <div className="space-y-4">
+                      {commentsError && (
+                        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                          {commentsError}
+                        </div>
+                      )}
                       {commentsLoading ? (
                         <div className="space-y-3">
                           {[1, 2].map((i) => (
@@ -424,7 +460,7 @@ function LearnView() {
                                   <span className="text-xs font-medium text-zinc-800">{c.user_name}</span>
                                   <span className="text-[11px] text-zinc-500">{relativeTime(c.created_at)}</span>
                                 </div>
-                                {(String(c.user_id) === String(state.user?.email) || state.user?.role === "admin") && (
+                                {(c.user_email === state.user?.email || state.user?.role === "admin") && (
                                   <button
                                     onClick={() => deleteComment(c.id)}
                                     aria-label="Delete comment"

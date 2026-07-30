@@ -2,4 +2,5 @@
 - [Auth decisions](auth-decisions.md) — NextAuth JWT; admin role derived strictly from email support@requisor.io; tokens stored SHA-256 hashed; emails via Gmail connector.
 - [DB schema additions](db-schema-additions.md) — lesson_completions, lesson_comments tables + last_login_at on users; post-merge.sh is idempotent source of truth.
 - [Video auto-complete](video-auto-complete.md) — YouTube IFrame API used (not plain iframe) so onEnded fires; onEnded stored in ref to avoid player recreation on re-renders.
+- [Session uid resolution](session-uid-resolution.md) — missing users row → empty token.uid → silent 401s on all APIs; authorize paths must upsert the row, jwt retries lookup.
 - [AI provider switch](ai-provider.md) — Switched from Anthropic to xAI Grok (XAI_API_KEY); both chat and quiz routes use fetch against https://api.x.ai/v1, default model grok-3-mini; no extra package needed.

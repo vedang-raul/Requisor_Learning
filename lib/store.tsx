@@ -2,8 +2,8 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useSession, signOut } from "next-auth/react";
-import { AppState, Course, EarnedBadge, Lesson, Notification, Review, UserState } from "./types";
-import { seedCourses, seedReviews } from "./data";
+import { AppState, Course, EarnedBadge, Lesson, Notification, UserState } from "./types";
+import { seedCourses } from "./data";
 
 
 const STORAGE_KEY_BASE = "requisor-learning-v14"; // v14: added 4 DeepLearning.AI agent-building courses to Agentic AI
@@ -26,7 +26,6 @@ const initialState: AppState = {
     { id: "n2", kind: "course", title: "New path: Agentic AI", body: "18 lessons on LLMs, agents, RAG and MCP are now available.", at: new Date().toISOString(), read: false },
   ],
   sidebarCollapsed: false,
-  reviews: seedReviews,
 };
 
 interface StoreApi {
@@ -41,8 +40,6 @@ interface StoreApi {
   toggleSavedLesson: (lessonId: string) => void;
   setNote: (lessonId: string, text: string) => void;
   markNotificationsRead: () => void;
-  upsertReview: (courseSlug: string, rating: number, comment: string) => void;
-  deleteReview: (reviewId: string) => void;
   // Admin
   upsertCourse: (course: Course) => void;
   deleteCourse: (slug: string) => void;
@@ -204,34 +201,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setState((s) => ({ ...s, notifications: s.notifications.map((n) => ({ ...n, read: true })) }));
   }, []);
 
-  const upsertReview = useCallback((courseSlug: string, rating: number, comment: string) => {
-    setState((s) => {
-      if (!s.user) return s;
-      const existing = s.reviews.find((r) => r.courseSlug === courseSlug && r.userEmail === s.user!.email);
-      const clampedRating = Math.max(1, Math.min(5, Math.round(rating)));
-      if (existing) {
-        return {
-          ...s,
-          reviews: s.reviews.map((r) => (r.id === existing.id ? { ...r, rating: clampedRating, comment: comment.trim(), at: new Date().toISOString() } : r)),
-        };
-      }
-      const review: Review = {
-        id: `rev-${courseSlug}-${Date.now()}`,
-        courseSlug,
-        userEmail: s.user.email,
-        userName: s.user.name,
-        rating: clampedRating,
-        comment: comment.trim(),
-        at: new Date().toISOString(),
-      };
-      return { ...s, reviews: [review, ...s.reviews] };
-    });
-  }, []);
-
-  const deleteReview = useCallback((reviewId: string) => {
-    setState((s) => ({ ...s, reviews: s.reviews.filter((r) => r.id !== reviewId) }));
-  }, []);
-
   const upsertCourse = useCallback((course: Course) => {
     setState((s) => {
       const exists = s.courses.some((c) => c.slug === course.slug);
@@ -271,10 +240,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       state: { ...state, user: sessionUser },
       hydrated: hydrated && status !== "loading",
       logout, toggleSidebar, recordView, setWatchPct, toggleComplete,
-      toggleBookmark, toggleSavedLesson, setNote, markNotificationsRead, upsertReview, deleteReview,
+      toggleBookmark, toggleSavedLesson, setNote, markNotificationsRead,
       upsertCourse, deleteCourse, upsertLesson, deleteLesson, resetAll,
     }),
-    [state, sessionUser, hydrated, status, logout, toggleSidebar, recordView, setWatchPct, toggleComplete, toggleBookmark, toggleSavedLesson, setNote, markNotificationsRead, upsertReview, deleteReview, upsertCourse, deleteCourse, upsertLesson, deleteLesson, resetAll]
+    [state, sessionUser, hydrated, status, logout, toggleSidebar, recordView, setWatchPct, toggleComplete, toggleBookmark, toggleSavedLesson, setNote, markNotificationsRead, upsertCourse, deleteCourse, upsertLesson, deleteLesson, resetAll]
   );
 
   return <StoreContext.Provider value={api}>{children}</StoreContext.Provider>;
@@ -326,17 +295,6 @@ export function useEarnedBadges(): EarnedBadge[] {
         earnedAt: last,
       };
     });
-}
-
-export function useCourseReviews(courseSlug: string | undefined) {
-  const { state } = useStore();
-  const reviews = useMemo(
-    () => state.reviews.filter((r) => r.courseSlug === courseSlug).sort((a, b) => b.at.localeCompare(a.at)),
-    [state.reviews, courseSlug]
-  );
-  const average = reviews.length ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length : 0;
-  const myReview = reviews.find((r) => r.userEmail === state.user?.email) ?? null;
-  return { reviews, average, count: reviews.length, myReview };
 }
 
 export function useContinueWatching() {
