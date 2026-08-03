@@ -40,10 +40,10 @@ export function CourseCard({ course }: { course: Course }) {
             src={courseIllustrations[course.slug]}
             alt=""
             aria-hidden
-            className="pointer-events-none absolute inset-0 h-full w-full object-cover mix-blend-multiply opacity-90 select-none"
+            className="pointer-events-none absolute inset-0 h-full w-full object-cover mix-blend-multiply opacity-90 grayscale select-none"
           />
         )}
-        <Icon className="absolute bottom-4 left-5 h-10 w-10 text-white/90 drop-shadow-lg transition-transform duration-300 group-hover:scale-110" />
+        {/* <Icon className="absolute bottom-2 left-2 h-6 w-6 text-white transition-transform duration-300 group-hover:scale-110 rounded-lg bg-black/25 backdrop-blur-sm transition hover:bg-black/45" /> */}
         <button
           onClick={(e) => { e.preventDefault(); toggleBookmark(course.slug); }}
           aria-label={bookmarked ? "Remove bookmark" : "Bookmark course"}
@@ -52,13 +52,13 @@ export function CourseCard({ course }: { course: Course }) {
           {bookmarked ? <BookmarkCheck className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />}
         </button>
         <div className="absolute bottom-3 right-4 flex gap-2">
-          <Tag className="bg-black/30 backdrop-blur-sm">{course.level}</Tag>
+          <Tag className="bg-black/30 text-white backdrop-blur-sm">{course.level}</Tag>
         </div>
       </div>
       {/* Body */}
       <div className="space-y-3 bg-card p-5">
         <div>
-          <p className={cn("text-[11px] font-medium uppercase tracking-wider", meta.tint)}>{meta.label}</p>
+        
           <h3 className="mt-1 text-base font-semibold transition-colors group-hover:text-primary">{course.title}</h3>
           <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-zinc-600">{course.tagline}</p>
         </div>
