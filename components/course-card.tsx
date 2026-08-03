@@ -10,6 +10,13 @@ import { ProgressBar } from "@/components/ui/progress";
 import { Tag } from "@/components/ui/badge";
 import { categoryMeta } from "@/components/category-icon";
 
+const courseIllustrations: Record<string, string> = {
+  "agentic-ai": "/course-agentic-ai.jpg",
+  "data-analytics": "/course-data-analytics.jpg",
+  "product-management": "/course-product-management.jpg",
+  "cyber-security": "/course-cyber-security.jpg",
+};
+
 export function CourseCard({ course }: { course: Course }) {
   const { pct, completed, total } = useCourseProgress(course);
   const { state, toggleBookmark } = useStore();
@@ -28,6 +35,14 @@ export function CourseCard({ course }: { course: Course }) {
       {/* Cover */}
       <div className={cn("relative h-36 bg-gradient-to-br", course.cover)}>
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_20%,rgba(255,255,255,0.25),transparent_55%)]" />
+        {courseIllustrations[course.slug] && (
+          <img
+            src={courseIllustrations[course.slug]}
+            alt=""
+            aria-hidden
+            className="pointer-events-none absolute bottom-0 right-0 h-full w-auto max-w-[55%] object-contain mix-blend-multiply opacity-90 select-none"
+          />
+        )}
         <Icon className="absolute bottom-4 left-5 h-10 w-10 text-white/90 drop-shadow-lg transition-transform duration-300 group-hover:scale-110" />
         <button
           onClick={(e) => { e.preventDefault(); toggleBookmark(course.slug); }}
