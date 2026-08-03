@@ -40,7 +40,7 @@ export function CourseCard({ course }: { course: Course }) {
             src={courseIllustrations[course.slug]}
             alt=""
             aria-hidden
-            className="pointer-events-none absolute bottom-0 right-0 h-full w-auto max-w-[55%] object-contain mix-blend-multiply opacity-90 select-none"
+            className="pointer-events-none absolute inset-0 h-full w-full object-cover mix-blend-multiply opacity-90 select-none"
           />
         )}
         <Icon className="absolute bottom-4 left-5 h-10 w-10 text-white/90 drop-shadow-lg transition-transform duration-300 group-hover:scale-110" />
