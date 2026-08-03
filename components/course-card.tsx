@@ -40,7 +40,7 @@ export function CourseCard({ course }: { course: Course }) {
             src={courseIllustrations[course.slug]}
             alt=""
             aria-hidden
-            className="pointer-events-none absolute inset-0 h-full w-full object-cover mix-blend-multiply opacity-90 grayscale select-none"
+            className="pointer-events-none absolute inset-0 h-full w-full object-cover select-none"
           />
         )}
         {/* <Icon className="absolute bottom-2 left-2 h-6 w-6 text-white transition-transform duration-300 group-hover:scale-110 rounded-lg bg-black/25 backdrop-blur-sm transition hover:bg-black/45" /> */}
