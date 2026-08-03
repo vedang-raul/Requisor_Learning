@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { LogOut, Menu, X } from "lucide-react";
+import { LogOut, Menu, X, Library, ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
-import { navItems } from "@/components/sidebar";
+import { navItems, courses } from "@/components/sidebar";
 
 export function MobileNav() {
   const { state, logout } = useStore();
@@ -17,8 +17,23 @@ export function MobileNav() {
   const [open, setOpen] = useState(false);
   const currentSlug = searchParams.get("slug");
 
+  const isOnCoursePage = pathname?.startsWith("/app/course");
+  const isOnPathsPage  = pathname?.startsWith("/app/paths");
+  const learningActive = isOnCoursePage || isOnPathsPage;
+
+  const [coursesOpen, setCoursesOpen] = useState(learningActive);
+  useEffect(() => { if (learningActive) setCoursesOpen(true); }, [learningActive]);
+
   // Close the drawer whenever the route changes
   useEffect(() => { setOpen(false); }, [pathname, currentSlug]);
+
+  const filteredItems = navItems.filter(
+    (item) => !("adminOnly" in item && item.adminOnly) || state.user?.role === "admin"
+  );
+
+  // Split: dashboard first, rest after Learning Paths
+  const topItems    = filteredItems.filter((i) => i.href === "/app/dashboard/");
+  const bottomItems = filteredItems.filter((i) => i.href !== "/app/dashboard/");
 
   return (
     <div className="md:hidden">
@@ -62,12 +77,90 @@ export function MobileNav() {
               </div>
 
               <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4" aria-label="Main navigation">
-                {navItems.filter((item) => !("adminOnly" in item && item.adminOnly) || state.user?.role === "admin").map((item) => {
-                  const isCoursePage = pathname?.startsWith("/app/course");
-                  const active = item.slug
-                    ? isCoursePage && currentSlug === item.slug
-                    : pathname === item.href || pathname === item.href.replace(/\/$/, "") || (pathname?.startsWith(item.href) && item.href !== "/app/course/");
+                {/* Dashboard */}
+                {topItems.map((item) => {
                   const Icon = item.icon;
+                  const active = pathname === item.href || pathname === item.href.replace(/\/$/, "");
+                  return (
+                    <Link
+                      key={item.label}
+                      href={item.href}
+                      onClick={() => setOpen(false)}
+                      className={cn(
+                        "focus-ring flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
+                        active ? "bg-primary/10 text-primary" : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+                      )}
+                    >
+                      <Icon className="h-[18px] w-[18px] shrink-0" />
+                      <span className="truncate">{item.label}</span>
+                    </Link>
+                  );
+                })}
+
+                {/* Learning Paths + dropdown */}
+                <div>
+                  <button
+                    onClick={() => {
+                      router.push("/app/paths/");
+                      setCoursesOpen((o) => !o);
+                    }}
+                    className={cn(
+                      "focus-ring group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
+                      learningActive ? "bg-primary/10 text-primary" : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+                    )}
+                  >
+                    <Library className={cn("h-[18px] w-[18px] shrink-0", learningActive && "text-primary")} />
+                    <span className="flex-1 truncate text-left">Learning Paths</span>
+                    <motion.span animate={{ rotate: coursesOpen ? 180 : 0 }} transition={{ duration: 0.2 }}>
+                      <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                    </motion.span>
+                  </button>
+
+                  <AnimatePresence initial={false}>
+                    {coursesOpen && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2, ease: "easeInOut" }}
+                        className="overflow-hidden"
+                      >
+                        <div className="mt-0.5 pl-4">
+                          <div className="relative">
+                            <div className="absolute left-1 top-0 h-full w-px bg-zinc-200" />
+                            {courses.map((course) => {
+                              const active = isOnCoursePage && currentSlug === course.slug;
+                              const Icon = course.icon;
+                              return (
+                                <Link
+                                  key={course.slug}
+                                  href={course.href}
+                                  onClick={() => setOpen(false)}
+                                  className={cn(
+                                    "focus-ring flex items-center gap-2.5 rounded-lg py-2 pl-4 pr-3 text-sm font-medium transition-colors",
+                                    active ? "text-primary" : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
+                                  )}
+                                >
+                                  <Icon className={cn("h-[15px] w-[15px] shrink-0", active && "text-primary")} />
+                                  <span className="truncate">{course.label}</span>
+                                  {active && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary" />}
+                                </Link>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                {/* Remaining items */}
+                {bottomItems.map((item) => {
+                  const Icon = item.icon;
+                  const active =
+                    pathname === item.href ||
+                    pathname === item.href.replace(/\/$/, "") ||
+                    (pathname?.startsWith(item.href) && item.href.length > 1);
                   return (
                     <Link
                       key={item.label}
