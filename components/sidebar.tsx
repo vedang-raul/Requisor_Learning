@@ -74,7 +74,7 @@ export function Sidebar() {
         )}
       >
         {active && (
-          <motion.span layoutId="nav-pill" className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-gradient-to-b from-primary to-secondary" />
+          <motion.span initial={{ scaleY: 0 }} animate={{ scaleY: 1 }} className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-gradient-to-b from-primary to-secondary" />
         )}
         <Icon className={cn("h-[18px] w-[18px] shrink-0 transition-transform duration-200 group-hover:scale-110", active && "text-primary")} />
         {!collapsed && <span className="truncate">{item.label}</span>}
@@ -119,7 +119,7 @@ export function Sidebar() {
             )}
           >
             {learningActive && (
-              <motion.span layoutId="nav-pill" className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-gradient-to-b from-primary to-secondary" />
+              <motion.span initial={{ scaleY: 0 }} animate={{ scaleY: 1 }} className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full bg-gradient-to-b from-primary to-secondary" />
             )}
             <Library className={cn("h-[18px] w-[18px] shrink-0 transition-transform duration-200 group-hover:scale-110", learningActive && "text-primary")} />
             {!collapsed && (
