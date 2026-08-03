@@ -116,7 +116,7 @@ function CourseView() {
             src={illustration}
             alt=""
             aria-hidden="true"
-            className="pointer-events-none absolute bottom-0 right-0 h-44 w-auto max-w-[45%] select-none object-contain mix-blend-multiply opacity-90 md:h-56"
+            className="pointer-events-none absolute inset-0 h-full w-full select-none object-cover"
           />
         )}
         {!illustration && (
