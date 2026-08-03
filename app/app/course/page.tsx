@@ -64,6 +64,14 @@ function CourseView() {
   const bookmarked = state.bookmarks.includes(course.slug);
   const nextLesson = course.lessons.find((l) => !state.progress[l.id]?.completed) ?? course.lessons[0];
 
+  const courseIllustrations: Record<string, string> = {
+    "agentic-ai":         "/course-agentic-ai.jpg",
+    "data-analytics":     "/course-data-analytics.jpg",
+    "product-management": "/course-product-management.jpg",
+    "cyber-security":     "/course-cyber-security.jpg",
+  };
+  const illustration = courseIllustrations[course.slug];
+
   return (
     <PageTransition className="space-y-6">
       {/* Hero */}
@@ -102,7 +110,18 @@ function CourseView() {
             )}
           </div>
         </div>
-        <Icon className="absolute -bottom-6 -right-4 h-40 w-40 text-white/10" />
+        {/* Course illustration */}
+        {illustration && (
+          <img
+            src={illustration}
+            alt=""
+            aria-hidden="true"
+            className="pointer-events-none absolute bottom-0 right-0 h-44 w-auto max-w-[45%] select-none object-contain mix-blend-multiply opacity-90 md:h-56"
+          />
+        )}
+        {!illustration && (
+          <Icon className="absolute -bottom-6 -right-4 h-40 w-40 text-white/10" />
+        )}
       </div>
 
       {/* Progress + filter */}

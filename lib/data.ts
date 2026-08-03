@@ -74,7 +74,7 @@ export const seedCourses: Course[] = [
     "product",
     "Beginner",
     ["Product", "Strategy", "Agile", "Roadmaps"],
-    "from-teal-700 to-teal-500",
+    "from-indigo-700 to-blue-500",
     "2026-05-04",
     [
       ["Mini Case Study: The SPACE PEN Example", 5, "The famous space pen story and what it teaches about solving the right problem.", ["Question the problem before the solution", "Simple solutions often beat clever ones", "Constraints sharpen thinking"], undefined, "P24rA65kn_k"],
@@ -115,7 +115,7 @@ export const seedCourses: Course[] = [
     "data",
     "Beginner",
     ["Data Science", "Data Visualization", "Tableau", "BI"],
-    "from-sky-700 to-sky-500",
+    "from-fuchsia-700 to-pink-500",
     "2026-05-11",
     [
       // Sub-part 1: Data Science
@@ -163,7 +163,7 @@ export const seedCourses: Course[] = [
     "ai",
     "Beginner",
     ["AI Agents", "Automation", "ChatGPT", "AI Tools", "Foundations"],
-    "from-slate-700 to-slate-500",
+    "from-teal-700 to-cyan-500",
     "2026-06-01",
     [
       ["AI Agents vs Automation: What's the Real Difference?", 6, "Where classic automation ends and agentic AI begins.", ["Automation follows rules, agents pursue goals", "When an agent is overkill", "Spotting agent-shaped problems"], undefined, "qOP3zROnr5w"],
@@ -195,7 +195,7 @@ seedCourses.push(
   "security",
   "Beginner",
   ["Security", "Awareness", "Best Practices"],
-  "from-emerald-700 to-emerald-500",
+  "from-blue-800 to-blue-600",
   "2026-06-15",
   [
     ["Powerful Cybersecurity Talk: Essential Security Tips + Q&A", 83, "A full security-awareness talk covering essential tips everyone should follow, with an interactive Q&A session.", ["Everyday security habits that matter", "How attackers actually target people", "Answers to common security questions"], "Note three security habits from the talk you will adopt this week and share them with your team.", "sFAWpeA0u2Y"],
