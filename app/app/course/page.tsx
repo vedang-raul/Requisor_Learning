@@ -17,6 +17,34 @@ import { CourseReviews } from "@/components/course-reviews";
 
 type LessonFilter = "all" | "completed" | "in-progress" | "not-started";
 
+// ---------------------------------------------------------------------------
+// LocalStorage helpers for persisting personalised assessment text
+// ---------------------------------------------------------------------------
+function assessmentStorageKey(slug: string) {
+  return `ai_assessment:${slug}`;
+}
+
+function loadCachedAssessment(slug: string, profileKey: string): string | null {
+  try {
+    const raw = localStorage.getItem(assessmentStorageKey(slug));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { text?: string; profileKey?: string };
+    // Invalidate if the user's onboarding profile has changed
+    if (parsed.profileKey !== profileKey) return null;
+    return parsed.text ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function saveCachedAssessment(slug: string, text: string, profileKey: string) {
+  try {
+    localStorage.setItem(assessmentStorageKey(slug), JSON.stringify({ text, profileKey }));
+  } catch {
+    // localStorage unavailable (private mode, quota exceeded) — silently skip
+  }
+}
+
 function CourseView() {
   const params = useSearchParams();
   const slug = params.get("slug");
@@ -30,14 +58,43 @@ function CourseView() {
   const assessmentFetched = useRef(false);
   // Track which slug was requested so stale in-flight responses are discarded
   const requestedSlug = useRef<string | null>(null);
+  // Profile key used as cache-invalidation signal (qualification|learningGoal)
+  const profileKeyRef = useRef<string>("");
 
-  // Reset assessment state whenever the user navigates to a different course
+  // On slug change: fetch the user profile, build a cache key, then try to
+  // restore a previously-persisted assessment from localStorage.
   useEffect(() => {
+    // Reset display state for the new course
     setAssessmentText(null);
     setAssessmentLoading(false);
     setAssessmentError(null);
     assessmentFetched.current = false;
     requestedSlug.current = null;
+
+    if (!slug) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/me");
+        if (cancelled) return;
+        if (res.ok) {
+          const data = await res.json() as { qualification?: string | null; learningGoal?: string | null };
+          const key = `${data.qualification ?? ""}|${data.learningGoal ?? ""}`;
+          profileKeyRef.current = key;
+          const cached = loadCachedAssessment(slug, key);
+          if (cached && !cancelled) {
+            setAssessmentText(cached);
+            assessmentFetched.current = true;
+          }
+        }
+      } catch {
+        // Profile fetch failed — assessment button remains visible, no error shown
+      }
+    })();
+
+    return () => { cancelled = true; };
   }, [slug]);
 
   const lessons = useMemo(() => {
@@ -266,14 +323,16 @@ function CourseView() {
                     if (requestedSlug.current !== fetchingForSlug) return;
                     const data = await res.json();
                     if (!res.ok || !data.assessment) {
-                      setAssessmentError(data.error ?? "Couldn\'t personalise assessment.");
+                      setAssessmentError(data.error ?? "Couldn't personalise assessment.");
                     } else {
                       setAssessmentText(data.assessment);
                       assessmentFetched.current = true;
+                      // Persist so it survives navigation and page re-renders
+                      saveCachedAssessment(fetchingForSlug, data.assessment, profileKeyRef.current);
                     }
                   } catch {
                     if (requestedSlug.current === fetchingForSlug) {
-                      setAssessmentError("Couldn\'t personalise assessment right now.");
+                      setAssessmentError("Couldn't personalise assessment right now.");
                     }
                   } finally {
                     if (requestedSlug.current === fetchingForSlug) {
