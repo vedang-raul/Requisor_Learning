@@ -155,7 +155,7 @@ export function LoginScreen() {
         className="relative w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-8 shadow-soft sm:p-10"
       >
         <div className="mb-6 text-center">
-          <img src="/requisor.png" alt="Requisor logo" className="mx-auto mb-4 h-16 w-16 rounded-xl object-contain" />
+          <img src="/requisor.png" alt="Requisor logo" className="mx-auto mb-4 h-24 w-24 rounded-xl object-contain" />
           <h1 className="text-2xl font-bold">Requisor Learning</h1>
           <motion.p
             initial={{ opacity: 0 }}
