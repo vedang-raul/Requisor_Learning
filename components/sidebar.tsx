@@ -68,8 +68,8 @@ export function Sidebar() {
         href={item.href}
         title={collapsed ? item.label : undefined}
         className={cn(
-          "focus-ring group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
-          active ? "bg-primary/10 text-primary" : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900",
+          "focus-ring group relative flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-all duration-200",
+          active ? "rounded-r-xl bg-primary/10 text-primary" : "rounded-xl text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900",
           collapsed && "justify-center px-2"
         )}
       >
@@ -113,8 +113,8 @@ export function Sidebar() {
             }}
             title={collapsed ? "Learning Paths" : undefined}
             className={cn(
-              "focus-ring group relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200",
-              learningActive ? "bg-primary/10 text-primary" : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900",
+              "focus-ring group relative flex w-full items-center gap-3 px-3 py-2.5 text-sm font-medium transition-all duration-200",
+              learningActive ? "rounded-r-xl bg-primary/10 text-primary" : "rounded-xl text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900",
               collapsed && "justify-center px-2"
             )}
           >
