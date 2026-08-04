@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useMemo, useState, useRef, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
-import { CheckCircle2, Circle, Clock, FileText, PlayCircle, Video, Bookmark, BookmarkCheck, ChevronRight, SearchX } from "lucide-react";
+import { CheckCircle2, Circle, Clock, FileText, PlayCircle, Video, Bookmark, BookmarkCheck, ChevronRight, SearchX, GraduationCap, Sparkles, Loader2 } from "lucide-react";
 import { useStore, useCourseProgress } from "@/lib/store";
 import { cn, formatMinutes, isPlaceholder, youTubeThumb } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
@@ -24,6 +24,21 @@ function CourseView() {
   const course = state.courses.find((c) => c.slug === slug);
   const { pct, completed, total } = useCourseProgress(course);
   const [filter, setFilter] = useState<LessonFilter>("all");
+  const [assessmentText, setAssessmentText] = useState<string | null>(null);
+  const [assessmentLoading, setAssessmentLoading] = useState(false);
+  const [assessmentError, setAssessmentError] = useState<string | null>(null);
+  const assessmentFetched = useRef(false);
+  // Track which slug was requested so stale in-flight responses are discarded
+  const requestedSlug = useRef<string | null>(null);
+
+  // Reset assessment state whenever the user navigates to a different course
+  useEffect(() => {
+    setAssessmentText(null);
+    setAssessmentLoading(false);
+    setAssessmentError(null);
+    assessmentFetched.current = false;
+    requestedSlug.current = null;
+  }, [slug]);
 
   const lessons = useMemo(() => {
     if (!course) return [];
@@ -214,6 +229,70 @@ function CourseView() {
           </div>
         ))}
       </div>
+
+      {/* Capstone Assessment */}
+      {course.baseAssessment && (
+        <Reveal>
+          <Card className="space-y-4">
+            <div className="flex items-center gap-2">
+              <GraduationCap className="h-5 w-5 text-primary" />
+              <h2 className="text-base font-semibold text-zinc-900">Course Assessment</h2>
+              <Tag tone="accent" className="ml-auto text-[10px]">Capstone</Tag>
+            </div>
+            <p className="text-sm text-zinc-700 leading-relaxed">
+              {assessmentText ?? course.baseAssessment}
+            </p>
+            {assessmentError && (
+              <p className="text-xs text-red-500">{assessmentError}</p>
+            )}
+            {!assessmentFetched.current && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={assessmentLoading}
+                onClick={async () => {
+                  if (assessmentFetched.current) return;
+                  const fetchingForSlug = course.slug;
+                  requestedSlug.current = fetchingForSlug;
+                  setAssessmentLoading(true);
+                  setAssessmentError(null);
+                  try {
+                    const res = await fetch("/api/course-assessment", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ courseSlug: fetchingForSlug }),
+                    });
+                    // Discard response if user navigated to a different course
+                    if (requestedSlug.current !== fetchingForSlug) return;
+                    const data = await res.json();
+                    if (!res.ok || !data.assessment) {
+                      setAssessmentError(data.error ?? "Couldn\'t personalise assessment.");
+                    } else {
+                      setAssessmentText(data.assessment);
+                      assessmentFetched.current = true;
+                    }
+                  } catch {
+                    if (requestedSlug.current === fetchingForSlug) {
+                      setAssessmentError("Couldn\'t personalise assessment right now.");
+                    }
+                  } finally {
+                    if (requestedSlug.current === fetchingForSlug) {
+                      setAssessmentLoading(false);
+                    }
+                  }
+                }}
+                className="inline-flex items-center gap-2"
+              >
+                {assessmentLoading ? (
+                  <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Personalising…</>
+                ) : (
+                  <><Sparkles className="h-3.5 w-3.5" /> Personalise for me</>
+                )}
+              </Button>
+            )}
+          </Card>
+        </Reveal>
+      )}
 
       <CourseReviews courseSlug={course.slug} />
     </PageTransition>

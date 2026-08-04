@@ -33,6 +33,8 @@ export interface Course {
   cover: string;
   addedAt: string; // ISO date
   lessons: Lesson[];
+  /** Base capstone assessment brief, personalised by AI on the course overview page. */
+  baseAssessment?: string;
 }
 
 export interface LessonProgress {

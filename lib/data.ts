@@ -49,7 +49,8 @@ function buildCourse(
   tags: string[],
   cover: string,
   addedAt: string,
-  topics: Array<[string, number, string, string[], string?, string?, string?, string?]>
+  topics: Array<[string, number, string, string[], string?, string?, string?, string?]>,
+  baseAssessment?: string
 ): Course {
   return {
     slug,
@@ -63,6 +64,7 @@ function buildCourse(
     lessons: topics.map(([t, d, desc, takeaways, assignment, youtubeId, section, resourceUrl], i) =>
       lesson(slug, i, t, d, desc, takeaways, assignment, youtubeId, section, resourceUrl)
     ),
+    baseAssessment,
   };
 }
 
@@ -106,7 +108,8 @@ export const seedCourses: Course[] = [
       ["Expectation Management: Aligning Teams & Stakeholders", 7, "Keeping teams and stakeholders aligned on what ships when.", ["Align early and often", "Manage scope, time and quality trade-offs"], undefined, "C44s5d18qt4"],
       ["How to Use AI for Acceptance Criteria and User Stories", 7, "Using AI to draft user stories and acceptance criteria faster.", ["AI as a drafting partner", "Always review AI output", "Better stories, faster"], undefined, "uckL4tz7Dlg"],
       ["Agile Made Simple! Key Concepts Explained", 10, "Agile's key concepts explained in plain language.", ["Agile values over rituals", "Iterate and inspect", "Scrum vocabulary demystified"], undefined, "lQDybkIdMUo"],
-    ]
+    ],
+    "Produce a one-page Product Requirements Document (PRD) for an app idea of your choice — including problem statement, target user, key features, and success metrics."
   ),
   buildCourse(
     "data-analytics",
@@ -154,7 +157,8 @@ export const seedCourses: Course[] = [
       ["Tableau + Data Science: Forecasting Example", 2, "A hands-on example of building a forecast in Tableau.", ["Setting up a forecast in a few clicks", "Reading forecast confidence bands", "Limitations of built-in forecasting"], undefined, "Ksq21KS6hKc", "Business Intelligence (Tableau)"],
       ["Tableau + Data Science: How to Perform Clustering", 5, "Using Tableau's clustering feature to find natural groupings in data.", ["Clustering surfaces hidden segments", "Interpreting cluster results", "Pairing clusters with dashboards"], undefined, "CuY89mcCBtk", "Business Intelligence (Tableau)"],
       ["Assignment: 6 Steps to Make the Dataset Work", 3, "Preparing a dataset so it behaves correctly in Tableau.", ["Data prep before visualization", "Six repeatable prep steps", "Avoiding rework later in the project"], "Follow the six steps shown to prepare your own dataset for a Tableau project.", "9ZgvSBjml-w", "Business Intelligence (Tableau)"],
-    ]
+    ],
+    "Choose a public dataset, clean it, build 3 charts that tell a coherent story, and write a 200-word narrative summary of your findings."
   ),
   buildCourse(
     "agentic-ai",
@@ -187,7 +191,8 @@ export const seedCourses: Course[] = [
       ["Building and Evaluating Data Agents", 119, "Build and evaluate multi-agent workflows that autonomously extract insights from data, using LangGraph and LLM-as-a-judge techniques — taught by Snowflake's AI research team.", ["Coordinate specialized sub-agents for database access, web search and visualization with LangGraph", "Evaluate agents with LLM-as-a-judge: relevance, groundedness and goal-plan-action alignment", "Use inline evaluations at runtime so agents can adjust strategy dynamically"], undefined, undefined, "Hands-On Agent Courses (DeepLearning.AI)", "https://www.deeplearning.ai/courses/building-and-evaluating-data-agents"],
       ["Building AI Browser Agents", 65, "Learn to build autonomous web agents that fill forms, scrape pages and gather information, including the self-correcting AgentQ framework — taught by AGI Inc's co-founders.", ["Web agents reason over visual and structural page data to decide what to click or fill", "Build agents that scrape sites and return structured, usable output", "AgentQ combines Monte Carlo Tree Search, self-critique and DPO to self-correct"], undefined, undefined, "Hands-On Agent Courses (DeepLearning.AI)", "https://www.deeplearning.ai/courses/building-ai-browser-agents"],
       ["Vibe Coding 101 with Replit", 94, "An introduction to \"vibe coding\" — building and deploying real web apps with AI coding agents in Replit's cloud environment, taught by Replit's own team.", ["Apply the five-skill framework: thinking, frameworks, checkpoints, debugging, context", "Precise prompting and effective debugging are the core agentic-coding skills", "Build and ship two real apps end-to-end inside Replit"], undefined, undefined, "Hands-On Agent Courses (DeepLearning.AI)", "https://www.deeplearning.ai/courses/vibe-coding-101-with-replit"],
-    ]
+    ],
+    "Design and describe a multi-agent workflow that automates a real task in your work or life — include the agents, tools, triggers, and expected output."
   ),
 ];
 
@@ -211,7 +216,8 @@ seedCourses.push(
     ["Getting Started with OWASP ZAP", 10, "A hands-on introduction to the free, open-source penetration testing proxy for finding vulnerabilities in running web applications.", ["Run a Quick Start automated scan against a target URL to begin", "Pair automated scanning with manual browsing for authenticated flows", "Review the Alerts tab by risk level before acting on findings"], "Run a ZAP Quick Start scan against a staging app you have permission to test and note the top 3 alerts.", undefined, "Application Security & DevSecOps", "https://www.zaproxy.org/getting-started/"],
     ["Case Study: The Axios npm Supply Chain Compromise", 9, "Microsoft's incident write-up on malicious Axios package versions used by a state-sponsored actor to plant remote access trojans across npm installs.", ["Pin exact dependency versions — drop ^ and ~ to block malicious auto-updates", "Roll back to known-safe versions and rotate any exposed credentials immediately", "Watch CI/CD logs and outbound traffic for indicators of compromise"], undefined, undefined, "Application Security & DevSecOps", "https://www.microsoft.com/en-us/security/blog/2026/04/01/mitigating-the-axios-npm-supply-chain-compromise/"],
     ["OWASP Top 10 for LLM Applications", 12, "The OWASP framework for the security and safety risks unique to generative AI systems — directly relevant to the agents and tools built in our Agentic AI path.", ["Prompt injection and insecure output handling are the top input/output risks", "Training data and model supply chains can be compromised or stolen", "Limit LLM autonomy and validate outputs — don't over-trust agent decisions"], undefined, undefined, "Application Security & DevSecOps", "https://owasp.org/www-project-top-10-for-large-language-model-applications/"],
-    ]
+    ],
+    "Perform a security review of a simple web app (real or hypothetical) using the OWASP Top 10 as a checklist and write up the top 3 risks with recommended mitigations."
   )
 );
 
