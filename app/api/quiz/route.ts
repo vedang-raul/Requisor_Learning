@@ -42,10 +42,15 @@ export async function POST(req: Request) {
     return Response.json({ error: "Missing lessonTitle." }, { status: 400 });
   }
 
+  // Authentication gate — reject unauthenticated callers before touching the xAI API.
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) {
+    return Response.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
   // Load profile from DB server-side — do not trust caller-supplied profile values
   let personaLine = "";
-  const session = await getServerSession(authOptions);
-  if (session?.user?.email) {
+  if (session.user.email) {
     const { rows } = await db.query<DbUser>(
       "SELECT date_of_birth, qualification, learning_goal FROM users WHERE email = $1",
       [session.user.email.toLowerCase()]
