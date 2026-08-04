@@ -269,7 +269,6 @@ function CourseView() {
                     <p className="mt-0.5 line-clamp-1 text-xs text-zinc-500">{lesson.description}</p>
                     <div className="mt-1.5 flex items-center gap-3 text-[11px] text-zinc-500">
                       <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{formatMinutes(lesson.durationMin)}</span>
-                      {lesson.assignment && <Tag tone="warning" className="text-[10px]">Assignment</Tag>}
                       {started && <Tag tone="accent" className="text-[10px]">{p?.watchPct ?? 0}% {lesson.format === "reading" ? "read" : "watched"}</Tag>}
                     </div>
                   </div>
@@ -288,8 +287,8 @@ function CourseView() {
         ))}
       </div>
 
-      {/* Capstone Assessment */}
-      {course.baseAssessment && (
+      {/* Capstone Assessment — only shown once all lessons are complete */}
+      {course.baseAssessment && completed === total && (
         <Reveal>
           <Card className={cn("space-y-4 transition-colors", assessmentDone && "border-emerald-500/30 bg-emerald-500/[0.04]")}>
             <div className="flex items-center gap-2">

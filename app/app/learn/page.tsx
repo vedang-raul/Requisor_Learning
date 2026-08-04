@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   CheckCircle2, ChevronLeft, ChevronRight, Circle, Clock, FileText, Link2,
-  ListChecks, MessageSquare, NotebookPen, PlayCircle, Bookmark, BookmarkCheck,
+  MessageSquare, NotebookPen, PlayCircle, Bookmark, BookmarkCheck,
   Sparkles, SearchX, FileDown, GraduationCap, SkipForward, Trash2,
 } from "lucide-react";
 import { useStore, useCourseProgress } from "@/lib/store";
@@ -23,90 +23,12 @@ import { LessonQuiz } from "@/components/lesson-quiz";
 const springHover = { type: "spring" as const, stiffness: 320, damping: 22 };
 const springTab = { type: "spring" as const, stiffness: 500, damping: 35 };
 
-/* ─── Personalised Assignment ─────────────────────────────────────────────── */
-function PersonalisedAssignment({ lesson }: { lesson: import("@/lib/types").Lesson }) {
-  const [text, setText] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [fetched, setFetched] = useState(false);
-
-  useEffect(() => {
-    if (fetched) return;
-    setFetched(true);
-    setLoading(true);
-    fetch("/api/assignment", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        lessonTitle: lesson.title,
-        description: lesson.description,
-        keyTakeaways: lesson.keyTakeaways,
-        assignment: lesson.assignment,
-      }),
-    })
-      .then((r) => r.json() as Promise<{ assignment?: string }>)
-      .then((data) => setText(data.assignment ?? lesson.assignment ?? null))
-      .catch(() => setText(lesson.assignment ?? null))
-      .finally(() => setLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lesson.id]);
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25 }}
-      className="gradient-border rounded-2xl p-5"
-    >
-      <div className="flex items-start gap-3">
-        <motion.div
-          className="rounded-xl bg-amber-500/10 p-2.5"
-          animate={loading ? { rotate: [0, -6, 6, -4, 0] } : {}}
-          transition={{ duration: 1.6, repeat: loading ? Infinity : 0, ease: "easeInOut" }}
-        >
-          <ListChecks className="h-5 w-5 text-amber-600" />
-        </motion.div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-zinc-900">Assignment</p>
-          <AnimatePresence mode="wait">
-            {loading ? (
-              <motion.div
-                key="loading"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="mt-2 flex items-center gap-2 text-xs text-zinc-500"
-              >
-                <motion.span animate={{ rotate: 360 }} transition={{ duration: 1.4, repeat: Infinity, ease: "linear" }}>
-                  <Sparkles className="h-3.5 w-3.5 text-primary" />
-                </motion.span>
-                Personalising for you…
-              </motion.div>
-            ) : (
-              <motion.p
-                key="text"
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.25 }}
-                className="mt-1.5 text-sm leading-relaxed text-zinc-700"
-              >
-                {text}
-              </motion.p>
-            )}
-          </AnimatePresence>
-          <p className="mt-3 text-xs text-zinc-500">Submit via your onboarding buddy or the #learning Slack channel.</p>
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-
-type TabKey = "description" | "resources" | "notes" | "assignment" | "discussion";
+type TabKey = "description" | "resources" | "notes" | "discussion";
 
 const tabs: { key: TabKey; label: string; icon: typeof FileText }[] = [
   { key: "description", label: "Description", icon: FileText },
   { key: "resources", label: "Resources", icon: Link2 },
   { key: "notes", label: "Notes", icon: NotebookPen },
-  { key: "assignment", label: "Assignment", icon: ListChecks },
   { key: "discussion", label: "Discussion", icon: MessageSquare },
 ];
 
@@ -587,13 +509,6 @@ function LearnView() {
                       />
                       <p className="text-[11px] text-zinc-600">Notes are saved automatically on this device.</p>
                     </div>
-                  )}
-                  {tab === "assignment" && (
-                    lesson.assignment ? (
-                      <PersonalisedAssignment lesson={lesson} />
-                    ) : (
-                      <p className="py-6 text-center text-sm text-zinc-500">No assignment for this lesson — enjoy the video and move on. 🎬</p>
-                    )
                   )}
                   {tab === "discussion" && (
                     <div className="space-y-4">
