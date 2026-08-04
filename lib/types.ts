@@ -93,4 +93,6 @@ export interface AppState {
   xp: number;
   notifications: Notification[];
   sidebarCollapsed: boolean;
+  /** Course slugs whose capstone assessment the learner has marked complete. */
+  assessmentCompletions: string[];
 }

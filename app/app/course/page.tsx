@@ -20,13 +20,13 @@ type LessonFilter = "all" | "completed" | "in-progress" | "not-started";
 // ---------------------------------------------------------------------------
 // LocalStorage helpers for persisting personalised assessment text
 // ---------------------------------------------------------------------------
-function assessmentStorageKey(slug: string) {
-  return `ai_assessment:${slug}`;
+function assessmentStorageKey(slug: string, userEmail: string) {
+  return `ai_assessment:${userEmail.toLowerCase()}:${slug}`;
 }
 
-function loadCachedAssessment(slug: string, profileKey: string): string | null {
+function loadCachedAssessment(slug: string, userEmail: string, profileKey: string): string | null {
   try {
-    const raw = localStorage.getItem(assessmentStorageKey(slug));
+    const raw = localStorage.getItem(assessmentStorageKey(slug, userEmail));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as { text?: string; profileKey?: string };
     // Invalidate if the user's onboarding profile has changed
@@ -37,9 +37,9 @@ function loadCachedAssessment(slug: string, profileKey: string): string | null {
   }
 }
 
-function saveCachedAssessment(slug: string, text: string, profileKey: string) {
+function saveCachedAssessment(slug: string, userEmail: string, text: string, profileKey: string) {
   try {
-    localStorage.setItem(assessmentStorageKey(slug), JSON.stringify({ text, profileKey }));
+    localStorage.setItem(assessmentStorageKey(slug, userEmail), JSON.stringify({ text, profileKey }));
   } catch {
     // localStorage unavailable (private mode, quota exceeded) — silently skip
   }
@@ -48,9 +48,10 @@ function saveCachedAssessment(slug: string, text: string, profileKey: string) {
 function CourseView() {
   const params = useSearchParams();
   const slug = params.get("slug");
-  const { state, toggleBookmark } = useStore();
+  const { state, toggleBookmark, toggleAssessmentComplete } = useStore();
+  const userEmail = state.user?.email ?? "";
   const course = state.courses.find((c) => c.slug === slug);
-  const { pct, completed, total } = useCourseProgress(course);
+  const { pct, completed, total, assessmentDone } = useCourseProgress(course);
   const [filter, setFilter] = useState<LessonFilter>("all");
   const [assessmentText, setAssessmentText] = useState<string | null>(null);
   const [assessmentLoading, setAssessmentLoading] = useState(false);
@@ -80,10 +81,10 @@ function CourseView() {
         const res = await fetch("/api/me");
         if (cancelled) return;
         if (res.ok) {
-          const data = await res.json() as { qualification?: string | null; learningGoal?: string | null };
-          const key = `${data.qualification ?? ""}|${data.learningGoal ?? ""}`;
+          const data = await res.json() as { qualification?: string | null; learningGoal?: string | null; dateOfBirth?: string | null };
+          const key = `${data.qualification ?? ""}|${data.learningGoal ?? ""}|${data.dateOfBirth ?? ""}`;
           profileKeyRef.current = key;
-          const cached = loadCachedAssessment(slug, key);
+          const cached = loadCachedAssessment(slug, userEmail, key);
           if (cached && !cancelled) {
             setAssessmentText(cached);
             assessmentFetched.current = true;
@@ -290,65 +291,83 @@ function CourseView() {
       {/* Capstone Assessment */}
       {course.baseAssessment && (
         <Reveal>
-          <Card className="space-y-4">
+          <Card className={cn("space-y-4 transition-colors", assessmentDone && "border-emerald-500/30 bg-emerald-500/[0.04]")}>
             <div className="flex items-center gap-2">
-              <GraduationCap className="h-5 w-5 text-primary" />
-              <h2 className="text-base font-semibold text-zinc-900">Course Assessment</h2>
-              <Tag tone="accent" className="ml-auto text-[10px]">Capstone</Tag>
+              <GraduationCap className={cn("h-5 w-5", assessmentDone ? "text-emerald-600" : "text-primary")} />
+              <h2 className={cn("text-base font-semibold", assessmentDone ? "text-zinc-500 line-through decoration-emerald-400/60" : "text-zinc-900")}>Course Assessment</h2>
+              {assessmentDone ? (
+                <CheckCircle2 className="ml-auto h-5 w-5 shrink-0 text-emerald-600" />
+              ) : (
+                <Tag tone="accent" className="ml-auto text-[10px]">Capstone</Tag>
+              )}
             </div>
-            <p className="text-sm text-zinc-700 leading-relaxed">
+            <p className={cn("text-sm leading-relaxed", assessmentDone ? "text-zinc-500" : "text-zinc-700")}>
               {assessmentText ?? course.baseAssessment}
             </p>
             {assessmentError && (
               <p className="text-xs text-red-500">{assessmentError}</p>
             )}
-            {!assessmentFetched.current && (
+            <div className="flex flex-wrap items-center gap-2">
+              {!assessmentFetched.current && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={assessmentLoading}
+                  onClick={async () => {
+                    if (assessmentFetched.current) return;
+                    const fetchingForSlug = course.slug;
+                    requestedSlug.current = fetchingForSlug;
+                    setAssessmentLoading(true);
+                    setAssessmentError(null);
+                    try {
+                      const res = await fetch("/api/course-assessment", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ courseSlug: fetchingForSlug }),
+                      });
+                      // Discard response if user navigated to a different course
+                      if (requestedSlug.current !== fetchingForSlug) return;
+                      const data = await res.json();
+                      if (!res.ok || !data.assessment) {
+                        setAssessmentError(data.error ?? "Couldn't personalise assessment.");
+                      } else {
+                        setAssessmentText(data.assessment);
+                        assessmentFetched.current = true;
+                        // Persist so it survives navigation and page re-renders
+                        saveCachedAssessment(fetchingForSlug, userEmail, data.assessment, profileKeyRef.current);
+                      }
+                    } catch {
+                      if (requestedSlug.current === fetchingForSlug) {
+                        setAssessmentError("Couldn't personalise assessment right now.");
+                      }
+                    } finally {
+                      if (requestedSlug.current === fetchingForSlug) {
+                        setAssessmentLoading(false);
+                      }
+                    }
+                  }}
+                  className="inline-flex items-center gap-2"
+                >
+                  {assessmentLoading ? (
+                    <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Personalising…</>
+                  ) : (
+                    <><Sparkles className="h-3.5 w-3.5" /> Personalise for me</>
+                  )}
+                </Button>
+              )}
               <Button
                 size="sm"
-                variant="outline"
-                disabled={assessmentLoading}
-                onClick={async () => {
-                  if (assessmentFetched.current) return;
-                  const fetchingForSlug = course.slug;
-                  requestedSlug.current = fetchingForSlug;
-                  setAssessmentLoading(true);
-                  setAssessmentError(null);
-                  try {
-                    const res = await fetch("/api/course-assessment", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ courseSlug: fetchingForSlug }),
-                    });
-                    // Discard response if user navigated to a different course
-                    if (requestedSlug.current !== fetchingForSlug) return;
-                    const data = await res.json();
-                    if (!res.ok || !data.assessment) {
-                      setAssessmentError(data.error ?? "Couldn't personalise assessment.");
-                    } else {
-                      setAssessmentText(data.assessment);
-                      assessmentFetched.current = true;
-                      // Persist so it survives navigation and page re-renders
-                      saveCachedAssessment(fetchingForSlug, data.assessment, profileKeyRef.current);
-                    }
-                  } catch {
-                    if (requestedSlug.current === fetchingForSlug) {
-                      setAssessmentError("Couldn't personalise assessment right now.");
-                    }
-                  } finally {
-                    if (requestedSlug.current === fetchingForSlug) {
-                      setAssessmentLoading(false);
-                    }
-                  }
-                }}
-                className="inline-flex items-center gap-2"
+                variant={assessmentDone ? "outline" : "primary"}
+                onClick={() => toggleAssessmentComplete(course.slug)}
+                className={cn("inline-flex items-center gap-2", assessmentDone && "border-emerald-500/40 text-emerald-700 hover:bg-emerald-50")}
               >
-                {assessmentLoading ? (
-                  <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Personalising…</>
+                {assessmentDone ? (
+                  <><CheckCircle2 className="h-3.5 w-3.5" /> Completed</>
                 ) : (
-                  <><Sparkles className="h-3.5 w-3.5" /> Personalise for me</>
+                  <><Circle className="h-3.5 w-3.5" /> Mark as complete</>
                 )}
               </Button>
-            )}
+            </div>
           </Card>
         </Reveal>
       )}

@@ -26,6 +26,7 @@ const initialState: AppState = {
     { id: "n2", kind: "course", title: "New path: Agentic AI", body: "18 lessons on LLMs, agents, RAG and MCP are now available.", at: new Date().toISOString(), read: false },
   ],
   sidebarCollapsed: false,
+  assessmentCompletions: [],
 };
 
 interface StoreApi {
@@ -40,6 +41,7 @@ interface StoreApi {
   toggleSavedLesson: (lessonId: string) => void;
   setNote: (lessonId: string, text: string) => void;
   markNotificationsRead: () => void;
+  toggleAssessmentComplete: (courseSlug: string) => void;
   // Admin
   upsertCourse: (course: Course) => void;
   deleteCourse: (slug: string) => void;
@@ -202,6 +204,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setState((s) => ({ ...s, notifications: s.notifications.map((n) => ({ ...n, read: true })) }));
   }, []);
 
+  const toggleAssessmentComplete = useCallback((courseSlug: string) => {
+    setState((s) => ({
+      ...s,
+      assessmentCompletions: s.assessmentCompletions.includes(courseSlug)
+        ? s.assessmentCompletions.filter((slug) => slug !== courseSlug)
+        : [...s.assessmentCompletions, courseSlug],
+    }));
+  }, []);
+
   const upsertCourse = useCallback((course: Course) => {
     setState((s) => {
       const exists = s.courses.some((c) => c.slug === course.slug);
@@ -242,9 +253,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       hydrated: hydrated && status !== "loading",
       logout, toggleSidebar, recordView, setWatchPct, toggleComplete,
       toggleBookmark, toggleSavedLesson, setNote, markNotificationsRead,
+      toggleAssessmentComplete,
       upsertCourse, deleteCourse, upsertLesson, deleteLesson, resetAll,
     }),
-    [state, sessionUser, hydrated, status, logout, toggleSidebar, recordView, setWatchPct, toggleComplete, toggleBookmark, toggleSavedLesson, setNote, markNotificationsRead, upsertCourse, deleteCourse, upsertLesson, deleteLesson, resetAll]
+    [state, sessionUser, hydrated, status, logout, toggleSidebar, recordView, setWatchPct, toggleComplete, toggleBookmark, toggleSavedLesson, setNote, markNotificationsRead, toggleAssessmentComplete, upsertCourse, deleteCourse, upsertLesson, deleteLesson, resetAll]
   );
 
   return <StoreContext.Provider value={api}>{children}</StoreContext.Provider>;
@@ -260,9 +272,13 @@ export function useStore(): StoreApi {
 
 export function useCourseProgress(course: Course | undefined) {
   const { state } = useStore();
-  if (!course || course.lessons.length === 0) return { completed: 0, total: 0, pct: 0 };
-  const completed = course.lessons.filter((l) => state.progress[l.id]?.completed).length;
-  return { completed, total: course.lessons.length, pct: Math.round((completed / course.lessons.length) * 100) };
+  if (!course || course.lessons.length === 0) return { completed: 0, total: 0, pct: 0, assessmentDone: false };
+  const completedLessons = course.lessons.filter((l) => state.progress[l.id]?.completed).length;
+  const hasCapstone = !!course.baseAssessment;
+  const assessmentDone = hasCapstone && state.assessmentCompletions.includes(course.slug);
+  const total = course.lessons.length + (hasCapstone ? 1 : 0);
+  const completed = completedLessons + (assessmentDone ? 1 : 0);
+  return { completed, total, pct: Math.round((completed / total) * 100), assessmentDone };
 }
 
 export function useOverallStats() {
