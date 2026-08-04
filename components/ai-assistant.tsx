@@ -181,7 +181,7 @@ export function AiAssistant() {
         whileHover={{ scale: 1.06 }}
         whileTap={{ scale: 0.95 }}
         className={cn(
-          "focus-ring fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center overflow-hidden rounded-full text-white shadow-[0_8px_24px_-6px_rgba(35,174,151,0.55)] transition-shadow hover:shadow-[0_10px_30px_-6px_rgba(35,174,151,0.7)]",
+          "focus-ring fixed bottom-5 right-5 z-40 flex h-16 w-16 items-center justify-center overflow-hidden rounded-full text-white shadow-[0_8px_24px_-6px_rgba(35,174,151,0.55)] transition-shadow hover:shadow-[0_10px_30px_-6px_rgba(35,174,151,0.7)]",
           open ? "bg-gradient-to-br from-primary to-secondary" : "bg-white"
         )}
       >
