@@ -5,6 +5,67 @@ import { authOptions } from "@/lib/auth";
 import { db, type DbUser } from "@/lib/db";
 import { seedCourses } from "@/lib/data";
 
+export async function GET(_req: Request) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { rows } = await db.query<{ course_slug: string }>(
+    `SELECT cc.course_slug
+     FROM capstone_completions cc
+     JOIN users u ON u.id = cc.user_id
+     WHERE u.email = $1`,
+    [session.user.email.toLowerCase()]
+  );
+
+  return Response.json({ completions: rows.map((r) => r.course_slug) });
+}
+
+export async function PATCH(req: Request) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  let body: { courseSlug?: string; completed?: boolean };
+  try {
+    body = await req.json();
+  } catch {
+    return Response.json({ error: "Invalid request body." }, { status: 400 });
+  }
+
+  const { courseSlug, completed } = body;
+  if (!courseSlug || typeof courseSlug !== "string") {
+    return Response.json({ error: "Missing courseSlug." }, { status: 400 });
+  }
+
+  const { rows: userRows } = await db.query<{ id: number }>(
+    "SELECT id FROM users WHERE email = $1",
+    [session.user.email.toLowerCase()]
+  );
+  const userId = userRows[0]?.id;
+  if (!userId) {
+    return Response.json({ error: "User not found." }, { status: 404 });
+  }
+
+  if (completed) {
+    await db.query(
+      `INSERT INTO capstone_completions (user_id, course_slug)
+       VALUES ($1, $2)
+       ON CONFLICT (user_id, course_slug) DO NOTHING`,
+      [userId, courseSlug]
+    );
+  } else {
+    await db.query(
+      "DELETE FROM capstone_completions WHERE user_id = $1 AND course_slug = $2",
+      [userId, courseSlug]
+    );
+  }
+
+  return Response.json({ ok: true });
+}
+
 const BASE_URL = "https://api.x.ai/v1";
 const MODEL = process.env.XAI_MODEL || "grok-3-mini";
 

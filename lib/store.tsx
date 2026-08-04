@@ -101,14 +101,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state, hydrated, email]);
 
-  // On hydration, pull authoritative XP from the DB and override local value.
+  // On hydration, pull authoritative XP and capstone completions from the DB.
   useEffect(() => {
     if (!hydrated || !email) return;
     dbSynced.current = false;
-    fetch("/api/xp")
-      .then((r) => r.json())
-      .then((data: { xp?: number }) => {
-        setState((s) => ({ ...s, xp: data.xp ?? s.xp }));
+    Promise.all([
+      fetch("/api/xp").then((r) => r.json() as Promise<{ xp?: number }>),
+      fetch("/api/course-assessment").then((r) => r.json() as Promise<{ completions?: string[] }>),
+    ])
+      .then(([xpData, assessData]) => {
+        setState((s) => ({
+          ...s,
+          xp: xpData.xp ?? s.xp,
+          assessmentCompletions: assessData.completions ?? s.assessmentCompletions,
+        }));
         dbSynced.current = true;
       })
       .catch(() => { dbSynced.current = true; });
@@ -205,12 +211,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const toggleAssessmentComplete = useCallback((courseSlug: string) => {
-    setState((s) => ({
-      ...s,
-      assessmentCompletions: s.assessmentCompletions.includes(courseSlug)
-        ? s.assessmentCompletions.filter((slug) => slug !== courseSlug)
-        : [...s.assessmentCompletions, courseSlug],
-    }));
+    setState((s) => {
+      const nowCompleted = !s.assessmentCompletions.includes(courseSlug);
+      void fetch("/api/course-assessment", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ courseSlug, completed: nowCompleted }),
+      });
+      return {
+        ...s,
+        assessmentCompletions: nowCompleted
+          ? [...s.assessmentCompletions, courseSlug]
+          : s.assessmentCompletions.filter((slug) => slug !== courseSlug),
+      };
+    });
   }, []);
 
   const upsertCourse = useCallback((course: Course) => {

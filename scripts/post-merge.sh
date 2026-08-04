@@ -56,6 +56,14 @@ p.query(\`
     body TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT NOW()
   );
+
+  CREATE TABLE IF NOT EXISTS capstone_completions (
+    id SERIAL PRIMARY KEY,
+    user_id INT REFERENCES users(id) ON DELETE CASCADE,
+    course_slug TEXT NOT NULL,
+    completed_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(user_id, course_slug)
+  );
 \`).then(()=>{console.log('DB schema up to date');process.exit(0)}).catch(e=>{console.error(e.message);process.exit(1)});
 "
 
