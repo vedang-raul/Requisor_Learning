@@ -310,6 +310,11 @@ export function LoginScreen() {
           Internal use only · <span className="text-zinc-600">Requisor © 2026</span>
         </p>
 
+        <div className="mt-4 flex items-center justify-center gap-2.5">
+          <img src="/msoe-logo.png" alt="Milwaukee School of Engineering" className="h-8 w-8 object-contain opacity-80" />
+          <span className="text-[11px] text-zinc-400 leading-tight">In association with<br /><span className="font-medium text-zinc-500">Milwaukee School of Engineering</span></span>
+        </div>
+
         {/* Dev-only quick-access — stripped out in production builds */}
         {process.env.NODE_ENV !== "production" && (
           <div className="mt-4 border-t border-dashed border-zinc-200 pt-4">

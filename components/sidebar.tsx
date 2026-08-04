@@ -175,6 +175,14 @@ export function Sidebar() {
         {bottomItems.map(renderItem)}
       </nav>
 
+      {/* MSOE association */}
+      {!collapsed && (
+        <div className="mx-3 mb-2 flex items-center gap-2 rounded-xl border border-zinc-100 bg-zinc-50/60 px-3 py-2">
+          <img src="/msoe-logo.png" alt="MSOE" className="h-7 w-7 shrink-0 object-contain opacity-80" />
+          <span className="text-[10px] leading-tight text-zinc-400">In association with<br /><span className="font-medium text-zinc-500">MSOE University</span></span>
+        </div>
+      )}
+
       {/* Footer */}
       <div className="space-y-1 border-t border-zinc-200 p-3">
         <button
