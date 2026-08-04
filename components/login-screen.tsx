@@ -311,7 +311,7 @@ export function LoginScreen() {
         </p>
 
         <div className="mt-4 flex items-center justify-center gap-2.5">
-          <img src="/msoe-logo.png" alt="Milwaukee School of Engineering" className="h-8 w-8 object-contain opacity-80" />
+          <img src="/msoe-logo.png" alt="Milwaukee School of Engineering" className="h-8 w-8 object-contain " />
           <span className="text-[11px] text-zinc-400 leading-tight">In association with<br /><span className="font-medium text-zinc-500">Milwaukee School of Engineering</span></span>
         </div>
 
