@@ -1,5 +1,4 @@
 "use client";
-
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -20,6 +19,9 @@ import { VideoEmbed } from "@/components/video-embed";
 import { Confetti } from "@/components/confetti";
 import { PageTransition } from "@/components/motion";
 import { LessonQuiz } from "@/components/lesson-quiz";
+
+const springHover = { type: "spring" as const, stiffness: 320, damping: 22 };
+const springTab = { type: "spring" as const, stiffness: 500, damping: 35 };
 
 /* ─── Personalised Assignment ─────────────────────────────────────────────── */
 function PersonalisedAssignment({ lesson }: { lesson: import("@/lib/types").Lesson }) {
@@ -49,23 +51,52 @@ function PersonalisedAssignment({ lesson }: { lesson: import("@/lib/types").Less
   }, [lesson.id]);
 
   return (
-    <div className="gradient-border rounded-2xl p-5">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25 }}
+      className="gradient-border rounded-2xl p-5"
+    >
       <div className="flex items-start gap-3">
-        <div className="rounded-xl bg-amber-500/10 p-2.5"><ListChecks className="h-5 w-5 text-amber-600" /></div>
+        <motion.div
+          className="rounded-xl bg-amber-500/10 p-2.5"
+          animate={loading ? { rotate: [0, -6, 6, -4, 0] } : {}}
+          transition={{ duration: 1.6, repeat: loading ? Infinity : 0, ease: "easeInOut" }}
+        >
+          <ListChecks className="h-5 w-5 text-amber-600" />
+        </motion.div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-zinc-900">Assignment</p>
-          {loading ? (
-            <div className="mt-2 flex items-center gap-2 text-xs text-zinc-500">
-              <Sparkles className="h-3.5 w-3.5 animate-pulse text-primary" />
-              Personalising for you…
-            </div>
-          ) : (
-            <p className="mt-1.5 text-sm leading-relaxed text-zinc-700">{text}</p>
-          )}
+          <AnimatePresence mode="wait">
+            {loading ? (
+              <motion.div
+                key="loading"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="mt-2 flex items-center gap-2 text-xs text-zinc-500"
+              >
+                <motion.span animate={{ rotate: 360 }} transition={{ duration: 1.4, repeat: Infinity, ease: "linear" }}>
+                  <Sparkles className="h-3.5 w-3.5 text-primary" />
+                </motion.span>
+                Personalising for you…
+              </motion.div>
+            ) : (
+              <motion.p
+                key="text"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.25 }}
+                className="mt-1.5 text-sm leading-relaxed text-zinc-700"
+              >
+                {text}
+              </motion.p>
+            )}
+          </AnimatePresence>
           <p className="mt-3 text-xs text-zinc-500">Submit via your onboarding buddy or the #learning Slack channel.</p>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -112,7 +143,6 @@ function LearnView() {
   const courseSlug = params.get("course");
   const lessonId = params.get("lesson");
   const { state, toggleComplete, recordView, setNote, toggleSavedLesson, setWatchPct } = useStore();
-
   const [tab, setTab] = useState<TabKey>("description");
   const [celebrate, setCelebrate] = useState(false);
   const [courseDone, setCourseDone] = useState(false);
@@ -235,12 +265,19 @@ function LearnView() {
 
   if (!course || !lesson) {
     return (
-      <div className="glass-card mx-auto mt-16 flex max-w-md flex-col items-center gap-3 p-10 text-center">
-        <SearchX className="h-10 w-10 text-zinc-600" />
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25 }}
+        className="glass-card mx-auto mt-16 flex max-w-md flex-col items-center gap-3 p-10 text-center"
+      >
+        <motion.span animate={{ rotate: [0, -8, 8, 0] }} transition={{ duration: 1.6, repeat: Infinity, repeatDelay: 1 }}>
+          <SearchX className="h-10 w-10 text-zinc-600" />
+        </motion.span>
         <p className="text-sm font-medium text-zinc-800">Lesson not found</p>
         <p className="text-xs text-zinc-500">The link may be outdated, or the lesson was removed.</p>
         <Link href="/app/paths/"><Button variant="outline" size="sm">Back to Learning Paths</Button></Link>
-      </div>
+      </motion.div>
     );
   }
 
@@ -280,43 +317,86 @@ function LearnView() {
       <AnimatePresence>
         {courseDone && (
           <motion.div
-            initial={{ opacity: 0, y: -16 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
+            initial={{ opacity: 0, y: -16, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.98 }}
+            transition={springHover}
             className="gradient-border mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl p-4"
           >
             <div className="flex items-center gap-3">
-              <span className="text-2xl">🎉</span>
+              <motion.span
+                className="text-2xl"
+                animate={{ rotate: [0, -15, 15, -10, 10, 0], scale: [1, 1.2, 1] }}
+                transition={{ duration: 1, delay: 0.15 }}
+              >
+                🎉
+              </motion.span>
               <div>
                 <p className="text-sm font-semibold text-zinc-900">Learning path completed — outstanding work!</p>
                 <p className="text-xs text-zinc-600">Your badge for {course.title} is ready.</p>
               </div>
             </div>
-            <Link href="/app/badges/"><Button size="sm"><Sparkles className="h-3.5 w-3.5" />View badge</Button></Link>
+            <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
+              <Link href="/app/badges/">
+                <Button size="sm">
+                  <Sparkles className="h-3.5 w-3.5" />View badge
+                </Button>
+              </Link>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
 
       {/* Header row */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <motion.div
+        initial={{ opacity: 0, y: -6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25 }}
+        className="mb-4 flex flex-wrap items-center justify-between gap-3"
+      >
         <div className="min-w-0">
-          <Link href={`/app/course/?slug=${course.slug}`} className="focus-ring text-xs text-primary hover:text-primary">← {course.title}</Link>
+          <Link href={`/app/course/?slug=${course.slug}`} className="focus-ring group inline-flex items-center text-xs text-primary hover:text-primary">
+            <span className="mr-0.5 transition-transform duration-200 group-hover:-translate-x-0.5">←</span> {course.title}
+          </Link>
           <h1 className="mt-0.5 truncate text-xl font-bold md:text-2xl">{lesson.title}</h1>
         </div>
         <div className="flex items-center gap-2 text-xs text-zinc-600">
           <Tag><Clock className="h-3 w-3" />{formatMinutes(lesson.durationMin)} est.</Tag>
-          <Tag tone={completed ? "success" : "default"}>
-            {completed ? "Completed" : progress?.watchPct ? `${progress.watchPct}% ${lesson.format === "reading" ? "read" : "watched"}` : "Not started"}
-          </Tag>
-          <button
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={completed ? "done" : progress?.watchPct ? "partial" : "new"}
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ duration: 0.15 }}
+            >
+              <Tag tone={completed ? "success" : "default"}>
+                {completed ? "Completed" : progress?.watchPct ? `${progress.watchPct}% ${lesson.format === "reading" ? "read" : "watched"}` : "Not started"}
+              </Tag>
+            </motion.div>
+          </AnimatePresence>
+          <motion.button
             onClick={() => toggleSavedLesson(lesson.id)}
             aria-label={saved ? "Remove from saved" : "Save lesson"}
-            className="focus-ring rounded-lg border border-border bg-white p-1.5 text-zinc-600 transition hover:text-zinc-900"
+            whileHover={{ scale: 1.08 }}
+            whileTap={{ scale: 0.9 }}
+            className="focus-ring rounded-lg border border-border bg-white p-1.5 text-zinc-600 transition-colors hover:text-zinc-900"
           >
-            {saved ? <BookmarkCheck className="h-4 w-4 text-primary" /> : <Bookmark className="h-4 w-4" />}
-          </button>
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.span
+                key={saved ? "saved" : "unsaved"}
+                initial={{ opacity: 0, scale: 0.5, rotate: -20 }}
+                animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                exit={{ opacity: 0, scale: 0.5, rotate: 20 }}
+                transition={{ duration: 0.15 }}
+                className="flex"
+              >
+                {saved ? <BookmarkCheck className="h-4 w-4 text-primary" /> : <Bookmark className="h-4 w-4" />}
+              </motion.span>
+            </AnimatePresence>
+          </motion.button>
         </div>
-      </div>
+      </motion.div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_340px]">
         {/* Main column */}
@@ -339,17 +419,38 @@ function LearnView() {
                 className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3"
               >
                 <div className="flex items-center gap-2.5">
-                  <SkipForward className="h-4 w-4 text-primary" />
+                  <motion.span animate={{ x: [0, 3, 0] }} transition={{ duration: 0.9, repeat: Infinity, ease: "easeInOut" }}>
+                    <SkipForward className="h-4 w-4 text-primary" />
+                  </motion.span>
                   <span className="text-sm text-zinc-800">
                     Next: <span className="font-medium">{next.title}</span>
-                    <span className="ml-1.5 text-zinc-500">— starting in {autoAdvance}s</span>
+                    <span className="ml-1.5 text-zinc-500">
+                      — starting in{" "}
+                      <AnimatePresence mode="popLayout">
+                        <motion.span
+                          key={autoAdvance}
+                          initial={{ opacity: 0, y: -4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 4 }}
+                          transition={{ duration: 0.15 }}
+                          className="inline-block font-semibold text-primary"
+                        >
+                          {autoAdvance}
+                        </motion.span>
+                      </AnimatePresence>
+                      s
+                    </span>
                   </span>
                 </div>
                 <div className="flex gap-2">
-                  <Button size="sm" onClick={() => router.push(`/app/learn/?course=${course.slug}&lesson=${next.id}`)}>
-                    <SkipForward className="h-3.5 w-3.5" />Play now
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setAutoAdvance(null)}>Stay</Button>
+                  <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
+                    <Button size="sm" onClick={() => router.push(`/app/learn/?course=${course.slug}&lesson=${next.id}`)}>
+                      <SkipForward className="h-3.5 w-3.5" />Play now
+                    </Button>
+                  </motion.div>
+                  <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
+                    <Button size="sm" variant="ghost" onClick={() => setAutoAdvance(null)}>Stay</Button>
+                  </motion.div>
                 </div>
               </motion.div>
             )}
@@ -357,14 +458,24 @@ function LearnView() {
 
           {/* Action bar */}
           <Card className="flex flex-wrap items-center gap-4 py-4">
-            <Button onClick={onToggleComplete} variant={completed ? "secondary" : "primary"}>
-              <CheckCircle2 className="h-4 w-4" />
-              {completed ? "Completed ✓ (click to undo)" : "Mark as Complete"}
-            </Button>
-            <Button onClick={() => setQuizOpen(true)} variant="outline">
-              <GraduationCap className="h-4 w-4" />
-              Test yourself
-            </Button>
+            <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} transition={springHover}>
+              <Button onClick={onToggleComplete} variant={completed ? "secondary" : "primary"}>
+                <motion.span
+                  animate={completed ? { scale: [1, 1.3, 1] } : {}}
+                  transition={{ duration: 0.3 }}
+                  className="inline-flex"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                </motion.span>
+                {completed ? "Completed ✓ (click to undo)" : "Mark as Complete"}
+              </Button>
+            </motion.div>
+            <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} transition={springHover}>
+              <Button onClick={() => setQuizOpen(true)} variant="outline">
+                <GraduationCap className="h-4 w-4" />
+                Test yourself
+              </Button>
+            </motion.div>
             <div className="min-w-[160px] flex-1">
               <div className="mb-1 flex justify-between text-[11px] text-zinc-500">
                 <span>Course progress</span><span>{pct}%</span>
@@ -373,14 +484,18 @@ function LearnView() {
             </div>
             <div className="flex gap-2">
               {prev && (
-                <Link href={`/app/learn/?course=${course.slug}&lesson=${prev.id}`}>
-                  <Button variant="outline" size="sm"><ChevronLeft className="h-4 w-4" />Previous</Button>
-                </Link>
+                <motion.div whileHover={{ x: -2 }} transition={springHover}>
+                  <Link href={`/app/learn/?course=${course.slug}&lesson=${prev.id}`}>
+                    <Button variant="outline" size="sm"><ChevronLeft className="h-4 w-4" />Previous</Button>
+                  </Link>
+                </motion.div>
               )}
               {next && (
-                <Link href={`/app/learn/?course=${course.slug}&lesson=${next.id}`}>
-                  <Button variant="outline" size="sm">Next<ChevronRight className="h-4 w-4" /></Button>
-                </Link>
+                <motion.div whileHover={{ x: 2 }} transition={springHover}>
+                  <Link href={`/app/learn/?course=${course.slug}&lesson=${next.id}`}>
+                    <Button variant="outline" size="sm">Next<ChevronRight className="h-4 w-4" /></Button>
+                  </Link>
+                </motion.div>
               )}
             </div>
           </Card>
@@ -390,26 +505,31 @@ function LearnView() {
             <div className="flex gap-1 overflow-x-auto border-b border-zinc-200" role="tablist">
               {tabs.map((t) => {
                 const Icon = t.icon;
+                const active = tab === t.key;
                 return (
-                  <button
+                  <motion.button
                     key={t.key}
                     role="tab"
-                    aria-selected={tab === t.key}
+                    aria-selected={active}
                     onClick={() => setTab(t.key)}
+                    whileHover={{ y: active ? 0 : -1 }}
+                    whileTap={{ scale: 0.97 }}
                     className={cn(
-                      "focus-ring relative flex shrink-0 items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition",
-                      tab === t.key ? "text-primary" : "text-zinc-500 hover:text-zinc-700"
+                      "focus-ring relative flex shrink-0 items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors",
+                      active ? "text-primary" : "text-zinc-500 hover:text-zinc-700"
                     )}
                   >
-                    <Icon className="h-3.5 w-3.5" />{t.label}
-                    {tab === t.key && (
-                      <motion.span layoutId="tab-underline" className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-gradient-to-r from-primary to-accent" />
+                    <motion.span animate={{ scale: active ? 1.1 : 1 }} transition={springTab} className="inline-flex">
+                      <Icon className="h-3.5 w-3.5" />
+                    </motion.span>
+                    {t.label}
+                    {active && (
+                      <motion.span layoutId="tab-underline" transition={springTab} className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-gradient-to-r from-primary to-accent" />
                     )}
-                  </button>
+                  </motion.button>
                 );
               })}
             </div>
-
             <div className="pt-5">
               <AnimatePresence mode="wait">
                 <motion.div key={tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
@@ -420,9 +540,15 @@ function LearnView() {
                         <CardTitle className="mb-3">Key Takeaways</CardTitle>
                         <ul className="space-y-2">
                           {lesson.keyTakeaways.map((k, i) => (
-                            <li key={i} className="flex items-start gap-2.5 text-sm text-zinc-700">
+                            <motion.li
+                              key={i}
+                              initial={{ opacity: 0, x: -6 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ delay: i * 0.05, duration: 0.2 }}
+                              className="flex items-start gap-2.5 text-sm text-zinc-700"
+                            >
                               <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />{k}
-                            </li>
+                            </motion.li>
                           ))}
                         </ul>
                       </div>
@@ -431,17 +557,21 @@ function LearnView() {
                   {tab === "resources" && (
                     <div className="space-y-2.5">
                       {lesson.resources.map((r, i) => (
-                        <a
+                        <motion.a
                           key={i}
                           href={r.url}
-                          className="focus-ring group flex items-center gap-3 rounded-xl border border-zinc-100 bg-white/[0.03] p-3.5 transition hover:border-primary/40"
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: i * 0.05, duration: 0.2 }}
+                          whileHover={{ x: 3 }}
+                          className="focus-ring group flex items-center gap-3 rounded-xl border border-zinc-100 bg-white/[0.03] p-3.5 transition-colors hover:border-primary/40 hover:shadow-sm"
                         >
-                          <div className="rounded-lg bg-primary/10 p-2">
+                          <motion.div whileHover={{ scale: 1.1, rotate: -4 }} transition={springHover} className="rounded-lg bg-primary/10 p-2">
                             {r.type === "pdf" ? <FileDown className="h-4 w-4 text-primary" /> : <Link2 className="h-4 w-4 text-cyan-400" />}
-                          </div>
+                          </motion.div>
                           <span className="flex-1 text-sm text-zinc-800 group-hover:text-zinc-900">{r.label}</span>
                           <Tag tone={r.type === "pdf" ? "primary" : "accent"}>{r.type.toUpperCase()}</Tag>
-                        </a>
+                        </motion.a>
                       ))}
                       <p className="pt-1 text-[11px] text-zinc-600">Resource links are placeholders — admins can point them at real PDFs and docs.</p>
                     </div>
@@ -452,7 +582,7 @@ function LearnView() {
                         value={state.notes[lesson.id] ?? ""}
                         onChange={(e) => setNote(lesson.id, e.target.value)}
                         placeholder="Write your notes for this lesson… (auto-saved locally)"
-                        className="min-h-[160px]"
+                        className="min-h-[160px] transition-shadow duration-200 focus:shadow-md"
                         aria-label="Lesson notes"
                       />
                       <p className="text-[11px] text-zinc-600">Notes are saved automatically on this device.</p>
@@ -467,11 +597,19 @@ function LearnView() {
                   )}
                   {tab === "discussion" && (
                     <div className="space-y-4">
-                      {commentsError && (
-                        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                          {commentsError}
-                        </div>
-                      )}
+                      <AnimatePresence>
+                        {commentsError && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0 }}
+                            role="alert"
+                            className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+                          >
+                            {commentsError}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                       {commentsLoading ? (
                         <div className="space-y-3">
                           {[1, 2].map((i) => (
@@ -487,31 +625,43 @@ function LearnView() {
                       ) : comments.length === 0 ? (
                         <p className="py-4 text-center text-sm text-zinc-500">No comments yet — be the first to start the discussion.</p>
                       ) : (
-                        comments.map((c) => (
-                          <div key={c.id} className="flex gap-3 group">
-                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-secondary text-xs font-bold text-white">
-                              {c.user_name[0]}
-                            </div>
-                            <div className="flex-1 rounded-xl border border-zinc-100 bg-white/[0.03] p-3">
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="flex items-baseline gap-2">
-                                  <span className="text-xs font-medium text-zinc-800">{c.user_name}</span>
-                                  <span className="text-[11px] text-zinc-500">{relativeTime(c.created_at)}</span>
-                                </div>
-                                {(c.user_id === state.user?.id || state.user?.role === "admin") && (
-                                  <button
-                                    onClick={() => deleteComment(c.id)}
-                                    aria-label="Delete comment"
-                                    className="opacity-0 group-hover:opacity-100 focus-ring rounded p-0.5 text-zinc-400 transition hover:text-red-600"
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
-                                )}
+                        <AnimatePresence initial={false}>
+                          {comments.map((c) => (
+                            <motion.div
+                              key={c.id}
+                              layout
+                              initial={{ opacity: 0, y: 8 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, x: -12, height: 0, marginBottom: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="flex gap-3 group"
+                            >
+                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-secondary text-xs font-bold text-white">
+                                {c.user_name[0]}
                               </div>
-                              <p className="mt-1 text-sm leading-relaxed text-zinc-700">{c.body}</p>
-                            </div>
-                          </div>
-                        ))
+                              <div className="flex-1 rounded-xl border border-zinc-100 bg-white/[0.03] p-3 transition-shadow duration-200 group-hover:shadow-sm">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex items-baseline gap-2">
+                                    <span className="text-xs font-medium text-zinc-800">{c.user_name}</span>
+                                    <span className="text-[11px] text-zinc-500">{relativeTime(c.created_at)}</span>
+                                  </div>
+                                  {(c.user_id === state.user?.id || state.user?.role === "admin") && (
+                                    <motion.button
+                                      onClick={() => deleteComment(c.id)}
+                                      aria-label="Delete comment"
+                                      whileHover={{ scale: 1.15 }}
+                                      whileTap={{ scale: 0.9 }}
+                                      className="opacity-0 group-hover:opacity-100 focus-ring rounded p-0.5 text-zinc-400 transition-colors hover:text-red-600"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </motion.button>
+                                  )}
+                                </div>
+                                <p className="mt-1 text-sm leading-relaxed text-zinc-700">{c.body}</p>
+                              </div>
+                            </motion.div>
+                          ))}
+                        </AnimatePresence>
                       )}
                       <form onSubmit={postComment} className="flex gap-2">
                         <Textarea
@@ -521,9 +671,11 @@ function LearnView() {
                           className="min-h-[44px] flex-1"
                           aria-label="New comment"
                         />
-                        <Button type="submit" size="md" className="self-end" disabled={submitting || !newComment.trim()}>
-                          {submitting ? "Posting…" : "Post"}
-                        </Button>
+                        <motion.div whileHover={{ scale: submitting || !newComment.trim() ? 1 : 1.04 }} whileTap={{ scale: submitting || !newComment.trim() ? 1 : 0.96 }} className="self-end">
+                          <Button type="submit" size="md" disabled={submitting || !newComment.trim()}>
+                            {submitting ? "Posting…" : "Post"}
+                          </Button>
+                        </motion.div>
                       </form>
                     </div>
                   )}
@@ -546,27 +698,49 @@ function LearnView() {
                 const p = state.progress[l.id];
                 const current = l.id === lesson.id;
                 return (
-                  <Link
+                  <motion.div
                     key={l.id}
-                    href={`/app/learn/?course=${course.slug}&lesson=${l.id}`}
-                    aria-current={current ? "true" : undefined}
-                    className={cn(
-                      "focus-ring group flex items-center gap-2.5 rounded-xl p-2.5 text-sm transition",
-                      current ? "bg-primary/10 text-primary" : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-800"
-                    )}
+                    initial={{ opacity: 0, x: -6 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: Math.min(i, 10) * 0.02, duration: 0.2 }}
+                    whileHover={{ x: current ? 0 : 2 }}
                   >
-                    {p?.completed ? (
-                      <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-                    ) : current ? (
-                      <PlayCircle className="h-4 w-4 shrink-0 text-primary" />
-                    ) : (
-                      <Circle className="h-4 w-4 shrink-0 text-zinc-700" />
-                    )}
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] font-medium">{i + 1}. {l.title}</span>
-                      <span className="block text-[11px] text-zinc-600">{formatMinutes(l.durationMin)}{current ? " · Now playing" : ""}</span>
-                    </span>
-                  </Link>
+                    <Link
+                      href={`/app/learn/?course=${course.slug}&lesson=${l.id}`}
+                      aria-current={current ? "true" : undefined}
+                      className={cn(
+                        "focus-ring group relative flex items-center gap-2.5 overflow-hidden rounded-xl p-2.5 text-sm transition-colors",
+                        current ? "text-primary" : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-800"
+                      )}
+                    >
+                      {current && (
+                        <motion.span
+                          layoutId="lesson-active-bg"
+                          transition={springTab}
+                          className="absolute inset-0 rounded-xl bg-primary/10"
+                        />
+                      )}
+                      <motion.span
+                        className="relative z-10 flex shrink-0"
+                        animate={p?.completed ? { scale: [0.6, 1.2, 1] } : {}}
+                        transition={{ duration: 0.3 }}
+                      >
+                        {p?.completed ? (
+                          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                        ) : current ? (
+                          <motion.span animate={{ scale: [1, 1.15, 1] }} transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}>
+                            <PlayCircle className="h-4 w-4 text-primary" />
+                          </motion.span>
+                        ) : (
+                          <Circle className="h-4 w-4 text-zinc-700" />
+                        )}
+                      </motion.span>
+                      <span className="relative z-10 min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-medium">{i + 1}. {l.title}</span>
+                        <span className="block text-[11px] text-zinc-600">{formatMinutes(l.durationMin)}{current ? " · Now playing" : ""}</span>
+                      </span>
+                    </Link>
+                  </motion.div>
                 );
               })}
             </div>

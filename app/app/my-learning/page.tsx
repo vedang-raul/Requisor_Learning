@@ -1,9 +1,11 @@
 "use client";
-
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Bookmark, CheckCircle2, Clock, History, MonitorPlay, PlayCircle, Trophy } from "lucide-react";
+import {
+  ArrowRight, Bookmark, BookmarkCheck, Calendar, CheckCircle2, Clock, History,
+  MonitorPlay, PlayCircle, Sparkles, Trophy,
+} from "lucide-react";
 import { useStore, useContinueWatching, useEarnedBadges } from "@/lib/store";
 import { Card } from "@/components/ui/card";
 import { CourseCard } from "@/components/course-card";
@@ -20,6 +22,9 @@ const tabDefs: { key: TabKey; label: string; icon: typeof PlayCircle }[] = [
   { key: "completed", label: "Completed", icon: CheckCircle2 },
   { key: "history", label: "Learning History", icon: History },
 ];
+
+const springHover = { type: "spring" as const, stiffness: 320, damping: 22 };
+const springTab = { type: "spring" as const, stiffness: 500, damping: 35 };
 
 export default function MyLearningPage() {
   const { state } = useStore();
@@ -50,34 +55,54 @@ export default function MyLearningPage() {
   return (
     <PageTransition className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
+        <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25 }}>
           <h1 className="text-2xl font-bold md:text-3xl">My <span className="text-gradient">Learning</span></h1>
           <p className="mt-1 text-sm text-zinc-600">Everything you&apos;re watching, saving and finishing — in one place.</p>
-        </div>
-        {badges.length > 0 && (
-          <Link href="/app/badges/" className="focus-ring flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-700 transition hover:bg-amber-500/20">
-            <Trophy className="h-4 w-4" />{badges.length} badge{badges.length > 1 ? "s" : ""} earned
-          </Link>
-        )}
+        </motion.div>
+        <AnimatePresence>
+          {badges.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              whileHover={{ y: -2, scale: 1.02 }}
+              whileTap={{ scale: 0.97 }}
+              transition={springHover}
+            >
+              <Link href="/app/badges/" className="focus-ring group flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-500/20">
+                <motion.span animate={{ rotate: [0, -10, 10, -6, 0] }} transition={{ duration: 1.4, repeat: Infinity, repeatDelay: 2.5 }}>
+                  <Trophy className="h-4 w-4" />
+                </motion.span>
+                {badges.length} badge{badges.length > 1 ? "s" : ""} earned
+                <Sparkles className="h-3.5 w-3.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+              </Link>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       <div className="flex gap-1 overflow-x-auto border-b border-zinc-200" role="tablist">
         {tabDefs.map((t) => {
           const Icon = t.icon;
+          const active = tab === t.key;
           return (
-            <button
+            <motion.button
               key={t.key}
               role="tab"
-              aria-selected={tab === t.key}
+              aria-selected={active}
               onClick={() => setTab(t.key)}
+              whileHover={{ y: active ? 0 : -1 }}
+              whileTap={{ scale: 0.97 }}
               className={cn(
-                "focus-ring relative flex shrink-0 items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition",
-                tab === t.key ? "text-primary" : "text-zinc-500 hover:text-zinc-700"
+                "focus-ring relative flex shrink-0 items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors",
+                active ? "text-primary" : "text-zinc-500 hover:text-zinc-700"
               )}
             >
-              <Icon className="h-3.5 w-3.5" />{t.label}
-              {tab === t.key && <motion.span layoutId="ml-underline" className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-gradient-to-r from-primary to-accent" />}
-            </button>
+              <motion.span animate={{ scale: active ? 1.1 : 1 }} transition={springTab} className="inline-flex">
+                <Icon className="h-3.5 w-3.5" />
+              </motion.span>
+              {t.label}
+              {active && <motion.span layoutId="ml-underline" transition={springTab} className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-gradient-to-r from-primary to-accent" />}
+            </motion.button>
           );
         })}
       </div>
@@ -93,16 +118,37 @@ export default function MyLearningPage() {
                   {watching.length > 0 && (
                     <div className="space-y-2.5">
                       <h2 className="text-sm font-semibold text-zinc-700">Recently watched</h2>
-                      {watching.slice(0, 6).map(({ course, lesson, progress, at }) => (
-                        <Link key={lesson.id} href={`/app/learn/?course=${course.slug}&lesson=${lesson.id}`} className="focus-ring group flex items-center gap-4 rounded-2xl border border-zinc-100 bg-card/70 p-4 transition hover:border-primary/40">
-                          <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${course.cover}`}><PlayCircle className="h-5 w-5 text-white" /></div>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium text-zinc-900">{lesson.title}</p>
-                            <p className="text-xs text-zinc-500">{course.title} · {new Date(at).toLocaleDateString()}</p>
-                            <ProgressBar value={progress?.completed ? 100 : progress?.watchPct ?? 0} className="mt-2" />
-                          </div>
-                          <Tag><Clock className="h-3 w-3" />{formatMinutes(lesson.durationMin)}</Tag>
-                        </Link>
+                      {watching.slice(0, 6).map(({ course, lesson, progress, at }, i) => (
+                        <motion.div
+                          key={lesson.id}
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: i * 0.05, duration: 0.2 }}
+                          whileHover={{ x: 3 }}
+                        >
+                          <Link
+                            href={`/app/learn/?course=${course.slug}&lesson=${lesson.id}`}
+                            className="focus-ring group flex items-center gap-4 rounded-2xl border border-zinc-100 bg-card/70 p-4 transition-colors hover:border-primary/40 hover:shadow-sm"
+                          >
+                            <motion.div
+                              whileHover={{ scale: 1.08 }}
+                              transition={springHover}
+                              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br shadow-sm ${course.cover}`}
+                            >
+                              <PlayCircle className="h-5 w-5 text-white" />
+                            </motion.div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium text-zinc-900">{lesson.title}</p>
+                              <p className="flex items-center gap-1 text-xs text-zinc-500">
+                                {course.title} <span className="text-zinc-300">·</span>
+                                <Calendar className="h-3 w-3" />{new Date(at).toLocaleDateString()}
+                              </p>
+                              <ProgressBar value={progress?.completed ? 100 : progress?.watchPct ?? 0} className="mt-2" />
+                            </div>
+                            <Tag><Clock className="h-3 w-3" />{formatMinutes(lesson.durationMin)}</Tag>
+                            <ArrowRight className="h-4 w-4 shrink-0 text-zinc-400 transition-transform duration-200 group-hover:translate-x-1 group-hover:text-primary" />
+                          </Link>
+                        </motion.div>
                       ))}
                     </div>
                   )}
@@ -110,7 +156,17 @@ export default function MyLearningPage() {
                     <div>
                       <h2 className="mb-3 text-sm font-semibold text-zinc-700">Courses in progress</h2>
                       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-                        {inProgressCourses.map((c) => <CourseCard key={c.slug} course={c} />)}
+                        {inProgressCourses.map((c, i) => (
+                          <motion.div
+                            key={c.slug}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: i * 0.06 }}
+                            whileHover={{ y: -4 }}
+                          >
+                            <CourseCard course={c} />
+                          </motion.div>
+                        ))}
                       </div>
                     </div>
                   )}
@@ -129,19 +185,43 @@ export default function MyLearningPage() {
                     <div>
                       <h2 className="mb-3 text-sm font-semibold text-zinc-700">Bookmarked courses</h2>
                       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-                        {bookmarkedCourses.map((c) => <CourseCard key={c.slug} course={c} />)}
+                        {bookmarkedCourses.map((c, i) => (
+                          <motion.div
+                            key={c.slug}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: i * 0.06 }}
+                            whileHover={{ y: -4 }}
+                          >
+                            <CourseCard course={c} />
+                          </motion.div>
+                        ))}
                       </div>
                     </div>
                   )}
                   {savedLessons.length > 0 && (
                     <div className="space-y-2.5">
                       <h2 className="text-sm font-semibold text-zinc-700">Saved lessons</h2>
-                      {savedLessons.map(({ course, lesson }) => (
-                        <Link key={lesson.id} href={`/app/learn/?course=${course.slug}&lesson=${lesson.id}`} className="focus-ring group flex items-center gap-3 rounded-xl border border-zinc-100 bg-card/70 p-3.5 transition hover:border-primary/40">
-                          <Bookmark className="h-4 w-4 shrink-0 text-primary" />
-                          <span className="min-w-0 flex-1 truncate text-sm text-zinc-800">{lesson.title}</span>
-                          <span className="text-xs text-zinc-500">{course.title}</span>
-                        </Link>
+                      {savedLessons.map(({ course, lesson }, i) => (
+                        <motion.div
+                          key={lesson.id}
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: i * 0.04, duration: 0.2 }}
+                          whileHover={{ x: 3 }}
+                        >
+                          <Link
+                            href={`/app/learn/?course=${course.slug}&lesson=${lesson.id}`}
+                            className="focus-ring group flex items-center gap-3 rounded-xl border border-zinc-100 bg-card/70 p-3.5 transition-colors hover:border-primary/40 hover:shadow-sm"
+                          >
+                            <motion.span whileHover={{ scale: 1.15, rotate: -6 }} transition={springHover}>
+                              <BookmarkCheck className="h-4 w-4 shrink-0 text-primary" />
+                            </motion.span>
+                            <span className="min-w-0 flex-1 truncate text-sm text-zinc-800">{lesson.title}</span>
+                            <span className="text-xs text-zinc-500">{course.title}</span>
+                            <ArrowRight className="h-3.5 w-3.5 shrink-0 text-zinc-400 transition-transform duration-200 group-hover:translate-x-1 group-hover:text-primary" />
+                          </Link>
+                        </motion.div>
                       ))}
                     </div>
                   )}
@@ -155,7 +235,17 @@ export default function MyLearningPage() {
               <EmptyState icon={CheckCircle2} title="No completed courses yet" sub="Finish every lesson in a path to complete it and earn your badge." cta="Continue learning" href="/app/paths/" />
             ) : (
               <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-                {completedCourses.map((c) => <CourseCard key={c.slug} course={c} />)}
+                {completedCourses.map((c, i) => (
+                  <motion.div
+                    key={c.slug}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.06 }}
+                    whileHover={{ y: -4 }}
+                  >
+                    <CourseCard course={c} />
+                  </motion.div>
+                ))}
               </div>
             )
           )}
@@ -170,12 +260,26 @@ export default function MyLearningPage() {
                   const lesson = course?.lessons.find((l) => l.id === h.lessonId);
                   if (!course || !lesson) return null;
                   return (
-                    <Link key={i} href={`/app/learn/?course=${course.slug}&lesson=${lesson.id}`} className="focus-ring flex items-center gap-3 rounded-xl border border-zinc-100 bg-card/60 px-4 py-3 text-sm transition hover:border-primary/40">
-                      <History className="h-4 w-4 shrink-0 text-zinc-600" />
-                      <span className="min-w-0 flex-1 truncate text-zinc-800">{lesson.title}</span>
-                      <span className="hidden text-xs text-zinc-500 sm:block">{course.title}</span>
-                      <span className="shrink-0 text-[11px] text-zinc-600">{new Date(h.at).toLocaleString()}</span>
-                    </Link>
+                    <motion.div
+                      key={i}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: Math.min(i, 12) * 0.03, duration: 0.18 }}
+                      whileHover={{ x: 3 }}
+                    >
+                      <Link
+                        href={`/app/learn/?course=${course.slug}&lesson=${lesson.id}`}
+                        className="focus-ring group flex items-center gap-3 rounded-xl border border-zinc-100 bg-card/60 px-4 py-3 text-sm transition-colors hover:border-primary/40 hover:shadow-sm"
+                      >
+                        <History className="h-4 w-4 shrink-0 text-zinc-600" />
+                        <span className="min-w-0 flex-1 truncate text-zinc-800">{lesson.title}</span>
+                        <span className="hidden text-xs text-zinc-500 sm:block">{course.title}</span>
+                        <span className="flex shrink-0 items-center gap-1 text-[11px] text-zinc-600">
+                          <Calendar className="h-3 w-3" />{new Date(h.at).toLocaleString()}
+                        </span>
+                        <ArrowRight className="h-3.5 w-3.5 shrink-0 text-zinc-400 transition-transform duration-200 group-hover:translate-x-1 group-hover:text-primary" />
+                      </Link>
+                    </motion.div>
                   );
                 })}
               </div>
@@ -189,11 +293,30 @@ export default function MyLearningPage() {
 
 function EmptyState({ icon: Icon, title, sub, cta, href }: { icon: typeof PlayCircle; title: string; sub: string; cta: string; href: string }) {
   return (
-    <div className="glass-card flex flex-col items-center gap-3 py-14 text-center">
-      <div className="rounded-2xl bg-primary/10 p-4"><Icon className="h-8 w-8 text-primary" /></div>
+    <motion.div
+      initial={{ opacity: 0, scale: 0.97 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.25 }}
+      className="glass-card flex flex-col items-center gap-3 py-14 text-center"
+    >
+      <motion.div
+        className="rounded-2xl bg-primary/10 p-4"
+        animate={{ scale: [1, 1.06, 1] }}
+        transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+      >
+        <Icon className="h-8 w-8 text-primary" />
+      </motion.div>
       <p className="text-sm font-medium text-zinc-800">{title}</p>
       <p className="max-w-xs text-xs leading-relaxed text-zinc-500">{sub}</p>
-      <Link href={href} className="focus-ring mt-1 rounded-xl bg-gradient-to-r from-primary to-secondary px-4 py-2 text-sm font-medium text-white shadow-glow-sm transition hover:shadow-glow">{cta}</Link>
-    </div>
+      <motion.div whileHover={{ y: -2, scale: 1.03 }} whileTap={{ scale: 0.97 }} transition={springHover}>
+        <Link
+          href={href}
+          className="focus-ring group mt-1 flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-primary to-secondary px-4 py-2 text-sm font-medium text-white shadow-glow-sm transition-shadow hover:shadow-glow"
+        >
+          {cta}
+          <ArrowRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-1" />
+        </Link>
+      </motion.div>
+    </motion.div>
   );
 }
