@@ -23,7 +23,8 @@ p.query(\`
     ADD COLUMN IF NOT EXISTS gender VARCHAR(20),
     ADD COLUMN IF NOT EXISTS qualification TEXT,
     ADD COLUMN IF NOT EXISTS learning_goal TEXT,
-    ADD COLUMN IF NOT EXISTS onboarding_done BOOLEAN DEFAULT FALSE;
+    ADD COLUMN IF NOT EXISTS onboarding_done BOOLEAN DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS notification_settings JSONB DEFAULT '{"courses":true,"assignments":true,"badges":true,"announcements":true}';
 
   CREATE TABLE IF NOT EXISTS lesson_completions (
     id SERIAL PRIMARY KEY,

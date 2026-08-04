@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Bell, Pencil, User, X, Check, Loader2 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useStore } from "@/lib/store";
@@ -320,10 +320,50 @@ function ProfileCard() {
   );
 }
 
+/* ─── Types ──────────────────────────────────────────────────────────────── */
+interface NotifSettings {
+  courses: boolean;
+  assignments: boolean;
+  badges: boolean;
+  announcements: boolean;
+}
+
+const DEFAULT_NOTIF: NotifSettings = { courses: true, assignments: true, badges: true, announcements: true };
+
 /* ─── Page ───────────────────────────────────────────────────────────────── */
 export default function SettingsPage() {
   useStore();
-  const [notif, setNotif] = useState({ courses: true, assignments: true, badges: true, announcements: true });
+  const [notif, setNotif] = useState<NotifSettings>(DEFAULT_NOTIF);
+  const [notifLoaded, setNotifLoaded] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Load saved notification settings on mount
+  useEffect(() => {
+    fetch("/api/me")
+      .then((r) => r.json())
+      .then((data: { notificationSettings?: NotifSettings }) => {
+        if (data.notificationSettings) setNotif(data.notificationSettings);
+        setNotifLoaded(true);
+      })
+      .catch(() => setNotifLoaded(true));
+  }, []);
+
+  function handleToggle(key: keyof NotifSettings, value: boolean) {
+    const updated = { ...notif, [key]: value };
+    setNotif(updated);
+
+    // Debounce the PATCH call by 500 ms
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      fetch("/api/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notificationSettings: updated }),
+      }).catch(() => {
+        // silent — settings will be re-loaded on next mount
+      });
+    }, 500);
+  }
 
   return (
     <PageTransition className="mx-auto max-w-3xl space-y-6">
@@ -336,19 +376,25 @@ export default function SettingsPage() {
 
       <Card>
         <div className="mb-4 flex items-center gap-2"><Bell className="h-4 w-4 text-primary" /><CardTitle>Notifications</CardTitle></div>
-        <div className="space-y-2.5">
-          {([
-            ["courses", "New courses & lessons"],
-            ["assignments", "Assignment reminders"],
-            ["badges", "Badge available"],
-            ["announcements", "Announcements"],
-          ] as const).map(([key, label]) => (
-            <div key={key} className="flex items-center justify-between rounded-xl border border-zinc-100 bg-white/[0.03] p-3.5">
-              <span className="text-sm text-zinc-800">{label}</span>
-              <Toggle on={notif[key]} onChange={(v) => setNotif((n) => ({ ...n, [key]: v }))} label={label} />
-            </div>
-          ))}
-        </div>
+        {!notifLoaded ? (
+          <div className="flex items-center gap-2 py-2 text-sm text-zinc-400">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {([
+              ["courses", "New courses & lessons"],
+              ["assignments", "Assignment reminders"],
+              ["badges", "Badge available"],
+              ["announcements", "Announcements"],
+            ] as const).map(([key, label]) => (
+              <div key={key} className="flex items-center justify-between rounded-xl border border-zinc-100 bg-white/[0.03] p-3.5">
+                <span className="text-sm text-zinc-800">{label}</span>
+                <Toggle on={notif[key]} onChange={(v) => handleToggle(key, v)} label={label} />
+              </div>
+            ))}
+          </div>
+        )}
       </Card>
 
     </PageTransition>

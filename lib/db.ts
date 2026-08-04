@@ -34,6 +34,12 @@ export interface DbUser {
   qualification: string | null;
   learning_goal: string | null;
   onboarding_done: boolean;
+  notification_settings: {
+    courses: boolean;
+    assignments: boolean;
+    badges: boolean;
+    announcements: boolean;
+  } | null;
 }
 
 export const ADMIN_EMAIL = "support@requisor.io";

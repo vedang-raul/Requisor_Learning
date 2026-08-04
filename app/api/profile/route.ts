@@ -41,13 +41,29 @@ export async function PATCH(req: Request) {
     qualification?: string;
     learningGoal?: string;
     onboardingDone?: boolean;
+    notificationSettings?: {
+      courses: boolean;
+      assignments: boolean;
+      badges: boolean;
+      announcements: boolean;
+    };
   };
 
-  // Name is only required when it's being explicitly updated (not during onboarding-only saves)
+  // Name is only required when it's being explicitly updated (not during onboarding-only or notif-only saves)
   const isOnboardingOnly = body.onboardingDone === true && !body.name;
-  if (!isOnboardingOnly) {
+  const isNotifOnly = body.notificationSettings !== undefined && !body.name && !body.onboardingDone;
+  if (!isOnboardingOnly && !isNotifOnly) {
     const name = body.name?.trim();
     if (!name) return NextResponse.json({ error: "Name is required." }, { status: 400 });
+  }
+
+  // Notifications-only fast path
+  if (isNotifOnly) {
+    await db.query(
+      `UPDATE users SET notification_settings = $1 WHERE email = $2`,
+      [JSON.stringify(body.notificationSettings), session.user.email.toLowerCase()]
+    );
+    return NextResponse.json({ notificationSettings: body.notificationSettings });
   }
 
   // DOB must be a valid past date if provided
@@ -58,6 +74,8 @@ export async function PATCH(req: Request) {
     }
   }
 
+  const defaultNotif = { courses: true, assignments: true, badges: true, announcements: true };
+
   if (isOnboardingOnly) {
     // Onboarding-only: update qualification, learning_goal, date_of_birth, onboarding_done without touching name
     const { rows } = await db.query<DbUser>(
@@ -65,13 +83,15 @@ export async function PATCH(req: Request) {
        SET qualification = COALESCE($1, qualification),
            learning_goal = COALESCE($2, learning_goal),
            date_of_birth = COALESCE($3, date_of_birth),
-           onboarding_done = TRUE
-       WHERE email = $4
-       RETURNING name, email, role, employment_type, position, date_of_birth, gender, qualification, learning_goal, onboarding_done`,
+           onboarding_done = TRUE,
+           notification_settings = COALESCE($4, notification_settings)
+       WHERE email = $5
+       RETURNING name, email, role, employment_type, position, date_of_birth, gender, qualification, learning_goal, onboarding_done, notification_settings`,
       [
         body.qualification?.trim() || null,
         body.learningGoal?.trim() || null,
         body.dateOfBirth || null,
+        body.notificationSettings ? JSON.stringify(body.notificationSettings) : null,
         session.user.email.toLowerCase(),
       ]
     );
@@ -88,6 +108,7 @@ export async function PATCH(req: Request) {
       qualification: r.qualification ?? "",
       learningGoal: r.learning_goal ?? "",
       onboardingDone: r.onboarding_done ?? false,
+      notificationSettings: r.notification_settings ?? defaultNotif,
     });
   }
 
@@ -100,9 +121,10 @@ export async function PATCH(req: Request) {
          gender = $5,
          qualification = $6,
          learning_goal = $7,
-         onboarding_done = COALESCE($8, onboarding_done)
-     WHERE email = $9
-     RETURNING name, email, role, employment_type, position, date_of_birth, gender, qualification, learning_goal, onboarding_done`,
+         onboarding_done = COALESCE($8, onboarding_done),
+         notification_settings = COALESCE($9, notification_settings)
+     WHERE email = $10
+     RETURNING name, email, role, employment_type, position, date_of_birth, gender, qualification, learning_goal, onboarding_done, notification_settings`,
     [
       body.name!.trim(),
       body.employmentType?.trim() || null,
@@ -112,6 +134,7 @@ export async function PATCH(req: Request) {
       body.qualification?.trim() || null,
       body.learningGoal?.trim() || null,
       body.onboardingDone ?? null,
+      body.notificationSettings ? JSON.stringify(body.notificationSettings) : null,
       session.user.email.toLowerCase(),
     ]
   );
@@ -130,5 +153,6 @@ export async function PATCH(req: Request) {
     qualification: r.qualification ?? "",
     learningGoal: r.learning_goal ?? "",
     onboardingDone: r.onboarding_done ?? false,
+    notificationSettings: r.notification_settings ?? defaultNotif,
   });
 }
