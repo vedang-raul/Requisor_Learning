@@ -18,6 +18,8 @@ interface ProfileData {
   position: string;
   dateOfBirth: string;
   gender: string;
+  qualification: string;
+  learningGoal: string;
 }
 
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
@@ -74,10 +76,10 @@ function FieldRow({ label, value }: { label: string; value: string }) {
 }
 
 function InputField({
-  label, value, onChange, type = "text", required, hint,
+  label, value, onChange, type = "text", required, hint, placeholder,
 }: {
   label: string; value: string; onChange: (v: string) => void;
-  type?: string; required?: boolean; hint?: string;
+  type?: string; required?: boolean; hint?: string; placeholder?: string;
 }) {
   return (
     <div className="flex flex-col gap-1">
@@ -87,6 +89,7 @@ function InputField({
       <input
         type={type}
         value={value}
+        placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
         max={type === "date" ? new Date().toISOString().slice(0, 10) : undefined}
         className="focus-ring rounded-xl border border-zinc-200 bg-white px-3.5 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 transition hover:border-zinc-300"
@@ -169,6 +172,8 @@ function ProfileCard() {
           position: form.position.trim(),
           dateOfBirth: form.dateOfBirth,
           gender: form.gender,
+          qualification: form.qualification,
+          learningGoal: form.learningGoal,
         }),
       });
       if (!res.ok) {
@@ -252,6 +257,17 @@ function ProfileCard() {
               hint="Optional — used for internal HR records only."
               onChange={(v) => setForm((f) => f ? { ...f, dateOfBirth: v } : f)}
             />
+            <InputField
+              label="Qualification / Background" value={form.qualification}
+              placeholder="e.g. Software Engineer, Doctor, MBA…"
+              onChange={(v) => setForm((f) => f ? { ...f, qualification: v } : f)}
+            />
+            <InputField
+              label="Why are you here?" value={form.learningGoal}
+              placeholder="e.g. Upskill for promotion, understand AI tools…"
+              hint="Used to personalise quizzes and assignments."
+              onChange={(v) => setForm((f) => f ? { ...f, learningGoal: v } : f)}
+            />
           </div>
 
           {error && (
@@ -290,6 +306,8 @@ function ProfileCard() {
               { label: "Position", value: profile?.position ?? "" },
               { label: "Gender", value: displayGender(profile?.gender ?? "") },
               { label: "Date of birth", value: formatDOB(profile?.dateOfBirth ?? "") },
+              { label: "Qualification", value: profile?.qualification ?? "" },
+              { label: "Learning goal", value: profile?.learningGoal ?? "" },
             ].map(({ label, value }) => (
               <div key={label} className="px-4 py-3">
                 <FieldRow label={label} value={value} />

@@ -31,6 +31,9 @@ export interface DbUser {
   position: string | null;
   date_of_birth: Date | null;
   gender: string | null;
+  qualification: string | null;
+  learning_goal: string | null;
+  onboarding_done: boolean;
 }
 
 export const ADMIN_EMAIL = "support@requisor.io";

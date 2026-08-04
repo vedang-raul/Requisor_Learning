@@ -21,6 +21,54 @@ import { Confetti } from "@/components/confetti";
 import { PageTransition } from "@/components/motion";
 import { LessonQuiz } from "@/components/lesson-quiz";
 
+/* ─── Personalised Assignment ─────────────────────────────────────────────── */
+function PersonalisedAssignment({ lesson }: { lesson: import("@/lib/types").Lesson }) {
+  const [text, setText] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [fetched, setFetched] = useState(false);
+
+  useEffect(() => {
+    if (fetched) return;
+    setFetched(true);
+    setLoading(true);
+    fetch("/api/assignment", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        lessonTitle: lesson.title,
+        description: lesson.description,
+        keyTakeaways: lesson.keyTakeaways,
+        assignment: lesson.assignment,
+      }),
+    })
+      .then((r) => r.json() as Promise<{ assignment?: string }>)
+      .then((data) => setText(data.assignment ?? lesson.assignment ?? null))
+      .catch(() => setText(lesson.assignment ?? null))
+      .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lesson.id]);
+
+  return (
+    <div className="gradient-border rounded-2xl p-5">
+      <div className="flex items-start gap-3">
+        <div className="rounded-xl bg-amber-500/10 p-2.5"><ListChecks className="h-5 w-5 text-amber-600" /></div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-zinc-900">Assignment</p>
+          {loading ? (
+            <div className="mt-2 flex items-center gap-2 text-xs text-zinc-500">
+              <Sparkles className="h-3.5 w-3.5 animate-pulse text-primary" />
+              Personalising for you…
+            </div>
+          ) : (
+            <p className="mt-1.5 text-sm leading-relaxed text-zinc-700">{text}</p>
+          )}
+          <p className="mt-3 text-xs text-zinc-500">Submit via your onboarding buddy or the #learning Slack channel.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type TabKey = "description" | "resources" | "notes" | "assignment" | "discussion";
 
 const tabs: { key: TabKey; label: string; icon: typeof FileText }[] = [
@@ -413,16 +461,7 @@ function LearnView() {
                   )}
                   {tab === "assignment" && (
                     lesson.assignment ? (
-                      <div className="gradient-border rounded-2xl p-5">
-                        <div className="flex items-start gap-3">
-                          <div className="rounded-xl bg-amber-500/10 p-2.5"><ListChecks className="h-5 w-5 text-amber-600" /></div>
-                          <div>
-                            <p className="text-sm font-semibold text-zinc-900">Assignment</p>
-                            <p className="mt-1.5 text-sm leading-relaxed text-zinc-700">{lesson.assignment}</p>
-                            <p className="mt-3 text-xs text-zinc-500">Submit via your onboarding buddy or the #learning Slack channel.</p>
-                          </div>
-                        </div>
-                      </div>
+                      <PersonalisedAssignment lesson={lesson} />
                     ) : (
                       <p className="py-6 text-center text-sm text-zinc-500">No assignment for this lesson — enjoy the video and move on. 🎬</p>
                     )

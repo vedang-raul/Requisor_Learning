@@ -14,6 +14,7 @@ interface QuizQuestion {
   explanation: string;
 }
 
+
 export function LessonQuiz({ lesson, onClose }: { lesson: Lesson; onClose: () => void }) {
   const [questions, setQuestions] = useState<QuizQuestion[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -31,7 +32,11 @@ export function LessonQuiz({ lesson, onClose }: { lesson: Lesson; onClose: () =>
       const res = await fetch("/api/quiz", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lessonTitle: lesson.title, description: lesson.description, keyTakeaways: lesson.keyTakeaways }),
+        body: JSON.stringify({
+          lessonTitle: lesson.title,
+          description: lesson.description,
+          keyTakeaways: lesson.keyTakeaways,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to generate quiz.");
@@ -83,7 +88,7 @@ export function LessonQuiz({ lesson, onClose }: { lesson: Lesson; onClose: () =>
           {loading && (
             <div className="flex flex-col items-center gap-3 py-10 text-sm text-zinc-500">
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
-              Generating a quick quiz…
+              Generating a personalised quiz…
             </div>
           )}
 

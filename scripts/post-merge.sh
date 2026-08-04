@@ -20,7 +20,10 @@ p.query(\`
     ADD COLUMN IF NOT EXISTS streak_count INT DEFAULT 0,
     ADD COLUMN IF NOT EXISTS streak_last_day DATE,
     ADD COLUMN IF NOT EXISTS date_of_birth DATE,
-    ADD COLUMN IF NOT EXISTS gender VARCHAR(20);
+    ADD COLUMN IF NOT EXISTS gender VARCHAR(20),
+    ADD COLUMN IF NOT EXISTS qualification TEXT,
+    ADD COLUMN IF NOT EXISTS learning_goal TEXT,
+    ADD COLUMN IF NOT EXISTS onboarding_done BOOLEAN DEFAULT FALSE;
 
   CREATE TABLE IF NOT EXISTS lesson_completions (
     id SERIAL PRIMARY KEY,

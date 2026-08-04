@@ -1,11 +1,24 @@
 export const runtime = "nodejs";
 
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
+import { db, type DbUser } from "@/lib/db";
+
 const BASE_URL = "https://api.x.ai/v1";
 const MODEL = process.env.XAI_MODEL || "grok-3-mini";
 
 function extractJson(text: string): string {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   return (fenced ? fenced[1] : text).trim();
+}
+
+function buildPersonaLine(qualification: string | null, learningGoal: string | null, ageYears: number | null): string {
+  const parts: string[] = [];
+  if (qualification) parts.push(`background: ${qualification}`);
+  if (ageYears) parts.push(`age: ${ageYears} years old`);
+  if (learningGoal) parts.push(`learning goal: ${learningGoal}`);
+  if (!parts.length) return "";
+  return `The learner has the following profile — ${parts.join(", ")}. Tailor the difficulty, vocabulary, and real-world examples of your questions to match this profile. For example, use domain-specific analogies familiar to their background, and adjust complexity to their likely experience level.`;
 }
 
 export async function POST(req: Request) {
@@ -29,7 +42,24 @@ export async function POST(req: Request) {
     return Response.json({ error: "Missing lessonTitle." }, { status: 400 });
   }
 
+  // Load profile from DB server-side — do not trust caller-supplied profile values
+  let personaLine = "";
+  const session = await getServerSession(authOptions);
+  if (session?.user?.email) {
+    const { rows } = await db.query<DbUser>(
+      "SELECT date_of_birth, qualification, learning_goal FROM users WHERE email = $1",
+      [session.user.email.toLowerCase()]
+    );
+    const user = rows[0];
+    if (user) {
+      const dob = user.date_of_birth ? new Date(user.date_of_birth) : null;
+      const ageYears = dob ? Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 3600 * 1000)) : null;
+      personaLine = buildPersonaLine(user.qualification ?? null, user.learning_goal ?? null, ageYears);
+    }
+  }
+
   const prompt = [
+    personaLine,
     "Generate exactly 3 multiple-choice questions to check understanding of this lesson:",
     `Title: ${lessonTitle}`,
     description ? `Description: ${description}` : "",
@@ -45,15 +75,8 @@ export async function POST(req: Request) {
   try {
     const res = await fetch(`${BASE_URL}/chat/completions`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 1024,
-        messages: [{ role: "user", content: prompt }],
-      }),
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model: MODEL, max_tokens: 1024, messages: [{ role: "user", content: prompt }] }),
     });
 
     if (!res.ok) {
