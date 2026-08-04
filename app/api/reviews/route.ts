@@ -7,7 +7,6 @@ interface ReviewRow {
   id: number;
   user_id: number;
   user_name: string;
-  user_email: string;
   course_slug: string;
   rating: number;
   comment: string;
@@ -22,7 +21,7 @@ export async function GET(req: NextRequest) {
   if (!courseSlug) return NextResponse.json({ error: "Missing courseSlug" }, { status: 400 });
 
   const { rows } = await db.query<ReviewRow>(
-    `SELECT id, user_id, user_name, user_email, course_slug, rating, comment, created_at
+    `SELECT id, user_id, user_name, course_slug, rating, comment, created_at
      FROM course_reviews
      WHERE course_slug = $1
      ORDER BY created_at DESC`,
@@ -55,7 +54,7 @@ export async function POST(req: NextRequest) {
            comment = EXCLUDED.comment,
            user_name = EXCLUDED.user_name,
            created_at = NOW()
-     RETURNING id, user_id, user_name, user_email, course_slug, rating, comment, created_at`,
+     RETURNING id, user_id, user_name, course_slug, rating, comment, created_at`,
     [session.user.id, userName, session.user.email, courseSlug, clamped, (comment ?? "").trim()]
   );
 

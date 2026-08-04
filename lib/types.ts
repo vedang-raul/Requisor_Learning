@@ -74,6 +74,7 @@ export interface Review {
 }
 
 export interface UserState {
+  id: number;
   name: string;
   email: string;
   role: "employee" | "admin";

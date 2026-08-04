@@ -8,7 +8,7 @@ Requisor Learning is an internal employee LMS for Citrus Innovations, built with
 
 - **User accounts and sessions** — email addresses, bcrypt-hashed passwords, NextAuth JWT tokens, Google OAuth identifiers. Compromise allows impersonation or account takeover.
 - **xAI API key** — `XAI_API_KEY` authorizes all Grok calls (chat widget + quiz + team-insights). Unrestricted access to the key leads to financial abuse and quota exhaustion.
-- **User PII** — names, email addresses, employment type, position, date of birth, gender, learning goals stored in PostgreSQL. Email addresses are also stored denormalized in `lesson_comments` and `course_reviews` tables and returned in API responses to all authenticated users.
+- **User PII** — names, email addresses, employment type, position, date of birth, gender, learning goals stored in PostgreSQL. Email addresses are stored denormalized in `lesson_comments` and `course_reviews` tables for admin-path use only; they are no longer returned in API responses to regular authenticated users.
 - **Application secrets** — `DATABASE_URL`, `NEXTAUTH_SECRET`/`SESSION_SECRET`, `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, `XAI_API_KEY`. Exposure of any of these has direct security or financial impact.
 - **Learning progress and notes** — stored in `localStorage`, namespaced per user email. No server-side privacy enforcement for this data.
 
@@ -23,7 +23,7 @@ Requisor Learning is an internal employee LMS for Citrus Innovations, built with
 ## Scan Anchors
 
 - **Production entry points**: `app/api/chat/route.ts`, `app/api/quiz/route.ts`, `app/api/team-insights/route.ts`, `app/api/admin/notify-video/route.ts`, `app/api/admin/analytics/route.ts`, `app/api/auth/signup/route.ts`, `app/api/auth/verify/route.ts`, `app/api/auth/forgot/route.ts`, `app/api/auth/reset/route.ts`, `app/api/comments/route.ts`, `app/api/reviews/route.ts`, `app/api/completions/route.ts`, `app/api/profile/route.ts`, `app/api/xp/route.ts`, `app/api/me/route.ts`, `app/api/assignment/route.ts`
-- **Highest-risk areas**: unauthenticated xAI proxy routes (`/api/chat`, `/api/quiz`); admin panel at `/app/admin` with client-side-only guard; `user_email` PII exposed in comments/reviews GET responses
+- **Highest-risk areas**: admin panel at `/app/admin` with client-side-only guard
 - **Public vs authenticated vs admin surfaces**: all `/api/auth/*` are public; `/api/chat` and `/api/quiz` are *intended* to be authenticated but the guard is absent/optional; `/api/team-insights`, `/api/admin/notify-video`, `/api/admin/analytics` correctly check admin session; all other `/api/*` routes properly require session
 - **Dev-only**: none identified — this is a deployed production app
 
@@ -39,7 +39,7 @@ No client-supplied prices or business-critical fields are present. Learning prog
 
 ### Information Disclosure
 
-- `GET /api/comments` and `GET /api/reviews` return `user_email` for every comment/review record to all authenticated users, enabling internal employee email roster enumeration.
+- ~~`GET /api/comments` and `GET /api/reviews` return `user_email`~~ — **Remediated**: `user_email` removed from both GET (and POST) response projections; ownership in the UI now uses `user_id`.
 - Email addresses may appear in application error logs (e.g., `console.error(\`Notify email to ${u.email} failed\`)`). The `/api/admin/notify-video` response includes a `failures` array of email addresses for the admin caller only (acceptable since the caller is authenticated admin).
 
 ### Denial of Service / Financial Abuse

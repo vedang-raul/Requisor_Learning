@@ -11,9 +11,9 @@ export async function GET(req: NextRequest) {
   if (!lessonId) return NextResponse.json({ error: "Missing lessonId" }, { status: 400 });
 
   const { rows } = await db.query<{
-    id: number; user_id: number; user_name: string; user_email: string; body: string; created_at: string;
+    id: number; user_id: number; user_name: string; body: string; created_at: string;
   }>(
-    `SELECT id, user_id, user_name, user_email, body, created_at
+    `SELECT id, user_id, user_name, body, created_at
      FROM lesson_comments
      WHERE lesson_id = $1
      ORDER BY created_at DESC`,
@@ -37,11 +37,11 @@ export async function POST(req: NextRequest) {
   const userName = session.user.name ?? session.user.email.split("@")[0];
 
   const { rows } = await db.query<{
-    id: number; user_id: number; user_name: string; user_email: string; body: string; created_at: string;
+    id: number; user_id: number; user_name: string; body: string; created_at: string;
   }>(
     `INSERT INTO lesson_comments (user_id, user_name, user_email, lesson_id, body)
      VALUES ($1, $2, $3, $4, $5)
-     RETURNING id, user_id, user_name, user_email, body, created_at`,
+     RETURNING id, user_id, user_name, body, created_at`,
     [session.user.id, userName, session.user.email, lessonId, body.trim()]
   );
 

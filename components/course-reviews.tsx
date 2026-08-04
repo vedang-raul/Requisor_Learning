@@ -12,7 +12,6 @@ interface ApiReview {
   id: number;
   user_id: number;
   user_name: string;
-  user_email: string;
   course_slug: string;
   rating: number;
   comment: string;
@@ -83,7 +82,7 @@ export function CourseReviews({ courseSlug }: { courseSlug: string }) {
     loadReviews();
   }, [loadReviews]);
 
-  const myReview = reviews.find((r) => r.user_email === state.user?.email) ?? null;
+  const myReview = reviews.find((r) => r.user_id === state.user?.id) ?? null;
   const others = reviews.filter((r) => r.id !== myReview?.id);
   const average = reviews.length ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length : 0;
   const count = reviews.length;

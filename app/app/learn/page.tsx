@@ -83,7 +83,6 @@ interface Comment {
   id: number;
   user_id: number;
   user_name: string;
-  user_email: string;
   body: string;
   created_at: string;
 }
@@ -499,7 +498,7 @@ function LearnView() {
                                   <span className="text-xs font-medium text-zinc-800">{c.user_name}</span>
                                   <span className="text-[11px] text-zinc-500">{relativeTime(c.created_at)}</span>
                                 </div>
-                                {(c.user_email === state.user?.email || state.user?.role === "admin") && (
+                                {(c.user_id === state.user?.id || state.user?.role === "admin") && (
                                   <button
                                     onClick={() => deleteComment(c.id)}
                                     aria-label="Delete comment"

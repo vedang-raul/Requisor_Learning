@@ -61,6 +61,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const sessionUser: UserState | null = useMemo(() => {
     if (!session?.user?.email) return null;
     return {
+      id: parseInt(session.user.id, 10),
       name: session.user.name ?? session.user.email.split("@")[0],
       email: session.user.email,
       role: session.user.role === "admin" ? "admin" : "employee",
