@@ -7,7 +7,7 @@ import {
   Mail, Pencil, Plus, ShieldCheck, Trash2, TrendingUp, TrendingDown, Video, X, Youtube, LayoutGrid,
   Clock, FileText, Send, RefreshCw, Star, MessageSquare, Smile, Meh, Frown, Hash, Filter, Quote,
   ThumbsUp, ThumbsDown, Layers, Copy, ShieldAlert, Tags, Angry, HelpCircle, PartyPopper,
-  Gauge, Sparkles, ScanText, Bug, AlertCircle, CheckCircle2, ChevronUp, Image,
+  Gauge, Sparkles, ScanText, Bug, AlertCircle, CheckCircle2, ChevronUp, Image, Loader2,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { Course, Lesson, CategoryKey } from "@/lib/types";
