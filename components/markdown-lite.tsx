@@ -24,7 +24,7 @@ function formatInline(text: string, keyPrefix: string, resolveLesson?: LessonRes
           return (
             <Link
               key={key}
-              href={`/app/course/?course=${cleanSlug}`}
+              href={`/app/course/?slug=${cleanSlug}`}
               title={cleanTitle}
               className="my-1.5 flex max-w-full items-center gap-2 rounded-xl border border-primary/20 bg-primary/[0.06] px-2.5 py-2 text-[13px] font-medium text-zinc-800 shadow-soft transition hover:border-primary/40 hover:bg-primary/10"
             >
