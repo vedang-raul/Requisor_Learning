@@ -6,9 +6,38 @@ import bcrypt from "bcryptjs";
 import { db, roleForEmail, ADMIN_EMAIL, type DbUser } from "./db";
 import { sendWelcomeEmail } from "./email";
 
+// ─── Session / cookie constants ─────────────────────────────────────────────
+const SESSION_MAX_AGE = 60 * 60; // 1 hour (seconds) — hard JWT expiry
+const INACTIVITY_LIMIT = 60 * 60; // 1 hour (seconds) — idle logout threshold
+
+// Cookie name differs between dev (http) and prod (https)
+const isSecure = process.env.NODE_ENV === "production";
+const cookieName = isSecure
+  ? "__Secure-next-auth.session-token"
+  : "next-auth.session-token";
+
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET || process.env.SESSION_SECRET,
-  session: { strategy: "jwt" },
+  session: {
+    strategy: "jwt",
+    maxAge: SESSION_MAX_AGE,
+    // Refresh the token on every request so the 1-hour window slides with activity.
+    updateAge: 0,
+  },
+  // Override the session-token cookie so it has NO maxAge → becomes a true
+  // session cookie that the browser deletes when the tab / window is closed.
+  cookies: {
+    sessionToken: {
+      name: cookieName,
+      options: {
+        httpOnly: true,
+        sameSite: "lax" as const,
+        path: "/",
+        secure: isSecure,
+        // maxAge intentionally omitted → session cookie
+      },
+    },
+  },
   pages: { signIn: "/", error: "/" },
   providers: [
     GoogleProvider({
@@ -94,6 +123,23 @@ export const authOptions: NextAuthOptions = {
         token.role = roleForEmail(email);
         if (rows[0]?.name) token.name = rows[0].name;
       }
+
+      // ── Inactivity expiry (server-side backstop) ──────────────────────────
+      // On the very first sign-in `user` is set; stamp lastActivity and skip
+      // the idle check so the brand-new token is never immediately expired.
+      const nowSec = Math.floor(Date.now() / 1000);
+      if (user) {
+        token.lastActivity = nowSec;
+      } else {
+        const lastActivity = token.lastActivity as number | undefined;
+        if (lastActivity !== undefined && nowSec - lastActivity > INACTIVITY_LIMIT) {
+          // Returning a token with exp in the past causes NextAuth to treat the
+          // session as invalid on the next session() call.
+          return { ...token, exp: 0 };
+        }
+        token.lastActivity = nowSec;
+      }
+
       return token;
     },
     async session({ session, token }) {
