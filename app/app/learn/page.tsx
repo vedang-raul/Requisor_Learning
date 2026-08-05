@@ -424,7 +424,7 @@ function LearnView() {
 
           {/* Tabs */}
           <div>
-            <div className="flex gap-1 overflow-x-auto border-b border-zinc-200" role="tablist">
+            <div className="flex gap-1 border-b border-zinc-200" role="tablist">
               {tabs.map((t) => {
                 const Icon = t.icon;
                 const active = tab === t.key;
