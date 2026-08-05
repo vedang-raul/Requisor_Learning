@@ -144,8 +144,10 @@ export function renderMarkdownLite(content: string, cursor: React.ReactNode = nu
   });
 }
 
-/** True if `revealedText` ends mid-way through an unclosed {{...}} tag. */
+/** True if `revealedText` ends mid-way through an unclosed {{...}} tag.
+ *  Also holds when the text ends with a bare "{" that may be the start of "{{". */
 export function endsInOpenTag(revealedText: string): boolean {
+  if (revealedText.endsWith("{")) return true;
   const lastOpen = revealedText.lastIndexOf("{{");
   const lastClose = revealedText.lastIndexOf("}}");
   return lastOpen > lastClose;
