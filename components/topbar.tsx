@@ -127,9 +127,9 @@ export function Topbar() {
       </div>
 
       {/* Avatar */}
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary text-sm font-bold text-white shadow-glow-sm" title={state.user?.email}>
+      <Link href="/app/settings/" title="Settings" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary text-sm font-bold text-white shadow-glow-sm transition hover:opacity-80">
         {(state.user?.name ?? "U").slice(0, 1).toUpperCase()}
-      </div>
+      </Link>
 
       {/* Search overlay */}
       <AnimatePresence>
