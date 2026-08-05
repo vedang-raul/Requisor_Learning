@@ -64,6 +64,21 @@ p.query(\`
     completed_at TIMESTAMP DEFAULT NOW(),
     UNIQUE(user_id, course_slug)
   );
+
+  CREATE TABLE IF NOT EXISTS bug_reports (
+    id SERIAL PRIMARY KEY,
+    user_id INT REFERENCES users(id) ON DELETE CASCADE,
+    user_name TEXT NOT NULL,
+    user_email TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    media_data TEXT,
+    media_type TEXT,
+    occurred_at TIMESTAMP NOT NULL,
+    status TEXT NOT NULL DEFAULT 'open',
+    admin_note TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+  );
 \`).then(()=>{console.log('DB schema up to date');process.exit(0)}).catch(e=>{console.error(e.message);process.exit(1)});
 "
 

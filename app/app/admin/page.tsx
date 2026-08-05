@@ -7,7 +7,7 @@ import {
   Mail, Pencil, Plus, ShieldCheck, Trash2, TrendingUp, TrendingDown, Video, X, Youtube, LayoutGrid,
   Clock, FileText, Send, RefreshCw, Star, MessageSquare, Smile, Meh, Frown, Hash, Filter, Quote,
   ThumbsUp, ThumbsDown, Layers, Copy, ShieldAlert, Tags, Angry, HelpCircle, PartyPopper,
-  Gauge, Sparkles, ScanText,
+  Gauge, Sparkles, ScanText, Bug, AlertCircle, CheckCircle2, ChevronUp, Image,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { Course, Lesson, CategoryKey } from "@/lib/types";
@@ -20,7 +20,7 @@ import { PageTransition } from "@/components/motion";
 import { ProgressBar } from "@/components/ui/progress";
 import { TeamInsights } from "@/components/team-insights";
 
-type TabKey = "analytics" | "content" | "users" | "reviews";
+type TabKey = "analytics" | "content" | "users" | "reviews" | "bugs";
 
 interface AnalyticsUser {
   id: number;
@@ -106,6 +106,7 @@ export default function AdminPage() {
           ["content", "Courses & Lessons", LayoutGrid],
           ["users", "Users", Users],
           ["reviews", "Reviews & Ratings", Star],
+          ["bugs", "Bug Reports", Bug],
         ] as [TabKey, string, typeof BarChart3][]).map(([key, label, Icon]) => {
           const active = tab === key;
           return (
@@ -134,6 +135,7 @@ export default function AdminPage() {
           {tab === "content" && <ContentManager />}
           {tab === "users" && <UserManager analytics={analytics} loading={analyticsLoading} />}
           {tab === "reviews" && <ReviewsPanel />}
+          {tab === "bugs" && <BugReportsPanel />}
         </motion.div>
       </AnimatePresence>
     </PageTransition>
@@ -1444,6 +1446,282 @@ function ReviewsPanel() {
           )}
         </motion.div>
       </AnimatePresence>
+    </div>
+  );
+}
+
+/* ─────────────────────── Bug Reports Panel ─────────────────────── */
+interface BugReport {
+  id: number;
+  user_name: string;
+  user_email: string;
+  title: string;
+  description: string;
+  media_type: string | null;
+  occurred_at: string;
+  status: "open" | "in_progress" | "resolved";
+  admin_note: string | null;
+  created_at: string;
+}
+
+interface BugReportDetail extends BugReport { media_data: string | null; }
+
+const STATUS_META: Record<BugReport["status"], { label: string; color: string; icon: typeof AlertCircle }> = {
+  open:        { label: "Open",        color: "bg-red-100 text-red-700",    icon: AlertCircle },
+  in_progress: { label: "In Progress", color: "bg-amber-100 text-amber-700", icon: Clock },
+  resolved:    { label: "Resolved",    color: "bg-emerald-100 text-emerald-700", icon: CheckCircle2 },
+};
+
+function BugReportsPanel() {
+  const [reports, setReports] = useState<BugReport[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [expanded, setExpanded] = useState<number | null>(null);
+  const [detail, setDetail] = useState<BugReportDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [patchingId, setPatchingId] = useState<number | null>(null);
+  const [editNote, setEditNote] = useState("");
+  const [editStatus, setEditStatus] = useState<BugReport["status"]>("open");
+
+  const load = (status?: string) => {
+    setLoading(true);
+    const qs = status && status !== "all" ? `?status=${status}` : "";
+    fetch(`/api/admin/bug-reports${qs}`)
+      .then((r) => r.json())
+      .then((d) => setReports(d.reports ?? []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, []);
+
+  function applyFilter(s: string) {
+    setFilterStatus(s);
+    setExpanded(null);
+    setDetail(null);
+    load(s);
+  }
+
+  function toggleExpand(id: number, report: BugReport) {
+    if (expanded === id) { setExpanded(null); setDetail(null); return; }
+    setExpanded(id);
+    setEditStatus(report.status);
+    setEditNote(report.admin_note ?? "");
+    if (report.media_type) {
+      setDetailLoading(true);
+      fetch(`/api/admin/bug-reports?id=${id}`)
+        .then((r) => r.json())
+        .then((d) => setDetail(d.report ?? null))
+        .catch(() => setDetail(null))
+        .finally(() => setDetailLoading(false));
+    } else {
+      setDetail(report as BugReportDetail);
+    }
+  }
+
+  async function saveStatus(id: number) {
+    setPatchingId(id);
+    const res = await fetch("/api/admin/bug-reports", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, status: editStatus, adminNote: editNote }),
+    });
+    if (res.ok) {
+      const { report: updated } = await res.json() as { report: Pick<BugReport, "id" | "status" | "admin_note"> };
+      setReports((prev) => prev.map((r) => r.id === id ? { ...r, status: updated.status, admin_note: updated.admin_note } : r));
+      if (detail?.id === id) setDetail((d) => d ? { ...d, status: updated.status, admin_note: updated.admin_note } : d);
+    }
+    setPatchingId(null);
+  }
+
+  const counts = {
+    all: reports.length,
+    open: reports.filter((r) => r.status === "open").length,
+    in_progress: reports.filter((r) => r.status === "in_progress").length,
+    resolved: reports.filter((r) => r.status === "resolved").length,
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-zinc-900">Bug Reports</h2>
+          <p className="text-xs text-zinc-500">{reports.length} report{reports.length !== 1 ? "s" : ""} · submitted by users</p>
+        </div>
+        <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+          <Button variant="outline" size="sm" onClick={() => load(filterStatus !== "all" ? filterStatus : undefined)}>
+            <RefreshCw className="h-3.5 w-3.5" /> Refresh
+          </Button>
+        </motion.div>
+      </div>
+
+      {/* Status filter chips */}
+      <div className="flex flex-wrap gap-2">
+        {(["all", "open", "in_progress", "resolved"] as const).map((s) => (
+          <motion.button
+            key={s}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => applyFilter(s)}
+            className={cn(
+              "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+              filterStatus === s
+                ? "bg-primary text-white shadow-sm"
+                : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+            )}
+          >
+            {s === "all" ? "All" : s === "in_progress" ? "In Progress" : s.charAt(0).toUpperCase() + s.slice(1)}
+            <span className="ml-1.5 rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-bold">
+              {counts[s as keyof typeof counts]}
+            </span>
+          </motion.button>
+        ))}
+      </div>
+
+      {/* List */}
+      {loading ? (
+        <div className="flex items-center gap-2 py-6 text-sm text-zinc-400">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading reports…
+        </div>
+      ) : reports.length === 0 ? (
+        <Card>
+          <div className="py-10 text-center">
+            <Bug className="mx-auto mb-3 h-8 w-8 text-zinc-300" />
+            <p className="text-sm font-medium text-zinc-500">No bug reports yet</p>
+          </div>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          <AnimatePresence initial={false}>
+            {reports.map((report, i) => {
+              const meta = STATUS_META[report.status];
+              const StatusIcon = meta.icon;
+              const isOpen = expanded === report.id;
+              return (
+                <motion.div
+                  key={report.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: Math.min(i, 8) * 0.03 }}
+                >
+                  <Card className="p-0 overflow-hidden">
+                    {/* Row */}
+                    <button
+                      onClick={() => toggleExpand(report.id, report)}
+                      className="w-full text-left px-4 py-3.5 transition-colors hover:bg-zinc-50/70"
+                    >
+                      <div className="flex items-start gap-3">
+                        <span className={cn("mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full", meta.color.replace("text-", "text-").split(" ")[0])}>
+                          <StatusIcon className="h-3.5 w-3.5" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="truncate text-sm font-semibold text-zinc-900">{report.title}</span>
+                            <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide", meta.color)}>
+                              {meta.label}
+                            </span>
+                            {report.media_type && (
+                              <span className="flex items-center gap-1 rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] text-zinc-500">
+                                {report.media_type === "image" ? <Image className="h-2.5 w-2.5" /> : <Video className="h-2.5 w-2.5" />}
+                                {report.media_type}
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+                            <span className="flex items-center gap-1"><Mail className="h-2.5 w-2.5" />{report.user_email}</span>
+                            <span className="flex items-center gap-1"><Clock className="h-2.5 w-2.5" />Occurred: {new Date(report.occurred_at).toLocaleString()}</span>
+                            <span className="flex items-center gap-1"><Calendar className="h-2.5 w-2.5" />Reported: {new Date(report.created_at).toLocaleString()}</span>
+                          </p>
+                        </div>
+                        <span className="shrink-0 text-zinc-400">
+                          {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        </span>
+                      </div>
+                    </button>
+
+                    {/* Expanded detail */}
+                    <AnimatePresence initial={false}>
+                      {isOpen && (
+                        <motion.div
+                          key="detail"
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.22, ease: "easeInOut" }}
+                          className="overflow-hidden border-t border-zinc-100"
+                        >
+                          <div className="space-y-4 p-4">
+                            {/* Description */}
+                            <div>
+                              <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-zinc-400">Description</p>
+                              <p className="whitespace-pre-wrap rounded-xl border border-zinc-100 bg-zinc-50 px-3.5 py-3 text-sm text-zinc-700">{report.description}</p>
+                            </div>
+
+                            {/* Media */}
+                            {detailLoading && (
+                              <div className="flex items-center gap-2 text-sm text-zinc-400">
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading media…
+                              </div>
+                            )}
+                            {!detailLoading && detail?.media_data && (
+                              <div>
+                                <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-zinc-400">Attached media</p>
+                                {detail.media_type === "image" ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={detail.media_data} alt="Bug screenshot" className="max-h-80 w-auto rounded-xl border border-zinc-200 shadow-sm" />
+                                ) : (
+                                  // eslint-disable-next-line jsx-a11y/media-has-caption
+                                  <video src={detail.media_data} controls className="max-h-80 w-auto rounded-xl border border-zinc-200 shadow-sm" />
+                                )}
+                              </div>
+                            )}
+
+                            {/* Admin controls */}
+                            <div className="flex flex-wrap items-end gap-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+                              <div className="flex flex-col gap-1">
+                                <label className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Status</label>
+                                <select
+                                  value={editStatus}
+                                  onChange={(e) => setEditStatus(e.target.value as BugReport["status"])}
+                                  className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-xs text-zinc-800 focus:outline-none focus:ring-1 focus:ring-primary/40"
+                                >
+                                  <option value="open">Open</option>
+                                  <option value="in_progress">In Progress</option>
+                                  <option value="resolved">Resolved</option>
+                                </select>
+                              </div>
+                              <div className="flex flex-1 flex-col gap-1 min-w-[180px]">
+                                <label className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">Admin note (optional)</label>
+                                <input
+                                  value={editNote}
+                                  onChange={(e) => setEditNote(e.target.value)}
+                                  placeholder="e.g. Being investigated…"
+                                  className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-xs text-zinc-800 focus:outline-none focus:ring-1 focus:ring-primary/40"
+                                />
+                              </div>
+                              <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+                                <Button
+                                  size="sm"
+                                  disabled={patchingId === report.id}
+                                  onClick={() => saveStatus(report.id)}
+                                >
+                                  {patchingId === report.id
+                                    ? <><Loader2 className="h-3 w-3 animate-spin" /> Saving…</>
+                                    : <><Check className="h-3 w-3" /> Save</>}
+                                </Button>
+                              </motion.div>
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </Card>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+        </div>
+      )}
     </div>
   );
 }

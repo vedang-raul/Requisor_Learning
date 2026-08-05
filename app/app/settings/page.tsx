@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   Bell, Pencil, User, X, Check, Loader2, Briefcase, Calendar, GraduationCap,
   Target, UserCircle2, Mail, ShieldCheck, Sparkles, BookOpenCheck, Megaphone, Award,
+  Bug, Upload, Clock, AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Image, Video,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useStore } from "@/lib/store";
@@ -412,6 +413,292 @@ const NOTIF_ICONS: Record<keyof NotifSettings, typeof Bell> = {
   badges: Award,
   announcements: Megaphone,
 };
+
+/* ─── Bug Report Card ────────────────────────────────────────────────────── */
+interface BugReportRow {
+  id: number;
+  title: string;
+  description: string;
+  media_type: string | null;
+  occurred_at: string;
+  status: "open" | "in_progress" | "resolved";
+  created_at: string;
+}
+
+const BUG_STATUS_META: Record<BugReportRow["status"], { label: string; color: string }> = {
+  open:        { label: "Open",        color: "bg-red-100 text-red-700" },
+  in_progress: { label: "In Progress", color: "bg-amber-100 text-amber-700" },
+  resolved:    { label: "Resolved",    color: "bg-emerald-100 text-emerald-700" },
+};
+
+const MAX_MEDIA_BYTES = 4 * 1024 * 1024;
+
+function BugReportCard() {
+  const [title, setTitle]         = useState("");
+  const [desc, setDesc]           = useState("");
+  const [occurredAt, setOccurredAt] = useState("");
+  const [mediaData, setMediaData] = useState<string | null>(null);
+  const [mediaType, setMediaType] = useState<"image" | "video" | null>(null);
+  const [mediaName, setMediaName] = useState("");
+  const [mediaError, setMediaError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError]         = useState("");
+  const [success, setSuccess]     = useState(false);
+  const [reports, setReports]     = useState<BugReportRow[]>([]);
+  const [reportsLoading, setReportsLoading] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetch("/api/bug-reports")
+      .then((r) => r.json())
+      .then((d) => setReports(d.reports ?? []))
+      .catch(() => {})
+      .finally(() => setReportsLoading(false));
+  }, []);
+
+  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    setMediaError("");
+    if (!file) return;
+    if (file.size > MAX_MEDIA_BYTES) { setMediaError("File is too large. Maximum size is 4 MB."); return; }
+    const type: "image" | "video" = file.type.startsWith("video/") ? "video" : "image";
+    const reader = new FileReader();
+    reader.onload = () => {
+      setMediaData(reader.result as string);
+      setMediaType(type);
+      setMediaName(file.name);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function clearMedia() {
+    setMediaData(null);
+    setMediaType(null);
+    setMediaName("");
+    setMediaError("");
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
+  async function submit() {
+    setError("");
+    if (!title.trim()) { setError("Title is required."); return; }
+    if (!desc.trim()) { setError("Description is required."); return; }
+    if (!occurredAt) { setError("Please select the date and time when the bug occurred."); return; }
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/bug-reports", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: title.trim(),
+          description: desc.trim(),
+          occurredAt,
+          mediaData,
+          mediaType,
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json() as { error?: string };
+        setError(d.error ?? "Submission failed. Please try again.");
+        return;
+      }
+      const { report } = await res.json() as { report: BugReportRow };
+      setReports((prev) => [{ ...report, title: title.trim(), description: desc.trim(), media_type: mediaType, occurred_at: occurredAt, status: "open" }, ...prev]);
+      setTitle(""); setDesc(""); setOccurredAt(""); clearMedia();
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 4000);
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Card>
+      <div className="mb-4 flex items-center gap-2">
+        <motion.div
+          className="rounded-lg bg-red-50 p-1.5"
+          animate={{ rotate: [0, -8, 8, 0] }}
+          transition={{ duration: 2, repeat: Infinity, repeatDelay: 4 }}
+        >
+          <Bug className="h-4 w-4 text-red-500" />
+        </motion.div>
+        <div>
+          <CardTitle>Report a Bug</CardTitle>
+        </div>
+      </div>
+      <p className="mb-4 text-xs text-zinc-500">Found something broken? Let us know and we'll fix it.</p>
+
+      <div className="space-y-3">
+        {/* Title */}
+        <InputField
+          label="Bug title"
+          required
+          placeholder="e.g. Video won't play on lesson 3"
+          value={title}
+          onChange={setTitle}
+          icon={Bug}
+        />
+
+        {/* Description */}
+        <div className="flex flex-col gap-1">
+          <label className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-zinc-500">
+            <FileText className="h-3 w-3 text-zinc-400" />
+            Description<span className="ml-0.5 text-red-500">*</span>
+          </label>
+          <textarea
+            value={desc}
+            onChange={(e) => setDesc(e.target.value)}
+            rows={4}
+            placeholder="Describe what happened, what you expected, and any steps to reproduce…"
+            className="focus-ring resize-none rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-sm text-zinc-900 placeholder:text-zinc-400 transition-colors hover:border-zinc-300 focus:border-primary/50 focus:shadow-sm"
+          />
+        </div>
+
+        {/* Date & time */}
+        <div className="flex flex-col gap-1">
+          <label className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-zinc-500">
+            <Clock className="h-3 w-3 text-zinc-400" />
+            When did this occur?<span className="ml-0.5 text-red-500">*</span>
+          </label>
+          <input
+            type="datetime-local"
+            value={occurredAt}
+            max={new Date().toISOString().slice(0, 16)}
+            onChange={(e) => setOccurredAt(e.target.value)}
+            className="focus-ring rounded-xl border border-zinc-200 bg-white px-3.5 py-2 text-sm text-zinc-900 transition-colors hover:border-zinc-300 focus:border-primary/50"
+          />
+        </div>
+
+        {/* Media upload */}
+        <div className="flex flex-col gap-1">
+          <label className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-zinc-500">
+            <Upload className="h-3 w-3 text-zinc-400" />
+            Screenshot or video <span className="text-zinc-400">(optional · max 4 MB)</span>
+          </label>
+          {mediaData ? (
+            <div className="flex items-center justify-between rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-2.5">
+              <span className="flex items-center gap-2 text-sm text-zinc-700">
+                {mediaType === "video"
+                  ? <Video className="h-4 w-4 text-primary" />
+                  : <Image className="h-4 w-4 text-primary" />}
+                {mediaName}
+              </span>
+              <button onClick={clearMedia} className="rounded-lg p-1 text-zinc-400 transition hover:bg-zinc-200 hover:text-zinc-700">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ) : (
+            <motion.button
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.99 }}
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-zinc-200 bg-zinc-50 px-3.5 py-4 text-sm text-zinc-500 transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+            >
+              <Upload className="h-4 w-4" />
+              Click to attach an image or video
+            </motion.button>
+          )}
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*,video/*"
+            className="hidden"
+            onChange={handleFile}
+          />
+          {mediaError && <p className="text-[11px] text-red-500">{mediaError}</p>}
+        </div>
+
+        {/* Error / success */}
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -6, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="overflow-hidden"
+            >
+              <p className="flex items-center gap-1.5 rounded-xl bg-red-50 px-3.5 py-2 text-sm text-red-600">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0" />{error}
+              </p>
+            </motion.div>
+          )}
+          {success && (
+            <motion.div
+              initial={{ opacity: 0, y: -6, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="overflow-hidden"
+            >
+              <p className="flex items-center gap-1.5 rounded-xl bg-emerald-50 px-3.5 py-2 text-sm text-emerald-700">
+                <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> Bug report submitted — thank you!
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <motion.div whileHover={{ scale: submitting ? 1 : 1.02 }} whileTap={{ scale: submitting ? 1 : 0.97 }}>
+          <Button onClick={submit} disabled={submitting} className="flex items-center gap-1.5">
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.span key={submitting ? "s" : "i"} initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.7 }} transition={{ duration: 0.15 }} className="flex items-center gap-1.5">
+                {submitting ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Submitting…</> : <><Bug className="h-3.5 w-3.5" /> Submit bug report</>}
+              </motion.span>
+            </AnimatePresence>
+          </Button>
+        </motion.div>
+      </div>
+
+      {/* History */}
+      {!reportsLoading && reports.length > 0 && (
+        <div className="mt-5 border-t border-zinc-100 pt-4">
+          <button
+            onClick={() => setShowHistory((v) => !v)}
+            className="flex items-center gap-1.5 text-xs font-medium text-zinc-500 transition hover:text-zinc-800"
+          >
+            {showHistory ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            {showHistory ? "Hide" : "Show"} my previous reports ({reports.length})
+          </button>
+          <AnimatePresence>
+            {showHistory && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.2 }}
+                className="mt-3 space-y-2 overflow-hidden"
+              >
+                {reports.map((r) => {
+                  const meta = BUG_STATUS_META[r.status];
+                  return (
+                    <motion.div
+                      key={r.id}
+                      initial={{ opacity: 0, x: -6 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      className="flex items-start justify-between gap-3 rounded-xl border border-zinc-100 bg-zinc-50/60 px-3.5 py-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-zinc-800">{r.title}</p>
+                        <p className="mt-0.5 text-[11px] text-zinc-500">
+                          Occurred: {new Date(r.occurred_at).toLocaleString()}
+                        </p>
+                      </div>
+                      <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide", meta.color)}>
+                        {meta.label}
+                      </span>
+                    </motion.div>
+                  );
+                })}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+    </Card>
+  );
+}
 
 /* ─── Page ───────────────────────────────────────────────────────────────── */
 export default function SettingsPage() {
