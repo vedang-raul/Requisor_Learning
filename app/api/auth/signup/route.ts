@@ -24,28 +24,46 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Password must be at least 8 characters." }, { status: 400 });
     }
 
-    // Only a fully verified account blocks signup; unverified accounts may
-    // re-sign-up to get a fresh verification link.
-    const existing = await db.query("SELECT id, email_verified FROM users WHERE email = $1", [cleanEmail]);
-    if (existing.rows[0]?.email_verified) {
+    const existing = await db.query<{
+      id: number;
+      name: string | null;
+      email_verified: boolean;
+      verification_expires: string | null;
+    }>(
+      "SELECT id, name, email_verified, verification_expires FROM users WHERE email = $1",
+      [cleanEmail]
+    );
+    const existingRow = existing.rows[0];
+
+    if (existingRow?.email_verified) {
       return NextResponse.json({ error: "An account with this email already exists. Try logging in." }, { status: 409 });
     }
 
-    const hash = await bcrypt.hash(password, 12);
     const token = crypto.randomBytes(32).toString("hex");
     const expires = new Date(Date.now() + 24 * 3600 * 1000);
 
-    await db.query(
-      `INSERT INTO users (email, name, password_hash, role, employment_type, position, verification_token, verification_expires)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       ON CONFLICT (email) DO UPDATE
-         SET name = EXCLUDED.name, password_hash = EXCLUDED.password_hash,
-             employment_type = EXCLUDED.employment_type, position = EXCLUDED.position,
-             verification_token = EXCLUDED.verification_token, verification_expires = EXCLUDED.verification_expires`,
-      [cleanEmail, cleanName, hash, roleForEmail(cleanEmail), cleanType, cleanPosition, sha256(token), expires]
-    );
-
-    await sendVerificationEmail(cleanEmail, cleanName, token);
+    if (existingRow) {
+      // An unverified account already exists. Refresh only the verification
+      // token — never overwrite the stored credentials — to prevent an
+      // attacker from hijacking a pending registration by re-submitting the
+      // form with their own password.
+      await db.query(
+        `UPDATE users
+         SET verification_token = $1, verification_expires = $2
+         WHERE id = $3`,
+        [sha256(token), expires, existingRow.id]
+      );
+      await sendVerificationEmail(cleanEmail, existingRow.name ?? cleanName, token);
+    } else {
+      // Brand-new registration.
+      const hash = await bcrypt.hash(password, 12);
+      await db.query(
+        `INSERT INTO users (email, name, password_hash, role, employment_type, position, verification_token, verification_expires)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [cleanEmail, cleanName, hash, roleForEmail(cleanEmail), cleanType, cleanPosition, sha256(token), expires]
+      );
+      await sendVerificationEmail(cleanEmail, cleanName, token);
+    }
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("Signup failed:", e);

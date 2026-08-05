@@ -20,8 +20,8 @@ export async function POST(req: Request) {
     ? `${getBaseUrl()}/app/learn/?course=${encodeURIComponent(courseSlug)}&lesson=${encodeURIComponent(lessonId)}`
     : `${getBaseUrl()}/app/course/?slug=${encodeURIComponent(courseSlug)}`;
 
-  const { rows } = await db.query<{ email: string; name: string | null }>(
-    "SELECT email, name FROM users WHERE email_verified = TRUE"
+  const { rows } = await db.query<{ id: number; email: string; name: string | null }>(
+    "SELECT id, email, name FROM users WHERE email_verified = TRUE"
   );
 
   let sent = 0;
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
       });
       sent++;
     } catch (e) {
-      console.error(`Notify email to ${u.email} failed:`, e);
+      console.error(`Notify email failed for user id=${u.id}:`, e);
       failures.push(u.email);
     }
   }
