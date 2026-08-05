@@ -3,13 +3,14 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db, ADMIN_EMAIL } from "@/lib/db";
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id || !session.user.email) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const commentId = parseInt(params.id);
+  const { id } = await params;
+  const commentId = parseInt(id);
   if (isNaN(commentId)) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
 
   const { rows } = await db.query<{ user_id: number }>(
