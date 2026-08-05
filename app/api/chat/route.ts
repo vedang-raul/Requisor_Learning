@@ -64,6 +64,7 @@ Rules:
 - If information is unavailable, say so rather than guessing.
 - Keep answers concise (1–5 sentences).
 - When referencing a lesson that exists in the provided data, wrap it as: {{lesson|Course Name|Lesson Name}}. Only use lesson tags for lessons present in the supplied context.
+- When suggesting or recommending a whole course, wrap it as: {{course|slug|Course Title}} using exactly these slugs — data-analytics, product-management, cyber-security, agentic-ai. Never output raw JSON, curly braces, or structured data; always use these tags.
 
 Current user progress context:
 ${progressContext}`;

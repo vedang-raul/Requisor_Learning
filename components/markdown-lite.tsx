@@ -6,7 +6,7 @@ import { ChevronRight, PlayCircle } from "lucide-react";
 /** Resolves a {{lesson|Course Title|Lesson Title}} tag to a real link, or null if no match. */
 export type LessonResolver = (courseTitle: string, lessonTitle: string) => string | null;
 
-const INLINE_PATTERN = /(\*\*[^*]+\*\*|\*[^*]+\*|\{\{lesson\|[^|}]+\|[^}]+\}\})/g;
+const INLINE_PATTERN = /(\*\*[^*]+\*\*|\*[^*]+\*|\{\{lesson\|[^|}]+\|[^}]+\}\}|\{\{course\|[^|}]+\|[^}]+\}\})/g;
 
 function formatInline(text: string, keyPrefix: string, resolveLesson?: LessonResolver): React.ReactNode[] {
   return text
@@ -14,6 +14,32 @@ function formatInline(text: string, keyPrefix: string, resolveLesson?: LessonRes
     .filter((seg) => seg.length > 0)
     .map((seg, i) => {
       const key = `${keyPrefix}-${i}`;
+
+      // {{course|slug|Course Title}} — link to the course overview page
+      if (seg.startsWith("{{course|") && seg.endsWith("}}")) {
+        const [slug, courseTitle] = seg.slice(9, -2).split("|");
+        const cleanSlug = slug?.trim() ?? "";
+        const cleanTitle = courseTitle?.trim() ?? cleanSlug;
+        if (cleanSlug) {
+          return (
+            <Link
+              key={key}
+              href={`/app/course/?course=${cleanSlug}`}
+              title={cleanTitle}
+              className="my-1.5 flex max-w-full items-center gap-2 rounded-xl border border-primary/20 bg-primary/[0.06] px-2.5 py-2 text-[13px] font-medium text-zinc-800 shadow-soft transition hover:border-primary/40 hover:bg-primary/10"
+            >
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                <PlayCircle className="h-3.5 w-3.5" />
+              </span>
+              <span className="min-w-0 flex-1 truncate">{cleanTitle}</span>
+              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
+            </Link>
+          );
+        }
+        return <span key={key} className="font-semibold">{cleanTitle}</span>;
+      }
+
+      // {{lesson|Course Title|Lesson Title}} — link to a specific lesson
       if (seg.startsWith("{{lesson|") && seg.endsWith("}}")) {
         const [courseTitle, lessonTitle] = seg.slice(9, -2).split("|");
         const href = resolveLesson?.(courseTitle?.trim() ?? "", lessonTitle?.trim() ?? "");
