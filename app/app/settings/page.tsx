@@ -441,6 +441,7 @@ function BugReportCard() {
   const [mediaType, setMediaType] = useState<"image" | "video" | null>(null);
   const [mediaName, setMediaName] = useState("");
   const [mediaError, setMediaError] = useState("");
+  const [mediaLoading, setMediaLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError]         = useState("");
   const [success, setSuccess]     = useState(false);
@@ -461,15 +462,49 @@ function BugReportCard() {
     const file = e.target.files?.[0];
     setMediaError("");
     if (!file) return;
-    if (file.size > MAX_MEDIA_BYTES) { setMediaError("File is too large. Maximum size is 4 MB."); return; }
+
     const type: "image" | "video" = file.type.startsWith("video/") ? "video" : "image";
-    const reader = new FileReader();
-    reader.onload = () => {
-      setMediaData(reader.result as string);
-      setMediaType(type);
-      setMediaName(file.name);
+
+    if (type === "video") {
+      if (file.size > MAX_MEDIA_BYTES) { setMediaError("Video is too large. Maximum size is 4 MB."); return; }
+      const reader = new FileReader();
+      reader.onload = () => { setMediaData(reader.result as string); setMediaType("video"); setMediaName(file.name); };
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    // Images — compress via Canvas before encoding so the JSON payload stays small
+    setMediaLoading(true);
+    setMediaName(file.name);
+    const objectUrl = URL.createObjectURL(file);
+    const img = new window.Image();
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const MAX_SIDE = 1280;
+      let w = img.naturalWidth;
+      let h = img.naturalHeight;
+      if (w > MAX_SIDE || h > MAX_SIDE) {
+        const ratio = Math.min(MAX_SIDE / w, MAX_SIDE / h);
+        w = Math.round(w * ratio);
+        h = Math.round(h * ratio);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { setMediaError("Could not process image."); setMediaLoading(false); return; }
+      ctx.drawImage(img, 0, 0, w, h);
+      const compressed = canvas.toDataURL("image/jpeg", 0.82);
+      setMediaData(compressed);
+      setMediaType("image");
+      setMediaLoading(false);
     };
-    reader.readAsDataURL(file);
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      setMediaError("Could not read image file.");
+      setMediaLoading(false);
+    };
+    img.src = objectUrl;
   }
 
   function clearMedia() {
