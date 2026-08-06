@@ -1,12 +1,14 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Compass, ListChecks, Loader2, RotateCcw, Send, Sparkles, TrendingUp, X } from "lucide-react";
+import { Compass, ListChecks, Loader2, Mic, MicOff, RotateCcw, Send, Sparkles, TrendingUp, Volume2, VolumeX, X } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { buildProgressContext } from "@/lib/ai-context";
 import { getNudge, markNudgeSeen, type Nudge } from "@/lib/nudges";
 import { cn } from "@/lib/utils";
 import { renderMarkdownLite, endsInOpenTag } from "@/components/markdown-lite";
+import { useVoice } from "@/hooks/use-voice";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -51,31 +53,82 @@ function StreamCursor() {
   );
 }
 
+/** Strip {{course|...}} / {{lesson|...}} tags and markdown symbols for clean TTS text. */
+function stripForSpeech(text: string): string {
+  return text
+    // Replace lesson tags with just the lesson title
+    .replace(/\{\{lesson\|[^|]+\|([^}]+)\}\}/g, "$1")
+    // Replace course tags with just the course title
+    .replace(/\{\{course\|[^|]+\|([^}]+)\}\}/g, "$1")
+    // Strip bold / italic markers
+    .replace(/\*\*/g, "")
+    .replace(/\*/g, "")
+    // Strip markdown headings
+    .replace(/^#{1,6}\s/gm, "")
+    // Collapse excess whitespace
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Extract the first navigable URL from a message. Returns null if none found. */
+function extractFirstNavUrl(
+  text: string,
+  resolveLesson: (courseTitle: string, lessonTitle: string) => string | null
+): string | null {
+  // Check lesson tags first
+  const lessonMatch = /\{\{lesson\|([^|]+)\|([^}]+)\}\}/.exec(text);
+  if (lessonMatch) {
+    const url = resolveLesson(lessonMatch[1].trim(), lessonMatch[2].trim());
+    if (url) return url;
+  }
+  // Then course tags
+  const courseMatch = /\{\{course\|([^|]+)\|([^}]+)\}\}/.exec(text);
+  if (courseMatch) {
+    const slug = courseMatch[1].trim();
+    if (slug) return `/app/course/?slug=${slug}`;
+  }
+  return null;
+}
+
+const MUTE_KEY = "ai-assistant-muted";
+
 export function AiAssistant() {
   const { state, hydrated } = useStore();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [retryText, setRetryText] = useState<string | null>(null);
   const [nudge, setNudge] = useState<Nudge | null>(null);
+  const [voiceMuted, setVoiceMuted] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(MUTE_KEY) === "true";
+  });
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Typewriter reveal: network chunks land in fullTextRef, a rAF loop
-  // reveals them at an organic, slightly variable character rate so the
-  // reply always looks typed, regardless of how chunky the actual stream
-  // is. Reveal is clamped so it never stops mid-{{tag}} — it "pops in"
-  // whole instead. Speed eases in and briefly settles after punctuation,
-  // mimicking a natural typing cadence instead of a flat metronome.
+  // Typewriter reveal
   const fullTextRef = useRef("");
   const revealedRef = useRef(0);
   const rafRef = useRef<number | null>(null);
   const networkDoneRef = useRef(false);
   const pauseUntilRef = useRef(0);
+  // Track whether we've already spoken / navigated for the current AI reply
+  const didSpeakRef = useRef(false);
+  const didNavigateRef = useRef(false);
 
   const progressContext = useMemo(() => buildProgressContext(state), [state]);
   const initials = (state.user?.name ?? "U").slice(0, 1).toUpperCase();
+
+  const voice = useVoice();
+
+  // When a transcript arrives from STT, put it in the input
+  useEffect(() => {
+    if (voice.transcript) {
+      setInput(voice.transcript);
+    }
+  }, [voice.transcript]);
 
   const resolveLesson = useMemo(
     () => (courseTitle: string, lessonTitle: string) => {
@@ -109,11 +162,18 @@ export function AiAssistant() {
   }, [input]);
 
   // Once hydrated, check for a rule-based nudge (stalled course).
-  // Shown at most once per day per nudge id via localStorage.
   useEffect(() => {
     if (!hydrated || !state.user) return;
     setNudge(getNudge(state));
   }, [hydrated, state]);
+
+  // Persist mute preference
+  function toggleMute() {
+    const next = !voiceMuted;
+    setVoiceMuted(next);
+    localStorage.setItem(MUTE_KEY, String(next));
+    if (next) voice.stopSpeaking();
+  }
 
   function startRevealLoop() {
     const BASE_CPS = 60;
@@ -124,15 +184,12 @@ export function AiAssistant() {
       const target = fullTextRef.current.length;
 
       if (revealedRef.current < target && now >= pauseUntilRef.current) {
-        // Gentle organic jitter around the base speed instead of a flat rate.
         const jitter = 0.75 + Math.sin(now / 137) * 0.25 + Math.random() * 0.15;
         revealedRef.current = Math.min(target, revealedRef.current + BASE_CPS * jitter * dt);
 
         let count = Math.floor(revealedRef.current);
-        // Don't reveal into the middle of a {{lesson|...}} tag — hold until it closes.
         while (count > 0 && endsInOpenTag(fullTextRef.current.slice(0, count))) count--;
 
-        // Brief natural pause right after sentence-ending punctuation.
         const lastChar = fullTextRef.current[count - 1];
         if (lastChar && ".!?\n".includes(lastChar) && count === Math.floor(revealedRef.current)) {
           pauseUntilRef.current = now + 110;
@@ -145,11 +202,31 @@ export function AiAssistant() {
         });
       }
 
-      if (revealedRef.current < target || !networkDoneRef.current) {
+      const done = revealedRef.current >= target && networkDoneRef.current;
+
+      if (!done) {
         rafRef.current = requestAnimationFrame(tick);
       } else {
         rafRef.current = null;
         setStreaming(false);
+
+        const finalText = fullTextRef.current;
+
+        // Auto-speak the completed reply (unless muted)
+        if (!didSpeakRef.current && !voiceMuted && voice.ttsSupported) {
+          didSpeakRef.current = true;
+          voice.speak(stripForSpeech(finalText));
+        }
+
+        // Auto-navigate to the first course/lesson tag in the reply
+        if (!didNavigateRef.current) {
+          didNavigateRef.current = true;
+          const navUrl = extractFirstNavUrl(finalText, resolveLesson);
+          if (navUrl) {
+            // Small delay so the user sees the reply before being redirected
+            setTimeout(() => router.push(navUrl), 1200);
+          }
+        }
       }
     };
     rafRef.current = requestAnimationFrame(tick);
@@ -158,6 +235,8 @@ export function AiAssistant() {
   async function send(text: string) {
     const trimmed = text.trim();
     if (!trimmed || streaming) return;
+    // Stop any ongoing speech before sending
+    voice.stopSpeaking();
     setRetryText(null);
     const next: ChatMessage[] = [...messages, { role: "user", content: trimmed }];
     setMessages([...next, { role: "assistant", content: "" }]);
@@ -167,6 +246,8 @@ export function AiAssistant() {
     revealedRef.current = 0;
     networkDoneRef.current = false;
     pauseUntilRef.current = 0;
+    didSpeakRef.current = false;
+    didNavigateRef.current = false;
     startRevealLoop();
     try {
       const res = await fetch("/api/chat", {
@@ -201,8 +282,17 @@ export function AiAssistant() {
   }
 
   function newChat() {
+    voice.stopSpeaking();
     setMessages([]);
     setRetryText(null);
+  }
+
+  function handleMicClick() {
+    if (voice.isListening) {
+      voice.stopListening();
+    } else {
+      voice.startListening();
+    }
   }
 
   return (
@@ -295,6 +385,23 @@ export function AiAssistant() {
                 </p>
                 <p className="truncate text-xs text-zinc-500">Knows your progress across all paths</p>
               </div>
+
+              {/* Mute/unmute TTS button — only shown when TTS is supported */}
+              {voice.ttsSupported && (
+                <button
+                  onClick={toggleMute}
+                  aria-label={voiceMuted ? "Unmute voice response" : "Mute voice response"}
+                  title={voiceMuted ? "Unmute voice" : "Mute voice"}
+                  className="focus-ring shrink-0 rounded-lg p-1.5 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
+                >
+                  {voiceMuted ? (
+                    <VolumeX className="h-3.5 w-3.5" />
+                  ) : (
+                    <Volume2 className={cn("h-3.5 w-3.5", voice.isSpeaking && "text-primary")} />
+                  )}
+                </button>
+              )}
+
               {messages.length > 0 && (
                 <button
                   onClick={newChat}
@@ -425,10 +532,43 @@ export function AiAssistant() {
                       send(input);
                     }
                   }}
-                  placeholder="Ask about your progress…"
+                  placeholder={voice.isListening ? "Listening…" : "Ask about your progress…"}
                   disabled={streaming}
                   className="max-h-[120px] flex-1 resize-none bg-transparent py-1.5 text-sm text-zinc-900 placeholder:text-zinc-500 focus:outline-none disabled:opacity-60"
                 />
+
+                {/* Mic button — only shown when STT is supported */}
+                {voice.sttSupported && (
+                  <motion.button
+                    type="button"
+                    onClick={handleMicClick}
+                    disabled={streaming}
+                    aria-label={voice.isListening ? "Stop listening" : "Start voice input"}
+                    title={voice.isListening ? "Stop listening" : "Start voice input"}
+                    whileHover={{ scale: streaming ? 1 : 1.06 }}
+                    whileTap={{ scale: streaming ? 1 : 0.94 }}
+                    className={cn(
+                      "focus-ring relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white shadow-sm transition-opacity disabled:opacity-40",
+                      voice.isListening
+                        ? "bg-rose-500"
+                        : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300"
+                    )}
+                  >
+                    {voice.isListening && (
+                      <motion.span
+                        className="absolute inset-0 rounded-xl bg-rose-400"
+                        animate={{ opacity: [0.6, 0, 0.6] }}
+                        transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
+                      />
+                    )}
+                    {voice.isListening ? (
+                      <MicOff className="relative h-4 w-4" />
+                    ) : (
+                      <Mic className="h-4 w-4 text-zinc-600" />
+                    )}
+                  </motion.button>
+                )}
+
                 <motion.button
                   type="submit"
                   disabled={streaming || !input.trim()}
