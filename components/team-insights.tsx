@@ -66,9 +66,8 @@ export function TeamInsights({
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary text-white">
-            <Sparkles className="h-4 w-4" />
-          </div>
-          <CardTitle>AI Team Insights</CardTitle>
+           </div>
+          <CardTitle>AI Insights</CardTitle>
         </div>
         <Button size="sm" variant="outline" onClick={generate} disabled={loading}>
           {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
@@ -91,8 +90,6 @@ export function TeamInsights({
         </div>
       )}
       {summary && !loading && <div className="text-sm font-light leading-relaxed text-zinc-800">{renderMarkdownLite(summary)}</div>}
-
-      <p className="mt-3 text-[11px] text-zinc-600">Based on demo roster/leaderboard data — connect your SSO/HRIS for real team analytics.</p>
     </Card>
   );
 }

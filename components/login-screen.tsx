@@ -97,11 +97,11 @@ export function LoginScreen() {
           setLoading(false);
           return;
         }
-        if (!position.trim()) {
-          setError("Enter your position.");
-          setLoading(false);
-          return;
-        }
+        // if (!position.trim()) {
+        //   setError("Enter your position.");
+        //   setLoading(false);
+        //   return;
+        // }
         if (password !== confirmPassword) {
           setError("Passwords don't match.");
           setLoading(false);
@@ -163,7 +163,6 @@ export function LoginScreen() {
             transition={{ delay: 0.4 }}
             className="mt-2 flex items-center justify-center gap-1.5 text-sm text-zinc-600"
           >
-            <Sparkles className="h-3.5 w-3.5 text-primary" />
             {mode === "forgot" ? "Reset your password" : "Welcome to your learning journey"}
           </motion.p>
         </div>
@@ -206,18 +205,20 @@ export function LoginScreen() {
                 >
                   <option value="">Select type…</option>
                   <option value="intern">Intern</option>
-                  <option value="job">Job</option>
+                  <option value="job">Employee</option>
+                  <option value="student">Student</option>
+                  <option value="faculty">Faculty</option>
                 </select>
               </div>
-              <div className="space-y-1.5">
+              {/* <div className="space-y-1.5">
                 <label htmlFor="position" className="text-xs font-medium text-zinc-700">Position</label>
                 <Input id="position" autoComplete="organization-title" placeholder="e.g. Product Manager" value={position} onChange={(e) => setPosition(e.target.value)} />
-              </div>
+              </div> */}
             </>
           )}
 
           <div className="space-y-1.5">
-            <label htmlFor="email" className="text-xs font-medium text-zinc-700">Work email</label>
+            <label htmlFor="email" className="text-xs font-medium text-zinc-700">Email</label>
             <div className="relative">
               <Mail className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
               <Input id="email" type="email" autoComplete="email" placeholder="you@requisor.io" value={email} onChange={(e) => setEmail(e.target.value)} className="pl-10" />
@@ -307,7 +308,7 @@ export function LoginScreen() {
         )}
 
         <p className="mt-6 text-center text-[11px] leading-relaxed text-zinc-500">
-          Internal use only · <span className="text-zinc-600">Requisor © 2026</span>
+           Requisor © 2026. All rights reserved.
         </p>
 
         <div className="mt-4 flex items-center justify-center gap-2.5">
@@ -316,7 +317,7 @@ export function LoginScreen() {
         </div>
 
         {/* Dev-only quick-access — stripped out in production builds */}
-        {process.env.NODE_ENV !== "production" && (
+        {/* {process.env.NODE_ENV !== "production" && (
           <div className="mt-4 border-t border-dashed border-zinc-200 pt-4">
             <button
               type="button"
@@ -330,7 +331,7 @@ export function LoginScreen() {
               ⚡ Dev: sign in as support@requisor.io
             </button>
           </div>
-        )}
+        )} */ }
       </motion.div>
     </div>
   );

@@ -44,7 +44,7 @@ export default function DashboardPage() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <motion.h1 initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} className="text-2xl font-bold md:text-3xl">
-            Welcome back,{" "}
+            Welcome back{" "}
             <motion.span
               className="text-gradient inline-block"
               initial={{ opacity: 0, y: 6 }}
@@ -68,7 +68,7 @@ export default function DashboardPage() {
             transition={{ delay: 0.15 }}
             className="mt-1 text-sm text-zinc-600"
           >
-            Pick up where you left off — your learning paths are waiting.
+            Pick up where you left off your learning paths are waiting.
           </motion.p>
         </div>
         <motion.div whileHover={{ y: -2 }} whileTap={{ scale: 0.97 }} transition={springHover}>

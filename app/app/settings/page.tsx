@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   Bell, Pencil, User, X, Check, Loader2, Briefcase, Calendar, GraduationCap,
   Target, UserCircle2, Mail, ShieldCheck, Sparkles, BookOpenCheck, Megaphone, Award,
-  Bug, Upload, Clock, AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Image, Video, FileText,
+  Bug, Upload, Clock, AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Image, Video, FileText, 
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useStore } from "@/lib/store";
@@ -409,7 +409,7 @@ const DEFAULT_NOTIF: NotifSettings = { courses: true, assignments: true, badges:
 
 const NOTIF_ICONS: Record<keyof NotifSettings, typeof Bell> = {
   courses: BookOpenCheck,
-  assignments: Sparkles,
+  assignments:FileText ,
   badges: Award,
   announcements: Megaphone,
 };

@@ -291,7 +291,7 @@ export function AiAssistant() {
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-1 truncate text-sm font-semibold text-zinc-900">
                   Requisor Assistant
-                  <Sparkles className="h-3 w-3 text-primary" />
+                 
                 </p>
                 <p className="truncate text-xs text-zinc-500">Knows your progress across all paths</p>
               </div>
