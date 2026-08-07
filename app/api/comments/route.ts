@@ -2,10 +2,93 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { seedCourses } from "@/lib/data";
 
 const MAX_BODY_LENGTH = 2000;
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
+
+// ── AI moderation ─────────────────────────────────────────────────────────────
+
+interface ModerationResult {
+  relevant: boolean;
+  reason: string;
+}
+
+/**
+ * Ask Grok whether a comment is on-topic for the lesson.
+ * Returns { relevant: true } on any error so a service hiccup never silently
+ * blocks a legitimate post.
+ */
+async function moderateComment(
+  lessonId: string,
+  commentBody: string
+): Promise<ModerationResult> {
+  try {
+    // Look up lesson context from seed data
+    const lesson = seedCourses
+      .flatMap((c) => c.lessons)
+      .find((l) => l.id === lessonId);
+
+    const lessonContext = lesson
+      ? `Title: ${lesson.title}\nDescription: ${lesson.description}\nKey takeaways: ${lesson.keyTakeaways.join("; ")}`
+      : `Lesson ID: ${lessonId}`;
+
+    const apiKey = process.env.XAI_API_KEY;
+    if (!apiKey) return { relevant: true, reason: "" };
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+
+    const res = await fetch("https://api.x.ai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: process.env.XAI_MODEL ?? "grok-3-mini",
+        temperature: 0,
+        max_tokens: 120,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are a content moderator for an online learning platform. " +
+              "Determine whether a discussion comment is relevant to the lesson provided. " +
+              "A comment is relevant if it asks questions about the lesson content, " +
+              "shares a related insight, requests clarification on a covered concept, " +
+              "or provides constructive feedback about the material. " +
+              "A comment is NOT relevant if it is off-topic chatter, spam, personal " +
+              "conversations unrelated to the lesson, or promotional content. " +
+              "Reply with ONLY valid JSON: {\"relevant\": true} or {\"relevant\": false, \"reason\": \"<one short sentence explaining why>\"}",
+          },
+          {
+            role: "user",
+            content: `LESSON:\n${lessonContext}\n\nCOMMENT:\n${commentBody}`,
+          },
+        ],
+      }),
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timeout));
+
+    if (!res.ok) return { relevant: true, reason: "" };
+
+    const data = await res.json() as { choices?: { message?: { content?: string } }[] };
+    const raw = data.choices?.[0]?.message?.content?.trim() ?? "{}";
+
+    // Strip markdown code fences if model wraps the JSON
+    const jsonStr = raw.replace(/^```json?\s*/i, "").replace(/```\s*$/, "").trim();
+    const parsed = JSON.parse(jsonStr) as { relevant?: boolean; reason?: string };
+    return {
+      relevant: parsed.relevant !== false,
+      reason: parsed.reason ?? "",
+    };
+  } catch {
+    // Fail open — never block a comment because AI is unavailable
+    return { relevant: true, reason: "" };
+  }
+}
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -77,6 +160,18 @@ export async function POST(req: NextRequest) {
   }
 
   const userName = session.user.name ?? session.user.email.split("@")[0];
+
+  // AI moderation — reject off-topic comments before they reach the DB
+  const moderation = await moderateComment(lessonId, trimmedBody);
+  if (!moderation.relevant) {
+    return NextResponse.json(
+      {
+        error: `Your comment appears to be off-topic for this lesson.${moderation.reason ? ` ${moderation.reason}` : ""} Please keep discussion relevant to the lesson content.`,
+        moderated: true,
+      },
+      { status: 422 }
+    );
+  }
 
   const { rows } = await db.query<{
     id: number;
