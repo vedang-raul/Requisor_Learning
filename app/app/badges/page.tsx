@@ -32,7 +32,7 @@ export default function BadgesPage() {
       {/* Gamification stats */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {[
-          { label: "XP Points", value: state.xp, icon: Sparkles, tint: "text-primary from-indigo-500/20 to-indigo-500/5" },
+          { label: "XP Points", value: state.xp, icon: Medal, tint: "text-primary from-indigo-500/20 to-indigo-500/5" },
           { label: "Badges Earned", value: badges.length, icon: Trophy, tint: "text-emerald-600 from-emerald-500/20 to-emerald-500/5" },
         ].map((s, i) => {
           const Icon = s.icon;
