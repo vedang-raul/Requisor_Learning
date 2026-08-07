@@ -58,6 +58,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession();
   // Tracks whether the initial DB fetch has completed so we don't sync stale values back.
   const dbSynced = useRef(false);
+  // Per-lesson debounce timers for note syncing
+  const noteTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   // Real auth: the signed-in user comes from the NextAuth session, not localStorage.
   const sessionUser: UserState | null = useMemo(() => {
@@ -101,20 +103,100 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state, hydrated, email]);
 
-  // On hydration, pull authoritative XP and capstone completions from the DB.
+  // On hydration, pull authoritative data from the DB.
+  // First login after this feature ships: migrate local-only notes/bookmarks to DB once,
+  // then mark the migration done so DB remains the sole source of truth going forward.
   useEffect(() => {
     if (!hydrated || !email) return;
     dbSynced.current = false;
+
+    const MIGRATION_KEY = `requisor-notes-bookmarks-migrated-v1:${email.toLowerCase()}`;
+    const alreadyMigrated = localStorage.getItem(MIGRATION_KEY) === "true";
+
+    // Snapshot local data only needed for the one-time migration.
+    let localNotes: Record<string, string> = {};
+    let localBookmarks: string[] = [];
+    let localSavedLessons: string[] = [];
+    if (!alreadyMigrated) {
+      setState((s) => {
+        localNotes = s.notes;
+        localBookmarks = s.bookmarks;
+        localSavedLessons = s.savedLessons;
+        return s;
+      });
+    }
+
     Promise.all([
       fetch("/api/xp").then((r) => r.json() as Promise<{ xp?: number }>),
       fetch("/api/course-assessment").then((r) => r.json() as Promise<{ completions?: string[] }>),
+      fetch("/api/notes").then((r) => r.json() as Promise<{ notes?: Record<string, string> }>),
+      fetch("/api/bookmarks").then((r) => r.json() as Promise<{ bookmarks?: string[]; savedLessons?: string[] }>),
     ])
-      .then(([xpData, assessData]) => {
-        setState((s) => ({
-          ...s,
-          xp: xpData.xp ?? s.xp,
-          assessmentCompletions: assessData.completions ?? s.assessmentCompletions,
-        }));
+      .then(([xpData, assessData, notesData, bookmarksData]) => {
+        const dbNotes = notesData.notes ?? {};
+        const dbBookmarks = bookmarksData.bookmarks ?? [];
+        const dbSavedLessons = bookmarksData.savedLessons ?? [];
+
+        if (alreadyMigrated) {
+          // DB is the single source of truth — overwrite local entirely, including empty notes
+          // (empty means the user cleared a note on another device).
+          setState((s) => ({
+            ...s,
+            xp: xpData.xp ?? s.xp,
+            assessmentCompletions: assessData.completions ?? s.assessmentCompletions,
+            notes: dbNotes,
+            bookmarks: dbBookmarks,
+            savedLessons: dbSavedLessons,
+          }));
+        } else {
+          // First login after this feature shipped: union local + DB so nothing is lost,
+          // then push local-only items up to DB, then mark migration done.
+          setState((s) => {
+            const mergedNotes = { ...dbNotes };
+            // Keep local notes for lessons not yet in DB (migration only).
+            for (const [lid, txt] of Object.entries(localNotes)) {
+              if (txt && !(lid in dbNotes)) mergedNotes[lid] = txt;
+            }
+            return {
+              ...s,
+              xp: xpData.xp ?? s.xp,
+              assessmentCompletions: assessData.completions ?? s.assessmentCompletions,
+              notes: mergedNotes,
+              bookmarks: [...new Set([...dbBookmarks, ...localBookmarks])],
+              savedLessons: [...new Set([...dbSavedLessons, ...localSavedLessons])],
+            };
+          });
+
+          // Push local-only items to DB (best-effort; idempotent inserts).
+          const onlyLocalBookmarks = localBookmarks.filter((b) => !dbBookmarks.includes(b));
+          const onlyLocalSavedLessons = localSavedLessons.filter((l) => !dbSavedLessons.includes(l));
+          const onlyLocalNotes = Object.entries(localNotes).filter(([lid, txt]) => txt && !(lid in dbNotes));
+
+          const migrationOps: Promise<unknown>[] = [];
+          if (onlyLocalBookmarks.length || onlyLocalSavedLessons.length) {
+            migrationOps.push(
+              fetch("/api/bookmarks", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ bookmarks: onlyLocalBookmarks, savedLessons: onlyLocalSavedLessons }),
+              })
+            );
+          }
+          if (onlyLocalNotes.length) {
+            migrationOps.push(
+              fetch("/api/notes", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ notes: Object.fromEntries(onlyLocalNotes) }),
+              })
+            );
+          }
+          // Mark migration complete only after uploads succeed (or if there was nothing to upload).
+          Promise.all(migrationOps)
+            .then(() => localStorage.setItem(MIGRATION_KEY, "true"))
+            .catch(() => {}); // will retry on next login if migration uploads failed
+        }
+
         dbSynced.current = true;
       })
       .catch(() => { dbSynced.current = true; });
@@ -189,21 +271,49 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   );
 
   const toggleBookmark = useCallback((courseSlug: string) => {
-    setState((s) => ({
-      ...s,
-      bookmarks: s.bookmarks.includes(courseSlug) ? s.bookmarks.filter((b) => b !== courseSlug) : [...s.bookmarks, courseSlug],
-    }));
+    // Determine intent from current state before the optimistic update so the
+    // explicit action sent to the server always matches what the user intended.
+    setState((s) => {
+      const adding = !s.bookmarks.includes(courseSlug);
+      fetch("/api/bookmarks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "course", slug: courseSlug, action: adding ? "add" : "remove" }),
+      }).catch(() => {});
+      return {
+        ...s,
+        bookmarks: adding ? [...s.bookmarks, courseSlug] : s.bookmarks.filter((b) => b !== courseSlug),
+      };
+    });
   }, []);
 
   const toggleSavedLesson = useCallback((lessonId: string) => {
-    setState((s) => ({
-      ...s,
-      savedLessons: s.savedLessons.includes(lessonId) ? s.savedLessons.filter((b) => b !== lessonId) : [...s.savedLessons, lessonId],
-    }));
+    setState((s) => {
+      const adding = !s.savedLessons.includes(lessonId);
+      fetch("/api/bookmarks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "lesson", lessonId, action: adding ? "add" : "remove" }),
+      }).catch(() => {});
+      return {
+        ...s,
+        savedLessons: adding ? [...s.savedLessons, lessonId] : s.savedLessons.filter((b) => b !== lessonId),
+      };
+    });
   }, []);
 
   const setNote = useCallback((lessonId: string, text: string) => {
     setState((s) => ({ ...s, notes: { ...s.notes, [lessonId]: text } }));
+    // Debounce API sync — write to DB 800 ms after the last keystroke
+    if (noteTimers.current[lessonId]) clearTimeout(noteTimers.current[lessonId]);
+    noteTimers.current[lessonId] = setTimeout(() => {
+      fetch("/api/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lessonId, content: text }),
+      }).catch(() => {});
+      delete noteTimers.current[lessonId];
+    }, 800);
   }, []);
 
   const markNotificationsRead = useCallback(() => {

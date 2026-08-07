@@ -503,11 +503,11 @@ function LearnView() {
                       <Textarea
                         value={state.notes[lesson.id] ?? ""}
                         onChange={(e) => setNote(lesson.id, e.target.value)}
-                        placeholder="Write your notes for this lesson… (auto-saved locally)"
+                        placeholder="Write your notes for this lesson… (auto-saved)"
                         className="min-h-[160px] transition-shadow duration-200 focus:shadow-md"
                         aria-label="Lesson notes"
                       />
-                      <p className="text-[11px] text-zinc-600">Notes are saved automatically on this device.</p>
+                      <p className="text-[11px] text-zinc-600">Notes are saved automatically and sync across devices.</p>
                     </div>
                   )}
                   {tab === "discussion" && (

@@ -79,6 +79,31 @@ p.query(\`
     admin_note TEXT,
     created_at TIMESTAMP DEFAULT NOW()
   );
+
+  CREATE TABLE IF NOT EXISTS lesson_notes (
+    id SERIAL PRIMARY KEY,
+    user_id INT REFERENCES users(id) ON DELETE CASCADE,
+    lesson_id TEXT NOT NULL,
+    content TEXT NOT NULL DEFAULT '',
+    updated_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(user_id, lesson_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS course_bookmarks (
+    id SERIAL PRIMARY KEY,
+    user_id INT REFERENCES users(id) ON DELETE CASCADE,
+    course_slug TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(user_id, course_slug)
+  );
+
+  CREATE TABLE IF NOT EXISTS saved_lessons (
+    id SERIAL PRIMARY KEY,
+    user_id INT REFERENCES users(id) ON DELETE CASCADE,
+    lesson_id TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(user_id, lesson_id)
+  );
 \`).then(()=>{console.log('DB schema up to date');process.exit(0)}).catch(e=>{console.error(e.message);process.exit(1)});
 "
 
