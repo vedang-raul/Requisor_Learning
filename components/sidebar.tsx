@@ -29,15 +29,6 @@ export const navItems = [
 
 const springTransition = { type: "spring" as const, stiffness: 500, damping: 35 };
 
-const itemVariants = {
-  hidden: { opacity: 0, x: -8 },
-  show: (i: number) => ({
-    opacity: 1,
-    x: 0,
-    transition: { delay: 0.03 * i, duration: 0.35, ease: [0.22, 1, 0.36, 1] as const },
-  }),
-};
-
 export function Sidebar() {
   const { state, toggleSidebar, logout } = useStore();
   const pathname = usePathname();
@@ -79,14 +70,10 @@ export function Sidebar() {
     const isHovered = hoveredItem === item.href;
 
     return (
-      <motion.div
+      <div
         key={item.label}
-        custom={index}
-        variants={itemVariants}
-        initial="hidden"
-        animate="show"
-        onHoverStart={() => setHoveredItem(item.href)}
-        onHoverEnd={() => setHoveredItem((h) => (h === item.href ? null : h))}
+        onMouseEnter={() => setHoveredItem(item.href)}
+        onMouseLeave={() => setHoveredItem((h) => (h === item.href ? null : h))}
       >
         <Link
           href={item.href}
@@ -97,38 +84,30 @@ export function Sidebar() {
             collapsed && "justify-center px-2"
           )}
         >
-          {active && (
-            <motion.span
-              layoutId="sidebar-active-bg"
-              transition={springTransition}
-              className="absolute inset-0 rounded-xl bg-gradient-to-br from-primary to-secondary shadow-lg shadow-primary/30"
-            />
-          )}
-          <AnimatePresence>
-            {!active && isHovered && (
-              <motion.span
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                className="absolute inset-0 rounded-xl bg-zinc-100"
-              />
+          {/* Active background — plain CSS transition, no FLIP measurement */}
+          <span
+            className={cn(
+              "absolute inset-0 rounded-xl bg-gradient-to-br from-primary to-secondary shadow-lg shadow-primary/30 transition-opacity duration-200",
+              active ? "opacity-100" : "opacity-0"
             )}
-          </AnimatePresence>
-          <motion.span
-            className="relative z-10 flex items-center justify-center"
-            animate={{ scale: active ? 1.05 : isHovered ? 1.12 : 1, rotate: isHovered && !active ? -4 : 0 }}
-            transition={springTransition}
-          >
+          />
+          {/* Hover background */}
+          <span
+            className={cn(
+              "absolute inset-0 rounded-xl bg-zinc-100 transition-opacity duration-150",
+              !active && isHovered ? "opacity-100" : "opacity-0"
+            )}
+          />
+          <span className="relative z-10 flex items-center justify-center">
             <Icon className={cn("h-[18px] w-[18px] shrink-0 text-zinc-500 transition-colors duration-200", active && "text-white", isHovered && !active && "text-zinc-900")} />
-          </motion.span>
+          </span>
           {!collapsed && (
             <span className={cn("relative z-10 truncate transition-colors duration-200", isHovered && !active && "text-zinc-900")}>
               {item.label}
             </span>
           )}
         </Link>
-      </motion.div>
+      </div>
     );
   };
 
@@ -169,15 +148,14 @@ export function Sidebar() {
         {topItems.map((item, i) => renderItem(item, i))}
 
         {/* Learning Paths + dropdown */}
-        <motion.div custom={1} variants={itemVariants} initial="hidden" animate="show">
-          <motion.button
+        <div>
+          <button
             onClick={() => {
               router.push("/app/paths/");
               if (!collapsed) setCoursesOpen((o) => !o);
             }}
-            onHoverStart={() => setHoveredItem("__paths")}
-            onHoverEnd={() => setHoveredItem((h) => (h === "__paths" ? null : h))}
-            whileTap={{ scale: 0.98 }}
+            onMouseEnter={() => setHoveredItem("__paths")}
+            onMouseLeave={() => setHoveredItem((h) => (h === "__paths" ? null : h))}
             title={collapsed ? "Learning Paths" : undefined}
             className={cn(
               "focus-ring group relative flex w-full items-center gap-3 overflow-hidden rounded-xl px-3 py-2.5 text-sm transition-colors duration-150",
@@ -185,45 +163,32 @@ export function Sidebar() {
               collapsed && "justify-center px-2"
             )}
           >
-            {learningActive && (
-              <motion.span
-                layoutId="sidebar-active-bg"
-                transition={springTransition}
-                className="absolute inset-0 rounded-xl bg-gradient-to-br from-primary to-secondary shadow-lg shadow-primary/30"
-              />
-            )}
-            <AnimatePresence>
-              {!learningActive && hoveredItem === "__paths" && (
-                <motion.span
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.15 }}
-                  className="absolute inset-0 rounded-xl bg-zinc-100"
-                />
+            <span
+              className={cn(
+                "absolute inset-0 rounded-xl bg-gradient-to-br from-primary to-secondary shadow-lg shadow-primary/30 transition-opacity duration-200",
+                learningActive ? "opacity-100" : "opacity-0"
               )}
-            </AnimatePresence>
-            <motion.span
-              className="relative z-10 flex items-center justify-center"
-              animate={{
-                scale: learningActive ? 1.05 : hoveredItem === "__paths" ? 1.12 : 1,
-                rotate: hoveredItem === "__paths" && !learningActive ? -4 : 0,
-              }}
-              transition={springTransition}
-            >
+            />
+            <span
+              className={cn(
+                "absolute inset-0 rounded-xl bg-zinc-100 transition-opacity duration-150",
+                !learningActive && hoveredItem === "__paths" ? "opacity-100" : "opacity-0"
+              )}
+            />
+            <span className="relative z-10 flex items-center justify-center">
               <Library className={cn("h-[18px] w-[18px] shrink-0 text-zinc-500 transition-colors duration-200", learningActive && "text-white", hoveredItem === "__paths" && !learningActive && "text-zinc-900")} />
-            </motion.span>
+            </span>
             {!collapsed && (
               <>
                 <span className={cn("relative z-10 flex-1 truncate text-left transition-colors duration-200", hoveredItem === "__paths" && !learningActive && "text-zinc-900")}>
                   Learning Paths
                 </span>
-                <motion.span className="relative z-10" animate={{ rotate: coursesOpen ? 180 : 0 }} transition={{ duration: 0.25, ease: "easeInOut" }}>
+                <motion.span className="relative z-10" animate={{ rotate: coursesOpen ? 180 : 0 }} transition={{ duration: 0.2, ease: "easeInOut" }}>
                   <ChevronDown className={cn("h-3.5 w-3.5", learningActive ? "opacity-80" : "opacity-60")} />
                 </motion.span>
               </>
             )}
-          </motion.button>
+          </button>
 
           {/* Course sub-items */}
           <AnimatePresence initial={false}>
@@ -232,29 +197,18 @@ export function Sidebar() {
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: "auto", opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
                 className="overflow-hidden"
               >
                 <div className="mt-0.5 space-y-0.5 pl-4">
-                  {/* left connector line */}
                   <div className="relative">
-                    <motion.div
-                      initial={{ scaleY: 0 }}
-                      animate={{ scaleY: 1 }}
-                      transition={{ duration: 0.3, delay: 0.05 }}
-                      style={{ transformOrigin: "top" }}
-                      className="absolute left-1 top-0 h-full w-px bg-zinc-200"
-                    />
-                    {courses.map((course, i) => {
+                    <div className="absolute left-1 top-0 h-full w-px bg-zinc-200" />
+                    {courses.map((course) => {
                       const active = isOnCoursePage && currentSlug === course.slug;
                       const Icon = course.icon;
+                      const isHov = hoveredItem === course.slug;
                       return (
-                        <motion.div
-                          key={course.slug}
-                          initial={{ opacity: 0, x: -6 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ duration: 0.2, delay: 0.05 + i * 0.04 }}
-                        >
+                        <div key={course.slug}>
                           <Link
                             href={course.href}
                             onMouseEnter={() => setHoveredItem(course.slug)}
@@ -264,41 +218,27 @@ export function Sidebar() {
                               active ? "font-semibold text-primary" : "font-medium text-zinc-500 hover:text-zinc-900"
                             )}
                           >
-                            {active && (
-                              <motion.span
-                                layoutId="course-active-bg"
-                                transition={springTransition}
-                                className="absolute inset-0 rounded-lg border border-primary/20 bg-white shadow-sm"
-                              />
-                            )}
-                            <AnimatePresence>
-                              {hoveredItem === course.slug && !active && (
-                                <motion.span
-                                  initial={{ opacity: 0 }}
-                                  animate={{ opacity: 1 }}
-                                  exit={{ opacity: 0 }}
-                                  transition={{ duration: 0.15 }}
-                                  className="absolute inset-0 rounded-lg bg-zinc-100"
-                                />
+                            <span
+                              className={cn(
+                                "absolute inset-0 rounded-lg border border-primary/20 bg-white shadow-sm transition-opacity duration-200",
+                                active ? "opacity-100" : "opacity-0"
                               )}
-                            </AnimatePresence>
-                            <motion.span
-                              className="relative z-10 flex items-center justify-center"
-                              animate={{ scale: active ? 1.1 : hoveredItem === course.slug ? 1.15 : 1 }}
-                              transition={springTransition}
-                            >
+                            />
+                            <span
+                              className={cn(
+                                "absolute inset-0 rounded-lg bg-zinc-100 transition-opacity duration-150",
+                                isHov && !active ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            <span className="relative z-10 flex items-center justify-center">
                               <Icon className={cn("h-[15px] w-[15px] shrink-0", active && "text-primary")} />
-                            </motion.span>
+                            </span>
                             <span className="relative z-10 truncate">{course.label}</span>
                             {active && (
-                              <motion.span
-                                layoutId="course-active-dot"
-                                transition={springTransition}
-                                className="relative z-10 ml-auto h-1.5 w-1.5 rounded-full bg-gradient-to-br from-primary to-secondary"
-                              />
+                              <span className="relative z-10 ml-auto h-1.5 w-1.5 rounded-full bg-gradient-to-br from-primary to-secondary" />
                             )}
                           </Link>
-                        </motion.div>
+                        </div>
                       );
                     })}
                   </div>
@@ -306,7 +246,7 @@ export function Sidebar() {
               </motion.div>
             )}
           </AnimatePresence>
-        </motion.div>
+        </div>
 
         {/* Remaining items */}
         {bottomItems.map((item, i) => renderItem(item, i + 2))}
