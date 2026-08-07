@@ -21,8 +21,10 @@ export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
     maxAge: SESSION_MAX_AGE,
-    // Refresh the token on every request so the 1-hour window slides with activity.
-    updateAge: 0,
+    // Refresh the token at most once every 5 minutes — not on every request.
+    // The client-side InactivityGuard handles idle logout; the JWT maxAge is
+    // the server-side hard limit. updateAge: 0 would hit the DB on every call.
+    updateAge: 300,
   },
   // Override the session-token cookie so it has NO maxAge → becomes a true
   // session cookie that the browser deletes when the tab / window is closed.
