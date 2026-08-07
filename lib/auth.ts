@@ -45,6 +45,13 @@ export const authOptions: NextAuthOptions = {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      // Force the account-chooser screen every time so Chrome's FedCM /
+      // automatic sign-in never silently authenticates without user action.
+      authorization: {
+        params: {
+          prompt: "select_account",
+        },
+      },
     }),
     // ─── DEV-ONLY bypass — never active in production ───────────────────
     ...(process.env.NODE_ENV !== "production"
