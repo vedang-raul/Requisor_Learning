@@ -65,8 +65,8 @@ export function OnboardingSurvey({ hasDob, onComplete }: Props) {
             transition={{ duration: 0.25 }}
             className="glass-card w-full max-w-md p-8 text-center"
           >
-            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-secondary shadow-glow">
-              <Sparkles className="h-8 w-8 text-white" />
+            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl  shadow-glow">
+             <img src="/requisor.png" alt="Requisor" className="h-full w-full scale-[1.35] rounded-full object-cover" />
             </div>
             <h2 className="text-xl font-bold text-zinc-900">Personalise your learning</h2>
             <p className="mt-2 text-sm text-zinc-600 leading-relaxed">
