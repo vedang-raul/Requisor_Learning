@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
 import {
   BookOpen, CheckCircle2, Clock, Trophy, Megaphone, ArrowRight,
   PlayCircle, Rocket, Network, MessageSquare, Cloud, Compass, Bot, Shield,
@@ -15,6 +16,9 @@ import { PageTransition, Reveal } from "@/components/motion";
 import { ProgressBar } from "@/components/ui/progress";
 import { formatMinutes } from "@/lib/utils";
 
+interface LeaderboardEntry { rank: number; name: string; xp: number; isSelf: boolean; }
+interface LeaderboardResponse { top: LeaderboardEntry[]; self: LeaderboardEntry | null; total: number; }
+
 const upcomingIcons = { network: Network, message: MessageSquare, cloud: Cloud } as const;
 
 const springHover = { type: "spring" as const, stiffness: 320, damping: 22 };
@@ -23,6 +27,19 @@ export default function DashboardPage() {
   const { state } = useStore();
   const stats = useOverallStats();
   const watching = useContinueWatching();
+
+  const [rankInfo, setRankInfo] = useState<{ rank: number; total: number } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/leaderboard")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data: LeaderboardResponse | null) => {
+        if (!data) return;
+        const selfEntry = data.self ?? data.top.find((e: LeaderboardEntry) => e.isSelf) ?? null;
+        if (selfEntry) setRankInfo({ rank: selfEntry.rank, total: data.total });
+      })
+      .catch(() => {});
+  }, []);
 
   const statCards = [
     { label: "Courses Available", value: stats.coursesAvailable, icon: BookOpen, tint: "from-indigo-500/20 to-indigo-500/5 text-primary" },
@@ -70,6 +87,17 @@ export default function DashboardPage() {
           >
             Pick up where you left off your learning paths are waiting.
           </motion.p>
+          {rankInfo && (
+            <motion.div
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.25 }}
+              className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700"
+            >
+              <Trophy className="h-3.5 w-3.5 text-amber-500" />
+              You are&nbsp;<span className="font-bold">#{rankInfo.rank}</span>&nbsp;of {rankInfo.total} on the leaderboard
+            </motion.div>
+          )}
         </div>
         <motion.div whileHover={{ y: -2 }} whileTap={{ scale: 0.97 }} transition={springHover}>
           <Link

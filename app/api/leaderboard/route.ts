@@ -14,6 +14,8 @@ export interface LeaderboardResponse {
   top: LeaderboardEntry[];
   /** Populated only when the caller is not in the top-10. */
   self: LeaderboardEntry | null;
+  /** Total number of ranked employees. */
+  total: number;
 }
 
 export async function GET() {
@@ -98,5 +100,10 @@ export async function GET() {
     }
   }
 
-  return NextResponse.json({ top, self: selfInTop10 ? null : self } satisfies LeaderboardResponse);
+  const { rows: countRows } = await db.query<{ total: string }>(
+    `SELECT COUNT(*)::text AS total FROM users WHERE role = 'employee'`
+  );
+  const total = Number(countRows[0]?.total ?? 0);
+
+  return NextResponse.json({ top, self: selfInTop10 ? null : self, total } satisfies LeaderboardResponse);
 }
