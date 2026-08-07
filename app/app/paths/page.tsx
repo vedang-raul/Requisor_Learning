@@ -83,18 +83,16 @@ export default function PathsPage() {
       </div>
 
       {/* Grid */}
-      <AnimatePresence mode="popLayout">
+      <AnimatePresence mode="wait">
         {courses.length === 0 ? (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card flex flex-col items-center gap-2 py-16 text-center">
+          <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="glass-card flex flex-col items-center gap-2 py-16 text-center">
             <p className="text-sm font-medium text-zinc-700">No paths match this filter</p>
             <p className="text-xs text-zinc-500">Try a different status filter above.</p>
           </motion.div>
         ) : (
-          <motion.div layout className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+          <motion.div key="grid" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
             {courses.map((c) => (
-              <motion.div key={c.slug} layout initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.96 }} transition={{ duration: 0.25 }}>
-                <CourseCard course={c} />
-              </motion.div>
+              <CourseCard key={c.slug} course={c} />
             ))}
           </motion.div>
         )}

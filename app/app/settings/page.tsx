@@ -4,7 +4,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   Bell, Pencil, User, X, Check, Loader2, Briefcase, Calendar, GraduationCap,
   Target, UserCircle2, Mail, ShieldCheck, Sparkles, BookOpenCheck, Megaphone, Award,
-  Bug, Upload, Clock, AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Image, Video, FileText, 
+  Bug, Upload, Clock, AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Image, Video, FileText,
+  Play, FileVideo, ImagePlus,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useStore } from "@/lib/store";
@@ -406,10 +407,9 @@ interface NotifSettings {
   announcements: boolean;
 }
 const DEFAULT_NOTIF: NotifSettings = { courses: true, assignments: true, badges: true, announcements: true };
-
 const NOTIF_ICONS: Record<keyof NotifSettings, typeof Bell> = {
   courses: BookOpenCheck,
-  assignments:FileText ,
+  assignments: FileText,
   badges: Award,
   announcements: Megaphone,
 };
@@ -424,13 +424,11 @@ interface BugReportRow {
   status: "open" | "in_progress" | "resolved";
   created_at: string;
 }
-
 const BUG_STATUS_META: Record<BugReportRow["status"], { label: string; color: string }> = {
   open:        { label: "Open",        color: "bg-red-100 text-red-700" },
   in_progress: { label: "In Progress", color: "bg-amber-100 text-amber-700" },
   resolved:    { label: "Resolved",    color: "bg-emerald-100 text-emerald-700" },
 };
-
 const MAX_MEDIA_BYTES = 4 * 1024 * 1024;
 
 function BugReportCard() {
@@ -442,6 +440,7 @@ function BugReportCard() {
   const [mediaName, setMediaName] = useState("");
   const [mediaError, setMediaError] = useState("");
   const [mediaLoading, setMediaLoading] = useState(false);
+  const [dragOver, setDragOver]   = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError]         = useState("");
   const [success, setSuccess]     = useState(false);
@@ -458,21 +457,19 @@ function BugReportCard() {
       .finally(() => setReportsLoading(false));
   }, []);
 
-  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+  function processFile(file: File) {
     setMediaError("");
-    if (!file) return;
-
     const type: "image" | "video" = file.type.startsWith("video/") ? "video" : "image";
-
     if (type === "video") {
       if (file.size > MAX_MEDIA_BYTES) { setMediaError("Video is too large. Maximum size is 4 MB."); return; }
+      setMediaLoading(true);
+      setMediaName(file.name);
       const reader = new FileReader();
-      reader.onload = () => { setMediaData(reader.result as string); setMediaType("video"); setMediaName(file.name); };
+      reader.onload = () => { setMediaData(reader.result as string); setMediaType("video"); setMediaName(file.name); setMediaLoading(false); };
+      reader.onerror = () => { setMediaError("Could not read video file."); setMediaLoading(false); };
       reader.readAsDataURL(file);
       return;
     }
-
     // Images — compress via Canvas before encoding so the JSON payload stays small
     setMediaLoading(true);
     setMediaName(file.name);
@@ -505,6 +502,18 @@ function BugReportCard() {
       setMediaLoading(false);
     };
     img.src = objectUrl;
+  }
+
+  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) processFile(file);
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) processFile(file);
   }
 
   function clearMedia() {
@@ -613,30 +622,122 @@ function BugReportCard() {
             <Upload className="h-3 w-3 text-zinc-400" />
             Screenshot or video <span className="text-zinc-400">(optional · max 4 MB)</span>
           </label>
-          {mediaData ? (
-            <div className="flex items-center justify-between rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-2.5">
-              <span className="flex items-center gap-2 text-sm text-zinc-700">
-                {mediaType === "video"
-                  ? <Video className="h-4 w-4 text-primary" />
-                  : <Image className="h-4 w-4 text-primary" />}
-                {mediaName}
-              </span>
-              <button onClick={clearMedia} className="rounded-lg p-1 text-zinc-400 transition hover:bg-zinc-200 hover:text-zinc-700">
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          ) : (
-            <motion.button
-              whileHover={{ scale: 1.01 }}
-              whileTap={{ scale: 0.99 }}
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              className="flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-zinc-200 bg-zinc-50 px-3.5 py-4 text-sm text-zinc-500 transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
-            >
-              <Upload className="h-4 w-4" />
-              Click to attach an image or video
-            </motion.button>
-          )}
+
+          <AnimatePresence mode="wait" initial={false}>
+            {mediaLoading ? (
+              /* ── Processing state ── */
+              <motion.div
+                key="processing"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.2 }}
+                className="relative flex items-center gap-3 overflow-hidden rounded-xl border border-primary/30 bg-primary/5 px-3.5 py-3"
+              >
+                <motion.span
+                  className="pointer-events-none absolute inset-0 bg-gradient-to-r from-transparent via-white/60 to-transparent"
+                  initial={{ x: "-100%" }}
+                  animate={{ x: "100%" }}
+                  transition={{ duration: 1.1, repeat: Infinity, ease: "linear" }}
+                />
+                <motion.span
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary"
+                >
+                  <Loader2 className="h-4 w-4" />
+                </motion.span>
+                <div className="relative min-w-0">
+                  <p className="truncate text-sm font-medium text-primary">Processing {mediaName || "file"}…</p>
+                  <p className="text-[11px] text-zinc-500">Compressing and preparing your attachment.</p>
+                </div>
+              </motion.div>
+            ) : mediaData ? (
+              /* ── Attached preview ── */
+              <motion.div
+                key="preview"
+                initial={{ opacity: 0, scale: 0.96, y: 6 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.96 }}
+                transition={springHover}
+                className="flex items-center gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-2.5"
+              >
+                <motion.div
+                  whileHover={{ scale: 1.05 }}
+                  transition={springHover}
+                  className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-zinc-900 shadow-sm"
+                >
+                  {mediaType === "video" ? (
+                    <>
+                      <video src={mediaData} className="h-full w-full object-cover opacity-80" muted playsInline />
+                      <span className="absolute inset-0 flex items-center justify-center bg-black/25">
+                        <Play className="h-5 w-5 fill-white text-white" />
+                      </span>
+                    </>
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={mediaData} alt="Attachment preview" className="h-full w-full object-cover" />
+                  )}
+                </motion.div>
+                <div className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1.5 text-sm font-medium text-zinc-800">
+                    <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} transition={springHover}>
+                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                    </motion.span>
+                    <span className="truncate">{mediaName}</span>
+                  </span>
+                  <span className="mt-0.5 flex items-center gap-1 text-[11px] text-zinc-500">
+                    {mediaType === "video" ? <FileVideo className="h-3 w-3" /> : <ImagePlus className="h-3 w-3" />}
+                    {mediaType === "video" ? "Video attached" : "Image attached, compressed for upload"}
+                  </span>
+                </div>
+                <motion.button
+                  whileHover={{ scale: 1.1, rotate: 90 }}
+                  whileTap={{ scale: 0.9 }}
+                  transition={springHover}
+                  onClick={clearMedia}
+                  aria-label="Remove attachment"
+                  className="shrink-0 rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-200 hover:text-zinc-700"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </motion.button>
+              </motion.div>
+            ) : (
+              /* ── Empty dropzone ── */
+              <motion.button
+                key="dropzone"
+                type="button"
+                initial={{ opacity: 0 }}
+                animate={{
+                  opacity: 1,
+                  scale: dragOver ? 1.015 : 1,
+                  borderColor: dragOver ? "rgba(var(--primary-rgb,99,102,241),0.6)" : "rgba(228,228,231,1)",
+                }}
+                whileHover={{ scale: 1.005 }}
+                whileTap={{ scale: 0.99 }}
+                transition={springHover}
+                onClick={() => fileRef.current?.click()}
+                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={handleDrop}
+                className={cn(
+                  "flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-3.5 py-6 text-sm transition-colors",
+                  dragOver ? "border-primary/60 bg-primary/10 text-primary" : "border-zinc-200 bg-zinc-50 text-zinc-500 hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+                )}
+              >
+                <motion.span
+                  animate={dragOver ? { y: [0, -4, 0] } : {}}
+                  transition={{ duration: 0.6, repeat: dragOver ? Infinity : 0 }}
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-sm"
+                >
+                  <Upload className="h-4 w-4" />
+                </motion.span>
+                <span className="font-medium">{dragOver ? "Drop it here" : "Click or drag a screenshot / video"}</span>
+                <span className="text-[11px] text-zinc-400">PNG, JPG, MP4 up to 4 MB</span>
+              </motion.button>
+            )}
+          </AnimatePresence>
+
           <input
             ref={fileRef}
             type="file"
@@ -644,7 +745,18 @@ function BugReportCard() {
             className="hidden"
             onChange={handleFile}
           />
-          {mediaError && <p className="text-[11px] text-red-500">{mediaError}</p>}
+          <AnimatePresence>
+            {mediaError && (
+              <motion.p
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden text-[11px] text-red-500"
+              >
+                {mediaError}
+              </motion.p>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* Error / success */}
@@ -663,23 +775,42 @@ function BugReportCard() {
           )}
           {success && (
             <motion.div
-              initial={{ opacity: 0, y: -6, height: 0 }}
-              animate={{ opacity: 1, y: 0, height: "auto" }}
+              initial={{ opacity: 0, y: -6, height: 0, scale: 0.97 }}
+              animate={{ opacity: 1, y: 0, height: "auto", scale: 1 }}
               exit={{ opacity: 0, height: 0 }}
+              transition={springHover}
               className="overflow-hidden"
             >
               <p className="flex items-center gap-1.5 rounded-xl bg-emerald-50 px-3.5 py-2 text-sm text-emerald-700">
-                <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> Bug report submitted — thank you!
+                <motion.span initial={{ scale: 0, rotate: -30 }} animate={{ scale: 1, rotate: 0 }} transition={springHover}>
+                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                </motion.span>
+                Bug report submitted — thank you!
               </p>
             </motion.div>
           )}
         </AnimatePresence>
 
         <motion.div whileHover={{ scale: submitting ? 1 : 1.02 }} whileTap={{ scale: submitting ? 1 : 0.97 }}>
-          <Button onClick={submit} disabled={submitting} className="flex items-center gap-1.5">
+          <Button onClick={submit} disabled={submitting || mediaLoading} className="relative flex items-center gap-1.5 overflow-hidden">
+            {submitting && mediaData && (
+              <motion.span
+                className="pointer-events-none absolute inset-0 bg-white/20"
+                initial={{ x: "-100%" }}
+                animate={{ x: "100%" }}
+                transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }}
+              />
+            )}
             <AnimatePresence mode="wait" initial={false}>
-              <motion.span key={submitting ? "s" : "i"} initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.7 }} transition={{ duration: 0.15 }} className="flex items-center gap-1.5">
-                {submitting ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Submitting…</> : <><Bug className="h-3.5 w-3.5" /> Submit bug report</>}
+              <motion.span key={submitting ? "s" : "i"} initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.7 }} transition={{ duration: 0.15 }} className="relative flex items-center gap-1.5">
+                {submitting ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    {mediaData ? "Uploading & submitting…" : "Submitting…"}
+                  </>
+                ) : (
+                  <><Bug className="h-3.5 w-3.5" /> Submit bug report</>
+                )}
               </motion.span>
             </AnimatePresence>
           </Button>
@@ -689,13 +820,16 @@ function BugReportCard() {
       {/* History */}
       {!reportsLoading && reports.length > 0 && (
         <div className="mt-5 border-t border-zinc-100 pt-4">
-          <button
+          <motion.button
             onClick={() => setShowHistory((v) => !v)}
-            className="flex items-center gap-1.5 text-xs font-medium text-zinc-500 transition hover:text-zinc-800"
+            whileHover={{ x: 2 }}
+            className="flex items-center gap-1.5 text-xs font-medium text-zinc-500 transition-colors hover:text-zinc-800"
           >
-            {showHistory ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            <motion.span animate={{ rotate: showHistory ? 180 : 0 }} transition={{ duration: 0.2 }}>
+              <ChevronDown className="h-3.5 w-3.5" />
+            </motion.span>
             {showHistory ? "Hide" : "Show"} my previous reports ({reports.length})
-          </button>
+          </motion.button>
           <AnimatePresence>
             {showHistory && (
               <motion.div
@@ -705,14 +839,16 @@ function BugReportCard() {
                 transition={{ duration: 0.2 }}
                 className="mt-3 space-y-2 overflow-hidden"
               >
-                {reports.map((r) => {
+                {reports.map((r, i) => {
                   const meta = BUG_STATUS_META[r.status];
                   return (
                     <motion.div
                       key={r.id}
                       initial={{ opacity: 0, x: -6 }}
                       animate={{ opacity: 1, x: 0 }}
-                      className="flex items-start justify-between gap-3 rounded-xl border border-zinc-100 bg-zinc-50/60 px-3.5 py-3"
+                      transition={{ delay: i * 0.03 }}
+                      whileHover={{ x: 2 }}
+                      className="flex items-start justify-between gap-3 rounded-xl border border-zinc-100 bg-zinc-50/60 px-3.5 py-3 transition-colors hover:border-primary/20"
                     >
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-zinc-800">{r.title}</p>
@@ -777,7 +913,6 @@ export default function SettingsPage() {
       </motion.div>
 
       <ProfileCard />
-
       <BugReportCard />
 
       <Card>

@@ -1,9 +1,8 @@
 "use client";
-
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { Bell, ChevronRight, Search, Sparkles, X } from "lucide-react";
+import { Bell, ChevronRight, Search, Sparkles, X, Zap } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "@/lib/store";
 import { cn, formatMinutes } from "@/lib/utils";
@@ -14,6 +13,8 @@ const crumbNames: Record<string, string> = {
   app: "Home", dashboard: "Dashboard", paths: "Learning Paths", course: "Course",
   learn: "Lesson", "my-learning": "My Learning", badges: "Badges", admin: "Admin", settings: "Settings",
 };
+
+const springHover = { type: "spring" as const, stiffness: 320, damping: 22 };
 
 export function Topbar() {
   const { state, markNotificationsRead } = useStore();
@@ -65,43 +66,74 @@ export function Topbar() {
 
       {/* Breadcrumbs */}
       <nav aria-label="Breadcrumb" className="hidden min-w-0 items-center gap-1 text-sm text-zinc-500 sm:flex">
-        {crumbs.map((c, i) => (
-          <span key={i} className="flex items-center gap-1">
-            {i > 0 && <ChevronRight className="h-3.5 w-3.5" />}
-            <span className={cn("truncate", i === crumbs.length - 1 && "font-medium text-zinc-800")}>{crumbNames[c] ?? c}</span>
-          </span>
-        ))}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={pathname}
+            initial={{ opacity: 0, x: -6 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 6 }}
+            transition={{ duration: 0.15 }}
+            className="flex items-center gap-1"
+          >
+            {crumbs.map((c, i) => (
+              <span key={i} className="flex items-center gap-1">
+                {i > 0 && <ChevronRight className="h-3.5 w-3.5" />}
+                <span className={cn("truncate", i === crumbs.length - 1 && "font-medium text-zinc-800")}>{crumbNames[c] ?? c}</span>
+              </span>
+            ))}
+          </motion.div>
+        </AnimatePresence>
       </nav>
 
       <div className="flex-1" />
 
       {/* Search trigger */}
-      <button
+      <motion.button
         onClick={() => { setSearchOpen(true); setTimeout(() => inputRef.current?.focus(), 50); }}
-        className="focus-ring group flex h-9 w-full min-w-0 max-w-[240px] items-center gap-2 rounded-xl border border-border bg-white px-3 text-sm text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-700"
+        whileHover={{ y: -1 }}
+        whileTap={{ scale: 0.98 }}
+        className="focus-ring group flex h-9 w-full min-w-0 max-w-[240px] items-center gap-2 rounded-xl border border-border bg-white px-3 text-sm text-zinc-500 transition-colors hover:border-zinc-300 hover:text-zinc-700"
       >
-        <Search className="h-4 w-4" />
+        <motion.span whileHover={{ scale: 1.1 }} transition={springHover} className="inline-flex"><Search className="h-4 w-4" /></motion.span>
         <span className="flex-1 truncate text-left">Search courses, lessons…</span>
         <kbd className="hidden rounded-md border border-border bg-white px-1.5 py-0.5 text-[10px] text-zinc-500 lg:block">Ctrl K</kbd>
-      </button>
+      </motion.button>
 
       {/* XP */}
-      <div className="hidden items-center gap-2 lg:flex">
-        <Tag tone="primary"><Sparkles className="h-3 w-3" />{state.xp} XP</Tag>
-      </div>
+      <motion.div whileHover={{ scale: 1.05 }} className="hidden items-center gap-2 lg:flex">
+        <Tag tone="primary"><Zap className="h-3 w-3" />{state.xp} XP</Tag>
+      </motion.div>
 
       {/* Notifications */}
       <div className="relative">
-        <button
+        <motion.button
           onClick={() => { setNotifOpen((v) => !v); if (!notifOpen) markNotificationsRead(); }}
           aria-label="Notifications"
-          className="focus-ring relative shrink-0 rounded-xl border border-border bg-white p-2 text-zinc-600 transition hover:border-zinc-300 hover:text-zinc-900"
+          whileHover={{ y: -1 }}
+          whileTap={{ scale: 0.94 }}
+          className="focus-ring relative shrink-0 rounded-xl border border-border bg-white p-2 text-zinc-600 transition-colors hover:border-zinc-300 hover:text-zinc-900"
         >
-          <Bell className="h-4 w-4" />
-          {unread > 0 && (
-            <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-gradient-to-r from-primary to-secondary text-[9px] font-bold text-white">{unread}</span>
-          )}
-        </button>
+          <motion.span
+            animate={unread > 0 ? { rotate: [0, -12, 12, -8, 8, 0] } : {}}
+            transition={{ duration: 1, repeat: unread > 0 ? Infinity : 0, repeatDelay: 3 }}
+            className="inline-flex"
+          >
+            <Bell className="h-4 w-4" />
+          </motion.span>
+          <AnimatePresence>
+            {unread > 0 && (
+              <motion.span
+                initial={{ opacity: 0, scale: 0.5 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.5 }}
+                transition={springHover}
+                className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-gradient-to-r from-primary to-secondary text-[9px] font-bold text-white"
+              >
+                {unread}
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </motion.button>
         <AnimatePresence>
           {notifOpen && (
             <motion.div
@@ -111,14 +143,29 @@ export function Topbar() {
               transition={{ duration: 0.18 }}
               className="glass-card absolute right-0 top-12 w-80 overflow-hidden p-0"
             >
-              <div className="border-b border-zinc-200 px-4 py-3 text-sm font-semibold text-zinc-900">Notifications</div>
+              <div className="flex items-center gap-1.5 border-b border-zinc-200 px-4 py-3 text-sm font-semibold text-zinc-900">
+                <Bell className="h-3.5 w-3.5 text-primary" />Notifications
+              </div>
               <div className="max-h-80 overflow-y-auto">
-                {state.notifications.length === 0 && <p className="p-4 text-sm text-zinc-500">You&apos;re all caught up.</p>}
-                {state.notifications.slice(0, 10).map((n) => (
-                  <div key={n.id} className="border-b border-zinc-100 px-4 py-3 last:border-0">
+                {state.notifications.length === 0 && (
+                  <div className="flex flex-col items-center gap-2 p-6 text-center">
+                    <motion.span animate={{ scale: [1, 1.1, 1] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}>
+                      <Sparkles className="h-5 w-5 text-primary/50" />
+                    </motion.span>
+                    <p className="text-sm text-zinc-500">You&apos;re all caught up.</p>
+                  </div>
+                )}
+                {state.notifications.slice(0, 10).map((n, i) => (
+                  <motion.div
+                    key={n.id}
+                    initial={{ opacity: 0, x: -6 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.04 }}
+                    className="border-b border-zinc-100 px-4 py-3 transition-colors last:border-0 hover:bg-zinc-50"
+                  >
                     <p className="text-sm font-medium text-zinc-900">{n.title}</p>
                     <p className="mt-0.5 text-xs leading-relaxed text-zinc-600">{n.body}</p>
-                  </div>
+                  </motion.div>
                 ))}
               </div>
             </motion.div>
@@ -127,9 +174,11 @@ export function Topbar() {
       </div>
 
       {/* Avatar */}
-      <Link href="/app/settings/" title="Settings" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary text-sm font-bold text-white shadow-glow-sm transition hover:opacity-80">
-        {(state.user?.name ?? "U").slice(0, 1).toUpperCase()}
-      </Link>
+      <motion.div whileHover={{ scale: 1.08, rotate: -3 }} whileTap={{ scale: 0.94 }} transition={springHover}>
+        <Link href="/app/settings/" title="Settings" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary text-sm font-bold text-white shadow-glow-sm transition-opacity hover:opacity-90">
+          {(state.user?.name ?? "U").slice(0, 1).toUpperCase()}
+        </Link>
+      </motion.div>
 
       {/* Search overlay */}
       <AnimatePresence>
@@ -160,26 +209,40 @@ export function Topbar() {
                   placeholder="Search by course, lesson, topic or tag…"
                   className="h-12 flex-1 bg-transparent text-sm text-zinc-900 placeholder:text-zinc-500 focus:outline-none"
                 />
-                <button onClick={() => setSearchOpen(false)} aria-label="Close search" className="text-zinc-500 hover:text-zinc-900"><X className="h-4 w-4" /></button>
+                <motion.button whileHover={{ rotate: 90 }} whileTap={{ scale: 0.9 }} transition={springHover} onClick={() => setSearchOpen(false)} aria-label="Close search" className="text-zinc-500 hover:text-zinc-900">
+                  <X className="h-4 w-4" />
+                </motion.button>
               </div>
               <div className="max-h-96 overflow-y-auto p-2">
-                {query && results.length === 0 && (
-                  <p className="p-6 text-center text-sm text-zinc-500">No results for &ldquo;{query}&rdquo;. Try a different topic or tag.</p>
-                )}
-                {!query && <p className="p-6 text-center text-sm text-zinc-500">Type to search across all learning paths, lessons, topics and tags.</p>}
+                <AnimatePresence mode="wait">
+                  {query && results.length === 0 && (
+                    <motion.p key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="p-6 text-center text-sm text-zinc-500">
+                      No results for &ldquo;{query}&rdquo;. Try a different topic or tag.
+                    </motion.p>
+                  )}
+                  {!query && (
+                    <motion.p key="hint" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="p-6 text-center text-sm text-zinc-500">
+                      Type to search across all learning paths, lessons, topics and tags.
+                    </motion.p>
+                  )}
+                </AnimatePresence>
                 {results.map((r, i) => (
-                  <button
+                  <motion.button
                     key={i}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.03 }}
+                    whileHover={{ x: 2 }}
                     onClick={() => { setSearchOpen(false); setQuery(""); router.push(r.href); }}
-                    className="focus-ring flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-zinc-100"
+                    className="focus-ring flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-zinc-100"
                   >
                     <Tag tone={r.type === "course" ? "primary" : "accent"}>{r.type}</Tag>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium text-zinc-900">{r.title}</span>
                       <span className="block truncate text-xs text-zinc-500">{r.sub}</span>
                     </span>
-                    <ChevronRight className="h-4 w-4 text-zinc-600" />
-                  </button>
+                    <ChevronRight className="h-4 w-4 text-zinc-600 transition-transform duration-200 group-hover:translate-x-0.5" />
+                  </motion.button>
                 ))}
               </div>
             </motion.div>

@@ -154,13 +154,9 @@ export default function DashboardPage() {
                 animate={{ opacity: 1 }}
                 className="flex flex-col items-center gap-3 py-8 text-center"
               >
-                <motion.div
-                  className="rounded-2xl bg-primary/10 p-4"
-                  animate={{ scale: [1, 1.06, 1] }}
-                  transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
-                >
+                <div className="rounded-2xl bg-primary/10 p-4">
                   <PlayCircle className="h-8 w-8 text-primary" />
-                </motion.div>
+                </div>
                 <p className="text-sm text-zinc-700">Nothing in progress yet</p>
                 <p className="max-w-xs text-xs text-zinc-500">Open any learning path and start your first lesson — it will show up here.</p>
               </motion.div>
@@ -226,9 +222,7 @@ export default function DashboardPage() {
         <Reveal>
           <Card>
             <div className="mb-4 flex items-center gap-2">
-              <motion.span animate={{ rotate: [0, -12, 12, -8, 0] }} transition={{ duration: 1.6, repeat: Infinity, repeatDelay: 3 }}>
-                <Megaphone className="h-4 w-4 text-primary" />
-              </motion.span>
+              <Megaphone className="h-4 w-4 text-primary" />
               <CardTitle>Announcements</CardTitle>
             </div>
             <div className="space-y-3">
@@ -279,13 +273,9 @@ export default function DashboardPage() {
                       <p className="text-sm font-medium text-zinc-900">{u.title}</p>
                       <p className="text-xs text-zinc-500">Arriving {u.eta}</p>
                     </div>
-                    <motion.span
-                      className="rounded-full border border-accent/30 bg-accent/10 px-2.5 py-0.5 text-[10px] font-medium text-cyan-700"
-                      animate={{ opacity: [1, 0.6, 1] }}
-                      transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                    >
+                    <span className="rounded-full border border-accent/30 bg-accent/10 px-2.5 py-0.5 text-[10px] font-medium text-cyan-700">
                       Soon
-                    </motion.span>
+                    </span>
                   </motion.div>
                 );
               })}

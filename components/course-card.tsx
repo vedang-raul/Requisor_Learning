@@ -38,27 +38,18 @@ export function CourseCard({ course }: { course: Course }) {
       <div className={cn("relative h-36 overflow-hidden bg-gradient-to-br", course.cover)}>
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_20%,rgba(255,255,255,0.25),transparent_55%)]" />
         {courseIllustrations[course.slug] && (
-          <motion.img
+          <img
             src={courseIllustrations[course.slug]}
             alt=""
             aria-hidden
-            className="pointer-events-none absolute inset-0 h-full w-full select-none object-cover"
-            animate={{ scale: 1 }}
-            whileHover={{ scale: 1.06 }}
-            transition={{ duration: 0.4, ease: "easeOut" }}
+            className="pointer-events-none absolute inset-0 h-full w-full select-none object-cover transition-transform duration-[400ms] ease-out group-hover:scale-[1.06]"
           />
         )}
 
         {/* Category icon chip */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          whileHover={{ scale: 1.1, rotate: -6 }}
-          transition={springHover}
-          className="absolute bottom-2 left-2 flex h-8 w-8 items-center justify-center rounded-lg bg-black/25 text-white backdrop-blur-sm transition-colors group-hover:bg-black/40"
-        >
+        <div className="absolute bottom-2 left-2 flex h-8 w-8 items-center justify-center rounded-lg bg-black/25 text-white backdrop-blur-sm transition-colors group-hover:bg-black/40">
           <Icon className="h-4 w-4" />
-        </motion.div>
+        </div>
 
         <motion.button
           onClick={(e) => { e.preventDefault(); toggleBookmark(course.slug); }}
@@ -133,9 +124,7 @@ export function CourseCard({ course }: { course: Course }) {
             href={`/app/course/?slug=${course.slug}`}
             className="focus-ring group/btn inline-flex h-9 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary to-secondary text-sm font-medium text-white shadow-glow-sm transition-all duration-200 hover:shadow-glow hover:brightness-110"
           >
-            <motion.span animate={{ scale: [1, 1, 1] }} whileHover={{ scale: 1.15 }} transition={springHover} className="inline-flex">
-              <PlayCircle className="h-4 w-4" />
-            </motion.span>
+            <PlayCircle className="h-4 w-4" />
             {finished ? "Review course" : started ? "Continue learning" : "Start learning"}
             <ArrowRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover/btn:translate-x-1" />
           </Link>
