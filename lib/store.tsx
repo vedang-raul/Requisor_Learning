@@ -94,13 +94,22 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [email, status]);
 
   // Persist to the signed-in user's bucket only.
+  // Debounced so rapid state changes (note keystrokes, XP updates) don't
+  // synchronously block the main thread on every render.
+  const lsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!hydrated || !email) return;
-    try {
-      localStorage.setItem(storageKeyFor(email), JSON.stringify({ ...state, user: null }));
-    } catch {
-      // storage full or unavailable — non-fatal
-    }
+    if (lsTimer.current) clearTimeout(lsTimer.current);
+    lsTimer.current = setTimeout(() => {
+      try {
+        localStorage.setItem(storageKeyFor(email), JSON.stringify({ ...state, user: null }));
+      } catch {
+        // storage full or unavailable — non-fatal
+      }
+    }, 600);
+    return () => {
+      if (lsTimer.current) clearTimeout(lsTimer.current);
+    };
   }, [state, hydrated, email]);
 
   // On hydration, pull authoritative data from the DB.
@@ -396,56 +405,64 @@ export function useStore(): StoreApi {
 
 export function useCourseProgress(course: Course | undefined) {
   const { state } = useStore();
-  if (!course || course.lessons.length === 0) return { completed: 0, total: 0, pct: 0, assessmentDone: false };
-  const completedLessons = course.lessons.filter((l) => state.progress[l.id]?.completed).length;
-  const hasCapstone = !!course.baseAssessment;
-  const assessmentDone = hasCapstone && state.assessmentCompletions.includes(course.slug);
-  const total = course.lessons.length + (hasCapstone ? 1 : 0);
-  const completed = completedLessons + (assessmentDone ? 1 : 0);
-  return { completed, total, pct: Math.round((completed / total) * 100), assessmentDone };
+  return useMemo(() => {
+    if (!course || course.lessons.length === 0) return { completed: 0, total: 0, pct: 0, assessmentDone: false };
+    const completedLessons = course.lessons.filter((l) => state.progress[l.id]?.completed).length;
+    const hasCapstone = !!course.baseAssessment;
+    const assessmentDone = hasCapstone && state.assessmentCompletions.includes(course.slug);
+    const total = course.lessons.length + (hasCapstone ? 1 : 0);
+    const completed = completedLessons + (assessmentDone ? 1 : 0);
+    return { completed, total, pct: Math.round((completed / total) * 100), assessmentDone };
+  }, [course, state.progress, state.assessmentCompletions]);
 }
 
 export function useOverallStats() {
   const { state } = useStore();
-  const allLessons = state.courses.flatMap((c) => c.lessons);
-  const completedLessons = allLessons.filter((l) => state.progress[l.id]?.completed);
-  const minutesLearned = completedLessons.reduce((acc, l) => acc + l.durationMin, 0);
-  const completedCourses = state.courses.filter((c) => c.lessons.length > 0 && c.lessons.every((l) => state.progress[l.id]?.completed));
-  const overallPct = allLessons.length ? Math.round((completedLessons.length / allLessons.length) * 100) : 0;
-  return {
-    coursesAvailable: state.courses.length,
-    completedCourses: completedCourses.length,
-    hoursLearned: Math.round((minutesLearned / 60) * 10) / 10,
-    badges: completedCourses.length,
-    overallPct,
-    completedLessonCount: completedLessons.length,
-    totalLessonCount: allLessons.length,
-  };
+  return useMemo(() => {
+    const allLessons = state.courses.flatMap((c) => c.lessons);
+    const completedLessons = allLessons.filter((l) => state.progress[l.id]?.completed);
+    const minutesLearned = completedLessons.reduce((acc, l) => acc + l.durationMin, 0);
+    const completedCourses = state.courses.filter((c) => c.lessons.length > 0 && c.lessons.every((l) => state.progress[l.id]?.completed));
+    const overallPct = allLessons.length ? Math.round((completedLessons.length / allLessons.length) * 100) : 0;
+    return {
+      coursesAvailable: state.courses.length,
+      completedCourses: completedCourses.length,
+      hoursLearned: Math.round((minutesLearned / 60) * 10) / 10,
+      badges: completedCourses.length,
+      overallPct,
+      completedLessonCount: completedLessons.length,
+      totalLessonCount: allLessons.length,
+    };
+  }, [state.courses, state.progress]);
 }
 
 export function useEarnedBadges(): EarnedBadge[] {
   const { state } = useStore();
-  return state.courses
-    .filter((c) => c.lessons.length > 0 && c.lessons.every((l) => state.progress[l.id]?.completed))
-    .map((c) => {
-      const last = c.lessons.map((l) => state.progress[l.id]?.completedAt ?? "").sort().at(-1) || new Date().toISOString();
-      return {
-        id: `RQ-${c.slug.slice(0, 3).toUpperCase()}-${last.slice(0, 10).replaceAll("-", "")}`,
-        courseSlug: c.slug,
-        courseTitle: c.title,
-        earnedAt: last,
-      };
-    });
+  return useMemo(() =>
+    state.courses
+      .filter((c) => c.lessons.length > 0 && c.lessons.every((l) => state.progress[l.id]?.completed))
+      .map((c) => {
+        const last = c.lessons.map((l) => state.progress[l.id]?.completedAt ?? "").sort().at(-1) || new Date().toISOString();
+        return {
+          id: `RQ-${c.slug.slice(0, 3).toUpperCase()}-${last.slice(0, 10).replaceAll("-", "")}`,
+          courseSlug: c.slug,
+          courseTitle: c.title,
+          earnedAt: last,
+        };
+      }),
+  [state.courses, state.progress]);
 }
 
 export function useContinueWatching() {
   const { state } = useStore();
-  return state.history
-    .map((h) => {
-      const course = state.courses.find((c) => c.slug === h.courseSlug);
-      const lesson = course?.lessons.find((l) => l.id === h.lessonId);
-      if (!course || !lesson) return null;
-      return { course, lesson, at: h.at, progress: state.progress[lesson.id] };
-    })
-    .filter(Boolean) as { course: Course; lesson: Lesson; at: string; progress?: { completed: boolean; watchPct: number } }[];
+  return useMemo(() =>
+    state.history
+      .map((h) => {
+        const course = state.courses.find((c) => c.slug === h.courseSlug);
+        const lesson = course?.lessons.find((l) => l.id === h.lessonId);
+        if (!course || !lesson) return null;
+        return { course, lesson, at: h.at, progress: state.progress[lesson.id] };
+      })
+      .filter(Boolean) as { course: Course; lesson: Lesson; at: string; progress?: { completed: boolean; watchPct: number } }[],
+  [state.courses, state.history, state.progress]);
 }

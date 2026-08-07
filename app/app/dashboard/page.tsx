@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   BookOpen, CheckCircle2, Clock, Trophy, Megaphone, ArrowRight,
   PlayCircle, Rocket, Network, MessageSquare, Cloud, Compass, Bot, Shield,
@@ -41,19 +41,21 @@ export default function DashboardPage() {
       .catch(() => {});
   }, []);
 
-  const statCards = [
+  const statCards = useMemo(() => [
     { label: "Courses Available", value: stats.coursesAvailable, icon: BookOpen, tint: "from-indigo-500/20 to-indigo-500/5 text-primary" },
     { label: "Completed", value: stats.completedCourses, icon: CheckCircle2, tint: "from-emerald-500/20 to-emerald-500/5 text-emerald-600" },
     { label: "Hours Learned", value: stats.hoursLearned, icon: Clock, decimals: 1, tint: "from-cyan-500/20 to-cyan-500/5 text-cyan-400" },
     { label: "Badges Earned", value: stats.badges, icon: Trophy, tint: "from-amber-500/20 to-amber-500/5 text-amber-600" },
-  ];
+  ], [stats]);
 
   // Recommend courses that are not started yet (or least progressed)
-  const recommended = state.courses
-    .map((c) => ({ c, done: c.lessons.filter((l) => state.progress[l.id]?.completed).length / Math.max(1, c.lessons.length) }))
-    .sort((a, b) => a.done - b.done)
-    .slice(0, 3)
-    .map((x) => x.c);
+  const recommended = useMemo(() =>
+    state.courses
+      .map((c) => ({ c, done: c.lessons.filter((l) => state.progress[l.id]?.completed).length / Math.max(1, c.lessons.length) }))
+      .sort((a, b) => a.done - b.done)
+      .slice(0, 3)
+      .map((x) => x.c),
+  [state.courses, state.progress]);
 
   return (
     <PageTransition className="space-y-8">

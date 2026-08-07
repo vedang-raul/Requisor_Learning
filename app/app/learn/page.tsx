@@ -79,18 +79,20 @@ function LearnView() {
   const [newComment, setNewComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const course = state.courses.find((c) => c.slug === courseSlug);
-  const lesson = course?.lessons.find((l) => l.id === lessonId);
+  const course = useMemo(() => state.courses.find((c) => c.slug === courseSlug), [state.courses, courseSlug]);
+  const lesson = useMemo(() => course?.lessons.find((l) => l.id === lessonId), [course, lessonId]);
   const { pct } = useCourseProgress(course);
 
   // ── View tracking ─────────────────────────────────────────────────────
+  // Use primitive slug/id deps so unrelated store updates (notes, XP) don't
+  // re-fire view recording.
   useEffect(() => {
-    if (course && lesson) {
-      recordView(course.slug, lesson.id);
-      const t = setTimeout(() => setWatchPct(lesson.id, 25), 15000);
+    if (courseSlug && lessonId) {
+      recordView(courseSlug, lessonId);
+      const t = setTimeout(() => setWatchPct(lessonId, 25), 15000);
       return () => clearTimeout(t);
     }
-  }, [course, lesson, recordView, setWatchPct]);
+  }, [courseSlug, lessonId, recordView, setWatchPct]);
 
   // Reset auto-advance when lesson changes
   useEffect(() => {
