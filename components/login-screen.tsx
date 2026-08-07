@@ -317,7 +317,7 @@ export function LoginScreen() {
         </div>
 
         {/* Dev-only quick-access — stripped out in production builds */}
-        {process.env.NODE_ENV !== "production" && (
+        {/* {process.env.NODE_ENV !== "production" && (
           <div className="mt-4 border-t border-dashed border-zinc-200 pt-4">
             <button
               type="button"
@@ -331,7 +331,7 @@ export function LoginScreen() {
               ⚡ Dev: sign in as support@requisor.io
             </button>
           </div>
-        )}
+        )} */}
       </motion.div>
     </div>
   );
