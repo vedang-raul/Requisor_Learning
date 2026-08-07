@@ -2,11 +2,25 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-// Browser type declarations for Web Speech API
+// Browser type declarations for Web Speech API (not in standard TS lib)
+interface SpeechRecognitionInstance extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start(): void;
+  stop(): void;
+  abort(): void;
+  onresult: ((event: SpeechRecognitionResultEvt) => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: Event) => void) | null;
+}
+interface SpeechRecognitionResultEvt extends Event {
+  readonly results: SpeechRecognitionResultList;
+}
 declare global {
   interface Window {
-    SpeechRecognition: typeof SpeechRecognition;
-    webkitSpeechRecognition: typeof SpeechRecognition;
+    SpeechRecognition: { new (): SpeechRecognitionInstance };
+    webkitSpeechRecognition: { new (): SpeechRecognitionInstance };
   }
 }
 
@@ -34,7 +48,7 @@ export function useVoice(): UseVoiceReturn {
   const ttsSupported =
     typeof window !== "undefined" && !!window.speechSynthesis;
 
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   // Initialise recognition once
@@ -48,7 +62,7 @@ export function useVoice(): UseVoiceReturn {
     rec.interimResults = false;
     rec.lang = "en-US";
 
-    rec.onresult = (event: SpeechRecognitionEvent) => {
+    rec.onresult = (event: SpeechRecognitionResultEvt) => {
       const result = event.results[event.results.length - 1];
       if (result.isFinal) {
         setTranscript(result[0].transcript);

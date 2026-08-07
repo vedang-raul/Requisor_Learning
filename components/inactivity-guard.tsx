@@ -14,13 +14,12 @@ import { signOut } from "next-auth/react";
 
 const TIMEOUT_MS = 60 * 60 * 1000; // 1 hour
 
-const ACTIVITY_EVENTS: (keyof WindowEventMap)[] = [
+const WINDOW_EVENTS: (keyof WindowEventMap)[] = [
   "mousemove",
   "mousedown",
   "keydown",
   "scroll",
   "touchstart",
-  "visibilitychange",
 ];
 
 export function InactivityGuard() {
@@ -38,11 +37,14 @@ export function InactivityGuard() {
     reset();
 
     // Reset on any user activity.
-    ACTIVITY_EVENTS.forEach((event) => window.addEventListener(event, reset, { passive: true }));
+    WINDOW_EVENTS.forEach((event) => window.addEventListener(event, reset, { passive: true }));
+    // visibilitychange fires on document, not window
+    document.addEventListener("visibilitychange", reset, { passive: true });
 
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
-      ACTIVITY_EVENTS.forEach((event) => window.removeEventListener(event, reset));
+      WINDOW_EVENTS.forEach((event) => window.removeEventListener(event, reset));
+      document.removeEventListener("visibilitychange", reset);
     };
   }, []);
 
