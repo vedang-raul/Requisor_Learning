@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Compass, ListChecks, Loader2, Mic, MicOff, RotateCcw, Send, Sparkles, TrendingUp, Volume2, VolumeX, X } from "lucide-react";
+import { Compass, ListChecks, Loader2, Mic, MicOff, RotateCcw, Send, Sparkles, TrendingUp, Volume2, VolumeX, X, ChevronDown } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { buildProgressContext } from "@/lib/ai-context";
@@ -181,6 +181,7 @@ export function AiAssistant() {
     if (typeof window === "undefined") return false;
     return localStorage.getItem(MUTE_KEY) === "true";
   });
+  const [showVoicePicker, setShowVoicePicker] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // Typewriter reveal
@@ -449,18 +450,83 @@ export function AiAssistant() {
               </div>
               {/* Mute/unmute TTS button — only shown when TTS is supported */}
               {voice.ttsSupported && (
-                <button
-                  onClick={toggleMute}
-                  aria-label={voiceMuted ? "Unmute voice response" : "Mute voice response"}
-                  title={voiceMuted ? "Unmute voice" : "Mute voice"}
-                  className="focus-ring shrink-0 rounded-lg p-1.5 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
-                >
-                  {voiceMuted ? (
-                    <VolumeX className="h-3.5 w-3.5" />
-                  ) : (
-                    <Volume2 className={cn("h-3.5 w-3.5", voice.isSpeaking && "text-primary")} />
+                <div className="relative flex items-center">
+                  <button
+                    onClick={toggleMute}
+                    aria-label={voiceMuted ? "Unmute voice response" : "Mute voice response"}
+                    title={voiceMuted ? "Unmute voice" : "Mute voice"}
+                    className="focus-ring shrink-0 rounded-lg p-1.5 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
+                  >
+                    {voiceMuted ? (
+                      <VolumeX className="h-3.5 w-3.5" />
+                    ) : (
+                      <Volume2 className={cn("h-3.5 w-3.5", voice.isSpeaking && "text-primary")} />
+                    )}
+                  </button>
+                  {/* Voice picker — chevron button + floating select */}
+                  {voice.voices.length > 0 && (
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowVoicePicker((v) => !v)}
+                        title="Change AI voice"
+                        aria-label="Change AI voice"
+                        className="focus-ring -ml-0.5 shrink-0 rounded-lg p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
+                      >
+                        <ChevronDown className="h-3 w-3" />
+                      </button>
+                      {showVoicePicker && (
+                        <>
+                          {/* backdrop to close on outside click */}
+                          <div
+                            className="fixed inset-0 z-40"
+                            onClick={() => setShowVoicePicker(false)}
+                          />
+                          <div className="absolute right-0 top-8 z-50 w-64 rounded-xl border border-border bg-white p-2 shadow-lg">
+                            <p className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
+                              AI voice
+                            </p>
+                            <div className="max-h-52 overflow-y-auto">
+                              {/* Default option */}
+                              <button
+                                key="__default__"
+                                onClick={() => {
+                                  voice.setSelectedVoiceName("");
+                                  setShowVoicePicker(false);
+                                }}
+                                className={cn(
+                                  "w-full rounded-lg px-2.5 py-1.5 text-left text-xs transition",
+                                  voice.selectedVoiceName === ""
+                                    ? "bg-primary/10 font-medium text-primary"
+                                    : "text-zinc-700 hover:bg-zinc-100"
+                                )}
+                              >
+                                Browser default
+                              </button>
+                              {voice.voices.map((v) => (
+                                <button
+                                  key={v.name}
+                                  onClick={() => {
+                                    voice.setSelectedVoiceName(v.name);
+                                    setShowVoicePicker(false);
+                                  }}
+                                  className={cn(
+                                    "w-full rounded-lg px-2.5 py-1.5 text-left text-xs transition",
+                                    voice.selectedVoiceName === v.name
+                                      ? "bg-primary/10 font-medium text-primary"
+                                      : "text-zinc-700 hover:bg-zinc-100"
+                                  )}
+                                >
+                                  <span className="block truncate">{v.name}</span>
+                                  <span className="text-[10px] text-zinc-400">{v.lang}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
                   )}
-                </button>
+                </div>
               )}
               {messages.length > 0 && (
                 <button

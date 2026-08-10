@@ -24,12 +24,17 @@ declare global {
   }
 }
 
+const VOICE_STORAGE_KEY = "requisor-tts-voice";
+
 export interface UseVoiceReturn {
   isListening: boolean;
   isSpeaking: boolean;
   transcript: string;
   sttSupported: boolean;
   ttsSupported: boolean;
+  voices: SpeechSynthesisVoice[];
+  selectedVoiceName: string;
+  setSelectedVoiceName: (name: string) => void;
   startListening: () => void;
   stopListening: () => void;
   speak: (text: string) => void;
@@ -40,6 +45,11 @@ export function useVoice(): UseVoiceReturn {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [transcript, setTranscript] = useState("");
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedVoiceName, setSelectedVoiceNameState] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem(VOICE_STORAGE_KEY) ?? "";
+  });
 
   // Determine support (safe for SSR)
   const sttSupported =
@@ -50,6 +60,25 @@ export function useVoice(): UseVoiceReturn {
 
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  // Load voices — browsers fire voiceschanged once the list is ready
+  useEffect(() => {
+    if (!ttsSupported) return;
+    const load = () => {
+      const v = window.speechSynthesis.getVoices();
+      if (v.length) setVoices(v);
+    };
+    load();
+    window.speechSynthesis.addEventListener("voiceschanged", load);
+    return () => window.speechSynthesis.removeEventListener("voiceschanged", load);
+  }, [ttsSupported]);
+
+  const setSelectedVoiceName = useCallback((name: string) => {
+    setSelectedVoiceNameState(name);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(VOICE_STORAGE_KEY, name);
+    }
+  }, []);
 
   // Initialise recognition once
   useEffect(() => {
@@ -127,6 +156,14 @@ export function useVoice(): UseVoiceReturn {
       utterance.rate = 1.05;
       utterance.pitch = 1;
 
+      // Apply selected voice if set
+      if (selectedVoiceName) {
+        const match = window.speechSynthesis
+          .getVoices()
+          .find((v) => v.name === selectedVoiceName);
+        if (match) utterance.voice = match;
+      }
+
       utterance.onstart = () => setIsSpeaking(true);
       utterance.onend = () => setIsSpeaking(false);
       utterance.onerror = () => setIsSpeaking(false);
@@ -134,7 +171,7 @@ export function useVoice(): UseVoiceReturn {
       utteranceRef.current = utterance;
       window.speechSynthesis.speak(utterance);
     },
-    [ttsSupported]
+    [ttsSupported, selectedVoiceName]
   );
 
   const stopSpeaking = useCallback(() => {
@@ -149,6 +186,9 @@ export function useVoice(): UseVoiceReturn {
     transcript,
     sttSupported,
     ttsSupported,
+    voices,
+    selectedVoiceName,
+    setSelectedVoiceName,
     startListening,
     stopListening,
     speak,
