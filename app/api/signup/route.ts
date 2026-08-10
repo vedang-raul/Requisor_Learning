@@ -11,7 +11,8 @@ export async function POST(req: Request) {
     const { name, email, password, employmentType, position } = await req.json().catch(() => ({}));
     const cleanEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
     const cleanName = typeof name === "string" ? name.trim() : "";
-    const cleanType = typeof employmentType === "string" && ["intern", "job"].includes(employmentType.toLowerCase()) ? employmentType.toLowerCase() : "";
+    const validTypes = ["intern", "job", "student", "faculty"];
+    const cleanType = typeof employmentType === "string" && validTypes.includes(employmentType.toLowerCase()) ? employmentType.toLowerCase() : "";
     const cleanPosition = typeof position === "string" ? position.trim() : "";
 
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cleanEmail)) {
@@ -19,7 +20,6 @@ export async function POST(req: Request) {
     }
     if (!cleanName) return NextResponse.json({ error: "Enter your name." }, { status: 400 });
     if (!cleanType) return NextResponse.json({ error: "Select a valid employment type." }, { status: 400 });
-    if (!cleanPosition) return NextResponse.json({ error: "Enter your position." }, { status: 400 });
     if (typeof password !== "string" || password.length < 8) {
       return NextResponse.json({ error: "Password must be at least 8 characters." }, { status: 400 });
     }
