@@ -9,23 +9,19 @@ import { getNudge, markNudgeSeen, type Nudge } from "@/lib/nudges";
 import { cn } from "@/lib/utils";
 import { renderMarkdownLite, endsInOpenTag } from "@/components/markdown-lite";
 import { useVoice } from "@/hooks/use-voice";
-
 type ChatMessage = { role: "user" | "assistant"; content: string };
-
 const QUICK_PROMPTS = [
   { icon: TrendingUp, label: "How am I doing overall?" },
   { icon: Compass, label: "What should I learn next?" },
   { icon: ListChecks, label: "Summarize my progress" },
   { icon: TrendingUp, label: "How do I earn more XP?" },
 ];
-
 const dotTransition = (delay: number) => ({
   duration: 0.9,
   repeat: Infinity,
   ease: [0.45, 0, 0.55, 1] as const,
   delay,
 });
-
 function TypingDots() {
   return (
     <span className="flex items-center gap-1 px-1 py-2">
@@ -40,7 +36,6 @@ function TypingDots() {
     </span>
   );
 }
-
 function StreamCursor() {
   return (
     <motion.span
@@ -52,7 +47,91 @@ function StreamCursor() {
     />
   );
 }
+/**
+ * Live mic waveform (Claude-style dictation).
+ * While `active`, opens an AnalyserNode on the mic stream and samples the real
+ * input level ~18×/s. Each sample is pushed onto a rolling buffer, so the bars
+ * scroll left as you speak — exactly like Claude's recording animation.
+ * Falls back to a gentle synthetic pulse if the audio stream can't be opened
+ * (e.g. permission granted to SpeechRecognition but AudioContext blocked).
+ */
+function useMicWaveform(active: boolean, barCount = 28) {
+  const [bars, setBars] = useState<number[]>(() => Array.from({ length: barCount }, () => 0.06));
+  useEffect(() => {
+    if (!active) {
+      setBars(Array.from({ length: barCount }, () => 0.06));
+      return;
+    }
+    let cancelled = false;
+    let raf: number | null = null;
+    let fallback: ReturnType<typeof setInterval> | null = null;
+    let stream: MediaStream | null = null;
+    let ctx: AudioContext | null = null;
+    let lastPush = 0;
 
+    const push = (level: number) =>
+      setBars((prev) => [...prev.slice(1), Math.min(1, Math.max(0.06, level))]);
+
+    navigator.mediaDevices
+      ?.getUserMedia({ audio: true })
+      .then((s) => {
+        if (cancelled) {
+          s.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        stream = s;
+        const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        ctx = new AC();
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 512;
+        analyser.smoothingTimeConstant = 0.6;
+        ctx.createMediaStreamSource(s).connect(analyser);
+        const data = new Uint8Array(analyser.fftSize);
+        const tick = (now: number) => {
+          analyser.getByteTimeDomainData(data);
+          let sum = 0;
+          for (let i = 0; i < data.length; i++) {
+            const v = (data[i] - 128) / 128;
+            sum += v * v;
+          }
+          const rms = Math.sqrt(sum / data.length);
+          if (now - lastPush > 55) {
+            lastPush = now;
+            push(rms * 4.5); // scale RMS into a visible 0..1 range
+          }
+          raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        fallback = setInterval(() => push(0.12 + Math.random() * 0.35), 90);
+      });
+
+    return () => {
+      cancelled = true;
+      if (raf) cancelAnimationFrame(raf);
+      if (fallback) clearInterval(fallback);
+      stream?.getTracks().forEach((t) => t.stop());
+      ctx?.close().catch(() => {});
+    };
+  }, [active, barCount]);
+  return bars;
+}
+/** The scrolling bar strip rendered while recording. */
+function RecordingWaveform({ bars }: { bars: number[] }) {
+  return (
+    <div className="flex h-9 min-w-0 flex-1 items-center justify-center gap-[3px] overflow-hidden px-1">
+      {bars.map((h, i) => (
+        <div
+          key={i}
+          className="w-[3px] shrink-0 rounded-full bg-gradient-to-b from-primary to-secondary transition-[height] duration-100 ease-out"
+          style={{ height: `${Math.max(4, Math.round(h * 28))}px`, opacity: 0.45 + h * 0.55 }}
+        />
+      ))}
+    </div>
+  );
+}
 /** Strip {{course|...}} / {{lesson|...}} tags and markdown symbols for clean TTS text. */
 function stripForSpeech(text: string): string {
   return text
@@ -69,7 +148,6 @@ function stripForSpeech(text: string): string {
     .replace(/\s+/g, " ")
     .trim();
 }
-
 /** Extract the first navigable URL from a message. Returns null if none found. */
 function extractFirstNavUrl(
   text: string,
@@ -89,9 +167,7 @@ function extractFirstNavUrl(
   }
   return null;
 }
-
 const MUTE_KEY = "ai-assistant-muted";
-
 export function AiAssistant() {
   const { state, hydrated } = useStore();
   const router = useRouter();
@@ -107,7 +183,6 @@ export function AiAssistant() {
   });
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-
   // Typewriter reveal
   const fullTextRef = useRef("");
   const revealedRef = useRef(0);
@@ -117,19 +192,28 @@ export function AiAssistant() {
   // Track whether we've already spoken / navigated for the current AI reply
   const didSpeakRef = useRef(false);
   const didNavigateRef = useRef(false);
-
   const progressContext = useMemo(() => buildProgressContext(state), [state]);
   const initials = (state.user?.name ?? "U").slice(0, 1).toUpperCase();
-
   const voice = useVoice();
-
-  // When a transcript arrives from STT, put it in the input
+  const waveBars = useMicWaveform(voice.isListening);
+  // When a transcript arrives from STT, put it in the input box so the user
+  // can see what was heard before it's sent.
   useEffect(() => {
     if (voice.transcript) {
       setInput(voice.transcript);
     }
   }, [voice.transcript]);
-
+  // Auto-send as soon as the user stops speaking — no tap required.
+  // We keep a stable ref to `send` so the effect closure never goes stale.
+  const sendRef = useRef(send);
+  useEffect(() => { sendRef.current = send; });
+  const prevListeningRef = useRef(false);
+  useEffect(() => {
+    if (prevListeningRef.current && !voice.isListening && voice.transcript.trim()) {
+      sendRef.current(voice.transcript);
+    }
+    prevListeningRef.current = voice.isListening;
+  }, [voice.isListening, voice.transcript]);
   const resolveLesson = useMemo(
     () => (courseTitle: string, lessonTitle: string) => {
       const course = state.courses.find((c) => c.title.toLowerCase() === courseTitle.toLowerCase());
@@ -138,11 +222,9 @@ export function AiAssistant() {
     },
     [state.courses]
   );
-
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, streaming]);
-
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
@@ -150,9 +232,7 @@ export function AiAssistant() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-
   useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
-
   // Auto-grow the composer textarea up to ~4 lines.
   useEffect(() => {
     const el = textareaRef.current;
@@ -160,13 +240,11 @@ export function AiAssistant() {
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
   }, [input]);
-
   // Once hydrated, check for a rule-based nudge (stalled course).
   useEffect(() => {
     if (!hydrated || !state.user) return;
     setNudge(getNudge(state));
   }, [hydrated, state]);
-
   // Persist mute preference
   function toggleMute() {
     const next = !voiceMuted;
@@ -174,7 +252,6 @@ export function AiAssistant() {
     localStorage.setItem(MUTE_KEY, String(next));
     if (next) voice.stopSpeaking();
   }
-
   function startRevealLoop() {
     const BASE_CPS = 60;
     let last = performance.now();
@@ -182,42 +259,33 @@ export function AiAssistant() {
       const dt = (now - last) / 1000;
       last = now;
       const target = fullTextRef.current.length;
-
       if (revealedRef.current < target && now >= pauseUntilRef.current) {
         const jitter = 0.75 + Math.sin(now / 137) * 0.25 + Math.random() * 0.15;
         revealedRef.current = Math.min(target, revealedRef.current + BASE_CPS * jitter * dt);
-
         let count = Math.floor(revealedRef.current);
         while (count > 0 && endsInOpenTag(fullTextRef.current.slice(0, count))) count--;
-
         const lastChar = fullTextRef.current[count - 1];
         if (lastChar && ".!?\n".includes(lastChar) && count === Math.floor(revealedRef.current)) {
           pauseUntilRef.current = now + 110;
         }
-
         setMessages((prev) => {
           const updated = [...prev];
           updated[updated.length - 1] = { role: "assistant", content: fullTextRef.current.slice(0, count) };
           return updated;
         });
       }
-
       const done = revealedRef.current >= target && networkDoneRef.current;
-
       if (!done) {
         rafRef.current = requestAnimationFrame(tick);
       } else {
         rafRef.current = null;
         setStreaming(false);
-
         const finalText = fullTextRef.current;
-
         // Auto-speak the completed reply (unless muted)
         if (!didSpeakRef.current && !voiceMuted && voice.ttsSupported) {
           didSpeakRef.current = true;
           voice.speak(stripForSpeech(finalText));
         }
-
         // Auto-navigate to the first course/lesson tag in the reply
         if (!didNavigateRef.current) {
           didNavigateRef.current = true;
@@ -231,7 +299,6 @@ export function AiAssistant() {
     };
     rafRef.current = requestAnimationFrame(tick);
   }
-
   async function send(text: string) {
     const trimmed = text.trim();
     if (!trimmed || streaming) return;
@@ -271,7 +338,6 @@ export function AiAssistant() {
       networkDoneRef.current = true;
     }
   }
-
   function openPanel() {
     setOpen(true);
     if (nudge && messages.length === 0) {
@@ -280,13 +346,11 @@ export function AiAssistant() {
       setNudge(null);
     }
   }
-
   function newChat() {
     voice.stopSpeaking();
     setMessages([]);
     setRetryText(null);
   }
-
   function handleMicClick() {
     if (voice.isListening) {
       voice.stopListening();
@@ -294,7 +358,6 @@ export function AiAssistant() {
       voice.startListening();
     }
   }
-
   return (
     <>
       {/* Floating trigger */}
@@ -348,7 +411,6 @@ export function AiAssistant() {
           </span>
         )}
       </div>
-
       <AnimatePresence>
         {open && (
           <motion.div
@@ -381,11 +443,10 @@ export function AiAssistant() {
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-1 truncate text-sm font-semibold text-zinc-900">
                   Requisor Assistant
-                 
+
                 </p>
                 <p className="truncate text-xs text-zinc-500">Knows your progress across all paths</p>
               </div>
-
               {/* Mute/unmute TTS button — only shown when TTS is supported */}
               {voice.ttsSupported && (
                 <button
@@ -401,7 +462,6 @@ export function AiAssistant() {
                   )}
                 </button>
               )}
-
               {messages.length > 0 && (
                 <button
                   onClick={newChat}
@@ -420,7 +480,6 @@ export function AiAssistant() {
                 <X className="h-4 w-4" />
               </button>
             </div>
-
             {/* Messages */}
             <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
               {messages.length === 0 && (
@@ -449,7 +508,6 @@ export function AiAssistant() {
                   </div>
                 </motion.div>
               )}
-
               {messages.map((m, i) => {
                 const isLastAssistant = streaming && m.role === "assistant" && i === messages.length - 1;
                 const isUser = m.role === "user";
@@ -498,7 +556,6 @@ export function AiAssistant() {
                   </motion.div>
                 );
               })}
-
               {retryText && !streaming && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start pl-8">
                   <button
@@ -511,7 +568,6 @@ export function AiAssistant() {
                 </motion.div>
               )}
             </div>
-
             {/* Input */}
             <form
               onSubmit={(e) => {
@@ -520,23 +576,51 @@ export function AiAssistant() {
               }}
               className="border-t border-zinc-100 p-3"
             >
-              <div className="flex items-end gap-1.5 rounded-2xl border border-border bg-zinc-50 p-1.5 pl-3.5 transition focus-within:border-primary/50 focus-within:bg-white focus-within:ring-2 focus-within:ring-primary/15">
-                <textarea
-                  ref={textareaRef}
-                  rows={1}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      send(input);
-                    }
-                  }}
-                  placeholder={voice.isListening ? "Listening…" : "Ask about your progress…"}
-                  disabled={streaming}
-                  className="max-h-[120px] flex-1 resize-none bg-transparent py-1.5 text-sm text-zinc-900 placeholder:text-zinc-500 focus:outline-none disabled:opacity-60"
-                />
-
+              <div
+                className={cn(
+                  "flex items-end gap-1.5 rounded-2xl border p-1.5 pl-3.5 transition",
+                  voice.isListening
+                    ? "border-primary/40 bg-white ring-2 ring-primary/15"
+                    : "border-border bg-zinc-50 focus-within:border-primary/50 focus-within:bg-white focus-within:ring-2 focus-within:ring-primary/15"
+                )}
+              >
+                <AnimatePresence mode="wait" initial={false}>
+                  {voice.isListening ? (
+                    <motion.div
+                      key="waveform"
+                      initial={{ opacity: 0, scale: 0.96 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.96 }}
+                      transition={{ duration: 0.15 }}
+                      className="flex min-w-0 flex-1 items-center"
+                      aria-live="polite"
+                      aria-label="Recording — speak now"
+                    >
+                      <RecordingWaveform bars={waveBars} />
+                    </motion.div>
+                  ) : (
+                    <motion.textarea
+                      key="composer"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.12 }}
+                      ref={textareaRef}
+                      rows={1}
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          send(input);
+                        }
+                      }}
+                      placeholder="Ask about your progress…"
+                      disabled={streaming}
+                      className="max-h-[120px] flex-1 resize-none bg-transparent py-1.5 text-sm text-zinc-900 placeholder:text-zinc-500 focus:outline-none disabled:opacity-60"
+                    />
+                  )}
+                </AnimatePresence>
                 {/* Mic button — only shown when STT is supported */}
                 {voice.sttSupported && (
                   <motion.button
@@ -548,16 +632,16 @@ export function AiAssistant() {
                     whileHover={{ scale: streaming ? 1 : 1.06 }}
                     whileTap={{ scale: streaming ? 1 : 0.94 }}
                     className={cn(
-                      "focus-ring relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white shadow-sm transition-opacity disabled:opacity-40",
+                      "focus-ring relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl shadow-sm transition-opacity disabled:opacity-40",
                       voice.isListening
-                        ? "bg-rose-500"
+                        ? "bg-gradient-to-br from-primary to-secondary text-white"
                         : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300"
                     )}
                   >
                     {voice.isListening && (
                       <motion.span
-                        className="absolute inset-0 rounded-xl bg-rose-400"
-                        animate={{ opacity: [0.6, 0, 0.6] }}
+                        className="absolute inset-0 rounded-xl bg-white"
+                        animate={{ opacity: [0.25, 0, 0.25] }}
                         transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
                       />
                     )}
@@ -568,7 +652,6 @@ export function AiAssistant() {
                     )}
                   </motion.button>
                 )}
-
                 <motion.button
                   type="submit"
                   disabled={streaming || !input.trim()}
