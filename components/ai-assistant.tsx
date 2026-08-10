@@ -710,7 +710,7 @@ export function AiAssistant() {
             </p>
             <div className="max-h-52 overflow-y-auto">
               {(() => {
-                const BLOCKED = new Set([
+                const BLOCKED_PREFIXES = [
                   "Microsoft David",
                   "Microsoft Ravi",
                   "Microsoft Heera",
@@ -719,8 +719,10 @@ export function AiAssistant() {
                   "Google UK English Male",
                   "Google español de Estados Unidos",
                   "Google Bahasa Indonesia",
-                ]);
-                const filtered = voice.voices.filter((v) => !BLOCKED.has(v.name));
+                ];
+                const filtered = voice.voices.filter(
+                  (v) => !BLOCKED_PREFIXES.some((p) => v.name.startsWith(p))
+                );
                 return filtered;
               })().map((v) => (
                 <button
