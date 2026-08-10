@@ -57,6 +57,13 @@ export function LoginScreen() {
 
   const validEmail = (v: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v);
 
+  /** Safely parse JSON from a fetch Response — returns null if the body is HTML or unparseable. */
+  const safeJson = async (res: Response): Promise<Record<string, string> | null> => {
+    const ct = res.headers.get("content-type") ?? "";
+    if (!ct.includes("application/json")) return null;
+    try { return await res.json(); } catch { return null; }
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -71,8 +78,8 @@ export function LoginScreen() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email }),
         });
-        const data = await res.json();
-        if (!res.ok) setError(data.error ?? "Something went wrong.");
+        const data = await safeJson(res);
+        if (!res.ok) setError(data?.error ?? "Something went wrong. Please try again.");
         else setNotice("If that email has an account, a reset link is on its way from support@requisor.io.");
       } catch {
         setError("Network error. Please try again.");
@@ -112,8 +119,8 @@ export function LoginScreen() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name, email, password, employmentType, position }),
         });
-        const data = await res.json();
-        if (!res.ok) setError(data.error ?? "Signup failed.");
+        const data = await safeJson(res);
+        if (!res.ok) setError(data?.error ?? "Signup failed. Please try again.");
         else {
           setNotice("Account created! Check your inbox — we sent a verification link from support@requisor.io.");
           setMode("login");
