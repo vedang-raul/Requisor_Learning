@@ -722,7 +722,9 @@ export function AiAssistant() {
                 ];
                 const VOICE_LABELS: Array<{ prefix: string; label: string; desc: string }> = [
                   { prefix: "en-US", label: "Chloe",    desc: "English (USA)" },
-                  { prefix: "en-GB", label: "Emilia",   desc: "English (UK Female)" },
+                  { prefix: "en-GB", label: "Emilia",   desc: "English (United Kingdom)" },
+                  { prefix: "de-",   label: "Hannah",   desc: "English (German)" },
+                  { prefix: "pt-BR", label: "Beatriz",  desc: "English (Brazilian Portuguese)" },
                   { prefix: "es-",   label: "Carlos",   desc: "English (Spanish)" },
                   { prefix: "fr-",   label: "Camille",  desc: "English (French)" },
                   { prefix: "en-IN", label: "Ananya",   desc: "English (Indian / Hindi)" },
@@ -754,7 +756,9 @@ export function AiAssistant() {
               })().map((v) => {
                 const VOICE_LABELS: Array<{ prefix: string; label: string; desc: string }> = [
                   { prefix: "en-US", label: "Chloe",    desc: "English (USA)" },
-                  { prefix: "en-GB", label: "Emilia",   desc: "English (UK Female)" },
+                  { prefix: "en-GB", label: "Emilia",   desc: "English (United Kingdom)" },
+                  { prefix: "de-",   label: "Hannah",   desc: "English (German)" },
+                  { prefix: "pt-BR", label: "Beatriz",  desc: "English (Brazilian Portuguese)" },
                   { prefix: "es-",   label: "Carlos",   desc: "English (Spanish)" },
                   { prefix: "fr-",   label: "Camille",  desc: "English (French)" },
                   { prefix: "en-IN", label: "Ananya",   desc: "English (Indian / Hindi)" },
