@@ -720,11 +720,59 @@ export function AiAssistant() {
                   "Google español de Estados Unidos",
                   "Google Bahasa Indonesia",
                 ];
-                const filtered = voice.voices.filter(
-                  (v) => !BLOCKED_PREFIXES.some((p) => v.name.startsWith(p))
-                );
+                const VOICE_LABELS: Array<{ prefix: string; label: string; desc: string }> = [
+                  { prefix: "en-US", label: "Chloe",    desc: "English (USA)" },
+                  { prefix: "en-GB", label: "Emilia",   desc: "English (UK Female)" },
+                  { prefix: "es-",   label: "Carlos",   desc: "English (Spanish)" },
+                  { prefix: "fr-",   label: "Camille",  desc: "English (French)" },
+                  { prefix: "en-IN", label: "Ananya",   desc: "English (Indian / Hindi)" },
+                  { prefix: "hi-",   label: "Ananya",   desc: "English (Indian / Hindi)" },
+                  { prefix: "it-",   label: "Giulia",   desc: "English (Italian)" },
+                  { prefix: "ja-",   label: "Yuki",     desc: "English (Japanese)" },
+                  { prefix: "ko-",   label: "Yuna",     desc: "English (Korean)" },
+                  { prefix: "nl-",   label: "Fleur",    desc: "English (Dutch)" },
+                  { prefix: "pl-",   label: "Zofia",    desc: "English (Polish)" },
+                  { prefix: "ru-",   label: "Elena",    desc: "English (Russian)" },
+                  { prefix: "zh-CN", label: "Lin",      desc: "English (Mandarin — Mainland China)" },
+                  { prefix: "zh-HK", label: "Wing-Yee", desc: "English (Cantonese — Hong Kong)" },
+                  { prefix: "zh-TW", label: "Mei-Ling", desc: "English (Mandarin — Taiwan)" },
+                ];
+                const getLabel = (v: SpeechSynthesisVoice) =>
+                  VOICE_LABELS.find((d) => v.lang.startsWith(d.prefix));
+                // Filter blocked voices then deduplicate so each label appears once
+                const seenLabels = new Set<string>();
+                const filtered = voice.voices
+                  .filter((v) => !BLOCKED_PREFIXES.some((p) => v.name.startsWith(p)))
+                  .filter((v) => {
+                    const mapped = getLabel(v);
+                    const key = mapped ? mapped.label : v.name;
+                    if (seenLabels.has(key)) return false;
+                    seenLabels.add(key);
+                    return true;
+                  });
                 return filtered;
-              })().map((v) => (
+              })().map((v) => {
+                const VOICE_LABELS: Array<{ prefix: string; label: string; desc: string }> = [
+                  { prefix: "en-US", label: "Chloe",    desc: "English (USA)" },
+                  { prefix: "en-GB", label: "Emilia",   desc: "English (UK Female)" },
+                  { prefix: "es-",   label: "Carlos",   desc: "English (Spanish)" },
+                  { prefix: "fr-",   label: "Camille",  desc: "English (French)" },
+                  { prefix: "en-IN", label: "Ananya",   desc: "English (Indian / Hindi)" },
+                  { prefix: "hi-",   label: "Ananya",   desc: "English (Indian / Hindi)" },
+                  { prefix: "it-",   label: "Giulia",   desc: "English (Italian)" },
+                  { prefix: "ja-",   label: "Yuki",     desc: "English (Japanese)" },
+                  { prefix: "ko-",   label: "Yuna",     desc: "English (Korean)" },
+                  { prefix: "nl-",   label: "Fleur",    desc: "English (Dutch)" },
+                  { prefix: "pl-",   label: "Zofia",    desc: "English (Polish)" },
+                  { prefix: "ru-",   label: "Elena",    desc: "English (Russian)" },
+                  { prefix: "zh-CN", label: "Lin",      desc: "English (Mandarin — Mainland China)" },
+                  { prefix: "zh-HK", label: "Wing-Yee", desc: "English (Cantonese — Hong Kong)" },
+                  { prefix: "zh-TW", label: "Mei-Ling", desc: "English (Mandarin — Taiwan)" },
+                ];
+                const mapped = VOICE_LABELS.find((d) => v.lang.startsWith(d.prefix));
+                const displayName = mapped?.label ?? v.name;
+                const displayDesc = mapped?.desc ?? v.lang;
+                return (
                 <button
                   key={v.name}
                   onClick={() => {
@@ -739,14 +787,15 @@ export function AiAssistant() {
                   )}
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate">{v.name}</span>
-                    <span className={cn("text-[10px]", voice.selectedVoiceName === v.name ? "text-primary/60" : "text-zinc-400")}>{v.lang}</span>
+                    <span className="block truncate">{displayName}</span>
+                    <span className={cn("text-[10px]", voice.selectedVoiceName === v.name ? "text-primary/60" : "text-zinc-400")}>{displayDesc}</span>
                   </span>
                   {voice.selectedVoiceName === v.name && (
                     <Check className="h-3 w-3 shrink-0 text-primary" />
                   )}
                 </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         </>
