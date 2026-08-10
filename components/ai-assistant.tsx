@@ -709,24 +709,20 @@ export function AiAssistant() {
               AI voice
             </p>
             <div className="max-h-52 overflow-y-auto">
-              <button
-                onClick={() => {
-                  voice.setSelectedVoiceName("");
-                  setShowVoicePicker(false);
-                }}
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition",
-                  voice.selectedVoiceName === ""
-                    ? "bg-primary/10 font-medium text-primary"
-                    : "text-zinc-700 hover:bg-zinc-100"
-                )}
-              >
-                <span className="flex-1">Browser default</span>
-                {voice.selectedVoiceName === "" && (
-                  <Check className="h-3 w-3 shrink-0 text-primary" />
-                )}
-              </button>
-              {voice.voices.map((v) => (
+              {(() => {
+                const BLOCKED = new Set([
+                  "Microsoft David",
+                  "Microsoft Ravi",
+                  "Microsoft Heera",
+                  "Microsoft Mark",
+                  "Microsoft Zira",
+                  "Google UK English Male",
+                  "Google español de Estados Unidos",
+                  "Google Bahasa Indonesia",
+                ]);
+                const filtered = voice.voices.filter((v) => !BLOCKED.has(v.name));
+                return filtered;
+              })().map((v) => (
                 <button
                   key={v.name}
                   onClick={() => {
