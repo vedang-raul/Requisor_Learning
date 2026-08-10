@@ -53,7 +53,7 @@ function shell(title: string, body: string, cta?: { label: string; href: string 
 }
 
 export async function sendVerificationEmail(to: string, name: string, token: string) {
-  const url = `${getBaseUrl()}/api/auth/verify?token=${token}`;
+  const url = `${getBaseUrl()}/api/verify?token=${token}`;
   await sendEmail(
     to,
     "Verify your email — Requisor Learning",

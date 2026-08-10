@@ -73,7 +73,7 @@ export function LoginScreen() {
     if (mode === "forgot") {
       setLoading(true);
       try {
-        const res = await fetch("/api/auth/forgot", {
+        const res = await fetch("/api/forgot", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email }),
@@ -114,7 +114,7 @@ export function LoginScreen() {
           setLoading(false);
           return;
         }
-        const res = await fetch("/api/auth/signup", {
+        const res = await fetch("/api/signup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name, email, password, employmentType, position }),
