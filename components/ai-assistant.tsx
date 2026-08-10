@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Compass, ListChecks, Loader2, Mic, MicOff, RotateCcw, Send, Sparkles, TrendingUp, Volume2, VolumeX, X, ChevronDown } from "lucide-react";
+import { Check, Compass, ListChecks, Loader2, Mic, MicOff, RotateCcw, Send, Sparkles, TrendingUp, Volume2, VolumeX, X, ChevronDown } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { buildProgressContext } from "@/lib/ai-context";
@@ -715,13 +715,16 @@ export function AiAssistant() {
                   setShowVoicePicker(false);
                 }}
                 className={cn(
-                  "w-full rounded-lg px-2.5 py-1.5 text-left text-xs transition",
+                  "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition",
                   voice.selectedVoiceName === ""
                     ? "bg-primary/10 font-medium text-primary"
                     : "text-zinc-700 hover:bg-zinc-100"
                 )}
               >
-                Browser default
+                <span className="flex-1">Browser default</span>
+                {voice.selectedVoiceName === "" && (
+                  <Check className="h-3 w-3 shrink-0 text-primary" />
+                )}
               </button>
               {voice.voices.map((v) => (
                 <button
@@ -731,14 +734,19 @@ export function AiAssistant() {
                     setShowVoicePicker(false);
                   }}
                   className={cn(
-                    "w-full rounded-lg px-2.5 py-1.5 text-left text-xs transition",
+                    "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition",
                     voice.selectedVoiceName === v.name
                       ? "bg-primary/10 font-medium text-primary"
                       : "text-zinc-700 hover:bg-zinc-100"
                   )}
                 >
-                  <span className="block truncate">{v.name}</span>
-                  <span className="text-[10px] text-zinc-400">{v.lang}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{v.name}</span>
+                    <span className={cn("text-[10px]", voice.selectedVoiceName === v.name ? "text-primary/60" : "text-zinc-400")}>{v.lang}</span>
+                  </span>
+                  {voice.selectedVoiceName === v.name && (
+                    <Check className="h-3 w-3 shrink-0 text-primary" />
+                  )}
                 </button>
               ))}
             </div>
