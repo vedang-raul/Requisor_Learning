@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { Compass, ListChecks, Loader2, Mic, MicOff, RotateCcw, Send, Sparkles, TrendingUp, Volume2, VolumeX, X, ChevronDown } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -466,80 +465,26 @@ export function AiAssistant() {
                       <Volume2 className={cn("h-3.5 w-3.5", voice.isSpeaking && "text-primary")} />
                     )}
                   </button>
-                  {/* Voice picker — chevron button; dropdown via portal to escape overflow:hidden */}
+                  {/* Voice picker — chevron only; dropdown rendered as top-level sibling */}
                   {voice.voices.length > 0 && (
-                    <>
-                      <button
-                        ref={voiceChevronRef}
-                        onClick={() => {
-                          if (!showVoicePicker && voiceChevronRef.current) {
-                            const r = voiceChevronRef.current.getBoundingClientRect();
-                            setVoicePickerPos({
-                              top: r.bottom + 6,
-                              right: window.innerWidth - r.right,
-                            });
-                          }
-                          setShowVoicePicker((v) => !v);
-                        }}
-                        title="Change AI voice"
-                        aria-label="Change AI voice"
-                        className="focus-ring -ml-0.5 shrink-0 rounded-lg p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
-                      >
-                        <ChevronDown className="h-3 w-3" />
-                      </button>
-                      {showVoicePicker && typeof document !== "undefined" && createPortal(
-                        <>
-                          {/* backdrop */}
-                          <div
-                            className="fixed inset-0 z-[9998]"
-                            onClick={() => setShowVoicePicker(false)}
-                          />
-                          <div
-                            className="fixed z-[9999] w-64 rounded-xl border border-border bg-white p-2 shadow-lg"
-                            style={{ top: voicePickerPos.top, right: voicePickerPos.right }}
-                          >
-                            <p className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
-                              AI voice
-                            </p>
-                            <div className="max-h-52 overflow-y-auto">
-                              <button
-                                onClick={() => {
-                                  voice.setSelectedVoiceName("");
-                                  setShowVoicePicker(false);
-                                }}
-                                className={cn(
-                                  "w-full rounded-lg px-2.5 py-1.5 text-left text-xs transition",
-                                  voice.selectedVoiceName === ""
-                                    ? "bg-primary/10 font-medium text-primary"
-                                    : "text-zinc-700 hover:bg-zinc-100"
-                                )}
-                              >
-                                Browser default
-                              </button>
-                              {voice.voices.map((v) => (
-                                <button
-                                  key={v.name}
-                                  onClick={() => {
-                                    voice.setSelectedVoiceName(v.name);
-                                    setShowVoicePicker(false);
-                                  }}
-                                  className={cn(
-                                    "w-full rounded-lg px-2.5 py-1.5 text-left text-xs transition",
-                                    voice.selectedVoiceName === v.name
-                                      ? "bg-primary/10 font-medium text-primary"
-                                      : "text-zinc-700 hover:bg-zinc-100"
-                                  )}
-                                >
-                                  <span className="block truncate">{v.name}</span>
-                                  <span className="text-[10px] text-zinc-400">{v.lang}</span>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        </>,
-                        document.body
-                      )}
-                    </>
+                    <button
+                      ref={voiceChevronRef}
+                      onClick={() => {
+                        if (!showVoicePicker && voiceChevronRef.current) {
+                          const r = voiceChevronRef.current.getBoundingClientRect();
+                          setVoicePickerPos({
+                            top: r.bottom + 6,
+                            right: window.innerWidth - r.right,
+                          });
+                        }
+                        setShowVoicePicker((v) => !v);
+                      }}
+                      title="Change AI voice"
+                      aria-label="Change AI voice"
+                      className="focus-ring -ml-0.5 shrink-0 rounded-lg p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
+                    >
+                      <ChevronDown className="h-3 w-3" />
+                    </button>
                   )}
                 </div>
               )}
@@ -748,6 +693,58 @@ export function AiAssistant() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Voice picker dropdown — rendered outside the overflow-hidden panel */}
+      {showVoicePicker && (
+        <>
+          <div
+            className="fixed inset-0 z-[49]"
+            onClick={() => setShowVoicePicker(false)}
+          />
+          <div
+            className="fixed z-50 w-64 rounded-xl border border-border bg-white p-2 shadow-lg"
+            style={{ top: voicePickerPos.top, right: voicePickerPos.right }}
+          >
+            <p className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
+              AI voice
+            </p>
+            <div className="max-h-52 overflow-y-auto">
+              <button
+                onClick={() => {
+                  voice.setSelectedVoiceName("");
+                  setShowVoicePicker(false);
+                }}
+                className={cn(
+                  "w-full rounded-lg px-2.5 py-1.5 text-left text-xs transition",
+                  voice.selectedVoiceName === ""
+                    ? "bg-primary/10 font-medium text-primary"
+                    : "text-zinc-700 hover:bg-zinc-100"
+                )}
+              >
+                Browser default
+              </button>
+              {voice.voices.map((v) => (
+                <button
+                  key={v.name}
+                  onClick={() => {
+                    voice.setSelectedVoiceName(v.name);
+                    setShowVoicePicker(false);
+                  }}
+                  className={cn(
+                    "w-full rounded-lg px-2.5 py-1.5 text-left text-xs transition",
+                    voice.selectedVoiceName === v.name
+                      ? "bg-primary/10 font-medium text-primary"
+                      : "text-zinc-700 hover:bg-zinc-100"
+                  )}
+                >
+                  <span className="block truncate">{v.name}</span>
+                  <span className="text-[10px] text-zinc-400">{v.lang}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }
