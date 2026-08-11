@@ -5,9 +5,19 @@ import { getToken } from "next-auth/jwt";
 export async function middleware(req: NextRequest) {
   // Protect all /app/admin routes with a server-side admin role check.
   if (req.nextUrl.pathname.startsWith("/app/admin")) {
+    // Must mirror the cookie name used in authOptions exactly.
+    // authOptions derives it from NODE_ENV, not whether the request is HTTPS —
+    // so we do the same here instead of letting getToken auto-detect from the
+    // request URL (which is always HTTPS behind Replit's proxy even in dev,
+    // causing a cookie-name mismatch that makes getToken return null).
+    const isSecure = process.env.NODE_ENV === "production";
+    const cookieName = isSecure
+      ? "__Secure-next-auth.session-token"
+      : "next-auth.session-token";
     const token = await getToken({
       req,
       secret: process.env.NEXTAUTH_SECRET || process.env.SESSION_SECRET,
+      cookieName,
     });
 
     // No session at all — redirect to login.
