@@ -610,6 +610,7 @@ function BugReportCard() {
           <input
             type="datetime-local"
             value={occurredAt}
+            min="2026-07-06T00:00"
             max={new Date().toISOString().slice(0, 16)}
             onChange={(e) => setOccurredAt(e.target.value)}
             className="focus-ring rounded-xl border border-zinc-200 bg-white px-3.5 py-2 text-sm text-zinc-900 transition-colors hover:border-zinc-300 focus:border-primary/50"
