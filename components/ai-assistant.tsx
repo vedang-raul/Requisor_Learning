@@ -365,56 +365,56 @@ export function AiAssistant() {
     <>
       {/* Floating trigger */}
       <div className="fixed bottom-5 right-5 z-40 flex h-20 w-20 items-center justify-center">
-        <div className="container-vao">
-          <button
-            className="orb"
-            onClick={() => (open ? setOpen(false) : openPanel())}
-            aria-label={open ? "Close AI assistant" : "Open AI assistant"}
-          >
-            {/* Icon overlay — mic when closed, X when open */}
-            <div className="icons">
-              <AnimatePresence mode="wait" initial={false}>
-                <motion.span
-                  key={open ? "close" : "open"}
-                  initial={{ opacity: 0, rotate: -45, scale: 0.7 }}
-                  animate={{ opacity: 1, rotate: 0, scale: 1 }}
-                  exit={{ opacity: 0, rotate: 45, scale: 0.7 }}
-                  transition={{ duration: 0.15 }}
-                  className="svg flex items-center justify-center"
-                >
-                  {open ? (
-                    <X className="h-6 w-6 text-white" />
-                  ) : (
-                    <Mic className="h-6 w-6 text-white" />
-                  )}
-                </motion.span>
-              </AnimatePresence>
-            </div>
-
-            {/* Morphing blob with inner glow and spinning rings */}
-            <div className="ball">
-              <div className="container-lines" />
-              <div className="container-rings" />
-            </div>
-
-            {/* Gooey SVG filter */}
-            <svg style={{ position: "absolute", width: 0, height: 0 }} aria-hidden>
-              <defs>
-                <filter id="gooey">
-                  <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur" />
-                  <feColorMatrix
-                    in="blur"
-                    mode="matrix"
-                    values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7"
-                    result="gooey"
-                  />
-                  <feComposite in="SourceGraphic" in2="gooey" operator="atop" />
-                </filter>
-              </defs>
-            </svg>
-          </button>
-        </div>
-
+        {!open && (
+          <>
+            <motion.span
+              className="absolute inset-0 rounded-full bg-gradient-to-br from-primary/40 to-secondary/40"
+              animate={{ scale: [1, 1.35, 1], opacity: [0.5, 0, 0.5] }}
+              transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut" }}
+            />
+            <motion.span
+              className="absolute inset-0 rounded-full bg-gradient-to-br from-primary/30 to-secondary/30"
+              animate={{ scale: [1, 1.2, 1], opacity: [0.6, 0, 0.6] }}
+              transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
+            />
+          </>
+        )}
+        <motion.button
+          onClick={() => (open ? setOpen(false) : openPanel())}
+          aria-label={open ? "Close AI assistant" : "Open AI assistant"}
+          whileHover={{ scale: 1.06 }}
+          whileTap={{ scale: 0.95 }}
+          animate={{ boxShadow: open ? "0 8px 24px -6px rgba(0,0,0,0.25)" : "0 10px 30px -6px rgba(0,0,0,0.3)" }}
+          className="relative z-10 flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-primary to-secondary p-[3px]"
+        >
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.span
+              key={open ? "close" : "open"}
+              initial={{ opacity: 0, rotate: -45, scale: 0.7 }}
+              animate={{ opacity: 1, rotate: 0, scale: 1 }}
+              exit={{ opacity: 0, rotate: 45, scale: 0.7 }}
+              transition={{ duration: 0.15 }}
+              className="flex h-full w-full items-center justify-center rounded-full"
+            >
+              {open ? (
+                <span className="flex h-full w-full items-center justify-center rounded-full bg-white">
+                  <X className="h-5 w-5 text-zinc-700" />
+                </span>
+              ) : (
+                <span className="flex h-full w-full items-center justify-center rounded-full bg-white">
+                  <div className="ai-bot">
+                    <div className="head">
+                      <div className="face">
+                        <div className="eyes"></div>
+                        <div className="mouth"></div>
+                      </div>
+                    </div>
+                  </div>
+                </span>
+              )}
+            </motion.span>
+          </AnimatePresence>
+        </motion.button>
         {nudge && !open && (
           <span className="absolute right-1 top-1 z-20 flex h-3.5 w-3.5">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />

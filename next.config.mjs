@@ -5,7 +5,8 @@ const nextConfig = {
   images: { unoptimized: true },
   trailingSlash: true,
   allowedDevOrigins: [
-    "b2f00baf-9e23-4513-ba89-9cbee0d4ae04-00-2heldtfjj40vj.pike.replit.dev",
+    "*.pike.replit.dev",
+    "*.replit.dev",
   ],
 };
 export default nextConfig;

@@ -256,3 +256,180 @@ body {
   50%  { transform: rotateY(270deg) rotateX(270deg) rotateZ(270deg) scale(1.1); }
   100% { transform: rotateY(450deg) rotateX(450deg) rotateZ(450deg); }
 }
+@layer properties {
+  @property --elh {
+    syntax: '<number>';
+    inherits: true;
+    initial-value: 1;
+  }
+  @property --erx {
+    syntax: '<percentage>';
+    inherits: true;
+    initial-value: 0%;
+  }
+  @property --fx {
+    syntax: '<percentage>';
+    inherits: true;
+    initial-value: 0%;
+  }
+  @property --ealw {
+    syntax: '<number>';
+    inherits: true;
+    initial-value: 1;
+  }
+  @property --earw {
+    syntax: '<number>';
+    inherits: true;
+    initial-value: 1;
+  }
+  @property --erh {
+    syntax: '<number>';
+    inherits: true;
+    initial-value: 1;
+  }
+  @property --mh {
+    syntax: '<number>';
+    inherits: true;
+    initial-value: 1;
+  }
+  @property --mw {
+    syntax: '<number>';
+    inherits: true;
+    initial-value: 1;
+  }
+}
+
+.ai-bot {
+  --c: #23AE97;
+  --c2: #0d9488;
+  --c3: #134e4a;
+  --surface: #f0fdfb;
+  scale: 1.8;
+  width: 34px;
+  aspect-ratio: 1;
+  position: relative;
+  display: grid;
+  place-items: center;
+  animation:
+    blink 2.4s ease infinite,
+    move-head 4.2s linear(0 0%, 0 2.27%, 0.02 4.53%, 0.04 6.8%, 0.06 9.07%, 0.1 11.33%, 0.14 13.6%, 0.25 18.15%, 0.39 22.7%, 0.56 27.25%, 0.77 31.8%, 1 36.35%, 0.89 40.9%, 0.85 43.18%, 0.81 45.45%, 0.79 47.72%, 0.77 50%, 0.75 52.27%, 0.75 54.55%, 0.75 56.82%, 0.77 59.1%, 0.79 61.38%, 0.81 63.65%, 0.85 65.93%, 0.89 68.2%, 1 72.7%, 0.97 74.98%, 0.95 77.25%, 0.94 79.53%, 0.94 81.8%, 0.94 84.08%, 0.95 86.35%, 0.97 88.63%, 1 90.9%, 0.99 93.18%, 0.98 95.45%, 0.99 97.73%, 1 100%) infinite,
+    mouth 1.2s ease-in infinite;
+}
+.ai-bot .head {
+  background: linear-gradient(var(--c) 80%, color-mix(in srgb, var(--c), black 30%), var(--c));
+  border-radius: 0.375rem;
+  position: absolute;
+  width: 28px;
+  height: 20px;
+  filter: drop-shadow(0 0 3px rgba(0,0,0,0.18));
+}
+.ai-bot .head:before,
+.ai-bot .head:after {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: 6px;
+  width: 2px;
+  height: 8px;
+  background: var(--c, 1);
+  border-radius: 2px 0 0 2px;
+  scale: var(--ealw, 1) 1;
+}
+.ai-bot .head:after {
+  right: -4px;
+  left: unset;
+  border-radius: 0 2px 2px 0;
+  scale: var(--earw, 1) 1;
+}
+.ai-bot .face {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: absolute;
+  inset: 0 3px;
+  background: var(--surface);
+  translate: var(--fx) 0;
+  border-radius: 4px;
+  padding: 4px 4px 2px 4px;
+  gap: 3px;
+}
+.ai-bot .face:before {
+  content: '';
+  background: var(--c);
+  position: absolute;
+  height: 1px;
+  width: 10px;
+  top: -2px;
+  border-radius: 2px 2px 0 0;
+  mask: radial-gradient(circle at 50% 100%, transparent 45%, black 45%);
+}
+.ai-bot .eyes {
+  display: flex;
+  height: 8px;
+  gap: 6px;
+}
+.ai-bot .eyes:before,
+.ai-bot .eyes:after {
+  content: '';
+  width: 5px;
+  height: 8px;
+  scale: 1 var(--elh);
+  filter: drop-shadow(0 0 2px var(--c2));
+  background:
+    repeating-linear-gradient(to bottom, var(--c), var(--c) 0.25px, transparent 0.25px, transparent 0.6px),
+    linear-gradient(to bottom, var(--c3), transparent 60%),
+    var(--c2);
+  border-radius: 1px;
+  translate: var(--erx) 0;
+}
+.ai-bot .eyes:after {
+  scale: 1 var(--erh);
+  translate: var(--erx) 0;
+}
+.ai-bot .mouth {
+  width: 10px;
+  height: 2px;
+  background: var(--c2);
+  border-radius: 0 0 1px 1px;
+  filter: drop-shadow(0 0 2px var(--c2));
+  scale: var(--mw, 1) var(--mh, 1);
+}
+
+@layer animations {
+  @keyframes blink {
+    from, 10%, to {
+      --elh: 1;
+      --erh: 1;
+    }
+    2% { --elh: 0.2; }
+    8% { --erh: 0.1; }
+  }
+  @keyframes mouth {
+    from, 30%, 70%, to {
+      --mh: 1;
+      --mw: 1;
+    }
+    20% { --mh: 0.5; }
+    60% { --mw: 0.7; }
+  }
+  @keyframes move-head {
+    from, 20%, 40%, to {
+      --erx: 0%;
+      --fx: 0%;
+      --ealw: 1;
+      --earw: 1;
+    }
+    10% {
+      --erx: 20%;
+      --fx: 10%;
+      --ealw: 1.5;
+      --earw: 0.5;
+    }
+    30% {
+      --erx: -20%;
+      --fx: -10%;
+      --ealw: 0.5;
+      --earw: 1.5;
+    }
+  }
+}
