@@ -373,9 +373,9 @@ export function AiAssistant() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 4, scale: 0.95 }}
               transition={{ delay: 1.2, duration: 0.25 }}
-              className="absolute bottom-full right-0 mb-3 w-52 rounded-2xl rounded-br-sm bg-white/90 px-3.5 py-2.5 shadow-lg backdrop-blur-sm"
+              className="absolute bottom-full right-0 mb-3 w-52 rounded-2xl rounded-br-sm bg-white/30 px-3.5 py-2.5 shadow-lg backdrop-blur-sm"
             >
-              <p className="text-[11px] font-medium leading-snug text-zinc-700/30">
+              <p className="text-[11px] font-medium leading-snug text-zinc-700">
                 Hey! I&apos;m here to help with your learning journey 👋
               </p>
               {/* Tail */}
