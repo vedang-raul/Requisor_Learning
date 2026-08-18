@@ -375,7 +375,7 @@ export function AiAssistant() {
               transition={{ delay: 1.2, duration: 0.25 }}
               className="absolute bottom-full right-0 mb-3 w-52 rounded-2xl rounded-br-sm bg-white/90 px-3.5 py-2.5 shadow-lg backdrop-blur-sm"
             >
-              <p className="text-[11px] font-medium leading-snug text-zinc-700">
+              <p className="text-[11px] font-medium leading-snug text-zinc-700/30">
                 Hey! I&apos;m here to help with your learning journey 👋
               </p>
               {/* Tail */}
