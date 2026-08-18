@@ -370,8 +370,7 @@ export function AiAssistant() {
           aria-label={open ? "Close AI assistant" : "Open AI assistant"}
           whileHover={{ scale: 1.06 }}
           whileTap={{ scale: 0.95 }}
-          animate={{ boxShadow: open ? "0 8px 24px -6px rgba(0,0,0,0.25)" : "0 10px 30px -6px rgba(0,0,0,0.3)" }}
-          className="relative z-10 flex h-16 w-16 items-center justify-center overflow-hidden rounded-full"
+          className="relative z-10 flex h-16 w-16 items-center justify-center"
         >
           <AnimatePresence mode="wait" initial={false}>
             <motion.span
