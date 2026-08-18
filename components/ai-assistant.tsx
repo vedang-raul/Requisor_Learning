@@ -387,7 +387,7 @@ export function AiAssistant() {
                   <X className="h-5 w-5 text-zinc-700" />
                 </span>
               ) : (
-                <span className="flex h-full w-full items-center justify-center rounded-full bg-white">
+                <span className="flex h-full w-full items-center justify-center rounded-full">
                   <div className="ai-bot">
                     <div className="head">
                       <div className="face">
