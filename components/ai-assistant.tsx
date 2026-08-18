@@ -365,6 +365,24 @@ export function AiAssistant() {
     <>
       {/* Floating trigger */}
       <div className="fixed bottom-5 right-5 z-40 flex h-24 w-24 items-center justify-center">
+        {/* Speech bubble */}
+        <AnimatePresence>
+          {!open && (
+            <motion.div
+              initial={{ opacity: 0, y: 6, scale: 0.92 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 4, scale: 0.95 }}
+              transition={{ delay: 1.2, duration: 0.25 }}
+              className="absolute bottom-full right-0 mb-3 w-52 rounded-2xl rounded-br-sm bg-white/90 px-3.5 py-2.5 shadow-lg backdrop-blur-sm"
+            >
+              <p className="text-[11px] font-medium leading-snug text-zinc-700">
+                Hey! I&apos;m here to help with your learning journey 👋
+              </p>
+              {/* Tail */}
+              <span className="absolute -bottom-2 right-3 h-0 w-0 border-x-8 border-t-8 border-x-transparent border-t-white/90" />
+            </motion.div>
+          )}
+        </AnimatePresence>
         <motion.button
           onClick={() => (open ? setOpen(false) : openPanel())}
           aria-label={open ? "Close AI assistant" : "Open AI assistant"}
