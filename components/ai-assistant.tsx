@@ -365,27 +365,13 @@ export function AiAssistant() {
     <>
       {/* Floating trigger */}
       <div className="fixed bottom-5 right-5 z-40 flex h-20 w-20 items-center justify-center">
-        {!open && (
-          <>
-            <motion.span
-              className="absolute inset-0 rounded-full bg-gradient-to-br from-primary/40 to-secondary/40"
-              animate={{ scale: [1, 1.35, 1], opacity: [0.5, 0, 0.5] }}
-              transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut" }}
-            />
-            <motion.span
-              className="absolute inset-0 rounded-full bg-gradient-to-br from-primary/30 to-secondary/30"
-              animate={{ scale: [1, 1.2, 1], opacity: [0.6, 0, 0.6] }}
-              transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
-            />
-          </>
-        )}
         <motion.button
           onClick={() => (open ? setOpen(false) : openPanel())}
           aria-label={open ? "Close AI assistant" : "Open AI assistant"}
           whileHover={{ scale: 1.06 }}
           whileTap={{ scale: 0.95 }}
           animate={{ boxShadow: open ? "0 8px 24px -6px rgba(0,0,0,0.25)" : "0 10px 30px -6px rgba(0,0,0,0.3)" }}
-          className="relative z-10 flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-primary to-secondary p-[3px]"
+          className="relative z-10 flex h-16 w-16 items-center justify-center overflow-hidden rounded-full"
         >
           <AnimatePresence mode="wait" initial={false}>
             <motion.span
