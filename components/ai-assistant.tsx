@@ -364,13 +364,13 @@ export function AiAssistant() {
   return (
     <>
       {/* Floating trigger */}
-      <div className="fixed bottom-5 right-5 z-40 flex h-20 w-20 items-center justify-center">
+      <div className="fixed bottom-5 right-5 z-40 flex h-28 w-28 items-center justify-center">
         <motion.button
           onClick={() => (open ? setOpen(false) : openPanel())}
           aria-label={open ? "Close AI assistant" : "Open AI assistant"}
           whileHover={{ scale: 1.06 }}
           whileTap={{ scale: 0.95 }}
-          className="relative z-10 flex h-16 w-16 items-center justify-center"
+          className="relative z-10 flex h-28 w-28 items-center justify-center"
         >
           <AnimatePresence mode="wait" initial={false}>
             <motion.span
@@ -386,7 +386,7 @@ export function AiAssistant() {
                   <X className="h-5 w-5 text-zinc-700" />
                 </span>
               ) : (
-                <span className="flex h-full w-full scale-110 items-center justify-center rounded-full bg-white/70 backdrop-blur-sm">
+                <span className="flex h-full w-full items-center justify-center rounded-full bg-white/70 shadow-md backdrop-blur-sm">
                   <div className="ai-bot">
                     <div className="head">
                       <div className="face">
