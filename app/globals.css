@@ -300,11 +300,11 @@ body {
 }
 
 .ai-bot {
-  --c: #23AE97;
-  --c2: #0d9488;
-  --c3: #134e4a;
-  --surface: #f0fdfb;
-  scale: 1.8;
+  --c: #1a9b86;
+  --c2: #0b8077;
+  --c3: #0f3e3a;
+  --surface: #cceee8;
+  scale: 2.0;
   width: 34px;
   aspect-ratio: 1;
   position: relative;
