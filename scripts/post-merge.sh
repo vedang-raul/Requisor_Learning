@@ -27,6 +27,24 @@ p.query(\`
     ADD COLUMN IF NOT EXISTS onboarding_done BOOLEAN DEFAULT FALSE,
     ADD COLUMN IF NOT EXISTS notification_settings JSONB DEFAULT '{"courses":true,"assignments":true,"badges":true,"announcements":true}';
 
+  DO \$\$
+  BEGIN
+    IF EXISTS (
+      SELECT 1
+      FROM users
+      WHERE google_id IS NOT NULL
+      GROUP BY google_id
+      HAVING COUNT(*) > 1
+    ) THEN
+      RAISE EXCEPTION 'Cannot enforce unique Google identity bindings: duplicate Google subjects need manual resolution.';
+    END IF;
+  END
+  \$\$;
+
+  CREATE UNIQUE INDEX IF NOT EXISTS users_google_id_unique
+    ON users (google_id)
+    WHERE google_id IS NOT NULL;
+
   CREATE TABLE IF NOT EXISTS lesson_completions (
     id SERIAL PRIMARY KEY,
     user_id INT REFERENCES users(id) ON DELETE CASCADE,

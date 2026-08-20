@@ -52,7 +52,16 @@ export function LoginScreen() {
     if (verify === "success") setNotice("Email verified! You can log in now.");
     else if (verify === "expired") setError("That verification link has expired. Sign up again to get a new one.");
     else if (verify === "invalid") setError("Invalid verification link.");
-    else if (authError) setError(authError === "AccessDenied" ? "Access denied." : "Sign-in failed. Please try again.");
+    else if (authError) {
+      const googleErrors: Record<string, string> = {
+        GoogleSignInFailed:
+          "Google sign-in couldn't be completed. Use a verified Google account, or use your password if you already have one.",
+      };
+      setError(
+        googleErrors[authError] ??
+          (authError === "AccessDenied" ? "Access denied." : "Sign-in failed. Please try again.")
+      );
+    }
   }, [searchParams]);
 
   const validEmail = (v: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v);

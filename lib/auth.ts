@@ -6,6 +6,19 @@ import bcrypt from "bcryptjs";
 import { db, roleForEmail, ADMIN_EMAIL, type DbUser } from "./db";
 import { sendWelcomeEmail } from "./email";
 
+const GOOGLE_SIGNIN_FAILED_ERROR = "/?error=GoogleSignInFailed";
+
+type GoogleProfile = {
+  email?: unknown;
+  email_verified?: unknown;
+};
+
+function normalizedEmail(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const email = value.trim().toLowerCase();
+  return email ? email : null;
+}
+
 // ─── Session / cookie constants ─────────────────────────────────────────────
 const SESSION_MAX_AGE = 60 * 60; // 1 hour (seconds) — hard JWT expiry
 const INACTIVITY_LIMIT = 60 * 60; // 1 hour (seconds) — idle logout threshold
@@ -96,26 +109,82 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async signIn({ user, account }) {
+    async signIn({ user, account, profile }) {
       if (account?.provider !== "google") return true;
-      const email = user.email?.toLowerCase();
-      if (!email) return false;
-      const name = user.name ?? email.split("@")[0];
-      const { rows } = await db.query<DbUser>(
+
+      // Google must explicitly assert both the email address and that it has
+      // verified that address. Do not rely solely on the provider's mapped
+      // `user.email`, and never use an incomplete identity to link accounts.
+      const googleProfile = profile as GoogleProfile | undefined;
+      const profileEmail = normalizedEmail(googleProfile?.email);
+      const userEmail = normalizedEmail(user.email);
+      const googleId = account.providerAccountId?.trim();
+      if (
+        !profileEmail ||
+        !userEmail ||
+        profileEmail !== userEmail ||
+        googleProfile?.email_verified !== true ||
+        !googleId
+      ) {
+        return GOOGLE_SIGNIN_FAILED_ERROR;
+      }
+
+      const name = user.name?.trim() || profileEmail.split("@")[0];
+      const { rows: existingRows } = await db.query<
+        Pick<DbUser, "id" | "email" | "name" | "password_hash" | "google_id">
+      >(
+        "SELECT id, email, name, password_hash, google_id FROM users WHERE email = $1 OR google_id = $2",
+        [profileEmail, googleId]
+      );
+      const existingByEmail = existingRows.find(
+        (row) => normalizedEmail(row.email) === profileEmail
+      );
+      const existingByGoogleId = existingRows.find((row) => row.google_id === googleId);
+
+      // A provider subject is a global identity binding. If it is already
+      // attached to a different email, never create a second local account
+      // for it, even if the provider changes the email claim.
+      if (
+        (existingByGoogleId && !existingByEmail) ||
+        (existingByGoogleId &&
+          existingByEmail &&
+          existingByGoogleId.id !== existingByEmail.id)
+      ) {
+        return GOOGLE_SIGNIN_FAILED_ERROR;
+      }
+
+      if (existingByEmail) {
+        // Never attach a new Google identity to an existing account. A
+        // password account must use its established sign-in method, and a
+        // Google account must present the exact Google subject it was created
+        // with. This prevents email-only account takeover or identity swaps.
+        if (existingByEmail.google_id !== googleId) return GOOGLE_SIGNIN_FAILED_ERROR;
+
+        await db.query(
+          `UPDATE users
+           SET email_verified = TRUE,
+               name = COALESCE(name, $1),
+               last_login_at = NOW()
+           WHERE id = $2`,
+          [name, existingByEmail.id]
+        );
+        return true;
+      }
+
+      // INSERT ... DO NOTHING turns a concurrent registration into a safe
+      // retry rather than overwriting whichever account won the race.
+      const { rows: createdRows } = await db.query<Pick<DbUser, "id">>(
         `INSERT INTO users (email, name, google_id, email_verified, role)
          VALUES ($1, $2, $3, TRUE, $4)
-         ON CONFLICT (email) DO UPDATE
-           SET google_id = EXCLUDED.google_id,
-               email_verified = TRUE,
-               name = COALESCE(users.name, EXCLUDED.name),
-               last_login_at = NOW()
-         RETURNING *, (xmax = 0) AS is_new`,
-        [email, name, account.providerAccountId, roleForEmail(email)]
+         ON CONFLICT DO NOTHING
+         RETURNING id`,
+        [profileEmail, name, googleId, roleForEmail(profileEmail)]
       );
-      const row = rows[0] as DbUser & { is_new?: boolean };
-      if (row.is_new) {
-        sendWelcomeEmail(email, name).catch((e) => console.error("Welcome email failed:", e));
-      }
+      if (!createdRows[0]) return GOOGLE_SIGNIN_FAILED_ERROR;
+
+      // A notification failure must never turn a verified sign-in into an
+      // account error. Do not log recipient or provider details here.
+      sendWelcomeEmail(profileEmail, name).catch(() => console.error("Welcome email failed."));
       return true;
     },
     async jwt({ token, user, trigger, session }) {

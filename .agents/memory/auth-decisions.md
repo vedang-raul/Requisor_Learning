@@ -9,3 +9,4 @@ description: Non-obvious decisions in the real auth system to stay consistent wi
 - Client learning state stays in localStorage but is **namespaced per user email**. **Why:** shared browsers must not leak one user's progress/notes to another.
 - `NEXTAUTH_URL` is derived at runtime in `lib/base-url.ts` from REPLIT_DEV_DOMAIN / REPLIT_DOMAINS — don't hardcode domains.
 - Emails send via the Replit Gmail connector proxy (`POST /gmail/v1/users/me/messages/send` with base64url MIME); the connected account must remain support@requisor.io.
+- Google OAuth accepts any account with an explicitly verified Google email, but binds it permanently to the provider subject; never auto-link by email. **Why:** prevent takeover and account enumeration. **How to apply:** add linking only through an authenticated, explicit consent flow.
