@@ -5,3 +5,4 @@
 - [Session uid resolution](session-uid-resolution.md) — missing users row → empty token.uid → silent 401s on all APIs; authorize paths must upsert the row, jwt retries lookup.
 - [AI provider switch](ai-provider.md) — Switched from Anthropic to xAI Grok (XAI_API_KEY); both chat and quiz routes use fetch against https://api.x.ai/v1, default model grok-3-mini; no extra package needed.
 - [Onboarding & personalisation](onboarding-personalization.md) — Post-login survey gate in layout; qualification/learning_goal/onboarding_done on users; quiz + assignment AI prompts personalised via /api/me profile signals.
+- [Bounded JSON request bodies](bounded-json-request-bodies.md) — resource limits must be enforced while streaming request bytes, before JSON parsing.

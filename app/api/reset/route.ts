@@ -2,15 +2,40 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { db, type DbUser } from "@/lib/db";
+import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/request-body";
+
+const MAX_RESET_REQUEST_BYTES = 4 * 1024;
+const MAX_PASSWORD_LENGTH = 1024;
+const RESET_TOKEN_PATTERN = /^[a-f0-9]{64}$/;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
 
 export async function POST(req: Request) {
   try {
-    const { token, password } = await req.json().catch(() => ({}));
-    if (typeof token !== "string" || !token) {
+    let body: unknown;
+    try {
+      body = await readJsonBody(req, MAX_RESET_REQUEST_BYTES);
+    } catch (error) {
+      if (error instanceof RequestBodyTooLargeError) {
+        return NextResponse.json({ error: "Request body is too large." }, { status: 413 });
+      }
+      if (error instanceof InvalidJsonBodyError) {
+        return NextResponse.json({ error: "Invalid reset link." }, { status: 400 });
+      }
+      throw error;
+    }
+
+    if (!isRecord(body)) {
       return NextResponse.json({ error: "Invalid reset link." }, { status: 400 });
     }
-    if (typeof password !== "string" || password.length < 8) {
-      return NextResponse.json({ error: "Password must be at least 8 characters." }, { status: 400 });
+    const { token, password } = body;
+    if (typeof token !== "string" || !RESET_TOKEN_PATTERN.test(token)) {
+      return NextResponse.json({ error: "Invalid reset link." }, { status: 400 });
+    }
+    if (typeof password !== "string" || password.length < 8 || password.length > MAX_PASSWORD_LENGTH) {
+      return NextResponse.json({ error: "Password must be between 8 and 1024 characters." }, { status: 400 });
     }
 
     const tokenHash = crypto.createHash("sha256").update(token).digest("hex");

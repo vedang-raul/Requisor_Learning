@@ -26,6 +26,7 @@ export interface DbUser {
   verification_expires: Date | null;
   reset_token: string | null;
   reset_expires: Date | null;
+  reset_requested_at: Date | null;
   created_at: Date;
   employment_type: string | null;
   position: string | null;
