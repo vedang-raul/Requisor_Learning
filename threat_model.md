@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Requisor Learning is an internal employee LMS for Citrus Innovations, built with Next.js 14 (App Router), TypeScript, Tailwind CSS, and PostgreSQL (Replit). Users sign in with email/password (bcrypt, NextAuth JWT) or Google OAuth. The AI learning assistant and quiz/insights features are powered by the xAI API (Grok). Deployed publicly at `https://learning.requisor.io`.
+Requisor Learning is an internal employee LMS for Citrus Innovations, built with Next.js 16 (App Router), TypeScript, Tailwind CSS, and PostgreSQL (Replit). Users sign in with email/password (bcrypt, NextAuth JWT) or Google OAuth. The AI learning assistant and quiz/insights features are powered by the xAI API (Grok). Deployed publicly at `https://learning.requisor.io`.
 
 ## Assets
 
@@ -17,15 +17,15 @@ Requisor Learning is an internal employee LMS for Citrus Innovations, built with
 
 - **Public Internet → Next.js API routes** — all `/api/*` routes are reachable unauthenticated unless they explicitly call `getServerSession`. No middleware enforces authentication globally, so each handler must maintain its own auth gate.
 - **Browser → Server** — the client is untrusted. User identity and authorization are derived server-side from the NextAuth session; localStorage learning state is not an authorization source.
-- **API server → xAI** — the server calls xAI Grok with `XAI_API_KEY`. `/api/chat` is auth-gated and has a per-user in-memory rate limit (20 req/min); `/api/quiz`, `/api/assignment`, comment moderation, and course-assessment are authenticated but have no per-user rate limit, and assignment prompt fields are not size-capped.
-- **API server → PostgreSQL** — parameterized queries are used throughout; direct injection risk is low. Bulk notes and bookmark migration handlers fan out unbounded user-controlled entries and can consume storage/connections.
-- **API server → Gmail** — public password-reset requests and authenticated/admin notification flows can consume the connected sender's quota. Reset requests have no cooldown or rate limit.
+- **API server → xAI** — the server calls xAI Grok with `XAI_API_KEY`, never the browser. `/api/chat` is auth-gated and has a per-user in-memory rate limit (20 req/min). Quiz input is authenticated, stream-size-bounded, and field-capped; quiz, assignment, comment moderation, and course assessment do not yet have durable, distributed per-user rate limits.
+- **API server → PostgreSQL** — parameterized queries are used throughout; direct injection risk is low. Notes and bookmark bulk writes enforce request-size, item-count, and known-content limits before writing.
+- **API server → Gmail** — public password-reset requests and authenticated/admin notification flows can consume the connected sender's quota. Reset requests use an atomic per-account cooldown before delivery is scheduled.
 - **Authenticated user → Admin** — only `support@requisor.io` is admin. Admin APIs enforce the role/email server-side, and `middleware.ts` protects `/app/admin` and its nested pages before rendering.
 
 ## Scan Anchors
 
 - **Production entry points**: `app/api/chat/route.ts`, `app/api/quiz/route.ts`, `app/api/assignment/route.ts`, `app/api/course-assessment/route.ts`, `app/api/team-insights/route.ts`, `app/api/admin/notify-video/route.ts`, `app/api/admin/analytics/route.ts`, `app/api/auth/[...nextauth]/route.ts`, `app/api/signup/route.ts`, `app/api/verify/route.ts`, `app/api/forgot/route.ts`, `app/api/reset/route.ts`, `app/api/comments/route.ts`, `app/api/reviews/route.ts`, `app/api/completions/route.ts`, `app/api/profile/route.ts`, `app/api/xp/route.ts`, `app/api/me/route.ts`, `app/api/notes/route.ts`, `app/api/bookmarks/route.ts`, `app/api/leaderboard/route.ts`.
-- **Highest-risk areas**: authenticated xAI generation and moderation in `/api/quiz`, `/api/assignment`, `/api/comments`, and `/api/course-assessment` lacks rate limiting; `/api/assignment` accepts uncapped prompt fields; `/api/notes` accepts uncapped content and arbitrary lesson IDs; `/api/bookmarks` accepts uncapped bulk arrays; public `/api/forgot` can send reset email on every request.
+- **Highest-risk areas**: authenticated xAI generation and moderation in `/api/quiz`, `/api/assignment`, `/api/comments`, and `/api/course-assessment` lacks durable distributed rate limiting; `/api/assignment` accepts uncapped prompt fields; comment and course-assessment routes need lesson/course allowlist validation. The chat limiter is process-local and resets on restart.
 - **Public vs authenticated vs admin surfaces**: auth/account routes (`/api/auth/*`, signup, verify, forgot, reset) are public; user APIs and AI generation routes require a session; `/api/team-insights`, `/api/admin/notify-video`, and `/api/admin/analytics` plus admin bug-report operations require the admin session; `/app/admin/**` is middleware-protected.
 - **Dev-only**: the `dev-admin` NextAuth provider exists only when `NODE_ENV !== production`; production assumptions exclude it.
 
@@ -48,12 +48,27 @@ No client-supplied prices or business-critical financial fields are present. Lea
 
 ### Denial of Service / Financial Abuse
 
-- ~~**Critical gap**: `/api/chat` and `/api/quiz` had no authentication check~~ — **Remediated**: AI routes enforce sessions. `/api/chat` also has a 20-request-per-minute per-user limiter and upstream timeout.
-- **Open gap**: `/api/quiz`, `/api/assignment`, `/api/comments`, and `/api/course-assessment` are auth-gated but have no rate limiting, allowing a logged-in user to drive repeated xAI API consumption. Assignment also accepts uncapped title, description, takeaways, and original-assignment fields, amplifying per-request token cost.
-- **Open gap**: `/api/notes` POST and PUT accept arbitrary text and arbitrary lesson IDs with no content, key-count, or lesson allowlist limits. A user can create unlimited rows with large payloads and exhaust database storage.
-- **Open gap**: `/api/bookmarks` PUT accepts unbounded bookmark/saved-lesson arrays and queues one database query per element, enabling connection-pool pressure and unlimited junk rows.
-- **Open gap**: public `/api/forgot` sends a new reset email for every matching request with no per-address/IP cooldown, enabling inbox flooding and exhaustion of the connected Gmail sender quota.
+- **Remediated**: AI routes enforce sessions. `/api/chat` has a 20-request-per-minute per-user limiter and upstream timeout. `/api/quiz` now applies an 8 KiB streaming body ceiling before parsing and also caps prompt fields.
+- **Remediated**: notes enforce known lesson IDs, a content cap, per-request and per-user limits, and a 5 MiB body ceiling. Bookmark writes enforce size/item limits, allowlists, deduplication, and set-based database operations. Password resets use a 10-minute atomic cooldown.
+- **Open gap**: `/api/quiz`, `/api/assignment`, `/api/comments`, and `/api/course-assessment` are auth-gated but have no durable distributed rate limit, allowing a logged-in user to drive repeated xAI API consumption. Assignment also accepts uncapped title, description, takeaways, and original-assignment fields, amplifying per-request token cost.
+- **Open gap**: comment moderation can fail open during an xAI outage, comment lesson IDs are not checked against the known lesson list, and course-assessment PATCH accepts arbitrary course slugs.
+- **Residual risk**: the chat limiter is in-memory and per process, so it does not coordinate across multiple instances or survive restarts.
 
 ### Elevation of Privilege
 
 Admin APIs (`notify-video`, `team-insights`, `analytics`, and admin bug-report operations) check the admin email/role server-side, while `middleware.ts` protects the admin page route. Regular user profile updates explicitly enumerate writable fields and do not accept role, email, verification, or password fields. All database queries use parameterized statements, preventing SQL injection privilege escalation. The signup endpoint previously allowed an attacker to overwrite a pending account's password hash; this was remediated so it only refreshes the verification token for unverified accounts.
+
+## Security Guarantees
+
+- User data APIs MUST derive identity from a verified server-side session and never from localStorage or request-supplied identity fields.
+- Admin routes and admin APIs MUST require the server-derived admin role. Unauthenticated visitors redirect to sign-in; authenticated non-admins redirect to the learner dashboard.
+- AI provider, database, OAuth, and session secrets MUST remain server-only and must not be recorded in source, test fixtures, browser output, or operational reports.
+- AI-generation endpoints MUST authenticate before reading bodies or checking provider configuration, enforce a streaming request-size ceiling, validate generated response shapes, and return generic user-safe errors.
+- Mutable bulk endpoints MUST bound request bytes and user-controlled collection sizes before database work begins.
+- Password reset delivery MUST be rate-limited without revealing whether an account exists.
+
+## Verification Approach
+
+- Jest regression tests cover bounded JSON parsing, password-reset bounds, quiz authentication/body handling, and the admin middleware’s unauthenticated, employee, and admin paths.
+- Browser smoke tests should verify sign-in, opening a lesson, opening the quiz action, and restricted access to `/app/admin/` in development before release.
+- Full dependency, static, and dataflow scans should be rerun before major releases or whenever authentication, external services, or storage boundaries change.

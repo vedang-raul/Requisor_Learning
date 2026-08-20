@@ -3,9 +3,15 @@ export const runtime = "nodejs";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { db, type DbUser } from "@/lib/db";
+import {
+  InvalidJsonBodyError,
+  readJsonBody,
+  RequestBodyTooLargeError,
+} from "@/lib/request-body";
 
 const BASE_URL = "https://api.x.ai/v1";
 const MODEL = process.env.XAI_MODEL || "grok-3-mini";
+const MAX_QUIZ_REQUEST_BYTES = 8 * 1024;
 
 // Input length caps to prevent oversized prompt-injection payloads
 const MAX_TITLE_LENGTH = 200;
@@ -75,12 +81,28 @@ export async function POST(req: Request) {
     );
   }
 
-  let body: { lessonTitle?: string; description?: string; keyTakeaways?: string[] };
+  let rawBody: unknown;
   try {
-    body = await req.json();
-  } catch {
+    rawBody = await readJsonBody(req, MAX_QUIZ_REQUEST_BYTES);
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return Response.json({ error: "Request body is too large." }, { status: 413 });
+    }
+    if (error instanceof InvalidJsonBodyError) {
+      return Response.json({ error: "Invalid request body." }, { status: 400 });
+    }
     return Response.json({ error: "Invalid request body." }, { status: 400 });
   }
+
+  if (!rawBody || typeof rawBody !== "object" || Array.isArray(rawBody)) {
+    return Response.json({ error: "Invalid request body." }, { status: 400 });
+  }
+
+  const body = rawBody as {
+    lessonTitle?: string;
+    description?: string;
+    keyTakeaways?: string[];
+  };
 
   const { lessonTitle, description, keyTakeaways } = body;
   if (!lessonTitle || typeof lessonTitle !== "string" || !lessonTitle.trim()) {
