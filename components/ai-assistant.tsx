@@ -373,13 +373,13 @@ export function AiAssistant() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 4, scale: 0.95 }}
               transition={{ delay: 1.2, duration: 0.25 }}
-              className="absolute bottom-full right-0 mb-3 w-52 rounded-2xl rounded-br-sm bg-white/30 px-3.5 py-2.5 shadow-lg backdrop-blur-sm"
+              className="absolute bottom-full right-0 mb-3 w-52 rounded-2xl rounded-br-sm px-3.5 py-2.5 bg-gray-200   shadow-soft"
             >
               <p className="text-[11px] font-medium leading-snug text-zinc-700">
                 Hey! I&apos;m here to help with your learning journey 👋
               </p>
               {/* Tail */}
-              <span className="absolute -bottom-2 right-3 h-0 w-0 border-x-8 border-t-8 border-x-transparent border-t-white/90" />
+              <span className="absolute -bottom-2 right-3 h-0 w-0 border-x-8 border-t-8 border-x-transparent border-t-gray-200 " />
             </motion.div>
           )}
         </AnimatePresence>
@@ -404,7 +404,7 @@ export function AiAssistant() {
                   <X className="h-5 w-5 text-zinc-700" />
                 </span>
               ) : (
-                <span className="flex h-full w-full items-center justify-center rounded-full bg-white/30 shadow-md backdrop-blur-sm">
+                <span className="flex items-center justify-center ">
                   <div className="ai-bot">
                     <div className="head">
                       <div className="face">
