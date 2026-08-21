@@ -16,34 +16,10 @@ const nextConfig = {
     // Applied to every response the server sends.  These are defence-in-depth
     // controls that do not require application code changes.
     //
-    // Content-Security-Policy notes:
-    //  • 'unsafe-inline' / 'unsafe-eval' are required for Next.js hydration
-    //    scripts and Tailwind / CSS-in-JS.  A future hardening pass can replace
-    //    these with nonce-based CSP once Next.js nonce support is wired up.
-    //  • frame-ancestors 'none' is the CSP equivalent of X-Frame-Options: DENY
-    //    and is honoured by all modern browsers.
-    //  • YouTube iframes (lesson videos) require frame-src.
-    //  • Google OAuth requires accounts.google.com in connect-src + form-action.
-    const csp = [
-      "default-src 'self'",
-      // youtube.com required: VideoEmbed dynamically injects the YouTube IFrame
-      // API script (https://www.youtube.com/iframe_api) at runtime.
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.youtube.com",
-      // fonts.googleapis.com required: globals.css @imports the Inter font
-      // stylesheet from Google Fonts at load time.
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-      "img-src 'self' data: blob: https:",
-      "connect-src 'self' https://accounts.google.com https://oauth2.googleapis.com",
-      // fonts.gstatic.com serves the actual Inter font binary files referenced
-      // by the fonts.googleapis.com stylesheet.
-      "font-src 'self' data: https://fonts.gstatic.com",
-      "frame-src https://www.youtube.com https://www.youtube-nocookie.com",
-      "frame-ancestors 'none'",
-      "object-src 'none'",
-      "base-uri 'self'",
-      "form-action 'self' https://accounts.google.com",
-    ].join("; ");
-
+    // NOTE: Content-Security-Policy is intentionally absent here.  It is set
+    // per-request in middleware.ts so a fresh nonce can be embedded in every
+    // response.  Static headers() runs once at build time and cannot reference
+    // a request-scoped nonce.
     return [
       {
         source: "/(.*)",
@@ -70,9 +46,6 @@ const nextConfig = {
             key: "Permissions-Policy",
             value: "camera=(), microphone=(), geolocation=()",
           },
-
-          // CSP — restricts which origins can load resources.
-          { key: "Content-Security-Policy", value: csp },
         ],
       },
     ];
