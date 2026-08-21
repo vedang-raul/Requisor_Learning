@@ -1,12 +1,48 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
-
-const sha256 = (v: string) => crypto.createHash("sha256").update(v).digest("hex");
 import { db, roleForEmail } from "@/lib/db";
 import { sendVerificationEmail } from "@/lib/email";
+import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
+
+const sha256 = (v: string) => crypto.createHash("sha256").update(v).digest("hex");
+
+// ── Per-IP rate limiting ──────────────────────────────────────────────────────
+// 10 signup attempts per IP per 15 minutes.  Stops automated account-creation
+// floods before they reach the DB or email queue.
+const signupLimiter = createRateLimiter(10, 15 * 60_000);
+
+/**
+ * Extract the trusted client IP from proxy headers.
+ *
+ * Trust model (Replit deployment):
+ *  1. `x-real-ip`       — written exclusively by Replit's ingress proxy;
+ *                         any client-supplied value is stripped before it
+ *                         reaches application code.  Preferred source.
+ *  2. rightmost `x-forwarded-for` — each proxy in the chain appends one IP.
+ *                         The rightmost entry is added by the immediate upstream
+ *                         (Replit's ingress) and is not injectable by the client.
+ *                         Never trust the leftmost value: an attacker can prepend
+ *                         arbitrary IPs and bypass per-IP rate limits.
+ */
+function clientIp(req: Request): string {
+  const xRealIp = req.headers.get("x-real-ip")?.trim();
+  if (xRealIp) return xRealIp;
+
+  const forwarded = req.headers.get("x-forwarded-for");
+  if (forwarded) {
+    const rightmost = forwarded.split(",").at(-1)?.trim();
+    if (rightmost) return rightmost;
+  }
+
+  return "127.0.0.1"; // dev / test fallback
+}
 
 export async function POST(req: Request) {
+  // Rate-limit by IP before any body parsing, DB access, or email dispatch.
+  const { limited, retryAfterMs } = signupLimiter.check(clientIp(req));
+  if (limited) return rateLimitResponse(retryAfterMs, { json: true });
+
   try {
     const { name, email, password, employmentType, position } = await req.json().catch(() => ({}));
     const cleanEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
