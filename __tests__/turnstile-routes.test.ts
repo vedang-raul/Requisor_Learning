@@ -21,10 +21,18 @@ jest.mock("@/lib/turnstile", () => ({
     mockVerifyTurnstile(...args),
 }));
 
-// Rate limiter — always allow so tests focus on CAPTCHA behaviour.
+// Rate limiter — controllable mock so tests can simulate both allowed and
+// limited states.  Default behaviour (always allow) is restored in beforeEach.
+const mockRateLimitCheck = jest.fn(() => ({ limited: false, retryAfterMs: 0 }));
+
 jest.mock("@/lib/rate-limit", () => ({
-  createRateLimiter: () => ({ check: jest.fn(() => ({ limited: false, retryAfterMs: 0 })) }),
-  rateLimitResponse: () => new Response("rate limited", { status: 429 }),
+  createRateLimiter: () => ({ check: (_key: string) => mockRateLimitCheck() }),
+  rateLimitResponse: jest.fn((_retryAfterMs: number) =>
+    new Response(
+      JSON.stringify({ error: "Too many requests. Please wait a moment before trying again." }),
+      { status: 429, headers: { "Retry-After": "900", "Content-Type": "application/json" } }
+    )
+  ),
 }));
 
 jest.mock("next-auth", () => {
@@ -122,6 +130,9 @@ function makeGoogleInitiateRequest(token?: string) {
 beforeEach(() => {
   jest.clearAllMocks();
   mockVerifyTurnstile.mockResolvedValue({ success: true });
+  // Restore the default "always allow" behaviour so CAPTCHA-focused tests are
+  // not affected by rate-limit state set in rate-limiting tests.
+  mockRateLimitCheck.mockReturnValue({ limited: false, retryAfterMs: 0 });
 });
 
 // ── POST /api/signup ──────────────────────────────────────────────────────────
@@ -237,6 +248,34 @@ describe("POST /api/auth/google-initiate — CAPTCHA gate", () => {
   it("calls verifyTurnstile with the provided token", async () => {
     await googleInitiatePost(makeGoogleInitiateRequest("my-token"));
     expect(mockVerifyTurnstile).toHaveBeenCalledWith("my-token");
+  });
+});
+
+// ── POST /api/auth/google-initiate — IP rate limiting ────────────────────────
+
+describe("POST /api/auth/google-initiate — IP rate limiting", () => {
+  it("returns 429 when the rate limit is exceeded", async () => {
+    mockRateLimitCheck.mockReturnValueOnce({ limited: true, retryAfterMs: 60_000 });
+    const res = await googleInitiatePost(makeGoogleInitiateRequest("good-token"));
+    expect(res.status).toBe(429);
+  });
+
+  it("includes a Retry-After header in the 429 response", async () => {
+    mockRateLimitCheck.mockReturnValueOnce({ limited: true, retryAfterMs: 60_000 });
+    const res = await googleInitiatePost(makeGoogleInitiateRequest("good-token"));
+    expect(res.headers.get("Retry-After")).toBeTruthy();
+  });
+
+  it("does not call verifyTurnstile when the rate limit is exceeded", async () => {
+    mockRateLimitCheck.mockReturnValueOnce({ limited: true, retryAfterMs: 60_000 });
+    await googleInitiatePost(makeGoogleInitiateRequest("good-token"));
+    expect(mockVerifyTurnstile).not.toHaveBeenCalled();
+  });
+
+  it("allows the request through when the rate limit is not exceeded", async () => {
+    // mockRateLimitCheck is reset to always-allow in beforeEach.
+    const res = await googleInitiatePost(makeGoogleInitiateRequest("good-token"));
+    expect(res.status).toBe(200);
   });
 });
 

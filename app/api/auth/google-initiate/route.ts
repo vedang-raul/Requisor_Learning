@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { verifyTurnstile } from "@/lib/turnstile";
 import { issueGrant, GRANT_COOKIE_NAME } from "@/lib/captcha-grant";
+import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
 
 /**
  * POST /api/auth/google-initiate
@@ -15,7 +16,43 @@ import { issueGrant, GRANT_COOKIE_NAME } from "@/lib/captcha-grant";
  * by posting directly to /api/auth/signin/google — the grant cookie must be
  * present and cryptographically valid.
  */
+
+// ── Per-IP rate limiting ──────────────────────────────────────────────────────
+// 10 initiation attempts per IP per 15 minutes.  Caps CAPTCHA-farm flooding
+// even when solvers supply valid Turnstile tokens.
+const googleInitiateLimiter = createRateLimiter(10, 15 * 60_000);
+
+/**
+ * Extract the trusted client IP from proxy headers.
+ *
+ * Trust model (Replit deployment):
+ *  1. `x-real-ip`       — written exclusively by Replit's ingress proxy;
+ *                         any client-supplied value is stripped before it
+ *                         reaches application code.  Preferred source.
+ *  2. rightmost `x-forwarded-for` — each proxy in the chain appends one IP.
+ *                         The rightmost entry is added by the immediate upstream
+ *                         (Replit's ingress) and is not injectable by the client.
+ *                         Never trust the leftmost value: an attacker can prepend
+ *                         arbitrary IPs and bypass per-IP rate limits.
+ */
+function clientIp(req: Request): string {
+  const xRealIp = req.headers.get("x-real-ip")?.trim();
+  if (xRealIp) return xRealIp;
+
+  const forwarded = req.headers.get("x-forwarded-for");
+  if (forwarded) {
+    const rightmost = forwarded.split(",").at(-1)?.trim();
+    if (rightmost) return rightmost;
+  }
+
+  return "127.0.0.1"; // dev / test fallback
+}
+
 export async function POST(req: Request) {
+  // Rate-limit by IP before any body parsing or CAPTCHA verification.
+  const { limited, retryAfterMs } = googleInitiateLimiter.check(clientIp(req));
+  if (limited) return rateLimitResponse(retryAfterMs, { json: true });
+
   let token: string | null = null;
   try {
     const body: unknown = await req.json();
