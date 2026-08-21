@@ -45,6 +45,23 @@ p.query(\`
     ON users (google_id)
     WHERE google_id IS NOT NULL;
 
+  -- Unique index on email (mirrors the table-level UNIQUE constraint; idempotent here
+  -- so that bare schema restores also have the index guaranteed).
+  CREATE UNIQUE INDEX IF NOT EXISTS users_email_key
+    ON users (email);
+
+  -- Composite index for leaderboard window function:
+  -- Covers the WHERE role = 'employee' filter + ORDER BY xp DESC, last_login_at DESC NULLS LAST
+  -- so the planner can use an index scan instead of a sequential scan + sort at scale.
+  CREATE INDEX IF NOT EXISTS users_leaderboard_idx
+    ON users (role, xp DESC, last_login_at DESC NULLS LAST);
+
+  -- Index for the admin analytics active-users query:
+  -- WHERE email_verified = TRUE AND last_login_at > NOW() - INTERVAL 7 days
+  -- Allows an index scan instead of a full-table scan on every admin page load.
+  CREATE INDEX IF NOT EXISTS users_analytics_active_idx
+    ON users (email_verified, last_login_at);
+
   CREATE TABLE IF NOT EXISTS lesson_completions (
     id SERIAL PRIMARY KEY,
     user_id INT REFERENCES users(id) ON DELETE CASCADE,
