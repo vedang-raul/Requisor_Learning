@@ -1,10 +1,12 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Mail, ArrowRight, Sparkles, User, CheckCircle2, AlertCircle } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Mail, ArrowRight, User, CheckCircle2, AlertCircle } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
+import { Turnstile } from "@marsidev/react-turnstile";
+import type { TurnstileInstance } from "@marsidev/react-turnstile";
 import { useStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +15,12 @@ import { PasswordStrength } from "@/components/ui/password-strength";
 import { cn } from "@/lib/utils";
 
 type Mode = "login" | "signup" | "forgot";
+
+// Cloudflare Turnstile public site key.  Falls back to the Cloudflare
+// always-pass test key (1x00000000000000000000AA) so the widget works
+// in local development without real credentials configured.
+const SITE_KEY =
+  process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "1x00000000000000000000AA";
 
 function GoogleIcon() {
   return (
@@ -39,6 +47,13 @@ export function LoginScreen() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Cloudflare Turnstile — invisible bot-protection challenge.
+  // The widget auto-executes when the component mounts and stores the token
+  // in state.  Each token is single-use: after a submission the widget resets
+  // and immediately re-executes so a fresh token is ready for the next action.
+  const turnstileRef = useRef<TurnstileInstance>(null);
+  const [captchaToken, setCaptchaToken] = useState<string>("");
 
   // Already signed in? Straight to the dashboard.
   useEffect(() => {
@@ -73,6 +88,18 @@ export function LoginScreen() {
     try { return await res.json(); } catch { return null; }
   };
 
+  /**
+   * Consume the current CAPTCHA token for one request and reset the widget
+   * so a fresh token is ready for the next submission.
+   * Returns the token string (may be empty if the widget hasn't resolved yet).
+   */
+  const consumeToken = (): string => {
+    const tok = captchaToken;
+    setCaptchaToken("");
+    turnstileRef.current?.reset();
+    return tok;
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -80,12 +107,18 @@ export function LoginScreen() {
     if (!validEmail(email)) return setError("Enter a valid work email address.");
 
     if (mode === "forgot") {
+      const tok = consumeToken();
+      if (!tok) {
+        setError("Security check is loading — please try again in a moment.");
+        turnstileRef.current?.execute();
+        return;
+      }
       setLoading(true);
       try {
         const res = await fetch("/api/forgot", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email }),
+          body: JSON.stringify({ email, turnstileToken: tok }),
         });
         const data = await safeJson(res);
         if (!res.ok) setError(data?.error ?? "Something went wrong. Please try again.");
@@ -100,6 +133,13 @@ export function LoginScreen() {
 
     if (password.length < 8) return setError("Password must be at least 8 characters.");
 
+    const tok = consumeToken();
+    if (!tok) {
+      setError("Security check is loading — please try again in a moment.");
+      turnstileRef.current?.execute();
+      return;
+    }
+
     setLoading(true);
     try {
       if (mode === "signup") {
@@ -113,11 +153,6 @@ export function LoginScreen() {
           setLoading(false);
           return;
         }
-        // if (!position.trim()) {
-        //   setError("Enter your position.");
-        //   setLoading(false);
-        //   return;
-        // }
         if (password !== confirmPassword) {
           setError("Passwords don't match.");
           setLoading(false);
@@ -126,7 +161,7 @@ export function LoginScreen() {
         const res = await fetch("/api/signup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, email, password, employmentType, position }),
+          body: JSON.stringify({ name, email, password, employmentType, position, turnstileToken: tok }),
         });
         const data = await safeJson(res);
         if (!res.ok) setError(data?.error ?? "Signup failed. Please try again.");
@@ -137,7 +172,14 @@ export function LoginScreen() {
           setConfirmPassword("");
         }
       } else {
-        const res = await signIn("credentials", { email, password, redirect: false });
+        // credentials login — NextAuth includes extra signIn() fields in the
+        // POST body so the server can extract and verify turnstileToken.
+        const res = await signIn("credentials", {
+          email,
+          password,
+          redirect: false,
+          turnstileToken: tok,
+        });
         if (res?.error) {
           setError(
             res.error === "EMAIL_NOT_VERIFIED"
@@ -157,9 +199,34 @@ export function LoginScreen() {
     }
   };
 
-  const google = () => {
+  const google = async () => {
+    setError("");
+    const tok = consumeToken();
+    if (!tok) {
+      setError("Security check is loading — please try again in a moment.");
+      turnstileRef.current?.execute();
+      return;
+    }
     setLoading(true);
-    void signIn("google", { callbackUrl: "/app/dashboard/" });
+    try {
+      // Verify the CAPTCHA token server-side before initiating the Google
+      // OAuth redirect.  The actual authentication still happens on Google's
+      // servers; this step stops bots from automating the redirect initiation.
+      const res = await fetch("/api/auth/google-initiate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: tok }),
+      });
+      if (!res.ok) {
+        setError("Bot check failed — please try again.");
+        setLoading(false);
+        return;
+      }
+      void signIn("google", { callbackUrl: "/app/dashboard/" });
+    } catch {
+      setError("Network error. Please try again.");
+      setLoading(false);
+    }
   };
 
   return (
@@ -226,10 +293,6 @@ export function LoginScreen() {
                   <option value="faculty">Faculty</option>
                 </select>
               </div>
-              {/* <div className="space-y-1.5">
-                <label htmlFor="position" className="text-xs font-medium text-zinc-700">Position</label>
-                <Input id="position" autoComplete="organization-title" placeholder="e.g. Product Manager" value={position} onChange={(e) => setPosition(e.target.value)} />
-              </div> */}
             </>
           )}
 
@@ -271,7 +334,7 @@ export function LoginScreen() {
                 autoComplete="new-password"
               />
               {confirmPassword && password !== confirmPassword && (
-                <p className="text-xs text-red-500">Passwords don't match.</p>
+                <p className="text-xs text-red-500">Passwords don&apos;t match.</p>
               )}
             </div>
           )}
@@ -323,6 +386,22 @@ export function LoginScreen() {
           </>
         )}
 
+        {/* Cloudflare Turnstile — invisible bot-protection widget.
+            Rendered as a visually hidden element; the widget auto-executes on
+            mount and resolves silently for legitimate users.  After each form
+            submission the widget is reset and re-executes to keep a fresh
+            token ready for the next action. */}
+        <div aria-hidden="true" className="sr-only">
+          <Turnstile
+            ref={turnstileRef}
+            siteKey={SITE_KEY}
+            onSuccess={setCaptchaToken}
+            onExpire={() => setCaptchaToken("")}
+            onError={() => setCaptchaToken("")}
+            options={{ size: "invisible" } as object}
+          />
+        </div>
+
         <p className="mt-6 text-center text-[11px] leading-relaxed text-zinc-500">
            Requisor © 2026. All rights reserved.
         </p>
@@ -331,23 +410,6 @@ export function LoginScreen() {
           <img src="/msoe-logo.png" alt="Milwaukee School of Engineering" className="h-8 w-8 object-contain " />
           <span className="text-[11px] text-zinc-400 leading-tight">In association with<br /><span className="font-medium text-zinc-500">Milwaukee School of Engineering</span></span>
         </div>
-
-        {/* Dev-only quick-access — stripped out in production builds */}
-        {/* {process.env.NODE_ENV !== "production" && (
-          <div className="mt-4 border-t border-dashed border-zinc-200 pt-4">
-            <button
-              type="button"
-              disabled={loading}
-              onClick={() => {
-                setLoading(true);
-                void signIn("dev-admin", { callbackUrl: "/app/dashboard/" });
-              }}
-              className="focus-ring flex w-full items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 py-2 text-xs font-medium text-amber-700 transition hover:bg-amber-100 disabled:opacity-60"
-            >
-              ⚡ Dev: sign in as support@requisor.io
-            </button>
-          </div>
-        )} */}
       </motion.div>
     </div>
   );

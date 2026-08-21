@@ -4,6 +4,7 @@ import { db, type DbUser } from "@/lib/db";
 import { sendPasswordResetEmail } from "@/lib/email";
 import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/request-body";
 import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
+import { verifyTurnstile } from "@/lib/turnstile";
 
 const RESET_EMAIL_COOLDOWN_MINUTES = 10;
 const MAX_FORGOT_REQUEST_BYTES = 4 * 1024;
@@ -54,7 +55,7 @@ export async function POST(req: Request) {
       throw error;
     }
     if (!isRecord(body)) return NextResponse.json({ error: "Enter your email address." }, { status: 400 });
-    const { email } = body;
+    const { email, turnstileToken } = body;
     const cleanEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
     if (
       !cleanEmail
@@ -62,6 +63,17 @@ export async function POST(req: Request) {
       || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cleanEmail)
     ) {
       return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
+    }
+
+    // Turnstile CAPTCHA — verify before any DB access or email dispatch.
+    const { success: captchaOk } = await verifyTurnstile(
+      typeof turnstileToken === "string" ? turnstileToken : null
+    );
+    if (!captchaOk) {
+      return NextResponse.json(
+        { error: "Bot check failed — please try again." },
+        { status: 403 }
+      );
     }
 
     const token = crypto.randomBytes(32).toString("hex");

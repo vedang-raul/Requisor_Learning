@@ -30,6 +30,11 @@ jest.mock("@/lib/rate-limit", () => {
   };
 });
 
+// Turnstile mock — dev bypass returns success so rate-limit tests are unaffected.
+jest.mock("@/lib/turnstile", () => ({
+  verifyTurnstile: jest.fn().mockResolvedValue({ success: true }),
+}));
+
 // NextAuth mock — returns a stub handler that always succeeds.
 jest.mock("next-auth", () => {
   const handlerFn = jest.fn(async () => new Response("OK", { status: 200 }));

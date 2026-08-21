@@ -1,6 +1,8 @@
 import NextAuth from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
+import { verifyTurnstile } from "@/lib/turnstile";
+import { verifyGrant, GRANT_COOKIE_NAME } from "@/lib/captcha-grant";
 
 const handler = NextAuth(authOptions);
 
@@ -46,12 +48,48 @@ export async function POST(
   req: Request,
   ctx: { params: Promise<{ nextauth: string[] }> }
 ): Promise<Response> {
-  // Only the credentials sign-in path is rate-limited.
+  // Only the credentials sign-in path is rate-limited and CAPTCHA-checked.
+  // signOut, CSRF token, and other NextAuth POST paths pass through unchanged.
   const url = new URL(req.url);
+  // ── Google OAuth initiation — captcha-grant cookie check ─────────────────
+  // signIn("google") POSTs here after /api/auth/google-initiate has issued a
+  // signed grant cookie.  Attackers who skip google-initiate and POST directly
+  // are rejected because they have no valid cookie.
+  if (url.pathname.includes("/signin/google")) {
+    const cookieHeader = req.headers.get("cookie") ?? "";
+    // Parse the captcha-grant cookie value from the Cookie header.
+    const grantMatch = new RegExp(
+      `(?:^|;\\s*)${GRANT_COOKIE_NAME}=([^;]+)`
+    ).exec(cookieHeader);
+    const grant = grantMatch?.[1] ?? null;
+    if (!verifyGrant(grant)) {
+      return Response.json(
+        { error: "Bot check failed — please try again." },
+        { status: 403 }
+      );
+    }
+  }
+
   if (url.pathname.includes("/callback/credentials")) {
+    // ── Rate limit ────────────────────────────────────────────────────────
     const ip = clientIp(req);
     const { limited, retryAfterMs } = loginLimiter.check(ip);
     if (limited) return rateLimitResponse(retryAfterMs);
+
+    // ── Turnstile CAPTCHA ─────────────────────────────────────────────────
+    // Clone the request so the body stream is preserved for NextAuth.
+    // NextAuth sends credentials as URL-encoded form data; extra fields
+    // passed to signIn() (like turnstileToken) are included in that body.
+    const bodyText = await req.clone().text();
+    const params = new URLSearchParams(bodyText);
+    const captchaToken = params.get("turnstileToken") ?? null;
+    const { success: captchaOk } = await verifyTurnstile(captchaToken);
+    if (!captchaOk) {
+      return Response.json(
+        { error: "Bot check failed — please try again." },
+        { status: 403 }
+      );
+    }
   }
 
   return handler(req, ctx) as Promise<Response>;

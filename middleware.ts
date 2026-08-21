@@ -37,10 +37,14 @@ export async function middleware(req: NextRequest) {
     `script-src 'nonce-${nonce}' 'strict-dynamic'`,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "img-src 'self' data: blob: https:",
-    "connect-src 'self' https://accounts.google.com https://oauth2.googleapis.com",
+    // challenges.cloudflare.com: Turnstile widget makes API calls from the page
+    // to Cloudflare to validate challenge responses.
+    "connect-src 'self' https://accounts.google.com https://oauth2.googleapis.com https://challenges.cloudflare.com",
     // fonts.gstatic.com serves the actual Inter font binary files.
     "font-src 'self' data: https://fonts.gstatic.com",
-    "frame-src https://www.youtube.com https://www.youtube-nocookie.com",
+    // challenges.cloudflare.com: Turnstile renders its challenge UI inside a
+    // sandboxed iframe served from Cloudflare.
+    "frame-src https://www.youtube.com https://www.youtube-nocookie.com https://challenges.cloudflare.com",
     "frame-ancestors 'none'",
     "object-src 'none'",
     "base-uri 'self'",

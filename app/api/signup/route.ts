@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { db, roleForEmail } from "@/lib/db";
 import { sendVerificationEmail } from "@/lib/email";
 import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
+import { verifyTurnstile } from "@/lib/turnstile";
 
 const sha256 = (v: string) => crypto.createHash("sha256").update(v).digest("hex");
 
@@ -44,7 +45,19 @@ export async function POST(req: Request) {
   if (limited) return rateLimitResponse(retryAfterMs, { json: true });
 
   try {
-    const { name, email, password, employmentType, position } = await req.json().catch(() => ({}));
+    const { name, email, password, employmentType, position, turnstileToken } = await req.json().catch(() => ({}));
+
+    // Turnstile CAPTCHA — verify before any DB access or email dispatch.
+    const { success: captchaOk } = await verifyTurnstile(
+      typeof turnstileToken === "string" ? turnstileToken : null
+    );
+    if (!captchaOk) {
+      return NextResponse.json(
+        { error: "Bot check failed — please try again." },
+        { status: 403 }
+      );
+    }
+
     const cleanEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
     const cleanName = typeof name === "string" ? name.trim() : "";
     const validTypes = ["intern", "job", "student", "faculty"];

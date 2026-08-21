@@ -12,6 +12,7 @@
     "prebuild": "rm -rf .next"
   },
   "dependencies": {
+    "@marsidev/react-turnstile": "^1.6.0",
     "@replit/connectors-sdk": "^0.4.1",
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
