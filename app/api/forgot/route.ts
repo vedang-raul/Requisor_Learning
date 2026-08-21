@@ -3,16 +3,43 @@ import crypto from "crypto";
 import { db, type DbUser } from "@/lib/db";
 import { sendPasswordResetEmail } from "@/lib/email";
 import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/request-body";
+import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
 
 const RESET_EMAIL_COOLDOWN_MINUTES = 10;
 const MAX_FORGOT_REQUEST_BYTES = 4 * 1024;
 const MAX_EMAIL_LENGTH = 254;
+
+// ── Per-IP rate limiting ──────────────────────────────────────────────────────
+// 5 reset requests per IP per 15 minutes.  Prevents inbox-flooding attacks
+// where an attacker spams reset emails to a victim's address.
+const forgotLimiter = createRateLimiter(5, 15 * 60_000);
+
+/**
+ * Extract the trusted client IP from proxy headers.
+ * See app/api/signup/route.ts for the full trust-model rationale.
+ */
+function clientIp(req: Request): string {
+  const xRealIp = req.headers.get("x-real-ip")?.trim();
+  if (xRealIp) return xRealIp;
+
+  const forwarded = req.headers.get("x-forwarded-for");
+  if (forwarded) {
+    const rightmost = forwarded.split(",").at(-1)?.trim();
+    if (rightmost) return rightmost;
+  }
+
+  return "127.0.0.1"; // dev / test fallback
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 export async function POST(req: Request) {
+  // Rate-limit by IP before any body parsing, DB access, or email dispatch.
+  const { limited, retryAfterMs } = forgotLimiter.check(clientIp(req));
+  if (limited) return rateLimitResponse(retryAfterMs, { json: true });
+
   try {
     let body: unknown;
     try {
