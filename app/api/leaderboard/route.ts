@@ -18,6 +18,12 @@ export interface LeaderboardResponse {
   total: number;
 }
 
+// Cache-Control header for leaderboard responses.
+// The top-10 list and the caller's rank change only when XP is awarded, so a
+// short TTL is acceptable.  Marked private because the response contains the
+// caller's isSelf flag and must not be shared across users by a proxy.
+const CACHE_CONTROL = "private, max-age=30, stale-while-revalidate=60";
+
 export async function GET() {
   const session = await getServerSession(authOptions);
   const uid = session?.user?.id ? Number(session.user.id) : null;
@@ -105,5 +111,8 @@ export async function GET() {
   );
   const total = Number(countRows[0]?.total ?? 0);
 
-  return NextResponse.json({ top, self: selfInTop10 ? null : self, total } satisfies LeaderboardResponse);
+  return NextResponse.json(
+    { top, self: selfInTop10 ? null : self, total } satisfies LeaderboardResponse,
+    { headers: { "Cache-Control": CACHE_CONTROL } }
+  );
 }

@@ -5,12 +5,32 @@ declare global {
   var __pgPool: Pool | undefined;
 }
 
-export const db: Pool =
-  global.__pgPool ??
-  new Pool({
+function makePool(): Pool {
+  const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    max: 5,
+    // Raised from 5 → 20 to support thousands of concurrent users.
+    // Replit Postgres comfortably handles this; raise further only after
+    // profiling real connection saturation. Redis-backed pgBouncer is the
+    // next upgrade path for multi-instance deployments.
+    max: 20,
+    // Evict idle connections after 30 s to avoid exhausting the server-side
+    // limit when traffic temporarily subsides.
+    idleTimeoutMillis: 30_000,
+    // Fail fast if every slot is busy rather than queuing indefinitely —
+    // surfaces overload as a 500 instead of a silent hang.
+    connectionTimeoutMillis: 3_000,
   });
+
+  // Cap individual queries at 8 s; long-running queries hold slots and
+  // cascade into pool exhaustion under load.
+  pool.on("connect", (client) => {
+    client.query("SET statement_timeout = 8000").catch(() => {});
+  });
+
+  return pool;
+}
+
+export const db: Pool = global.__pgPool ?? makePool();
 
 if (process.env.NODE_ENV !== "production") global.__pgPool = db;
 

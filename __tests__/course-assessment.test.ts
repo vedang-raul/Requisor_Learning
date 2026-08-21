@@ -30,6 +30,22 @@ jest.mock("@/lib/db", () => ({
   db: { query: jest.fn() },
 }));
 
+// Bypass rate limiting and the AI concurrency semaphore so tests are not
+// affected by module-level state that accumulates across repeated calls.
+jest.mock("@/lib/rate-limit", () => ({
+  createRateLimiter: () => ({
+    check: () => ({ limited: false, retryAfterMs: 0 }),
+  }),
+  rateLimitResponse: () => new Response(JSON.stringify({ error: "rate limited" }), { status: 429 }),
+}));
+
+jest.mock("@/lib/ai-semaphore", () => ({
+  withAiConcurrency: (fn: () => Promise<unknown>) => fn(),
+  SemaphoreFullError: class SemaphoreFullError extends Error {
+    constructor() { super("overloaded"); this.name = "SemaphoreFullError"; }
+  },
+}));
+
 // We use the real seedCourses so slug/baseAssessment data is accurate.
 
 // ── imports after mocks ────────────────────────────────────────────────────

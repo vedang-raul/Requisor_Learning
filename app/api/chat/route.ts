@@ -2,6 +2,8 @@ export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
+import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
+import { acquireAiSlot, SemaphoreFullError } from "@/lib/ai-semaphore";
 
 const BASE_URL = "https://api.x.ai/v1";
 const MODEL = process.env.XAI_MODEL || "grok-3-mini";
@@ -15,32 +17,10 @@ const MAX_PROGRESS_CONTEXT_LENGTH = 4000;
 // If xAI hasn't started streaming within 30 s, abort and surface an error.
 const UPSTREAM_TIMEOUT_MS = 30_000;
 
-// ── Per-user rate limiter (in-memory) ─────────────────────────────────────────
-// Allows up to RATE_LIMIT_MAX requests per RATE_LIMIT_WINDOW_MS per user.
-// Resets the window on the first request after expiry.
-// Note: resets on server restart; use Redis for multi-instance deployments.
-const RATE_LIMIT_MAX = 20;
-const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
-
-interface RateLimitEntry { count: number; resetAt: number }
-const rateLimitMap = new Map<string, RateLimitEntry>();
-
-function checkRateLimit(email: string): { allowed: boolean; retryAfterMs: number } {
-  const now = Date.now();
-  const entry = rateLimitMap.get(email);
-
-  if (!entry || now >= entry.resetAt) {
-    rateLimitMap.set(email, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return { allowed: true, retryAfterMs: 0 };
-  }
-
-  if (entry.count >= RATE_LIMIT_MAX) {
-    return { allowed: false, retryAfterMs: entry.resetAt - now };
-  }
-
-  entry.count += 1;
-  return { allowed: true, retryAfterMs: 0 };
-}
+// ── Per-user rate limiter ─────────────────────────────────────────────────────
+// 20 chat messages per user per minute.  Process-local; see LOAD_TEST.md for
+// the Redis upgrade path for multi-instance deployments.
+const chatLimiter = createRateLimiter(20, 60_000);
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type ChatMessage = { role: "user" | "assistant"; content: string };
@@ -79,15 +59,9 @@ export async function POST(req: Request) {
   }
 
   // 2. Per-user rate limit
-  const { allowed, retryAfterMs } = checkRateLimit(session.user.email);
-  if (!allowed) {
-    return new Response("Too many requests. Please wait a moment before trying again.", {
-      status: 429,
-      headers: {
-        "Retry-After": String(Math.ceil(retryAfterMs / 1000)),
-        "Content-Type": "text/plain; charset=utf-8",
-      },
-    });
+  const { limited, retryAfterMs } = chatLimiter.check(session.user.email);
+  if (limited) {
+    return rateLimitResponse(retryAfterMs);
   }
 
   // 3. API key check
@@ -121,7 +95,7 @@ export async function POST(req: Request) {
     return new Response("No message provided.", { status: 400 });
   }
 
-  // 5. Conversation must end with a user turn — otherwise the request is malformed
+  // 5. Conversation must end with a user turn
   if (messages[messages.length - 1].role !== "user") {
     return new Response("The last message must be from the user.", { status: 400 });
   }
@@ -132,22 +106,40 @@ export async function POST(req: Request) {
   );
   const system = buildSystemPrompt(rawContext);
 
-  // 6. Build a combined AbortController that fires on either:
-  //    a) client disconnect  (req.signal)
-  //    b) upstream timeout   (UPSTREAM_TIMEOUT_MS)
+  // 6. Build combined AbortController (client disconnect + upstream timeout)
   const timeoutController = new AbortController();
   const timeoutId = setTimeout(() => timeoutController.abort("timeout"), UPSTREAM_TIMEOUT_MS);
-
-  // Link req.signal → timeoutController so a client disconnect also aborts upstream
   req.signal.addEventListener("abort", () => timeoutController.abort("client_disconnect"), {
     once: true,
   });
 
+  // 7. Acquire a semaphore slot BEFORE creating the stream so the slot is held
+  //    for the entire stream lifetime — connection open → last byte sent.
+  //    This bounds the total number of active concurrent xAI streams to
+  //    AI_CONCURRENCY_LIMIT, not just the number being initiated.
+  let releaseAiSlot: (() => void) | null = null;
+  try {
+    releaseAiSlot = await acquireAiSlot();
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err instanceof SemaphoreFullError) {
+      return new Response(
+        "The AI assistant is temporarily busy due to high demand. Please try again in a moment.",
+        { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } }
+      );
+    }
+    throw err;
+  }
+
+  // 8. Open xAI connection and pipe the SSE stream to the client.
+  //    releaseAiSlot() is called in the finally block so the slot is always
+  //    returned — whether the stream completes, errors, or the client disconnects.
   const encoder = new TextEncoder();
+
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        const res = await fetch(`${BASE_URL}/chat/completions`, {
+        const xaiRes = await fetch(`${BASE_URL}/chat/completions`, {
           method: "POST",
           signal: timeoutController.signal,
           headers: {
@@ -162,9 +154,9 @@ export async function POST(req: Request) {
           }),
         });
 
-        if (!res.ok || !res.body) {
-          const errText = await res.text().catch(() => `HTTP ${res.status}`);
-          console.error("[chat] xAI API error:", res.status, errText);
+        if (!xaiRes.ok || !xaiRes.body) {
+          const errText = await xaiRes.text().catch(() => `HTTP ${xaiRes.status}`);
+          console.error("[chat] xAI API error:", xaiRes.status, errText);
           controller.enqueue(
             encoder.encode(
               "\n\n_Sorry, I couldn't reach the AI assistant just now. Please try again._"
@@ -173,7 +165,7 @@ export async function POST(req: Request) {
           return;
         }
 
-        const reader = res.body.getReader();
+        const reader = xaiRes.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
 
@@ -207,8 +199,7 @@ export async function POST(req: Request) {
             )
           );
         } else if (reason === "client_disconnect") {
-          // Client closed the connection — no point sending anything
-          console.info("[chat] Client disconnected, aborting upstream request.");
+          console.info("[chat] Client disconnected, aborting stream.");
         } else {
           console.error("[chat] Streaming error:", err);
           controller.enqueue(
@@ -219,6 +210,7 @@ export async function POST(req: Request) {
         }
       } finally {
         clearTimeout(timeoutId);
+        releaseAiSlot?.(); // always return the semaphore slot
         controller.close();
       }
     },

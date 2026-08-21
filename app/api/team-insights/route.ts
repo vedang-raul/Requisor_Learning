@@ -1,11 +1,17 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { ADMIN_EMAIL } from "@/lib/db";
+import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
+import { withAiConcurrency, SemaphoreFullError, AI_UPSTREAM_TIMEOUT_MS } from "@/lib/ai-semaphore";
 
 export const runtime = "nodejs";
 
 const MODEL = process.env.XAI_MODEL || "grok-3-mini";
 const XAI_API_BASE = "https://api.x.ai/v1";
+
+// ── Per-user rate limiter ─────────────────────────────────────────────────────
+// Team insights is admin-only; still rate-limited to prevent runaway queries.
+const insightsLimiter = createRateLimiter(10, 60_000);
 
 function buildSystemPrompt(): string {
   return [
@@ -22,6 +28,12 @@ export async function POST(req: Request) {
     session.user.email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()
   ) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  // Per-user rate limit (admin email as key)
+  const { limited, retryAfterMs } = insightsLimiter.check(session.user.email);
+  if (limited) {
+    return rateLimitResponse(retryAfterMs, { json: true });
   }
 
   const apiKey = process.env.XAI_API_KEY;
@@ -43,30 +55,47 @@ export async function POST(req: Request) {
   }
 
   try {
-    const res = await fetch(`${XAI_API_BASE}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: 500,
-        messages: [
-          { role: "system", content: buildSystemPrompt() },
-          { role: "user", content: body.context },
-        ],
-      }),
+    const text = await withAiConcurrency(async () => {
+      const aborter = new AbortController();
+      const timeoutId = setTimeout(() => aborter.abort("upstream_timeout"), AI_UPSTREAM_TIMEOUT_MS);
+      try {
+        const res = await fetch(`${XAI_API_BASE}/chat/completions`, {
+          method: "POST",
+          signal: aborter.signal,
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: MODEL,
+            max_tokens: 500,
+            messages: [
+              { role: "system", content: buildSystemPrompt() },
+              { role: "user", content: body.context },
+            ],
+          }),
+        });
+
+        if (!res.ok) throw new Error(`xAI API error: ${res.status}`);
+
+        const data = await res.json();
+        return data.choices?.[0]?.message?.content ?? "";
+      } finally {
+        clearTimeout(timeoutId);
+      }
     });
 
-    if (!res.ok) {
-      throw new Error(`xAI API error: ${res.status}`);
-    }
-
-    const data = await res.json();
-    const text = data.choices?.[0]?.message?.content ?? "";
     return Response.json({ summary: text });
-  } catch {
-    return Response.json({ error: "Couldn't generate insights right now. Please try again." }, { status: 500 });
+  } catch (err) {
+    if (err instanceof SemaphoreFullError) {
+      return Response.json(
+        { error: "The insights service is busy due to high demand. Please try again in a moment." },
+        { status: 503 }
+      );
+    }
+    return Response.json(
+      { error: "Couldn't generate insights right now. Please try again." },
+      { status: 500 }
+    );
   }
 }

@@ -8,6 +8,8 @@ import {
   readJsonBody,
   RequestBodyTooLargeError,
 } from "@/lib/request-body";
+import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
+import { withAiConcurrency, SemaphoreFullError, AI_UPSTREAM_TIMEOUT_MS } from "@/lib/ai-semaphore";
 
 const BASE_URL = "https://api.x.ai/v1";
 const MODEL = process.env.XAI_MODEL || "grok-3-mini";
@@ -18,6 +20,10 @@ const MAX_TITLE_LENGTH = 200;
 const MAX_DESC_LENGTH = 1000;
 const MAX_TAKEAWAY_LENGTH = 200;
 const MAX_TAKEAWAYS = 10;
+
+// ── Per-user rate limiter ─────────────────────────────────────────────────────
+// Quiz generation is more expensive than chat — 10 per minute per user.
+const quizLimiter = createRateLimiter(10, 60_000);
 
 function extractJson(text: string): string {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -71,6 +77,12 @@ export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
     return Response.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  // Per-user rate limit
+  const { limited, retryAfterMs } = quizLimiter.check(session.user.email);
+  if (limited) {
+    return rateLimitResponse(retryAfterMs, { json: true });
   }
 
   const apiKey = process.env.XAI_API_KEY;
@@ -149,27 +161,32 @@ export async function POST(req: Request) {
     .join("\n");
 
   try {
-    const res = await fetch(`${BASE_URL}/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model: MODEL, max_tokens: 1024, messages: [{ role: "user", content: prompt }] }),
+    const data = await withAiConcurrency(async () => {
+      // Abort if xAI doesn't respond within the shared upstream deadline so the
+      // semaphore slot is not held indefinitely by a hung upstream connection.
+      const aborter = new AbortController();
+      const timeoutId = setTimeout(() => aborter.abort("upstream_timeout"), AI_UPSTREAM_TIMEOUT_MS);
+      try {
+        const res = await fetch(`${BASE_URL}/chat/completions`, {
+          method: "POST",
+          signal: aborter.signal,
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+          body: JSON.stringify({ model: MODEL, max_tokens: 1024, messages: [{ role: "user", content: prompt }] }),
+        });
+
+        if (!res.ok) {
+          const errText = await res.text().catch(() => `HTTP ${res.status}`);
+          console.error("[quiz] xAI API error:", res.status, errText);
+          const isConfigError = res.status === 401 || res.status === 403 || res.status === 404;
+          throw Object.assign(new Error("xAI error"), { status: res.status, isConfigError });
+        }
+
+        return res.json() as Promise<{ choices?: { message?: { content?: string } }[] }>;
+      } finally {
+        clearTimeout(timeoutId);
+      }
     });
 
-    if (!res.ok) {
-      const errText = await res.text().catch(() => `HTTP ${res.status}`);
-      console.error("[quiz] xAI API error:", res.status, errText);
-      const isConfigError = res.status === 401 || res.status === 403 || res.status === 404;
-      return Response.json(
-        {
-          error: isConfigError
-            ? "Quiz generation is misconfigured. Check XAI_API_KEY and XAI_MODEL."
-            : "Couldn't generate a quiz right now. Please try again.",
-        },
-        { status: isConfigError ? 503 : 500 }
-      );
-    }
-
-    const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
     const text = data.choices?.[0]?.message?.content ?? "";
     const parsed = JSON.parse(extractJson(text)) as { questions: unknown[] };
 
@@ -178,7 +195,6 @@ export async function POST(req: Request) {
       throw new Error("Malformed quiz response");
     }
 
-    // Validate every question matches the expected shape before returning to the client
     const validQuestions = parsed.questions.filter(isValidQuestion);
     if (validQuestions.length === 0) {
       console.error("[quiz] No valid questions after shape validation:", parsed.questions);
@@ -187,6 +203,19 @@ export async function POST(req: Request) {
 
     return Response.json({ questions: validQuestions });
   } catch (err) {
+    if (err instanceof SemaphoreFullError) {
+      return Response.json(
+        { error: "The quiz service is busy due to high demand. Please try again in a moment." },
+        { status: 503 }
+      );
+    }
+    const e = err as { isConfigError?: boolean };
+    if (e.isConfigError) {
+      return Response.json(
+        { error: "Quiz generation is misconfigured. Check XAI_API_KEY and XAI_MODEL." },
+        { status: 503 }
+      );
+    }
     console.error("[quiz] Error:", err);
     return Response.json(
       { error: "Couldn't generate a quiz right now. Please try again." },

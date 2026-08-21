@@ -4,6 +4,15 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { db, type DbUser } from "@/lib/db";
 import { seedCourses } from "@/lib/data";
+import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
+import { withAiConcurrency, SemaphoreFullError, AI_UPSTREAM_TIMEOUT_MS } from "@/lib/ai-semaphore";
+
+// ── Per-user rate limiter ─────────────────────────────────────────────────────
+// Capstone assessment is the most expensive AI call — 5 per user per minute.
+const assessmentLimiter = createRateLimiter(5, 60_000);
+
+const BASE_URL = "https://api.x.ai/v1";
+const MODEL = process.env.XAI_MODEL || "grok-3-mini";
 
 export async function GET(_req: Request) {
   const session = await getServerSession(authOptions);
@@ -66,9 +75,6 @@ export async function PATCH(req: Request) {
   return Response.json({ ok: true });
 }
 
-const BASE_URL = "https://api.x.ai/v1";
-const MODEL = process.env.XAI_MODEL || "grok-3-mini";
-
 function buildPersonaLine(qualification: string | null, learningGoal: string | null, ageYears: number | null): string {
   const parts: string[] = [];
   if (qualification) parts.push(`background: ${qualification}`);
@@ -82,6 +88,12 @@ export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Per-user rate limit — capstone assessment is the most expensive AI call
+  const { limited, retryAfterMs } = assessmentLimiter.check(session.user.email);
+  if (limited) {
+    return rateLimitResponse(retryAfterMs, { json: true });
   }
 
   const apiKey = process.env.XAI_API_KEY;
@@ -135,23 +147,39 @@ export async function POST(req: Request) {
     .join("\n");
 
   try {
-    const res = await fetch(`${BASE_URL}/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model: MODEL, max_tokens: 400, messages: [{ role: "user", content: prompt }] }),
+    const text = await withAiConcurrency(async () => {
+      const aborter = new AbortController();
+      const timeoutId = setTimeout(() => aborter.abort("upstream_timeout"), AI_UPSTREAM_TIMEOUT_MS);
+      try {
+        const res = await fetch(`${BASE_URL}/chat/completions`, {
+          method: "POST",
+          signal: aborter.signal,
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+          body: JSON.stringify({ model: MODEL, max_tokens: 400, messages: [{ role: "user", content: prompt }] }),
+        });
+
+        if (!res.ok) {
+          console.error("[course-assessment] xAI API error:", res.status);
+          throw new Error(`xAI error: ${res.status}`);
+        }
+
+        const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+        const content = (data.choices?.[0]?.message?.content ?? "").trim();
+        if (!content) throw new Error("Empty response");
+        return content;
+      } finally {
+        clearTimeout(timeoutId);
+      }
     });
-
-    if (!res.ok) {
-      console.error("[course-assessment] xAI API error:", res.status);
-      return Response.json({ error: "Couldn't generate assessment." }, { status: 500 });
-    }
-
-    const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-    const text = (data.choices?.[0]?.message?.content ?? "").trim();
-    if (!text) throw new Error("Empty response");
 
     return Response.json({ assessment: text });
   } catch (err) {
+    if (err instanceof SemaphoreFullError) {
+      return Response.json(
+        { error: "The assessment service is busy due to high demand. Please try again in a moment." },
+        { status: 503 }
+      );
+    }
     console.error("[course-assessment] Error:", err);
     return Response.json({ error: "Couldn't generate assessment right now." }, { status: 500 });
   }

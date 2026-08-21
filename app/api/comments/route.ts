@@ -3,10 +3,16 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { seedCourses } from "@/lib/data";
+import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
+import { withAiConcurrency, SemaphoreFullError } from "@/lib/ai-semaphore";
 
 const MAX_BODY_LENGTH = 2000;
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
+
+// ── Per-user rate limiter ─────────────────────────────────────────────────────
+// 20 comment POSTs per user per minute; each triggers an AI moderation call.
+const commentLimiter = createRateLimiter(20, 60_000);
 
 // ── AI moderation ─────────────────────────────────────────────────────────────
 
@@ -17,6 +23,8 @@ interface ModerationResult {
 
 /**
  * Ask Grok whether a comment is on-topic for the lesson.
+ * The fetch is wrapped in the global AI semaphore so comment moderation
+ * participates in the same concurrency budget as all other xAI calls.
  * Returns { relevant: true } on any error so a service hiccup never silently
  * blocks a legitimate post.
  */
@@ -40,37 +48,43 @@ async function moderateComment(
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 6000);
 
-    const res = await fetch("https://api.x.ai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: process.env.XAI_MODEL ?? "grok-3-mini",
-        temperature: 0,
-        max_tokens: 120,
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a content moderator for an online learning platform. " +
-              "Determine whether a discussion comment is relevant to the lesson provided. " +
-              "A comment is relevant if it asks questions about the lesson content, " +
-              "shares a related insight, requests clarification on a covered concept, " +
-              "or provides constructive feedback about the material. " +
-              "A comment is NOT relevant if it is off-topic chatter, spam, personal " +
-              "conversations unrelated to the lesson, or promotional content. " +
-              "Reply with ONLY valid JSON: {\"relevant\": true} or {\"relevant\": false, \"reason\": \"<one short sentence explaining why>\"}",
-          },
-          {
-            role: "user",
-            content: `LESSON:\n${lessonContext}\n\nCOMMENT:\n${commentBody}`,
-          },
-        ],
-      }),
-      signal: controller.signal,
-    }).finally(() => clearTimeout(timeout));
+    // Run the moderation fetch through the shared AI semaphore so concurrent
+    // comment submissions cannot bypass the global xAI concurrency limit.
+    // SemaphoreFullError is caught below and treated as a pass (fail-open) so
+    // legitimate comments are never blocked because the system is busy.
+    const res = await withAiConcurrency(() =>
+      fetch("https://api.x.ai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: process.env.XAI_MODEL ?? "grok-3-mini",
+          temperature: 0,
+          max_tokens: 120,
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are a content moderator for an online learning platform. " +
+                "Determine whether a discussion comment is relevant to the lesson provided. " +
+                "A comment is relevant if it asks questions about the lesson content, " +
+                "shares a related insight, requests clarification on a covered concept, " +
+                "or provides constructive feedback about the material. " +
+                "A comment is NOT relevant if it is off-topic chatter, spam, personal " +
+                "conversations unrelated to the lesson, or promotional content. " +
+                "Reply with ONLY valid JSON: {\"relevant\": true} or {\"relevant\": false, \"reason\": \"<one short sentence explaining why>\"}",
+            },
+            {
+              role: "user",
+              content: `LESSON:\n${lessonContext}\n\nCOMMENT:\n${commentBody}`,
+            },
+          ],
+        }),
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timeout))
+    );
 
     if (!res.ok) return { relevant: true, reason: "" };
 
@@ -84,8 +98,11 @@ async function moderateComment(
       relevant: parsed.relevant !== false,
       reason: parsed.reason ?? "",
     };
-  } catch {
-    // Fail open — never block a comment because AI is unavailable
+  } catch (err) {
+    // Fail open — never block a comment because AI is unavailable or overloaded
+    if (err instanceof SemaphoreFullError) {
+      console.info("[comments] AI semaphore full during moderation — failing open");
+    }
     return { relevant: true, reason: "" };
   }
 }
@@ -137,6 +154,12 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id || !session.user.email) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Per-user rate limit — each comment POST triggers an AI moderation call
+  const { limited, retryAfterMs } = commentLimiter.check(session.user.email);
+  if (limited) {
+    return rateLimitResponse(retryAfterMs, { json: true }) as NextResponse;
   }
 
   let lessonId: string | undefined;
