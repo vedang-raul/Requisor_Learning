@@ -41,10 +41,11 @@ const nextConfig = {
             value: "max-age=63072000; includeSubDomains",
           },
 
-          // Permissions — disable browser features the app doesn't use.
+          // Permissions — allow the AI assistant's voice input only for this
+          // site; keep unrelated device features disabled.
           {
             key: "Permissions-Policy",
-            value: "camera=(), microphone=(), geolocation=()",
+            value: "camera=(), microphone=(self), geolocation=()",
           },
         ],
       },
