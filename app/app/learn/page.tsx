@@ -19,6 +19,7 @@ import { VideoEmbed } from "@/components/video-embed";
 import { Confetti } from "@/components/confetti";
 import { PageTransition } from "@/components/motion";
 import { LessonQuiz } from "@/components/lesson-quiz";
+import { LessonAssignment } from "@/components/lesson-assignment";
 
 const springHover = { type: "spring" as const, stiffness: 320, damping: 22 };
 const springTab = { type: "spring" as const, stiffness: 500, damping: 35 };
@@ -235,7 +236,15 @@ function LearnView() {
   return (
     <PageTransition>
       <Confetti fire={celebrate} onDone={() => setCelebrate(false)} />
-      <AnimatePresence>{quizOpen && <LessonQuiz lesson={lesson} onClose={() => setQuizOpen(false)} />}</AnimatePresence>
+      <AnimatePresence>
+        {quizOpen && (
+          <LessonQuiz
+            lessonId={lesson.id}
+            lessonTitle={lesson.title}
+            onClose={() => setQuizOpen(false)}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Course completion banner */}
       <AnimatePresence>
@@ -476,6 +485,7 @@ function LearnView() {
                           ))}
                         </ul>
                       </div>
+                      <LessonAssignment lessonId={lesson.id} />
                     </div>
                   )}
                   {tab === "resources" && (

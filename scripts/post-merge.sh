@@ -140,6 +140,41 @@ p.query(\`
     created_at TIMESTAMP DEFAULT NOW(),
     UNIQUE(user_id, lesson_id)
   );
+
+  -- AI-generated learning artifacts are owned by the learner. Lesson IDs
+  -- reference the trusted seed catalog rather than a client-provided prompt.
+  CREATE TABLE IF NOT EXISTS generated_assignments (
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    lesson_id TEXT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, lesson_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS generated_quizzes (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    lesson_id TEXT NOT NULL,
+    questions JSONB NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    graded_at TIMESTAMP,
+    grade_results JSONB
+  );
+
+  CREATE INDEX IF NOT EXISTS generated_quizzes_user_lesson_idx
+    ON generated_quizzes (user_id, lesson_id, created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS learner_mastery (
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    concept TEXT NOT NULL,
+    mastery_score REAL NOT NULL CHECK (mastery_score >= 0 AND mastery_score <= 1),
+    attempts INT NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, concept)
+  );
+
+  CREATE INDEX IF NOT EXISTS learner_mastery_weak_concepts_idx
+    ON learner_mastery (user_id, mastery_score ASC, updated_at DESC);
 \`).then(()=>{console.log('DB schema up to date');process.exit(0)}).catch(e=>{console.error(e.message);process.exit(1)});
 "
 
