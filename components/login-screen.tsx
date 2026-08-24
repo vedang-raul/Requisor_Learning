@@ -16,13 +16,16 @@ import { cn } from "@/lib/utils";
 
 type Mode = "login" | "signup" | "forgot";
 
-// Cloudflare Turnstile public site key. The always-pass test key is allowed
-// only in local development; production must be configured explicitly.
+// Cloudflare Turnstile public site key. The integration is disabled by
+// default until both the client flag and server flag are enabled.
+const CAPTCHA_ENABLED = process.env.NEXT_PUBLIC_TURNSTILE_ENABLED === "true";
 const SITE_KEY =
-  process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ??
-  (process.env.NODE_ENV === "production"
-    ? ""
-    : "1x00000000000000000000AA");
+  CAPTCHA_ENABLED
+    ? process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ??
+      (process.env.NODE_ENV === "production"
+        ? ""
+        : "1x00000000000000000000AA")
+    : "";
 const CAPTCHA_UNAVAILABLE_MESSAGE =
   "Security verification is not configured. Please contact support.";
 const CAPTCHA_FAILED_MESSAGE =
@@ -123,12 +126,12 @@ export function LoginScreen() {
     if (!validEmail(email)) return setError("Enter a valid work email address.");
 
     if (mode === "forgot") {
-      if (!SITE_KEY) {
+      if (CAPTCHA_ENABLED && !SITE_KEY) {
         setError(CAPTCHA_UNAVAILABLE_MESSAGE);
         return;
       }
-      const tok = consumeToken();
-      if (!tok) {
+      const tok = CAPTCHA_ENABLED ? consumeToken() : "";
+      if (CAPTCHA_ENABLED && !tok) {
         setError("Security check is loading — please try again in a moment.");
         turnstileRef.current?.execute();
         return;
@@ -159,13 +162,13 @@ export function LoginScreen() {
 
     if (password.length < 8) return setError("Password must be at least 8 characters.");
 
-    if (!SITE_KEY) {
+    if (CAPTCHA_ENABLED && !SITE_KEY) {
       setError(CAPTCHA_UNAVAILABLE_MESSAGE);
       return;
     }
 
-    const tok = consumeToken();
-    if (!tok) {
+    const tok = CAPTCHA_ENABLED ? consumeToken() : "";
+    if (CAPTCHA_ENABLED && !tok) {
       setError("Security check is loading — please try again in a moment.");
       turnstileRef.current?.execute();
       return;
@@ -238,13 +241,13 @@ export function LoginScreen() {
 
   const google = async () => {
     setError("");
-    if (!SITE_KEY) {
+    if (CAPTCHA_ENABLED && !SITE_KEY) {
       setError(CAPTCHA_UNAVAILABLE_MESSAGE);
       return;
     }
 
-    const tok = consumeToken();
-    if (!tok) {
+    const tok = CAPTCHA_ENABLED ? consumeToken() : "";
+    if (CAPTCHA_ENABLED && !tok) {
       setError("Security check is loading — please try again in a moment.");
       turnstileRef.current?.execute();
       return;
@@ -438,7 +441,7 @@ export function LoginScreen() {
             mount and resolves silently for legitimate users.  After each form
             submission the widget is reset and re-executes to keep a fresh
             token ready for the next action. */}
-        {SITE_KEY && (
+        {CAPTCHA_ENABLED && SITE_KEY && (
           <div aria-hidden="true" className="sr-only">
             <Turnstile
               ref={turnstileRef}

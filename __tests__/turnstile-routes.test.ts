@@ -17,6 +17,7 @@ const mockVerifyTurnstile = jest.fn<
 >();
 
 jest.mock("@/lib/turnstile", () => ({
+  isTurnstileEnabled: () => process.env.TURNSTILE_ENABLED === "true",
   verifyTurnstile: (...args: [string | null | undefined]) =>
     mockVerifyTurnstile(...args),
 }));
@@ -129,10 +130,15 @@ function makeGoogleInitiateRequest(token?: string) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  process.env.TURNSTILE_ENABLED = "true";
   mockVerifyTurnstile.mockResolvedValue({ success: true });
   // Restore the default "always allow" behaviour so CAPTCHA-focused tests are
   // not affected by rate-limit state set in rate-limiting tests.
   mockRateLimitCheck.mockReturnValue({ limited: false, retryAfterMs: 0 });
+});
+
+afterAll(() => {
+  delete process.env.TURNSTILE_ENABLED;
 });
 
 // ── POST /api/signup ──────────────────────────────────────────────────────────
@@ -277,6 +283,14 @@ describe("POST /api/auth/google-initiate — IP rate limiting", () => {
     const res = await googleInitiatePost(makeGoogleInitiateRequest("good-token"));
     expect(res.status).toBe(200);
   });
+
+  it("skips CAPTCHA and does not issue a grant while Turnstile is disabled", async () => {
+    delete process.env.TURNSTILE_ENABLED;
+    const res = await googleInitiatePost(makeGoogleInitiateRequest());
+    expect(res.status).toBe(200);
+    expect(res.headers.get("set-cookie")).toBeNull();
+    expect(mockVerifyTurnstile).not.toHaveBeenCalled();
+  });
 });
 
 // ── POST /api/auth/signin/google — grant cookie enforcement ───────────────────
@@ -319,10 +333,23 @@ describe("POST /api/auth/signin/google — captcha-grant cookie required", () =>
     expect(res.status).toBe(200);
   });
 
-  it("does not call the rate limiter or Turnstile for the Google signin path", async () => {
+  it("does not call Turnstile again for the Google signin path", async () => {
     const { value } = issueGrant();
     await authPost(makeGoogleSigninRequest(value), googleSigninCtx);
     // Turnstile mock should not have been called for this path.
     expect(mockVerifyTurnstile).not.toHaveBeenCalled();
+  });
+
+  it("allows direct Google signin when Turnstile is disabled", async () => {
+    delete process.env.TURNSTILE_ENABLED;
+    const res = await authPost(makeGoogleSigninRequest(), googleSigninCtx);
+    expect(res.status).toBe(200);
+  });
+
+  it("rate-limits direct Google signin while Turnstile is disabled", async () => {
+    delete process.env.TURNSTILE_ENABLED;
+    mockRateLimitCheck.mockReturnValueOnce({ limited: true, retryAfterMs: 60_000 });
+    const res = await authPost(makeGoogleSigninRequest(), googleSigninCtx);
+    expect(res.status).toBe(429);
   });
 });

@@ -1,7 +1,7 @@
 import NextAuth from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
-import { verifyTurnstile } from "@/lib/turnstile";
+import { isTurnstileEnabled, verifyTurnstile } from "@/lib/turnstile";
 import { verifyGrant, GRANT_COOKIE_NAME } from "@/lib/captcha-grant";
 
 const handler = NextAuth(authOptions);
@@ -15,6 +15,9 @@ const handler = NextAuth(authOptions);
 // HTTP 429 rather than a redirect.  In-process store; see LOAD_TEST.md for
 // the Redis upgrade path when running multiple replicas.
 const loginLimiter = createRateLimiter(10, 15 * 60_000);
+// Google OAuth initiation happens at NextAuth's /signin/google route. Keep
+// this limiter active whether or not the optional CAPTCHA layer is enabled.
+const googleSigninLimiter = createRateLimiter(10, 15 * 60_000);
 
 /**
  * Extract the trusted client IP from proxy headers.
@@ -51,11 +54,15 @@ export async function POST(
   // Only the credentials sign-in path is rate-limited and CAPTCHA-checked.
   // signOut, CSRF token, and other NextAuth POST paths pass through unchanged.
   const url = new URL(req.url);
-  // ── Google OAuth initiation — captcha-grant cookie check ─────────────────
+  // ── Google OAuth initiation — rate limit and optional CAPTCHA grant ──────
   // signIn("google") POSTs here after /api/auth/google-initiate has issued a
-  // signed grant cookie.  Attackers who skip google-initiate and POST directly
-  // are rejected because they have no valid cookie.
+  // signed grant cookie. The rate limit protects direct POSTs as well, while
+  // the grant is required only when the optional CAPTCHA layer is enabled.
   if (url.pathname.includes("/signin/google")) {
+    const { limited, retryAfterMs } = googleSigninLimiter.check(clientIp(req));
+    if (limited) return rateLimitResponse(retryAfterMs);
+
+    if (isTurnstileEnabled()) {
     const cookieHeader = req.headers.get("cookie") ?? "";
     // Parse the captcha-grant cookie value from the Cookie header.
     const grantMatch = new RegExp(
@@ -67,6 +74,7 @@ export async function POST(
         { error: "Bot check failed — please try again." },
         { status: 403 }
       );
+    }
     }
   }
 

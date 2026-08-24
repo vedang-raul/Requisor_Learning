@@ -7,3 +7,4 @@
 - [Onboarding & personalisation](onboarding-personalization.md) — Post-login survey gate in layout; qualification/learning_goal/onboarding_done on users; quiz + assignment AI prompts personalised via /api/me profile signals.
 - [Bounded JSON request bodies](bounded-json-request-bodies.md) — resource limits must be enforced while streaming request bytes, before JSON parsing.
 - [DB indexes](db-indexes.md) — leaderboard + analytics indexes in post-merge.sh; shell quoting rule for SQL comments; Index Only Scan heap-fetch caveat.
+- [Turnstile activation](turnstile-activation.md) — CAPTCHA is paused by user choice; only enable after matching real keys and approved production domain.

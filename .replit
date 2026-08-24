@@ -45,6 +45,8 @@ build = ["npm", "run", "build"]
 [userenv]
 
 [userenv.shared]
+NEXT_PUBLIC_TURNSTILE_ENABLED = "false"
+TURNSTILE_ENABLED = "false"
 
 [userenv.production]
 NEXTAUTH_URL = "https://learning.requisor.io"

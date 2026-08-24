@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { verifyTurnstile } from "@/lib/turnstile";
+import { isTurnstileEnabled, verifyTurnstile } from "@/lib/turnstile";
 import { issueGrant, GRANT_COOKIE_NAME } from "@/lib/captcha-grant";
 import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
 
@@ -52,6 +52,10 @@ export async function POST(req: Request) {
   // Rate-limit by IP before any body parsing or CAPTCHA verification.
   const { limited, retryAfterMs } = googleInitiateLimiter.check(clientIp(req));
   if (limited) return rateLimitResponse(retryAfterMs, { json: true });
+
+  // Keep Google OAuth independent from the disabled CAPTCHA integration.
+  // The rate limit above remains active while Turnstile is paused.
+  if (!isTurnstileEnabled()) return NextResponse.json({ ok: true });
 
   let token: string | null = null;
   try {

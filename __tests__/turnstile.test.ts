@@ -9,7 +9,7 @@
 
 // ── Imports ───────────────────────────────────────────────────────────────────
 
-import { verifyTurnstile } from "@/lib/turnstile";
+import { isTurnstileEnabled, verifyTurnstile } from "@/lib/turnstile";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -25,13 +25,25 @@ function mockFetch(response: { success: boolean }) {
 const TEST_SECRET = "1x0000000000000000000000000000000AA";
 
 beforeEach(() => {
+  process.env.TURNSTILE_ENABLED = "true";
   process.env.TURNSTILE_SECRET_KEY = TEST_SECRET;
   global.fetch = jest.fn();
 });
 
 afterEach(() => {
+  delete process.env.TURNSTILE_ENABLED;
   delete process.env.TURNSTILE_SECRET_KEY;
   jest.restoreAllMocks();
+});
+
+describe("Turnstile feature flag", () => {
+  it("is disabled by default", async () => {
+    delete process.env.TURNSTILE_ENABLED;
+    delete process.env.TURNSTILE_SECRET_KEY;
+    expect(isTurnstileEnabled()).toBe(false);
+    expect(await verifyTurnstile(null)).toEqual({ success: true });
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
 });
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

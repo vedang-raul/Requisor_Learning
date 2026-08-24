@@ -32,6 +32,7 @@ jest.mock("@/lib/rate-limit", () => {
 
 // Turnstile mock — dev bypass returns success so rate-limit tests are unaffected.
 jest.mock("@/lib/turnstile", () => ({
+  isTurnstileEnabled: jest.fn(() => false),
   verifyTurnstile: jest.fn().mockResolvedValue({ success: true }),
 }));
 

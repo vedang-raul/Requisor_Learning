@@ -3,9 +3,12 @@
  *
  * Server-side Cloudflare Turnstile token verification.
  *
- * Every login, signup, and password-reset action sends a Turnstile token
- * generated client-side.  This module validates that token against
- * Cloudflare's siteverify API before any sensitive operation proceeds.
+ * Every login, signup, and password-reset action can send a Turnstile token
+ * generated client-side. When enabled, this module validates that token
+ * against Cloudflare's siteverify API before any sensitive operation proceeds.
+ *
+ * Turnstile is currently disabled by default. Set TURNSTILE_ENABLED=true
+ * together with TURNSTILE_SECRET_KEY when production protection is ready.
  *
  * Dev / test bypass:
  *   When TURNSTILE_SECRET_KEY is not set and NODE_ENV is not "production",
@@ -21,6 +24,11 @@
 const SITEVERIFY_URL =
   "https://challenges.cloudflare.com/turnstile/v1/siteverify";
 
+/** Whether the server-side Turnstile gate is enabled. */
+export function isTurnstileEnabled(): boolean {
+  return process.env.TURNSTILE_ENABLED === "true";
+}
+
 /**
  * Verify a Cloudflare Turnstile challenge token server-side.
  *
@@ -30,6 +38,10 @@ const SITEVERIFY_URL =
 export async function verifyTurnstile(
   token: string | null | undefined
 ): Promise<{ success: boolean }> {
+  // Feature flag is intentionally off until production keys and the
+  // Cloudflare site domain are configured.
+  if (!isTurnstileEnabled()) return { success: true };
+
   const secret = process.env.TURNSTILE_SECRET_KEY;
 
   if (!secret) {
