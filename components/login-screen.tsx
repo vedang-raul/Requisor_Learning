@@ -16,11 +16,17 @@ import { cn } from "@/lib/utils";
 
 type Mode = "login" | "signup" | "forgot";
 
-// Cloudflare Turnstile public site key.  Falls back to the Cloudflare
-// always-pass test key (1x00000000000000000000AA) so the widget works
-// in local development without real credentials configured.
+// Cloudflare Turnstile public site key. The always-pass test key is allowed
+// only in local development; production must be configured explicitly.
 const SITE_KEY =
-  process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "1x00000000000000000000AA";
+  process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ??
+  (process.env.NODE_ENV === "production"
+    ? ""
+    : "1x00000000000000000000AA");
+const CAPTCHA_UNAVAILABLE_MESSAGE =
+  "Security verification is not configured. Please contact support.";
+const CAPTCHA_FAILED_MESSAGE =
+  "Security check could not be completed. Please try again.";
 
 function GoogleIcon() {
   return (
@@ -88,6 +94,16 @@ export function LoginScreen() {
     try { return await res.json(); } catch { return null; }
   };
 
+  const authErrorMessage = (authError: string): string => {
+    if (/bot check|captcha|turnstile|security check/i.test(authError)) {
+      return CAPTCHA_FAILED_MESSAGE;
+    }
+    if (/configuration|config error/i.test(authError)) {
+      return CAPTCHA_UNAVAILABLE_MESSAGE;
+    }
+    return authError;
+  };
+
   /**
    * Consume the current CAPTCHA token for one request and reset the widget
    * so a fresh token is ready for the next submission.
@@ -107,6 +123,10 @@ export function LoginScreen() {
     if (!validEmail(email)) return setError("Enter a valid work email address.");
 
     if (mode === "forgot") {
+      if (!SITE_KEY) {
+        setError(CAPTCHA_UNAVAILABLE_MESSAGE);
+        return;
+      }
       const tok = consumeToken();
       if (!tok) {
         setError("Security check is loading — please try again in a moment.");
@@ -121,7 +141,13 @@ export function LoginScreen() {
           body: JSON.stringify({ email, turnstileToken: tok }),
         });
         const data = await safeJson(res);
-        if (!res.ok) setError(data?.error ?? "Something went wrong. Please try again.");
+        if (!res.ok) {
+          setError(
+            data?.error && /bot check|captcha|turnstile|security check/i.test(data.error)
+              ? CAPTCHA_FAILED_MESSAGE
+              : data?.error ?? "Something went wrong. Please try again."
+          );
+        }
         else setNotice("If that email has an account, a reset link is on its way from support@requisor.io.");
       } catch {
         setError("Network error. Please try again.");
@@ -132,6 +158,11 @@ export function LoginScreen() {
     }
 
     if (password.length < 8) return setError("Password must be at least 8 characters.");
+
+    if (!SITE_KEY) {
+      setError(CAPTCHA_UNAVAILABLE_MESSAGE);
+      return;
+    }
 
     const tok = consumeToken();
     if (!tok) {
@@ -164,7 +195,13 @@ export function LoginScreen() {
           body: JSON.stringify({ name, email, password, employmentType, position, turnstileToken: tok }),
         });
         const data = await safeJson(res);
-        if (!res.ok) setError(data?.error ?? "Signup failed. Please try again.");
+        if (!res.ok) {
+          setError(
+            data?.error && /bot check|captcha|turnstile|security check/i.test(data.error)
+              ? CAPTCHA_FAILED_MESSAGE
+              : data?.error ?? "Signup failed. Please try again."
+          );
+        }
         else {
           setNotice("Account created! Check your inbox — we sent a verification link from support@requisor.io.");
           setMode("login");
@@ -186,7 +223,7 @@ export function LoginScreen() {
               ? "Please verify your email first — check your inbox for the link from support@requisor.io."
               : res.error === "CredentialsSignin"
                 ? "Invalid email or password."
-                : res.error
+                : authErrorMessage(res.error)
           );
         } else {
           router.push("/app/dashboard/");
@@ -201,6 +238,11 @@ export function LoginScreen() {
 
   const google = async () => {
     setError("");
+    if (!SITE_KEY) {
+      setError(CAPTCHA_UNAVAILABLE_MESSAGE);
+      return;
+    }
+
     const tok = consumeToken();
     if (!tok) {
       setError("Security check is loading — please try again in a moment.");
@@ -218,7 +260,12 @@ export function LoginScreen() {
         body: JSON.stringify({ token: tok }),
       });
       if (!res.ok) {
-        setError("Bot check failed — please try again.");
+        const data = await safeJson(res);
+        setError(
+          data?.error && /configuration|config error/i.test(data.error)
+            ? CAPTCHA_UNAVAILABLE_MESSAGE
+            : CAPTCHA_FAILED_MESSAGE
+        );
         setLoading(false);
         return;
       }
@@ -391,16 +438,18 @@ export function LoginScreen() {
             mount and resolves silently for legitimate users.  After each form
             submission the widget is reset and re-executes to keep a fresh
             token ready for the next action. */}
-        <div aria-hidden="true" className="sr-only">
-          <Turnstile
-            ref={turnstileRef}
-            siteKey={SITE_KEY}
-            onSuccess={setCaptchaToken}
-            onExpire={() => setCaptchaToken("")}
-            onError={() => setCaptchaToken("")}
-            options={{ size: "invisible" } as object}
-          />
-        </div>
+        {SITE_KEY && (
+          <div aria-hidden="true" className="sr-only">
+            <Turnstile
+              ref={turnstileRef}
+              siteKey={SITE_KEY}
+              onSuccess={setCaptchaToken}
+              onExpire={() => setCaptchaToken("")}
+              onError={() => setCaptchaToken("")}
+              options={{ size: "invisible" } as object}
+            />
+          </div>
+        )}
 
         <p className="mt-6 text-center text-[11px] leading-relaxed text-zinc-500">
            Requisor © 2026. All rights reserved.
