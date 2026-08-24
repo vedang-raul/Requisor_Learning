@@ -8,10 +8,10 @@ expertMode = true
 [workflows]
 runButton = "Project"
 
+author = "agent"
 [[workflows.workflow]]
 name = "Project"
 mode = "parallel"
-author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
@@ -45,8 +45,8 @@ build = ["npm", "run", "build"]
 [userenv]
 
 [userenv.shared]
-NEXT_PUBLIC_TURNSTILE_ENABLED = "true"
-TURNSTILE_ENABLED = "true"
+NEXT_PUBLIC_TURNSTILE_ENABLED = "false"
+TURNSTILE_ENABLED = "false"
 
 [userenv.production]
 NEXTAUTH_URL = "https://learning.requisor.io"
