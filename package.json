@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "next lint",
     "test": "jest --runInBand",
+    "test:e2e": "bash scripts/run-e2e.sh",
     "prebuild": "rm -rf .next"
   },
   "dependencies": {
@@ -26,6 +27,7 @@
     "tailwind-merge": "^2.5.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/bcryptjs": "^2.4.6",
     "@types/jest": "^30.0.0",
     "@types/node": "^20.16.0",
