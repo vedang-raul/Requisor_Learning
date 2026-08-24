@@ -62,7 +62,9 @@ export function LoginScreen() {
   // in state.  Each token is single-use: after a submission the widget resets
   // and immediately re-executes so a fresh token is ready for the next action.
   const turnstileRef = useRef<TurnstileInstance>(null);
+  const turnstileReadyRef = useRef(false);
   const [captchaToken, setCaptchaToken] = useState<string>("");
+  const [captchaErrorCode, setCaptchaErrorCode] = useState<string | null>(null);
 
   // Already signed in? Straight to the dashboard.
   useEffect(() => {
@@ -89,6 +91,9 @@ export function LoginScreen() {
   }, [searchParams]);
 
   const validEmail = (v: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v);
+  const captchaFailureMessage = captchaErrorCode
+    ? `Security check could not be completed (Cloudflare code ${captchaErrorCode}). Confirm the widget's site key and approved hostnames, then try again.`
+    : CAPTCHA_FAILED_MESSAGE;
 
   /** Safely parse JSON from a fetch Response — returns null if the body is HTML or unparseable. */
   const safeJson = async (res: Response): Promise<Record<string, string> | null> => {
@@ -113,6 +118,13 @@ export function LoginScreen() {
    * while the learner is still filling in the form.
    */
   const getCaptchaToken = async (): Promise<string> => {
+    // The script and widget load asynchronously. Wait for onWidgetLoad rather
+    // than calling the imperative API while the ref is still uninitialized.
+    for (let attempt = 0; attempt < 40 && !turnstileReadyRef.current; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    if (!turnstileReadyRef.current) return "";
+
     const existing = turnstileRef.current?.getResponse() ?? captchaToken;
     if (existing) return existing;
 
@@ -145,7 +157,7 @@ export function LoginScreen() {
       setLoading(true);
       const tok = CAPTCHA_ENABLED ? await getCaptchaToken() : "";
       if (CAPTCHA_ENABLED && !tok) {
-        setError("Security check could not be completed. Please try again.");
+        setError(captchaFailureMessage);
         setLoading(false);
         return;
       }
@@ -183,7 +195,7 @@ export function LoginScreen() {
     setLoading(true);
     const tok = CAPTCHA_ENABLED ? await getCaptchaToken() : "";
     if (CAPTCHA_ENABLED && !tok) {
-      setError("Security check could not be completed. Please try again.");
+      setError(captchaFailureMessage);
       setLoading(false);
       return;
     }
@@ -262,7 +274,7 @@ export function LoginScreen() {
     setLoading(true);
     const tok = CAPTCHA_ENABLED ? await getCaptchaToken() : "";
     if (CAPTCHA_ENABLED && !tok) {
-      setError("Security check could not be completed. Please try again.");
+      setError(captchaFailureMessage);
       setLoading(false);
       return;
     }
@@ -460,10 +472,24 @@ export function LoginScreen() {
             <Turnstile
               ref={turnstileRef}
               siteKey={SITE_KEY}
-              injectScript={false}
+              onWidgetLoad={() => {
+                turnstileReadyRef.current = true;
+                setCaptchaErrorCode(null);
+              }}
               onSuccess={setCaptchaToken}
               onExpire={() => setCaptchaToken("")}
-              onError={() => setCaptchaToken("")}
+              onError={(errorCode) => {
+                turnstileReadyRef.current = false;
+                setCaptchaToken("");
+                setCaptchaErrorCode(errorCode);
+                console.warn("[turnstile] widget error:", errorCode);
+              }}
+              onUnsupported={() => {
+                turnstileReadyRef.current = false;
+                setCaptchaToken("");
+                setCaptchaErrorCode("unsupported-browser");
+                console.warn("[turnstile] browser is not supported");
+              }}
               options={{
                 size: "invisible",
                 execution: "execute",

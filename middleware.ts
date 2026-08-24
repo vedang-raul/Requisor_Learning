@@ -34,9 +34,8 @@ export async function middleware(req: NextRequest) {
   //  inline-styled element in the app; that refactor is tracked separately.
   const csp = [
     "default-src 'self'",
-    // The Cloudflare host is a CSP2 fallback; CSP3 browsers trust the
-    // explicitly nonced Turnstile script via `strict-dynamic`.
-    `script-src 'nonce-${nonce}' 'strict-dynamic' https://challenges.cloudflare.com`,
+    // The Cloudflare host is needed for the browser-loaded Turnstile API.
+    `script-src 'self' 'nonce-${nonce}' https://challenges.cloudflare.com`,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "img-src 'self' data: blob: https:",
     // challenges.cloudflare.com: Turnstile widget makes API calls from the page

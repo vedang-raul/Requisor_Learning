@@ -3,7 +3,6 @@ import "./globals.css";
 import { StoreProvider } from "@/lib/store";
 import { Providers } from "@/components/providers";
 import { headers } from "next/headers";
-import Script from "next/script";
 
 export const metadata: Metadata = {
   title: "Requisor Learning",
@@ -22,20 +21,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const headersList = await headers();
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const nonce = headersList.get("x-nonce") ?? "";
-  const turnstileEnabled =
-    process.env.NEXT_PUBLIC_TURNSTILE_ENABLED === "true";
 
   return (
     <html lang="en">
       <body className="min-h-screen bg-background font-sans text-[#111827]">
-        {turnstileEnabled && (
-          <Script
-            id="cf-turnstile-script"
-            src="https://challenges.cloudflare.com/turnstile/v0/api.js"
-            strategy="afterInteractive"
-            nonce={nonce}
-          />
-        )}
         <Providers>
           <StoreProvider>{children}</StoreProvider>
         </Providers>
