@@ -108,15 +108,27 @@ export function LoginScreen() {
   };
 
   /**
-   * Consume the current CAPTCHA token for one request and reset the widget
-   * so a fresh token is ready for the next submission.
-   * Returns the token string (may be empty if the widget hasn't resolved yet).
+   * Request a token at submission time. The invisible widget is deliberately
+   * configured for execution mode, so it does not mint a short-lived token
+   * while the learner is still filling in the form.
    */
-  const consumeToken = (): string => {
-    const tok = captchaToken;
+  const getCaptchaToken = async (): Promise<string> => {
+    const existing = turnstileRef.current?.getResponse() ?? captchaToken;
+    if (existing) return existing;
+
+    turnstileRef.current?.execute();
+    try {
+      const token = await turnstileRef.current?.getResponsePromise(10_000);
+      return token ?? "";
+    } catch {
+      return "";
+    }
+  };
+
+  /** Reset the single-use token once it has been handed to an auth request. */
+  const resetCaptcha = () => {
     setCaptchaToken("");
     turnstileRef.current?.reset();
-    return tok;
   };
 
   const submit = async (e: React.FormEvent) => {
@@ -130,13 +142,14 @@ export function LoginScreen() {
         setError(CAPTCHA_UNAVAILABLE_MESSAGE);
         return;
       }
-      const tok = CAPTCHA_ENABLED ? consumeToken() : "";
+      setLoading(true);
+      const tok = CAPTCHA_ENABLED ? await getCaptchaToken() : "";
       if (CAPTCHA_ENABLED && !tok) {
-        setError("Security check is loading — please try again in a moment.");
-        turnstileRef.current?.execute();
+        setError("Security check could not be completed. Please try again.");
+        setLoading(false);
         return;
       }
-      setLoading(true);
+      if (CAPTCHA_ENABLED) resetCaptcha();
       try {
         const res = await fetch("/api/forgot", {
           method: "POST",
@@ -167,14 +180,14 @@ export function LoginScreen() {
       return;
     }
 
-    const tok = CAPTCHA_ENABLED ? consumeToken() : "";
+    setLoading(true);
+    const tok = CAPTCHA_ENABLED ? await getCaptchaToken() : "";
     if (CAPTCHA_ENABLED && !tok) {
-      setError("Security check is loading — please try again in a moment.");
-      turnstileRef.current?.execute();
+      setError("Security check could not be completed. Please try again.");
+      setLoading(false);
       return;
     }
-
-    setLoading(true);
+    if (CAPTCHA_ENABLED) resetCaptcha();
     try {
       if (mode === "signup") {
         if (!name.trim()) {
@@ -246,13 +259,14 @@ export function LoginScreen() {
       return;
     }
 
-    const tok = CAPTCHA_ENABLED ? consumeToken() : "";
+    setLoading(true);
+    const tok = CAPTCHA_ENABLED ? await getCaptchaToken() : "";
     if (CAPTCHA_ENABLED && !tok) {
-      setError("Security check is loading — please try again in a moment.");
-      turnstileRef.current?.execute();
+      setError("Security check could not be completed. Please try again.");
+      setLoading(false);
       return;
     }
-    setLoading(true);
+    if (CAPTCHA_ENABLED) resetCaptcha();
     try {
       // Verify the CAPTCHA token server-side before initiating the Google
       // OAuth redirect.  The actual authentication still happens on Google's
@@ -446,10 +460,15 @@ export function LoginScreen() {
             <Turnstile
               ref={turnstileRef}
               siteKey={SITE_KEY}
+              injectScript={false}
               onSuccess={setCaptchaToken}
               onExpire={() => setCaptchaToken("")}
               onError={() => setCaptchaToken("")}
-              options={{ size: "invisible" } as object}
+              options={{
+                size: "invisible",
+                execution: "execute",
+                appearance: "execute",
+              }}
             />
           </div>
         )}

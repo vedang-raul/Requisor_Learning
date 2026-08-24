@@ -8,3 +8,4 @@
 - [Bounded JSON request bodies](bounded-json-request-bodies.md) — resource limits must be enforced while streaming request bytes, before JSON parsing.
 - [DB indexes](db-indexes.md) — leaderboard + analytics indexes in post-merge.sh; shell quoting rule for SQL comments; Index Only Scan heap-fetch caveat.
 - [Turnstile activation](turnstile-activation.md) — CAPTCHA is paused by user choice; only enable after matching real keys and approved production domain.
+- [Turnstile hostname authorization](turnstile-hostname-authorization.md) — Cloudflare must authorize every production and development hostname before widget tokens can be issued.
