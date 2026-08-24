@@ -6,3 +6,5 @@ next-env.d.ts
 .env
 .env.local
 .env*.local
+playwright-report
+test-results
