@@ -39,6 +39,26 @@ export default function Partners() {
           </SectionHead>
         </Reveal>
 
+        <Reveal delay={80} as="div" className="mb-8 sm:mb-10">
+          <div className="inline-flex max-w-full items-center gap-3 rounded-2xl border border-line bg-card px-4 py-3 shadow-[0_12px_28px_-20px_rgba(16,20,48,.28)] sm:gap-4 sm:px-5 sm:py-4">
+            <img
+              src="/msoe-logo.png"
+              alt="Milwaukee School of Engineering"
+              className="size-12 shrink-0 object-contain sm:size-14"
+              width="56"
+              height="56"
+            />
+            <div className="min-w-0 leading-tight">
+              <span className="block font-mono text-[10.5px] uppercase tracking-[.12em] text-ink-soft">
+                In association with
+              </span>
+              <span className="mt-1 block text-sm font-semibold text-ink sm:text-[15px]">
+                Milwaukee School of Engineering
+              </span>
+            </div>
+          </div>
+        </Reveal>
+
         <div className="grid grid-cols-3 gap-6 max-[900px]:grid-cols-1">
           {CARDS.map((c, idx) => (
             <Reveal as="div" key={c.title} delay={idx * 100}>
