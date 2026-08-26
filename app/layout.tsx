@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "../landing/index.css";
 import { StoreProvider } from "@/lib/store";
 import { Providers } from "@/components/providers";
 import { headers } from "next/headers";

@@ -1,12 +1,5 @@
-"use client";
-
-import { Suspense } from "react";
-import { LoginScreen } from "@/components/login-screen";
+import LandingApp from "@/landing/App.jsx";
 
 export default function Home() {
-  return (
-    <Suspense>
-      <LoginScreen />
-    </Suspense>
-  );
+  return <LandingApp />;
 }
