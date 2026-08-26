@@ -19,7 +19,7 @@ export default function Nav() {
           <span className="truncate">Requisor Learning</span>
         </a>
 
-        <div className="flex gap-[26px] text-[15px] font-medium text-ink-soft max-[820px]:hidden">
+        <div className="flex gap-[26px] text-[15px] font-medium text-ink-soft max-[1080px]:hidden">
           {links.map((l) => (
             <a
               key={l.href}
@@ -31,9 +31,27 @@ export default function Nav() {
           ))}
         </div>
 
-        <a className={`${btnPrimary} shrink-0 max-[480px]:px-4 max-[480px]:py-2.5 max-[480px]:text-sm`} href="/login/">
-          Log in
-        </a>
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+          <div
+            className="hidden items-center gap-2 border-r border-line pr-3 min-[380px]:flex sm:gap-2.5 sm:pr-3.5"
+            aria-label="In association with Milwaukee School of Engineering"
+          >
+            <img
+              src="/msoe-logo.png"
+              alt="Milwaukee School of Engineering"
+              className="size-7 shrink-0 object-contain sm:size-8"
+              width="32"
+              height="32"
+            />
+            <span className="hidden text-[10px] leading-tight text-ink-soft min-[640px]:block">
+              In association with
+              <strong className="block font-semibold text-ink">Milwaukee School of Engineering</strong>
+            </span>
+          </div>
+          <a className={`${btnPrimary} shrink-0 max-[480px]:px-4 max-[480px]:py-2.5 max-[480px]:text-sm`} href="/login/">
+            Log in
+          </a>
+        </div>
       </Wrap>
     </nav>
   )
