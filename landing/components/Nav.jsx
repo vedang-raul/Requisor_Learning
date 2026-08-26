@@ -1,22 +1,28 @@
-import { Wrap, btnPrimary } from './ui.jsx'
+import { Wrap, btnPrimary } from "./ui.jsx";
 
 const links = [
-  { href: '#tailored', label: 'Why Adept' },
-  { href: '#how', label: 'How it works' },
-  { href: '#partners', label: 'Universities' },
-  { href: '#credentials', label: 'Credentials' },
-]
+  { href: "#tailored", label: "Why Adept" },
+  { href: "#how", label: "How it works" },
+  { href: "#partners", label: "Universities" },
+  { href: "#credentials", label: "Credentials" },
+];
 
 export default function Nav() {
   return (
     <nav className="sticky top-0 z-50 border-b border-line bg-paper/85 backdrop-blur-[12px]">
       <Wrap className="flex h-16 items-center justify-between sm:h-[68px]">
-        <div className="flex min-w-0 shrink items-center gap-2 sm:gap-3">
+        <div className="flex min-w-0 shrink items-center gap-1 sm:gap-3">
           <a
-            className="flex min-w-0 items-center gap-1.5 text-[18px] font-bold text-teal-500 sm:gap-0 sm:text-[22px]"
+            className="flex min-w-0 items-center gap-0 text-[22px] font-semibold text-teal-500 sm:gap-0 sm:text-[22px]"
             href="#"
           >
-            <img className="size-10 shrink-0 sm:size-[52px]" src="/requisor.png" alt="" width="52" height="52" />
+            <img
+              className="size-7 shrink-0 sm:size-[42px]"
+              src="/requisor.png"
+              alt=""
+              width="32"
+              height="32"
+            />
             <span className="truncate">Requisor Learning</span>
           </a>
 
@@ -33,7 +39,9 @@ export default function Nav() {
             />
             <span className="hidden text-[10px] leading-tight text-ink-soft min-[640px]:block">
               In association with
-              <strong className="block font-semibold text-ink">Milwaukee School of Engineering</strong>
+              <strong className="block font-semibold text-ink">
+                Milwaukee School of Engineering
+              </strong>
             </span>
           </div>
         </div>
@@ -50,10 +58,13 @@ export default function Nav() {
           ))}
         </div>
 
-        <a className={`${btnPrimary} shrink-0 max-[480px]:px-4 max-[480px]:py-2.5 max-[480px]:text-sm`} href="/login/">
+        <a
+          className={`${btnPrimary} shrink-0 max-[480px]:px-4 max-[480px]:py-2.5 max-[480px]:text-sm`}
+          href="/login/"
+        >
           Log in
         </a>
       </Wrap>
     </nav>
-  )
+  );
 }
