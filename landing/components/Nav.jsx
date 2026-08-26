@@ -12,11 +12,11 @@ export default function Nav() {
     <nav className="sticky top-0 z-50 border-b border-line bg-paper/85 backdrop-blur-[12px]">
       <Wrap className="flex h-[68px] items-center justify-between">
         <a
-          className="flex items-center gap-[9px] font-display text-[22px] font-extrabold tracking-[-.02em] no-underline"
+          className="flex items-center  text-[22px] font-bold text-teal-500"
           href="#"
         >
-          <span className="size-3 rounded-full bg-ultra shadow-[0_0_0_4px_rgba(35,174,151,.15)]" />
-          Adept
+          <img src="/requisor.png" alt="" width="52" height="52" />
+          Requisor Learning
         </a>
 
         <div className="flex gap-[26px] text-[15px] font-medium text-ink-soft max-[820px]:hidden">
