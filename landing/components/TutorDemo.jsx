@@ -114,10 +114,10 @@ export default function TutorDemo() {
 
   return (
     <div
-      className="flex min-h-[520px] flex-col overflow-hidden rounded-[22px] border border-line bg-card shadow-landing-soft"
+      className="flex min-h-[470px] flex-col overflow-hidden rounded-[22px] border border-line bg-card shadow-landing-soft sm:min-h-[520px]"
       aria-label="Live tutor demo"
     >
-      <div className="flex items-center gap-3 border-b border-line px-[18px] py-[15px]">
+      <div className="flex items-center gap-3 border-b border-line px-4 py-[15px] sm:px-[18px]">
         <div className="grid size-9 place-items-center rounded-xl bg-gradient-to-br from-ultra to-[#6B4DF0] font-display font-extrabold text-white">
           A
         </div>
@@ -140,7 +140,7 @@ export default function TutorDemo() {
 
       <div
         ref={chatRef}
-        className="flex max-h-[380px] flex-1 flex-col gap-3 overflow-y-auto px-[18px] py-5"
+        className="flex max-h-[340px] flex-1 flex-col gap-3 overflow-y-auto px-4 py-5 sm:max-h-[380px] sm:px-[18px]"
       >
         {messages.map((m, idx) => (
           <Message key={idx} role={m.role} tag={m.tag}>
@@ -150,7 +150,7 @@ export default function TutorDemo() {
         {typing && <TypingBubble />}
       </div>
 
-      <div className="flex gap-2.5 border-t border-line bg-[#FBFBFE] p-3.5">
+      <div className="flex gap-2.5 border-t border-line bg-[#FBFBFE] p-3 sm:p-3.5">
         <input
           type="text"
           value={draft}
@@ -158,11 +158,11 @@ export default function TutorDemo() {
           onKeyDown={(e) => e.key === 'Enter' && submitChat()}
           placeholder="Ask the tutor anything…"
           aria-label="Message the tutor"
-          className="flex-1 rounded-xl border-[1.5px] border-line bg-white px-3.5 py-3 font-sans text-[14.5px] focus:border-ultra focus:outline-none"
+          className="min-w-0 flex-1 rounded-xl border-[1.5px] border-line bg-white px-3.5 py-3 font-sans text-[14.5px] focus:border-ultra focus:outline-none"
         />
         <button
           onClick={submitChat}
-          className="rounded-xl bg-ink px-[18px] text-[14.5px] font-semibold text-white hover:bg-ultra"
+          className="shrink-0 rounded-xl bg-ink px-4 text-[14.5px] font-semibold text-white hover:bg-ultra sm:px-[18px]"
         >
           Send
         </button>

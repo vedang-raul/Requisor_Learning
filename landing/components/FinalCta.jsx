@@ -3,7 +3,7 @@ import Reveal from './Reveal.jsx'
 
 export default function FinalCta() {
   return (
-    <section id="join" className="relative overflow-hidden bg-paper py-24 text-center text-ink">
+    <section id="join" className="relative overflow-hidden bg-paper py-16 text-center text-ink sm:py-24">
       <div
         aria-hidden="true"
         className="absolute inset-0"

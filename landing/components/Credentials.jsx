@@ -36,7 +36,7 @@ const ROWS = [
 
 export default function Credentials() {
   return (
-    <section id="credentials" className="py-24">
+    <section id="credentials" className="py-16 sm:py-24">
       <Wrap>
         <Reveal>
           <SectionHead>
@@ -52,7 +52,7 @@ export default function Credentials() {
         <div className="grid overflow-hidden rounded-card border border-line bg-card">
           {ROWS.map((row, idx) => (
             <Reveal as="div" key={row.title} delay={idx * 70} className="border-b border-line last:border-b-0">
-              <div className="grid grid-cols-[220px_1fr_190px] items-center gap-6 px-[30px] py-[26px] transition-colors duration-200 hover:bg-paper max-[820px]:grid-cols-1">
+              <div className="grid grid-cols-[220px_1fr_190px] items-center gap-4 px-5 py-5 transition-colors duration-200 hover:bg-paper max-[820px]:grid-cols-1 sm:gap-6 sm:px-[30px] sm:py-[26px]">
                 <h3 className="font-display text-[18px] leading-[1.06] tracking-[-.02em]">
                   {row.title}
                 </h3>

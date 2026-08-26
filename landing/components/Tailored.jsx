@@ -56,7 +56,7 @@ export default function Tailored() {
   }
 
   return (
-    <section id="tailored" className="py-24">
+    <section id="tailored" className="py-16 sm:py-24">
       <Wrap>
         <Reveal>
           <SectionHead>
@@ -72,7 +72,7 @@ export default function Tailored() {
         <Reveal
           delay={80}
           as="div"
-          className="mb-[34px] flex flex-wrap gap-2.5"
+          className="mb-8 flex flex-wrap gap-2.5 sm:mb-[34px]"
           role="group"
           aria-label="Choose an industry"
         >
@@ -84,7 +84,7 @@ export default function Tailored() {
                 onClick={() => pick(ind)}
                 aria-pressed={on}
                 className={[
-                  'rounded-full border-[1.5px] px-5 py-[11px] text-[15px] font-semibold transition duration-200',
+                   'min-h-12 rounded-full border-[1.5px] px-5 py-[11px] text-[15px] font-semibold transition duration-200 max-[480px]:w-full',
                   on
                     ? 'border-ink bg-ink text-white shadow-[0_10px_22px_-12px_rgba(16,20,48,.5)]'
                     : 'border-line bg-card text-ink-soft hover:-translate-y-px hover:border-ink hover:text-ink',
@@ -125,7 +125,7 @@ export default function Tailored() {
 function Card({ fading, children }) {
   return (
     <div
-      className={`rounded-card border border-line bg-card p-[30px] shadow-[0_14px_34px_-22px_rgba(16,20,48,.16)] ${hoverLift} ${
+      className={`rounded-card border border-line bg-card p-5 shadow-[0_14px_34px_-22px_rgba(16,20,48,.16)] sm:p-[30px] ${hoverLift} ${
         fading ? 'opacity-0' : 'opacity-100'
       }`}
     >
@@ -136,7 +136,7 @@ function Card({ fading, children }) {
 
 function Label({ left, right }) {
   return (
-    <div className="mb-4 flex justify-between font-mono text-[11.5px] uppercase tracking-[.12em] text-ink-soft">
+    <div className="mb-4 flex flex-col gap-2 font-mono text-[11.5px] uppercase tracking-[.12em] text-ink-soft sm:flex-row sm:items-center sm:justify-between sm:gap-0">
       <span>{left}</span>
       <em className="not-italic text-ultra">{right}</em>
     </div>

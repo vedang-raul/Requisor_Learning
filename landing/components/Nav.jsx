@@ -10,13 +10,13 @@ const links = [
 export default function Nav() {
   return (
     <nav className="sticky top-0 z-50 border-b border-line bg-paper/85 backdrop-blur-[12px]">
-      <Wrap className="flex h-[68px] items-center justify-between">
+      <Wrap className="flex h-16 items-center justify-between sm:h-[68px]">
         <a
-          className="flex items-center  text-[22px] font-bold text-teal-500"
+          className="flex min-w-0 shrink items-center gap-1.5 text-[18px] font-bold text-teal-500 sm:gap-0 sm:text-[22px]"
           href="#"
         >
-          <img src="/requisor.png" alt="" width="52" height="52" />
-          Requisor Learning
+          <img className="size-10 shrink-0 sm:size-[52px]" src="/requisor.png" alt="" width="52" height="52" />
+          <span className="truncate">Requisor Learning</span>
         </a>
 
         <div className="flex gap-[26px] text-[15px] font-medium text-ink-soft max-[820px]:hidden">
@@ -31,7 +31,7 @@ export default function Nav() {
           ))}
         </div>
 
-        <a className={btnPrimary} href="/login/">
+        <a className={`${btnPrimary} shrink-0 max-[480px]:px-4 max-[480px]:py-2.5 max-[480px]:text-sm`} href="/login/">
           Log in
         </a>
       </Wrap>

@@ -3,7 +3,7 @@ import Reveal from './Reveal.jsx'
 
 export default function Problem() {
   return (
-    <section className="relative overflow-hidden bg-paper py-24 text-ink">
+    <section className="relative overflow-hidden bg-paper py-16 text-ink sm:py-24">
       <Wrap>
         <Reveal>
           <SectionHead>
@@ -42,7 +42,7 @@ export default function Problem() {
           </Reveal>
 
           <Reveal delay={240} className="col-span-full">
-            <blockquote className="border-l-[3px] border-apricot py-1.5 pl-[26px] font-display text-[clamp(20px,2.6vw,28px)] font-semibold leading-[1.35]">
+            <blockquote className="border-l-[3px] border-apricot py-1.5 pl-5 font-display text-[clamp(20px,2.6vw,28px)] font-semibold leading-[1.35] sm:pl-[26px]">
               "The lecture was built for the room. The video was built for the masses. Nothing was
               ever built for <em>you</em> — until AI made it possible."
               <small className="mt-2.5 block font-mono text-[12px] font-normal uppercase tracking-[.08em] text-ink-soft">
@@ -59,7 +59,7 @@ export default function Problem() {
 function Card({ children }) {
   return (
     <div
-      className={`h-full rounded-card border border-line bg-card p-[34px] shadow-[0_14px_34px_-22px_rgba(16,20,48,.16)] ${hoverLift}`}
+      className={`h-full rounded-card border border-line bg-card p-5 shadow-[0_14px_34px_-22px_rgba(16,20,48,.16)] sm:p-[34px] ${hoverLift}`}
     >
       {children}
     </div>

@@ -31,7 +31,7 @@ const STEPS = [
 
 export default function HowItWorks() {
   return (
-    <section id="how" className="border-y border-line bg-card py-24">
+    <section id="how" className="border-y border-line bg-card py-16 sm:py-24">
       <Wrap>
         <Reveal>
           <SectionHead>
@@ -46,9 +46,9 @@ export default function HowItWorks() {
               as="div"
               key={step.n}
               delay={idx * 100}
-              className="border-r border-line last:border-r-0 max-[960px]:border-b"
+              className="border-r border-line last:border-r-0 max-[960px]:border-b last:max-[960px]:border-b-0"
             >
-              <div className="group relative h-full bg-paper px-[26px] py-8 transition-colors duration-200 hover:bg-card">
+              <div className="group relative h-full bg-paper p-5 transition-colors duration-200 hover:bg-card sm:px-[26px] sm:py-8">
                 <span className="font-mono text-[12px] tracking-[.1em] text-ultra">{step.n}</span>
                 <h3 className="mb-2.5 mt-3 font-display text-[19px] leading-[1.06] tracking-[-.02em]">
                   {step.title}

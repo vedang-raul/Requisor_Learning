@@ -21,7 +21,7 @@ const CARDS = [
 
 export default function Partners() {
   return (
-    <section id="partners" className="bg-gradient-to-b from-paper to-[#EEF0F9] py-24">
+    <section id="partners" className="bg-gradient-to-b from-paper to-[#EEF0F9] py-16 sm:py-24">
       <Wrap>
         <Reveal>
           <SectionHead>
@@ -42,7 +42,7 @@ export default function Partners() {
         <div className="grid grid-cols-3 gap-6 max-[900px]:grid-cols-1">
           {CARDS.map((c, idx) => (
             <Reveal as="div" key={c.title} delay={idx * 100}>
-              <div className={`rounded-card border border-line bg-card p-[30px] ${hoverLift}`}>
+              <div className={`rounded-card border border-line bg-card p-5 sm:p-[30px] ${hoverLift}`}>
                 <h3 className="mb-2.5 font-display text-[20px] leading-[1.06] tracking-[-.02em]">
                   {c.title}
                 </h3>

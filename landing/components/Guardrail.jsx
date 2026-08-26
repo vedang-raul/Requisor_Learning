@@ -4,7 +4,7 @@ import Reveal from './Reveal.jsx'
 
 export default function Guardrail() {
   return (
-    <section className="py-24">
+    <section className="py-16 sm:py-24">
       <Wrap className="grid grid-cols-2 items-center gap-14 max-[900px]:grid-cols-1">
         <Reveal>
           <Eyebrow>AI with guardrails</Eyebrow>
@@ -19,7 +19,7 @@ export default function Guardrail() {
 
         <Reveal delay={140} as="div">
           <div
-            className={`space-y-3 rounded-card border border-line bg-card p-[26px] shadow-landing-soft ${hoverLift}`}
+            className={`space-y-3 rounded-card border border-line bg-card p-5 shadow-landing-soft sm:p-[26px] ${hoverLift}`}
             aria-label="Example of tutor guardrails"
           >
             <Message role="me" animate={false} full>

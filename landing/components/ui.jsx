@@ -2,7 +2,7 @@
 
 export function Wrap({ className = '', children, ...rest }) {
   return (
-    <div className={`mx-auto w-full max-w-[1180px] px-7 ${className}`} {...rest}>
+    <div className={`mx-auto w-full max-w-[1180px] px-5 sm:px-7 ${className}`} {...rest}>
       {children}
     </div>
   )
@@ -41,7 +41,7 @@ export function Lede({ className = '', children, ...rest }) {
 }
 
 export function SectionHead({ className = '', children }) {
-  return <div className={`mb-[52px] grid gap-4 ${className}`}>{children}</div>
+  return <div className={`mb-10 grid gap-4 sm:mb-[52px] ${className}`}>{children}</div>
 }
 
 const btnBase =

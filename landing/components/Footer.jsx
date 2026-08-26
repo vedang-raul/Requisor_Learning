@@ -5,7 +5,7 @@ export default function Footer() {
   return (
     <footer className="border-t border-line py-[34px] text-[13.5px] text-ink-soft">
       <Reveal>
-        <Wrap className="flex flex-wrap justify-between gap-4">
+        <Wrap className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-between sm:gap-4">
           <span>
             <b>Adept</b> — The AI-Native University · Milwaukee, WI
           </span>
