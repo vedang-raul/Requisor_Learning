@@ -20,23 +20,18 @@ export default function Hero() {
           </Eyebrow>
 
           <h1
-            className="animate-rise mt-[18px] font-display text-[clamp(38px,10.5vw,72px)] font-extrabold leading-[1.06] tracking-[-.02em] sm:text-[clamp(42px,5.6vw,72px)]"
+            className="animate-rise mt-[18px] font-display text-[clamp(38px,10.5vw,72px)]  leading-[1.06] tracking-[-.02em] sm:text-[clamp(42px,5.6vw,72px)]"
             style={{ animationDelay: '220ms' }}
           >
-            A university rebuilt around{' '}
-            <span className="relative whitespace-normal after:absolute after:inset-x-0 after:bottom-[.06em] after:-z-10 after:h-[.16em] after:rounded-[3px] after:bg-apricot after:content-[''] min-[481px]:whitespace-nowrap">
-              one student.
-            </span>
-            <br />
-            You.
+            A University rebuilt around
+           <span className=" text-gray-800 "> one student, </span> You.
           </h1>
 
           <Lede
             className="animate-rise mb-7 mt-[22px] text-[17px] sm:mb-8 sm:text-[19px]"
             style={{ animationDelay: '400ms' }}
           >
-            No lecture halls. No cohort marching at one speed. A tutor that knows your industry, your
-            background, and how you learn — available at 2 PM or 2 AM, and incapable of leaving you
+            No lecture halls. No cohort marching at one speed. A tutor that knows your industry, your background, and how you learn — available at 2 PM or 2 AM, and incapable of leaving you
             behind.
           </Lede>
 
@@ -45,10 +40,10 @@ export default function Hero() {
             style={{ animationDelay: '560ms' }}
           >
             <a className={`${btnPrimary} max-[480px]:w-full max-[480px]:justify-center`} href="/login/">
-              Log in
+              Start Learning
             </a>
             <a className={`${btnGhost} max-[480px]:w-full max-[480px]:justify-center`} href="#join">
-              Join the learner waitlist
+              Be an Instructor
             </a>
           </div>
 
@@ -56,9 +51,7 @@ export default function Hero() {
             className="animate-rise mt-6 text-[13.5px] text-ink-soft sm:mt-[30px]"
             style={{ animationDelay: '680ms' }}
           >
-            Taught by a practicing founder &amp; university AI instructor · First course:{' '}
-            <b className="text-ink">Applied AI Engineering</b>
-          </p>
+            Taught by a practicing founder &amp; university AI instructor.  </p>
         </div>
 
         <div className="animate-rise" style={{ animationDelay: '480ms' }}>

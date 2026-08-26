@@ -5,7 +5,7 @@ const SEED = [
   {
     role: 'ai',
     tag: 'Adapted to: Healthcare PM',
-    text: "Welcome back, Maya. Last session you mastered prompt evaluation — your retention check is due Thursday. Today: retrieval. Since you work in care coordination, let's ground it there. What patient-data problem would you *not* trust a plain chatbot with?",
+    text: "Welcome back, Maya. Last session you mastered prompt evaluation — your retention check is due Thursday. Today: retrieval. Since you work in care coordination, let's ground it there. What patient-data problem would you not trust a plain chatbot with?",
   },
   { role: 'me', text: 'Anything with actual patient records — it could just make things up.' },
   {
@@ -117,12 +117,10 @@ export default function TutorDemo() {
       className="flex min-h-[470px] flex-col overflow-hidden rounded-[22px] border border-line bg-card shadow-landing-soft sm:min-h-[520px]"
       aria-label="Live tutor demo"
     >
-      <div className="flex items-center gap-3 border-b border-line px-4 py-[15px] sm:px-[18px]">
-        <div className="grid size-9 place-items-center rounded-xl bg-gradient-to-br from-ultra to-[#6B4DF0] font-display font-extrabold text-white">
-          A
-        </div>
+      <div className="flex items-center gap-1 border-b border-line px-4 py-[15px] sm:px-[18px]">
+          <img src = "/requisor.png" alt="Requisor" className="size-14" width="24" height="24" />
         <div className="flex-1 leading-[1.25]">
-          <b className="block text-[14.5px]">Your Adept Tutor</b>
+          <b className="block text-[14.5px]">Your Requisor Tutor</b>
           <span className="font-mono text-[12px] text-mint before:mr-1.5 before:content-['●']">
             live · adapts to you
           </span>

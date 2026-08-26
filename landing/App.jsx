@@ -5,6 +5,7 @@ import Nav from './components/Nav.jsx'
 import Hero from './components/Hero.jsx'
 import Strip from './components/Strip.jsx'
 import LazySection from './components/LazySection.jsx'
+import Footer from './components/Footer.jsx'
 
 const Problem = lazy(() => import('./components/Problem.jsx'))
 const Tailored = lazy(() => import('./components/Tailored.jsx'))
@@ -13,7 +14,6 @@ const Guardrail = lazy(() => import('./components/Guardrail.jsx'))
 const Partners = lazy(() => import('./components/Partners.jsx'))
 const Credentials = lazy(() => import('./components/Credentials.jsx'))
 const FinalCta = lazy(() => import('./components/FinalCta.jsx'))
-const Footer = lazy(() => import('./components/Footer.jsx'))
 
 export default function App() {
   return (
@@ -42,9 +42,7 @@ export default function App() {
       <LazySection minHeight={420}>
         <FinalCta />
       </LazySection>
-      <LazySection minHeight={110}>
-        <Footer />
-      </LazySection>
+      <Footer />
     </div>
   )
 }

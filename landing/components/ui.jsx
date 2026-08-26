@@ -47,7 +47,7 @@ export function SectionHead({ className = '', children }) {
 const btnBase =
   'inline-flex items-center gap-2 rounded-full border-[1.5px] border-transparent px-6 py-[13px] text-[15.5px] font-semibold no-underline transition duration-150 ease-out'
 
-export const btnPrimary = `${btnBase} bg-ultra text-white shadow-[0_10px_24px_-10px_rgba(35,174,151,.55)] hover:-translate-y-0.5 hover:bg-ultra-deep hover:shadow-[0_16px_32px_-12px_rgba(35,174,151,.6)] active:translate-y-0`
+export const btnPrimary = `${btnBase} bg-ultra text-white hover:-translate-y-0.5 hover:bg-ultra-deep active:translate-y-0`
 
 export const btnGhost = `${btnBase} border-line bg-card text-ink hover:-translate-y-0.5 hover:border-ink active:translate-y-0`
 
