@@ -71,17 +71,76 @@ p.query(\`
     UNIQUE(user_id, lesson_id)
   );
 
+  -- DB-backed catalog. Seed rows are intentionally inserted by the
+  -- application with ON CONFLICT DO NOTHING, preserving later editor changes.
+  CREATE TABLE IF NOT EXISTS courses (
+    slug VARCHAR(80) PRIMARY KEY,
+    title VARCHAR(160) NOT NULL,
+    tagline VARCHAR(400) NOT NULL,
+    category VARCHAR(20) NOT NULL CHECK (category IN ('product','data','ai','security')),
+    level VARCHAR(20) NOT NULL CHECK (level IN ('Beginner','Intermediate','Advanced')),
+    tags JSONB NOT NULL DEFAULT '[]',
+    cover VARCHAR(200) NOT NULL,
+    added_at DATE NOT NULL,
+    base_assessment TEXT,
+    owner_user_id INT REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+  ALTER TABLE courses ADD COLUMN IF NOT EXISTS revision INT NOT NULL DEFAULT 1;
+  CREATE TABLE IF NOT EXISTS course_catalog_metadata (
+    key VARCHAR(80) PRIMARY KEY,
+    seeded_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+  -- Courses precede reviews so fresh installs have referential integrity from
+  -- the start. Existing installations receive this FK after the app's
+  -- non-destructive seed reconciliation (see ensureCourseCatalog).
   CREATE TABLE IF NOT EXISTS course_reviews (
     id SERIAL PRIMARY KEY,
     user_id INT REFERENCES users(id) ON DELETE CASCADE,
     user_name TEXT NOT NULL,
     user_email TEXT NOT NULL,
-    course_slug TEXT NOT NULL,
+    course_slug VARCHAR(80) NOT NULL REFERENCES courses(slug) ON DELETE CASCADE,
     rating INT NOT NULL CHECK (rating BETWEEN 1 AND 5),
     comment TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMP DEFAULT NOW(),
     UNIQUE(user_id, course_slug)
   );
+  -- Existing installations used TEXT here. Drop only values that cannot fit
+  -- the catalog key, then make the type compatible with courses.slug. The app
+  -- preserves valid reviews and installs the FK after one-time seed import.
+  DELETE FROM course_reviews WHERE length(course_slug) > 80;
+  DO \$\$
+  BEGIN
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = 'course_reviews'
+        AND column_name = 'course_slug'
+        AND (data_type <> 'character varying' OR character_maximum_length IS DISTINCT FROM 80)
+    ) THEN
+      ALTER TABLE course_reviews
+        ALTER COLUMN course_slug TYPE VARCHAR(80) USING course_slug::VARCHAR(80);
+    END IF;
+  END \$\$;
+
+  CREATE TABLE IF NOT EXISTS course_lessons (
+    id VARCHAR(120) PRIMARY KEY,
+    course_slug VARCHAR(80) NOT NULL REFERENCES courses(slug) ON DELETE CASCADE,
+    title VARCHAR(200) NOT NULL,
+    description VARCHAR(2000) NOT NULL,
+    youtube_id VARCHAR(120) NOT NULL,
+    duration_min INT NOT NULL CHECK (duration_min BETWEEN 1 AND 1440),
+    resources JSONB NOT NULL DEFAULT '[]',
+    key_takeaways JSONB NOT NULL DEFAULT '[]',
+    assignment TEXT,
+    section VARCHAR(200),
+    format VARCHAR(10) NOT NULL DEFAULT 'video' CHECK (format IN ('video','reading')),
+    position INT NOT NULL DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS courses_owner_idx ON courses (owner_user_id, added_at DESC);
+  CREATE INDEX IF NOT EXISTS course_lessons_course_position_idx ON course_lessons (course_slug, position, id);
+  CREATE INDEX IF NOT EXISTS course_reviews_slug_rating_idx ON course_reviews (course_slug, rating);
 
   CREATE TABLE IF NOT EXISTS lesson_comments (
     id SERIAL PRIMARY KEY,

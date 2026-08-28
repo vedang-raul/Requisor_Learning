@@ -9,3 +9,4 @@
 - [DB indexes](db-indexes.md) — leaderboard + analytics indexes in post-merge.sh; shell quoting rule for SQL comments; Index Only Scan heap-fetch caveat.
 - [Turnstile activation](turnstile-activation.md) — CAPTCHA is paused by user choice; only enable after matching real keys and approved production domain.
 - [Turnstile hostname authorization](turnstile-hostname-authorization.md) — Cloudflare must authorize every production and development hostname before widget tokens can be issued.
+- [Tutor-owned catalogs](tutor-owned-catalogs.md) — ownership checks are transactional, edits are revisioned, tutor ratings are aggregate-only, and seed import must never resurrect deletions.

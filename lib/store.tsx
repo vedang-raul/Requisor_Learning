@@ -43,10 +43,10 @@ interface StoreApi {
   markNotificationsRead: () => void;
   toggleAssessmentComplete: (courseSlug: string) => void;
   // Admin
-  upsertCourse: (course: Course) => void;
-  deleteCourse: (slug: string) => void;
-  upsertLesson: (courseSlug: string, lesson: Lesson) => void;
-  deleteLesson: (courseSlug: string, lessonId: string) => void;
+  upsertCourse: (course: Course) => Promise<Course>;
+  deleteCourse: (slug: string) => Promise<void>;
+  upsertLesson: (courseSlug: string, lesson: Lesson) => Promise<Course>;
+  deleteLesson: (courseSlug: string, lessonId: string) => Promise<Course>;
   resetAll: () => void;
 }
 
@@ -68,7 +68,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       id: parseInt(session.user.id, 10),
       name: session.user.name ?? session.user.email.split("@")[0],
       email: session.user.email,
-      role: session.user.role === "admin" ? "admin" : "employee",
+       role: session.user.role === "admin" || session.user.role === "tutor" ? session.user.role : "employee",
     };
   }, [session]);
 
@@ -86,7 +86,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     try {
       const raw = localStorage.getItem(storageKeyFor(email));
       const saved = raw ? (JSON.parse(raw) as Partial<AppState>) : null;
-      setState(saved ? { ...initialState, ...saved, user: null, courses: saved.courses?.length ? saved.courses : seedCourses } : initialState);
+       // Courses are deliberately not restored from this browser. The
+       // authenticated catalog request below is authoritative.
+       setState(saved ? { ...initialState, ...saved, user: null, courses: seedCourses } : initialState);
     } catch {
       setState(initialState); // corrupted storage — start fresh
     }
@@ -102,7 +104,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (lsTimer.current) clearTimeout(lsTimer.current);
     lsTimer.current = setTimeout(() => {
       try {
-        localStorage.setItem(storageKeyFor(email), JSON.stringify({ ...state, user: null }));
+         const { courses: _courses, ...learningState } = state;
+         localStorage.setItem(storageKeyFor(email), JSON.stringify({ ...learningState, user: null }));
       } catch {
         // storage full or unavailable — non-fatal
       }
@@ -209,6 +212,28 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         dbSynced.current = true;
       })
       .catch(() => { dbSynced.current = true; });
+  }, [hydrated, email]);
+
+  // The course catalog belongs to the server.  Keep per-user local storage for
+  // learning state only; it must never overwrite catalog changes made elsewhere.
+  useEffect(() => {
+    if (!hydrated || !email) return;
+    let cancelled = false;
+    fetch("/api/courses")
+      .then(async (response) => {
+        const data = await response.json() as { courses?: Course[]; error?: string };
+        if (!response.ok) throw new Error(data.error ?? "Couldn't load the course catalog.");
+        if (!Array.isArray(data.courses)) throw new Error("The course catalog response was invalid.");
+        return data.courses;
+      })
+      .then((courses) => {
+        if (!cancelled) setState((current) => ({ ...current, courses }));
+      })
+      .catch(() => {
+        // Retain the currently displayed catalog when offline. Mutations still
+        // reject visibly to their caller instead of being stored locally.
+      });
+    return () => { cancelled = true; };
   }, [hydrated, email]);
 
   // Sync XP to DB whenever it changes (after the initial DB load).
@@ -346,34 +371,55 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const upsertCourse = useCallback((course: Course) => {
-    setState((s) => {
-      const exists = s.courses.some((c) => c.slug === course.slug);
-      return { ...s, courses: exists ? s.courses.map((c) => (c.slug === course.slug ? course : c)) : [...s.courses, course] };
-    });
+  const courseRequest = useCallback(async (url: string, init: RequestInit): Promise<Course> => {
+    const response = await fetch(url, init);
+    const data = await response.json().catch(() => ({})) as { course?: Course; error?: string };
+    if (!response.ok || !data.course) throw new Error(data.error ?? "Couldn't save the course. Please try again.");
+    return data.course;
   }, []);
 
-  const deleteCourse = useCallback((slug: string) => {
+  const upsertCourse = useCallback(async (course: Course) => {
+    const exists = state.courses.some((item) => item.slug === course.slug);
+    const saved = await courseRequest(exists ? `/api/courses/${encodeURIComponent(course.slug)}` : "/api/courses", {
+      method: exists ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(course),
+    });
+    setState((s) => ({ ...s, courses: s.courses.some((item) => item.slug === saved.slug) ? s.courses.map((item) => item.slug === saved.slug ? saved : item) : [...s.courses, saved] }));
+    return saved;
+  }, [courseRequest, state.courses]);
+
+  const deleteCourse = useCallback(async (slug: string) => {
+    const response = await fetch(`/api/courses/${encodeURIComponent(slug)}`, { method: "DELETE" });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({})) as { error?: string };
+      throw new Error(data.error ?? "Couldn't delete the course. Please try again.");
+    }
     setState((s) => ({ ...s, courses: s.courses.filter((c) => c.slug !== slug) }));
   }, []);
 
-  const upsertLesson = useCallback((courseSlug: string, lesson: Lesson) => {
-    setState((s) => ({
-      ...s,
-      courses: s.courses.map((c) => {
-        if (c.slug !== courseSlug) return c;
-        const exists = c.lessons.some((l) => l.id === lesson.id);
-        return { ...c, lessons: exists ? c.lessons.map((l) => (l.id === lesson.id ? lesson : l)) : [...c.lessons, lesson] };
-      }),
-    }));
-  }, []);
+  const upsertLesson = useCallback(async (courseSlug: string, lesson: Lesson) => {
+    const current = state.courses.find((course) => course.slug === courseSlug);
+    if (!current) throw new Error("This course no longer exists.");
+    const exists = current.lessons.some((item) => item.id === lesson.id);
+    const saved = await courseRequest(`/api/courses/${encodeURIComponent(courseSlug)}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...current, lessons: exists ? current.lessons.map((item) => item.id === lesson.id ? lesson : item) : [...current.lessons, lesson] }),
+    });
+    setState((s) => ({ ...s, courses: s.courses.map((course) => course.slug === courseSlug ? saved : course) }));
+    return saved;
+  }, [courseRequest, state.courses]);
 
-  const deleteLesson = useCallback((courseSlug: string, lessonId: string) => {
-    setState((s) => ({
-      ...s,
-      courses: s.courses.map((c) => (c.slug === courseSlug ? { ...c, lessons: c.lessons.filter((l) => l.id !== lessonId) } : c)),
-    }));
-  }, []);
+  const deleteLesson = useCallback(async (courseSlug: string, lessonId: string) => {
+    const current = state.courses.find((course) => course.slug === courseSlug);
+    if (!current) throw new Error("This course no longer exists.");
+    const saved = await courseRequest(`/api/courses/${encodeURIComponent(courseSlug)}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...current, lessons: current.lessons.filter((lesson) => lesson.id !== lessonId) }),
+    });
+    setState((s) => ({ ...s, courses: s.courses.map((course) => course.slug === courseSlug ? saved : course) }));
+    return saved;
+  }, [courseRequest, state.courses]);
 
   const resetAll = useCallback(() => {
     if (email) localStorage.removeItem(storageKeyFor(email));

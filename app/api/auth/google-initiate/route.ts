@@ -2,6 +2,27 @@ import { NextResponse } from "next/server";
 import { isTurnstileEnabled, verifyTurnstile } from "@/lib/turnstile";
 import { issueGrant, GRANT_COOKIE_NAME } from "@/lib/captcha-grant";
 import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
+import {
+  InvalidJsonBodyError,
+  readJsonBody,
+  RequestBodyTooLargeError,
+} from "@/lib/request-body";
+import crypto from "crypto";
+
+const ROLE_INTENT_COOKIE_NAME = "google-role-intent";
+const ROLE_INTENT_MAX_AGE = 2 * 60;
+const GOOGLE_INITIATE_BODY_MAX_BYTES = 8 * 1024;
+const MAX_TURNSTILE_TOKEN_LENGTH = 4096;
+const MAX_ACCOUNT_TYPE_LENGTH = 16;
+
+function roleIntent(): string {
+  const timestamp = Date.now().toString();
+  const secret = process.env.SESSION_SECRET ?? process.env.NEXTAUTH_SECRET ??
+    (process.env.NODE_ENV !== "production" ? "dev-role-intent-secret-not-for-production" : "");
+  if (!secret) throw new Error("Role intent signing secret is not configured.");
+  const signature = crypto.createHmac("sha256", secret).update(`tutor-role-intent:${timestamp}`).digest("hex");
+  return `${timestamp}.${signature}`;
+}
 
 /**
  * POST /api/auth/google-initiate
@@ -53,43 +74,92 @@ export async function POST(req: Request) {
   const { limited, retryAfterMs } = googleInitiateLimiter.check(clientIp(req));
   if (limited) return rateLimitResponse(retryAfterMs, { json: true });
 
-  // Keep Google OAuth independent from the disabled CAPTCHA integration.
-  // The rate limit above remains active while Turnstile is paused.
-  if (!isTurnstileEnabled()) return NextResponse.json({ ok: true });
-
-  let token: string | null = null;
+  let body: unknown;
   try {
-    const body: unknown = await req.json();
-    if (body && typeof body === "object" && "token" in body) {
-      const t = (body as Record<string, unknown>).token;
-      token = typeof t === "string" ? t : null;
+    body = await readJsonBody(req, GOOGLE_INITIATE_BODY_MAX_BYTES);
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return NextResponse.json({ error: "Request body is too large." }, { status: 413 });
     }
-  } catch {
-    // Malformed body — token stays null, Turnstile verification will fail below.
+    if (error instanceof InvalidJsonBodyError) {
+      return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+    }
+    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+  }
+  if (
+    !body ||
+    typeof body !== "object" ||
+    Array.isArray(body) ||
+    Object.keys(body).some((key) => key !== "token" && key !== "accountType")
+  ) {
+    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+  }
+  const { token, accountType: rawAccountType } = body as Record<string, unknown>;
+  if (
+    (typeof token !== "string" && token !== undefined) ||
+    (typeof rawAccountType !== "string" && rawAccountType !== undefined) ||
+    (typeof token === "string" && token.length > MAX_TURNSTILE_TOKEN_LENGTH) ||
+    (typeof rawAccountType === "string" && rawAccountType.length > MAX_ACCOUNT_TYPE_LENGTH)
+  ) {
+    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+  }
+  const captchaToken = typeof token === "string" ? token : null;
+  const accountType = typeof rawAccountType === "string" ? rawAccountType.toLowerCase() : undefined;
+
+  if (accountType !== undefined && accountType !== "tutor") {
+    return NextResponse.json({ error: "Select a valid account type." }, { status: 400 });
   }
 
-  const { success } = await verifyTurnstile(token);
-  if (!success) {
-    return NextResponse.json(
-      { error: "Bot check failed — please try again." },
-      { status: 403 }
-    );
+  let grant: ReturnType<typeof issueGrant> | null = null;
+  if (isTurnstileEnabled()) {
+    const { success } = await verifyTurnstile(captchaToken);
+    if (!success) {
+      return NextResponse.json(
+        { error: "Bot check failed — please try again." },
+        { status: 403 }
+      );
+    }
+    // Issue a signed grant cookie so the subsequent /api/auth/signin/google POST
+    // can prove it was preceded by a valid CAPTCHA challenge.
+    grant = issueGrant();
   }
 
-  // Issue a signed grant cookie so the subsequent /api/auth/signin/google POST
-  // can prove it was preceded by a valid CAPTCHA challenge.
-  const grant = issueGrant();
   const isSecure = process.env.NODE_ENV === "production";
-
   const res = NextResponse.json({ ok: true });
-  res.cookies.set({
-    name: GRANT_COOKIE_NAME,
-    value: grant.value,
-    httpOnly: true,
-    sameSite: "strict",
-    maxAge: grant.maxAgeSeconds,
-    path: "/api/auth",
-    secure: isSecure,
-  });
+  if (grant) {
+    res.cookies.set({
+      name: GRANT_COOKIE_NAME,
+      value: grant.value,
+      httpOnly: true,
+      sameSite: "strict",
+      maxAge: grant.maxAgeSeconds,
+      path: "/api/auth",
+      secure: isSecure,
+    });
+  }
+  if (accountType === "tutor") {
+    res.cookies.set({
+      name: ROLE_INTENT_COOKIE_NAME,
+      value: roleIntent(),
+      httpOnly: true,
+      sameSite: "lax",
+      maxAge: ROLE_INTENT_MAX_AGE,
+      path: "/",
+      secure: isSecure,
+    });
+  } else {
+    // A learner flow deliberately has no role intent. Clear a previous tutor
+    // initiation in the same browser so its short-lived cookie cannot affect
+    // this new OAuth attempt.
+    res.cookies.set({
+      name: ROLE_INTENT_COOKIE_NAME,
+      value: "",
+      httpOnly: true,
+      sameSite: "lax",
+      maxAge: 0,
+      path: "/",
+      secure: isSecure,
+    });
+  }
   return res;
 }

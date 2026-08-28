@@ -8,6 +8,11 @@ jest.mock("@/lib/email", () => ({
   sendWelcomeEmail: jest.fn(() => Promise.resolve()),
 }));
 
+const mockCookieGet = jest.fn();
+jest.mock("next/headers", () => ({
+  cookies: () => ({ get: mockCookieGet }),
+}));
+
 import { authOptions } from "@/lib/auth";
 import { db, roleForEmail } from "@/lib/db";
 import { sendWelcomeEmail } from "@/lib/email";
@@ -18,6 +23,10 @@ const mockedWelcomeEmail = sendWelcomeEmail as jest.Mock;
 const googleSignIn = authOptions.callbacks?.signIn;
 if (typeof googleSignIn !== "function") {
   throw new Error("Google sign-in callback must be configured.");
+}
+const jwtCallback = authOptions.callbacks?.jwt;
+if (typeof jwtCallback !== "function") {
+  throw new Error("JWT callback must be configured.");
 }
 
 function googleAttempt(overrides: Record<string, unknown> = {}) {
@@ -33,6 +42,7 @@ beforeEach(() => {
   jest.resetAllMocks();
   mockedRoleForEmail.mockReturnValue("employee");
   mockedWelcomeEmail.mockReturnValue(Promise.resolve());
+  mockCookieGet.mockReturnValue(undefined);
 });
 
 describe("Google sign-in account protection", () => {
@@ -172,5 +182,45 @@ describe("Google sign-in account protection", () => {
     expect(result).toBe("/?error=GoogleSignInFailed");
     expect(mockedQuery).toHaveBeenCalledTimes(2);
     expect(mockedWelcomeEmail).not.toHaveBeenCalled();
+  });
+
+  it("assigns tutor only to a new account with a valid server-signed intent", async () => {
+    const crypto = await import("crypto");
+    const timestamp = Date.now().toString();
+    const secret =
+      process.env.SESSION_SECRET ??
+      process.env.NEXTAUTH_SECRET ??
+      "dev-role-intent-secret-not-for-production";
+    const signature = crypto
+      .createHmac("sha256", secret)
+      .update(`tutor-role-intent:${timestamp}`)
+      .digest("hex");
+    mockCookieGet.mockReturnValue({ value: `${timestamp}.${signature}` });
+    mockedQuery
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 101 }] });
+
+    await googleSignIn(googleAttempt() as never);
+
+    expect(mockedQuery.mock.calls[1][1]).toEqual([
+      "learner@example.com",
+      "Learner",
+      "google-subject-1",
+      "tutor",
+    ]);
+  });
+
+  it("puts the existing database tutor role into a new JWT", async () => {
+    mockedQuery.mockResolvedValueOnce({
+      rows: [{ id: 101, role: "tutor", name: "Tutor" }],
+    });
+
+    const token = await jwtCallback({
+      token: { email: "tutor@example.com" },
+      user: { email: "tutor@example.com" },
+    } as never);
+
+    expect(token.uid).toBe("101");
+    expect(token.role).toBe("tutor");
   });
 });

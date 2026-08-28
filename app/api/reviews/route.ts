@@ -2,8 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { ensureCourseCatalog } from "@/lib/course-catalog";
+import {
+  InvalidJsonBodyError,
+  readJsonBody,
+  RequestBodyTooLargeError,
+} from "@/lib/request-body";
 
 const MAX_COMMENT_LENGTH = 1000;
+const MAX_REVIEW_BODY_BYTES = 8_192;
+const COURSE_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 interface ReviewRow {
   id: number;
@@ -17,6 +25,9 @@ interface ReviewRow {
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (session.user.role !== "employee" && session.user.role !== "admin") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const courseSlug = req.nextUrl.searchParams.get("courseSlug");
   if (!courseSlug) return NextResponse.json({ error: "Missing courseSlug" }, { status: 400 });
@@ -50,18 +61,36 @@ export async function POST(req: NextRequest) {
   if (!session?.user?.id || !session.user.email) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-
-  let courseSlug: string | undefined;
-  let rating: unknown;
-  let comment: unknown;
-  try {
-    ({ courseSlug, rating, comment } = await req.json());
-  } catch {
-    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+  if (session.user.role !== "employee" && session.user.role !== "admin") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  let body: unknown;
+  try {
+    body = await readJsonBody(req, MAX_REVIEW_BODY_BYTES);
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return NextResponse.json({ error: "Request body is too large." }, { status: 413 });
+    }
+    if (error instanceof InvalidJsonBodyError) {
+      return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+    }
+    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+  }
+  const { courseSlug, rating, comment } = body as Record<string, unknown>;
+
   const clamped = Math.round(Number(rating));
-  if (!courseSlug || !Number.isFinite(clamped) || clamped < 1 || clamped > 5) {
+  if (
+    typeof courseSlug !== "string" ||
+    courseSlug.length > 80 ||
+    !COURSE_SLUG_PATTERN.test(courseSlug) ||
+    !Number.isFinite(clamped) ||
+    clamped < 1 ||
+    clamped > 5
+  ) {
     return NextResponse.json({ error: "A course and a 1–5 star rating are required." }, { status: 400 });
   }
 
@@ -75,10 +104,15 @@ export async function POST(req: NextRequest) {
 
   const userName = session.user.name ?? session.user.email.split("@")[0];
 
-  // One review per user per course — posting again updates the existing review
+  await ensureCourseCatalog();
+  // Lock an extant course while inserting. This prevents a legacy schema
+  // (before its FK upgrade) from accepting a review during a course delete.
   const { rows } = await db.query<ReviewRow>(
-    `INSERT INTO course_reviews (user_id, user_name, user_email, course_slug, rating, comment)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `WITH course AS (
+       SELECT slug FROM courses WHERE slug = $4 FOR KEY SHARE
+     )
+     INSERT INTO course_reviews (user_id, user_name, user_email, course_slug, rating, comment)
+     SELECT $1, $2, $3, slug, $5, $6 FROM course
      ON CONFLICT (user_id, course_slug) DO UPDATE
        SET rating      = EXCLUDED.rating,
            comment     = EXCLUDED.comment,
@@ -88,6 +122,7 @@ export async function POST(req: NextRequest) {
     [session.user.id, userName, session.user.email, courseSlug, clamped, trimmedComment]
   );
 
+  if (!rows[0]) return NextResponse.json({ error: "Course not found." }, { status: 404 });
   return NextResponse.json({ review: rows[0] }, { status: 201 });
 }
 

@@ -5,8 +5,12 @@ import GoogleProvider from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
 import { db, roleForEmail, ADMIN_EMAIL, type DbUser } from "./db";
 import { sendWelcomeEmail } from "./email";
+import crypto from "crypto";
+import { cookies } from "next/headers";
 
 const GOOGLE_SIGNIN_FAILED_ERROR = "/?error=GoogleSignInFailed";
+const ROLE_INTENT_COOKIE_NAME = "google-role-intent";
+const ROLE_INTENT_TTL_MS = 2 * 60_000;
 
 type GoogleProfile = {
   email?: unknown;
@@ -17,6 +21,33 @@ function normalizedEmail(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const email = value.trim().toLowerCase();
   return email ? email : null;
+}
+
+function hasTutorRoleIntent(value: string | undefined): boolean {
+  if (!value) return false;
+  const dot = value.indexOf(".");
+  if (dot === -1) return false;
+  const timestamp = value.slice(0, dot);
+  const signature = value.slice(dot + 1);
+  const issuedAt = Number(timestamp);
+  if (!Number.isSafeInteger(issuedAt) || issuedAt > Date.now() || Date.now() - issuedAt > ROLE_INTENT_TTL_MS ||
+      !/^[0-9a-f]{64}$/.test(signature)) return false;
+  const secret = process.env.SESSION_SECRET ?? process.env.NEXTAUTH_SECRET ??
+    (process.env.NODE_ENV !== "production" ? "dev-role-intent-secret-not-for-production" : "");
+  if (!secret) return false;
+  const expected = crypto.createHmac("sha256", secret).update(`tutor-role-intent:${timestamp}`).digest("hex");
+  return crypto.timingSafeEqual(Buffer.from(signature, "hex"), Buffer.from(expected, "hex"));
+}
+
+async function requestedGoogleRole(): Promise<"employee" | "tutor"> {
+  try {
+    const cookieStore = await cookies();
+    return hasTutorRoleIntent(cookieStore.get(ROLE_INTENT_COOKIE_NAME)?.value) ? "tutor" : "employee";
+  } catch {
+    // There is no request cookie context in isolated callback tests. Fail
+    // closed rather than granting a role from any client-controlled value.
+    return "employee";
+  }
 }
 
 // ─── Session / cookie constants ─────────────────────────────────────────────
@@ -173,12 +204,17 @@ export const authOptions: NextAuthOptions = {
 
       // INSERT ... DO NOTHING turns a concurrent registration into a safe
       // retry rather than overwriting whichever account won the race.
+      // The role intent is a signed, HttpOnly, short-lived cookie issued by
+      // google-initiate. It is consulted only for a newly-created non-admin
+      // account; established roles and Google subject bindings are immutable.
+      const requestedRole = await requestedGoogleRole();
+      const createdRole = roleForEmail(profileEmail) === "admin" ? "admin" : requestedRole;
       const { rows: createdRows } = await db.query<Pick<DbUser, "id">>(
         `INSERT INTO users (email, name, google_id, email_verified, role)
          VALUES ($1, $2, $3, TRUE, $4)
          ON CONFLICT DO NOTHING
          RETURNING id`,
-        [profileEmail, name, googleId, roleForEmail(profileEmail)]
+        [profileEmail, name, googleId, createdRole]
       );
       if (!createdRows[0]) return GOOGLE_SIGNIN_FAILED_ERROR;
 
@@ -198,7 +234,13 @@ export const authOptions: NextAuthOptions = {
       if (email && (user?.email || !token.uid)) {
         const { rows } = await db.query<DbUser>("SELECT id, role, name FROM users WHERE email = $1", [email]);
         token.uid = rows[0] ? String(rows[0].id) : undefined;
-        token.role = roleForEmail(email);
+        // Preserve established database roles. The canonical support address
+        // remains admin even if an old row contains a stale role value.
+        token.role = roleForEmail(email) === "admin"
+          ? "admin"
+          : rows[0]?.role === "tutor"
+            ? "tutor"
+            : "employee";
         if (rows[0]?.name) token.name = rows[0].name;
       }
 
@@ -223,7 +265,7 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (session.user) {
         session.user.id = (token.uid as string) ?? "";
-        session.user.role = (token.role as "employee" | "admin") ?? "employee";
+        session.user.role = (token.role as "employee" | "tutor" | "admin") ?? "employee";
         if (token.name) session.user.name = token.name as string;
       }
       return session;

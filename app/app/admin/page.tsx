@@ -373,10 +373,13 @@ function ContentManager() {
   const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
   const [creatingLesson, setCreatingLesson] = useState(false);
   const [creatingCourse, setCreatingCourse] = useState(false);
+  const [contentError, setContentError] = useState<string | null>(null);
   const course = state.courses.find((c) => c.slug === selected);
+  const reportFailure = (error: unknown) => setContentError(error instanceof Error ? error.message : "The catalog change couldn't be saved.");
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[300px_1fr]">
+      {contentError && <div role="alert" className="lg:col-span-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{contentError}</div>}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <CardTitle>Courses</CardTitle>
@@ -410,7 +413,7 @@ function ContentManager() {
           })}
         </div>
         <AnimatePresence>
-          {creatingCourse && <CourseForm onClose={() => setCreatingCourse(false)} onSave={(c) => { upsertCourse(c); setSelected(c.slug); setCreatingCourse(false); }} />}
+          {creatingCourse && <CourseForm onClose={() => setCreatingCourse(false)} onSave={async (c) => { try { const saved = await upsertCourse(c); setSelected(saved.slug); setCreatingCourse(false); } catch (error) { reportFailure(error); } }} />}
         </AnimatePresence>
       </div>
       <div className="space-y-3">
@@ -426,7 +429,7 @@ function ContentManager() {
                   <Button size="sm" onClick={() => { setCreatingLesson(true); setEditingLesson(null); }}><BookPlus className="h-3.5 w-3.5" />Add lesson</Button>
                 </motion.div>
                 <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
-                  <Button size="sm" variant="danger" onClick={() => { if (confirm(`Delete course "${course.title}" and all its lessons?`)) { deleteCourse(course.slug); setSelected(state.courses.find((c) => c.slug !== course.slug)?.slug ?? null); } }}>
+                  <Button size="sm" variant="danger" onClick={async () => { if (confirm(`Delete course "${course.title}" and all its lessons?`)) { try { await deleteCourse(course.slug); setSelected(state.courses.find((c) => c.slug !== course.slug)?.slug ?? null); } catch (error) { reportFailure(error); } } }}>
                     <Trash2 className="h-3.5 w-3.5" />Delete course
                   </Button>
                 </motion.div>
@@ -440,7 +443,7 @@ function ContentManager() {
                   lesson={editingLesson}
                   nextIndex={course.lessons.length + 1}
                   onClose={() => { setCreatingLesson(false); setEditingLesson(null); }}
-                  onSave={(l) => { upsertLesson(course.slug, l); setCreatingLesson(false); setEditingLesson(null); }}
+                  onSave={async (l) => { try { await upsertLesson(course.slug, l); setCreatingLesson(false); setEditingLesson(null); } catch (error) { reportFailure(error); } }}
                 />
               )}
             </AnimatePresence>
@@ -483,7 +486,7 @@ function ContentManager() {
                       <Button size="icon" variant="ghost" aria-label={`Edit ${l.title}`} onClick={() => { setEditingLesson(l); setCreatingLesson(false); }}><Pencil className="h-4 w-4" /></Button>
                     </motion.div>
                     <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
-                      <Button size="icon" variant="ghost" aria-label={`Delete ${l.title}`} onClick={() => { if (confirm(`Delete lesson "${l.title}"?`)) deleteLesson(course.slug, l.id); }}><Trash2 className="h-4 w-4 text-red-600" /></Button>
+                      <Button size="icon" variant="ghost" aria-label={`Delete ${l.title}`} onClick={async () => { if (confirm(`Delete lesson "${l.title}"?`)) { try { await deleteLesson(course.slug, l.id); } catch (error) { reportFailure(error); } } }}><Trash2 className="h-4 w-4 text-red-600" /></Button>
                     </motion.div>
                   </motion.div>
                 ))}
@@ -498,7 +501,7 @@ function ContentManager() {
   );
 }
 
-function CourseForm({ onSave, onClose }: { onSave: (c: Course) => void; onClose: () => void }) {
+function CourseForm({ onSave, onClose }: { onSave: (c: Course) => void | Promise<void>; onClose: () => void }) {
   const [title, setTitle] = useState("");
   const [tagline, setTagline] = useState("");
   const [category, setCategory] = useState<CategoryKey>("product");
@@ -556,7 +559,7 @@ function CourseForm({ onSave, onClose }: { onSave: (c: Course) => void; onClose:
   );
 }
 
-function LessonForm({ courseSlug, lesson, nextIndex, onSave, onClose }: { courseSlug: string; lesson: Lesson | null; nextIndex: number; onSave: (l: Lesson) => void; onClose: () => void }) {
+function LessonForm({ courseSlug, lesson, nextIndex, onSave, onClose }: { courseSlug: string; lesson: Lesson | null; nextIndex: number; onSave: (l: Lesson) => void | Promise<void>; onClose: () => void }) {
   const [title, setTitle] = useState(lesson?.title ?? "");
   const [url, setUrl] = useState(lesson && !isPlaceholder(lesson.youtubeId) ? `https://youtu.be/${lesson.youtubeId}` : "");
   const [duration, setDuration] = useState(String(lesson?.durationMin ?? 20));

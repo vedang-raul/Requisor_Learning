@@ -32,6 +32,8 @@ export interface Course {
   /** Tailwind gradient classes for the cover. */
   cover: string;
   addedAt: string; // ISO date
+  /** Monotonic catalog revision, supplied by the server for optimistic edits. */
+  revision?: number;
   lessons: Lesson[];
   /** Base capstone assessment brief, personalised by AI on the course overview page. */
   baseAssessment?: string;
@@ -79,7 +81,7 @@ export interface UserState {
   id: number;
   name: string;
   email: string;
-  role: "employee" | "admin";
+  role: "employee" | "tutor" | "admin";
 }
 
 export interface AppState {

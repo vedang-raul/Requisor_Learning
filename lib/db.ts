@@ -41,7 +41,7 @@ export interface DbUser {
   password_hash: string | null;
   google_id: string | null;
   email_verified: boolean;
-  role: "employee" | "admin";
+  role: UserRole;
   verification_token: string | null;
   verification_expires: Date | null;
   reset_token: string | null;
@@ -64,7 +64,9 @@ export interface DbUser {
 }
 
 export const ADMIN_EMAIL = "support@requisor.io";
+export type UserRole = "employee" | "tutor" | "admin";
 
+/** The support mailbox is the only identity that can ever be an admin. */
 export function roleForEmail(email: string): "employee" | "admin" {
-  return email.toLowerCase() === ADMIN_EMAIL ? "admin" : "employee";
+  return email.trim().toLowerCase() === ADMIN_EMAIL ? "admin" : "employee";
 }

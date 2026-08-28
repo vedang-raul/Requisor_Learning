@@ -31,7 +31,7 @@ const COPY: Record<"login" | "signup", { subtitle: string; switchLead: string; s
     switchAction: "Create a tutor account",
   },
   signup: {
-    subtitle: "Join as a tutor — admin access included",
+    subtitle: "Join as a tutor",
     switchLead: "Already a tutor? ",
     switchAction: "Log in",
   },
@@ -43,6 +43,7 @@ export default function TutorAuth() {
   const [entering, setEntering] = useState<View | null>(null);
   const [submitting, setSubmitting] = useState<false | "login" | "signup" | "google">(false);
   const [googleError, setGoogleError] = useState("");
+  const [formError, setFormError] = useState("");
   const [successCopy, setSuccessCopy] = useState<SuccessCopy>({
     title: "Welcome back",
     body: "You're signed in to the tutor workspace.",
@@ -71,6 +72,7 @@ export default function TutorAuth() {
   function go(next: View) {
     if (next === view) return;
     setGoogleError("");
+    setFormError("");
     const dir: Direction = VIEW_ORDER[next] > VIEW_ORDER[view] ? "forward" : "back";
     setDirection(dir);
     setEntering(next);
@@ -128,7 +130,7 @@ export default function TutorAuth() {
       const response = await fetch("/api/auth/google-initiate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
+        body: JSON.stringify({ token, accountType: "tutor" }),
       });
 
       if (!response.ok) {
@@ -137,34 +139,97 @@ export default function TutorAuth() {
         return;
       }
 
-      void signIn("google", { callbackUrl: "/app/dashboard/" });
+      void signIn("google", { callbackUrl: "/app/tutor/" });
     } catch {
       setGoogleError("Network error. Please try again.");
       setSubmitting(false);
     }
   }
 
-  function handleLogin(e: FormEvent<HTMLFormElement>) {
+  async function handleLogin(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    setFormError("");
     setSubmitting("login");
-    window.setTimeout(() => {
+    const fields = new FormData(e.currentTarget);
+    const token = await getCaptchaToken();
+    if (CAPTCHA_ENABLED && !token) {
+      setFormError("Security check could not be completed. Please try again.");
       setSubmitting(false);
-      setSuccessCopy({ title: "Welcome back", body: "You're signed in to the tutor workspace." });
-      go("success");
-    }, 1100);
+      return;
+    }
+    try {
+      const result = await signIn("credentials", {
+        email: String(fields.get("email") ?? ""),
+        password: String(fields.get("password") ?? ""),
+        turnstileToken: token,
+        redirect: false,
+      });
+      if (result?.error) {
+        setFormError(
+          result.error === "EMAIL_NOT_VERIFIED"
+            ? "Please verify your email before logging in."
+            : "Invalid email or password."
+        );
+        setSubmitting(false);
+        return;
+      }
+      window.location.assign("/app/tutor/");
+    } catch {
+      setFormError("Network error. Please try again.");
+      setSubmitting(false);
+    }
   }
 
-  function handleSignup(e: FormEvent<HTMLFormElement>) {
+  async function handleSignup(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    setFormError("");
+    const fields = new FormData(e.currentTarget);
+    const password = String(fields.get("password") ?? "");
+    if (password !== String(fields.get("confirmPassword") ?? "")) {
+      setFormError("Passwords don't match.");
+      return;
+    }
     setSubmitting("signup");
-    window.setTimeout(() => {
+    const token = await getCaptchaToken();
+    if (CAPTCHA_ENABLED && !token) {
+      setFormError("Security check could not be completed. Please try again.");
+      setSubmitting(false);
+      return;
+    }
+    try {
+      const subject = String(fields.get("subject") ?? "");
+      const university = String(fields.get("university") ?? "");
+      const response = await fetch("/api/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: String(fields.get("name") ?? ""),
+          email: String(fields.get("email") ?? ""),
+          password,
+          // Tutor-specific profile fields map to the existing required
+          // learner schema without granting any privileged role client-side.
+          employmentType: "faculty",
+          position: [subject, university].filter(Boolean).join(" — "),
+          accountType: "tutor",
+          turnstileToken: token,
+        }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        setFormError(data?.error ?? "Signup failed. Please try again.");
+        setSubmitting(false);
+        return;
+      }
       setSubmitting(false);
       setSuccessCopy({
-        title: "Account created",
-        body: "Your tutor account is ready — admin access has been granted automatically.",
+        title: "Check your email",
+        body: "Your tutor account was created. Verify your email before logging in.",
       });
       go("success");
-    }, 1100);
+    } catch {
+      setFormError("Network error. Please try again.");
+      setSubmitting(false);
+    }
   }
 
   function panelClasses(name: View): string {
@@ -264,7 +329,7 @@ export default function TutorAuth() {
             {/* LOGIN */}
             <form ref={loginRef} className={panelClasses("login")} onSubmit={handleLogin} noValidate>
               <Field label="Email">
-                <IconInput icon={<MailIcon />} type="email" placeholder="you@requisor.io" autoComplete="email" required />
+                <IconInput icon={<MailIcon />} name="email" type="email" placeholder="you@requisor.io" autoComplete="email" required />
               </Field>
 
               <div className="flex flex-col gap-1.5">
@@ -278,6 +343,7 @@ export default function TutorAuth() {
                 </div>
                 <IconInput
                   id="tutor-login-password"
+                  name="password"
                   icon={<LockIcon />}
                   type={visible.loginPassword ? "text" : "password"}
                   placeholder="••••••••"
@@ -293,6 +359,7 @@ export default function TutorAuth() {
               </div>
 
               <SubmitButton loading={submitting === "login"} label="Login" />
+               {formError && <p className="text-xs text-red-600" role="alert">{formError}</p>}
 
               <Divider />
               <GoogleButton loading={submitting === "google"} onClick={handleGoogle} />
@@ -303,11 +370,11 @@ export default function TutorAuth() {
             {/* SIGNUP */}
             <form ref={signupRef} className={panelClasses("signup")} onSubmit={handleSignup} noValidate>
               <Field label="Full name">
-                <IconInput icon={<UserIcon />} type="text" placeholder="Your name" autoComplete="name" required />
+                <IconInput icon={<UserIcon />} name="name" type="text" placeholder="Your name" autoComplete="name" required />
               </Field>
 
               <Field label="Primary subject">
-                <IconInput icon={<CapIcon />} as="select" defaultValue="" required trailing={<ChevronIcon />}>
+                <IconInput icon={<CapIcon />} name="subject" as="select" defaultValue="" required trailing={<ChevronIcon />}>
                   <option value="" disabled>
                     Select subject…
                   </option>
@@ -321,15 +388,16 @@ export default function TutorAuth() {
               </Field>
 
               <Field label="Email">
-                <IconInput icon={<MailIcon />} type="email" placeholder="you@requisor.io" autoComplete="email" required />
+                <IconInput icon={<MailIcon />} name="email" type="email" placeholder="you@requisor.io" autoComplete="email" required />
               </Field>
 
               <Field label="University">
-                <IconInput icon={<CapIcon />} type="text" placeholder="Your university" autoComplete="organization" required />
+                <IconInput icon={<CapIcon />} name="university" type="text" placeholder="Your university" autoComplete="organization" required />
               </Field>
               <Field label="Password">
                 <IconInput
                   icon={<LockIcon />}
+                  name="password"
                   type={visible.signupPassword ? "text" : "password"}
                   placeholder="••••••••"
                   autoComplete="new-password"
@@ -341,6 +409,7 @@ export default function TutorAuth() {
               <Field label="Confirm password">
                 <IconInput
                   icon={<LockIcon />}
+                  name="confirmPassword"
                   type={visible.signupConfirm ? "text" : "password"}
                   placeholder="••••••••"
                   autoComplete="new-password"
@@ -352,9 +421,9 @@ export default function TutorAuth() {
               <div className="ta-badge flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/10 p-3.5">
                 <ShieldCheckIcon />
                 <div className="min-w-0 flex-1">
-                  <strong className="block text-sm font-medium">Admin access included</strong>
+                  <strong className="block text-sm font-medium">Tutor access included</strong>
                   <span className="block text-xs text-zinc-600">
-                    Tutor accounts are approved instantly — no waiting on review.
+                    Tutor accounts are approved instantly after email verification.
                   </span>
                 </div>
                 <span
@@ -366,6 +435,7 @@ export default function TutorAuth() {
               </div>
 
               <SubmitButton loading={submitting === "signup"} label="Create account" />
+               {formError && <p className="text-xs text-red-600" role="alert">{formError}</p>}
 
               <Divider />
               <GoogleButton loading={submitting === "google"} onClick={handleGoogle} />

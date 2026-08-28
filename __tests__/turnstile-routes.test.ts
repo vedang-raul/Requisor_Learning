@@ -25,6 +25,9 @@ jest.mock("@/lib/turnstile", () => ({
 // Rate limiter — controllable mock so tests can simulate both allowed and
 // limited states.  Default behaviour (always allow) is restored in beforeEach.
 const mockRateLimitCheck = jest.fn(() => ({ limited: false, retryAfterMs: 0 }));
+const mockReadJsonBody = jest.fn<Promise<unknown>, [Request, number]>(async (req: Request) => req.json());
+class MockRequestBodyTooLargeError extends Error {}
+class MockInvalidJsonBodyError extends Error {}
 
 jest.mock("@/lib/rate-limit", () => ({
   createRateLimiter: () => ({ check: (_key: string) => mockRateLimitCheck() }),
@@ -64,9 +67,9 @@ jest.mock("next/server", () => {
 });
 
 jest.mock("@/lib/request-body", () => ({
-  readJsonBody: jest.fn(async (req: Request) => req.json()),
-  RequestBodyTooLargeError: class RequestBodyTooLargeError extends Error {},
-  InvalidJsonBodyError: class InvalidJsonBodyError extends Error {},
+  readJsonBody: (...args: [Request, number]) => mockReadJsonBody(...args),
+  RequestBodyTooLargeError: MockRequestBodyTooLargeError,
+  InvalidJsonBodyError: MockInvalidJsonBodyError,
 }));
 
 // ── Imports ───────────────────────────────────────────────────────────────────
@@ -144,6 +147,24 @@ afterAll(() => {
 // ── POST /api/signup ──────────────────────────────────────────────────────────
 
 describe("POST /api/signup — CAPTCHA enforcement", () => {
+  it("returns 413 for a body over the endpoint limit before CAPTCHA verification", async () => {
+    mockReadJsonBody.mockRejectedValueOnce(new MockRequestBodyTooLargeError());
+
+    const res = await signupPost(makeSignupRequest("good-token"));
+
+    expect(res.status).toBe(413);
+    expect(mockVerifyTurnstile).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for malformed JSON before CAPTCHA verification", async () => {
+    mockReadJsonBody.mockRejectedValueOnce(new MockInvalidJsonBodyError());
+
+    const res = await signupPost(makeSignupRequest("good-token"));
+
+    expect(res.status).toBe(400);
+    expect(mockVerifyTurnstile).not.toHaveBeenCalled();
+  });
+
   it("returns 403 when CAPTCHA verification fails", async () => {
     mockVerifyTurnstile.mockResolvedValueOnce({ success: false });
     const res = await signupPost(makeSignupRequest("bad-token"));
@@ -221,6 +242,28 @@ describe("POST /api/auth/callback/credentials — CAPTCHA enforcement", () => {
 // ── POST /api/auth/google-initiate ────────────────────────────────────────────
 
 describe("POST /api/auth/google-initiate — CAPTCHA gate", () => {
+  it("returns 413 for a body over the endpoint limit", async () => {
+    mockReadJsonBody.mockRejectedValueOnce(new MockRequestBodyTooLargeError());
+
+    const res = await googleInitiatePost(makeGoogleInitiateRequest("good-token"));
+
+    expect(res.status).toBe(413);
+    expect(mockVerifyTurnstile).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for unsupported Google initiation fields", async () => {
+    const req = new Request("http://localhost/api/auth/google-initiate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: "good-token", role: "tutor" }),
+    });
+
+    const res = await googleInitiatePost(req);
+
+    expect(res.status).toBe(400);
+    expect(mockVerifyTurnstile).not.toHaveBeenCalled();
+  });
+
   it("returns 200 when CAPTCHA succeeds", async () => {
     const res = await googleInitiatePost(makeGoogleInitiateRequest("good-token"));
     expect(res.status).toBe(200);
@@ -235,6 +278,17 @@ describe("POST /api/auth/google-initiate — CAPTCHA gate", () => {
     expect(setCookie).toMatch(new RegExp(`${GRANT_COOKIE_NAME}=`));
     expect(setCookie).toMatch(/HttpOnly/i);
     expect(setCookie).toMatch(/SameSite=Strict/i);
+  });
+
+  it("clears a stale tutor role intent when learner initiation omits account type", async () => {
+    const res = await googleInitiatePost(makeGoogleInitiateRequest("good-token"));
+    const setCookie = res.headers.get("set-cookie") ?? "";
+
+    expect(setCookie).toMatch(/google-role-intent=;/i);
+    expect(setCookie).toMatch(/Max-Age=0/i);
+    expect(setCookie).toMatch(/Path=\//i);
+    expect(setCookie).toMatch(/HttpOnly/i);
+    expect(setCookie).toMatch(/SameSite=Lax/i);
   });
 
   it("returns 403 when CAPTCHA fails", async () => {
@@ -284,11 +338,11 @@ describe("POST /api/auth/google-initiate — IP rate limiting", () => {
     expect(res.status).toBe(200);
   });
 
-  it("skips CAPTCHA and does not issue a grant while Turnstile is disabled", async () => {
+  it("skips CAPTCHA and clears learner role intent while Turnstile is disabled", async () => {
     delete process.env.TURNSTILE_ENABLED;
     const res = await googleInitiatePost(makeGoogleInitiateRequest());
     expect(res.status).toBe(200);
-    expect(res.headers.get("set-cookie")).toBeNull();
+    expect(res.headers.get("set-cookie")).toMatch(/google-role-intent=;.*Max-Age=0/i);
     expect(mockVerifyTurnstile).not.toHaveBeenCalled();
   });
 });

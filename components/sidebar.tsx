@@ -4,25 +4,27 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Library, Bot, BarChart3, Package, Shield,
-  MonitorPlay, Trophy, Settings, ShieldCheck, ChevronsLeft, LogOut, ChevronDown,
+  MonitorPlay, Trophy, Settings, ShieldCheck, ChevronsLeft, LogOut, ChevronDown, GraduationCap,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
+import type { CategoryKey } from "@/lib/types";
 
-export const courses = [
-  { href: "/app/course/?slug=agentic-ai",        label: "Agentic AI",         icon: Bot,     slug: "agentic-ai" },
-  { href: "/app/course/?slug=data-analytics",    label: "Data Analytics",     icon: BarChart3, slug: "data-analytics" },
-  { href: "/app/course/?slug=product-management",label: "Product Management", icon: Package, slug: "product-management" },
-  { href: "/app/course/?slug=cyber-security",    label: "Cyber Security",     icon: Shield,  slug: "cyber-security" },
-];
+export const courseIcons: Record<CategoryKey, React.ElementType> = {
+  ai: Bot,
+  data: BarChart3,
+  product: Package,
+  security: Shield,
+};
 
 // Flat list used by mobile-nav (courses excluded — handled by dropdown)
 export const navItems = [
   { href: "/app/dashboard/",  label: "Dashboard",   icon: LayoutDashboard },
   { href: "/app/my-learning/",label: "My Learning", icon: MonitorPlay },
   { href: "/app/badges/",     label: "Badges",      icon: Trophy },
+  { href: "/app/tutor/",      label: "Tutor Workspace", icon: GraduationCap, tutorOnly: true },
   { href: "/app/admin/",      label: "Admin Panel", icon: ShieldCheck, adminOnly: true },
   { href: "/app/settings/",   label: "Settings",    icon: Settings },
 ];
@@ -36,6 +38,12 @@ export function Sidebar() {
   const router = useRouter();
   const collapsed = state.sidebarCollapsed;
   const currentSlug = searchParams.get("slug");
+  const navigationCourses = state.courses.map((course) => ({
+    href: `/app/course/?slug=${encodeURIComponent(course.slug)}`,
+    label: course.title,
+    icon: courseIcons[course.category],
+    slug: course.slug,
+  }));
 
   const isOnCoursePage  = pathname?.startsWith("/app/course");
   const isOnPathsPage   = pathname?.startsWith("/app/paths");
@@ -58,7 +66,9 @@ export function Sidebar() {
   ];
 
   const bottomItems = navItems.filter(
-    (item) => item.href !== "/app/dashboard/" && (!("adminOnly" in item && item.adminOnly) || state.user?.role === "admin")
+    (item) => item.href !== "/app/dashboard/" &&
+      (!("adminOnly" in item && item.adminOnly) || state.user?.role === "admin") &&
+      (!("tutorOnly" in item && item.tutorOnly) || state.user?.role === "admin" || state.user?.role === "tutor")
   );
 
   const renderItem = (item: { href: string; label: string; icon: React.ElementType }, index: number) => {
@@ -203,7 +213,7 @@ export function Sidebar() {
                 <div className="mt-0.5 space-y-0.5 pl-4">
                   <div className="relative">
                     <div className="absolute left-1 top-0 h-full w-px bg-zinc-200" />
-                    {courses.map((course) => {
+                    {navigationCourses.map((course) => {
                       const active = isOnCoursePage && currentSlug === course.slug;
                       const Icon = course.icon;
                       const isHov = hoveredItem === course.slug;

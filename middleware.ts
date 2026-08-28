@@ -52,8 +52,10 @@ export async function middleware(req: NextRequest) {
     "form-action 'self' https://accounts.google.com",
   ].join("; ");
 
-  // ── Admin route protection ──────────────────────────────────────────────
-  if (req.nextUrl.pathname.startsWith("/app/admin")) {
+  // ── Privileged workspace protection ─────────────────────────────────────
+  const needsAdmin = req.nextUrl.pathname.startsWith("/app/admin");
+  const needsTutorWorkspace = req.nextUrl.pathname.startsWith("/app/tutor");
+  if (needsAdmin || needsTutorWorkspace) {
     // Must mirror the cookie name used in authOptions exactly.
     // authOptions derives it from NODE_ENV, not whether the request is HTTPS —
     // so we do the same here instead of letting getToken auto-detect from the
@@ -77,8 +79,8 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(loginUrl);
     }
 
-    // Authenticated but not admin — redirect to dashboard.
-    if (token.role !== "admin") {
+    // Admins retain catalog access; tutors additionally access their workspace.
+    if ((needsAdmin && token.role !== "admin") || (needsTutorWorkspace && token.role !== "admin" && token.role !== "tutor")) {
       const dashboardUrl = req.nextUrl.clone();
       dashboardUrl.pathname = "/app/dashboard/";
       dashboardUrl.search = "";

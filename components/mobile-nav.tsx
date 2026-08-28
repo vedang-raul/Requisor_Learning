@@ -7,7 +7,7 @@ import { LogOut, Menu, X, Library, ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
-import { navItems, courses } from "@/components/sidebar";
+import { courseIcons, navItems } from "@/components/sidebar";
 
 export function MobileNav() {
   const { state, logout } = useStore();
@@ -16,6 +16,12 @@ export function MobileNav() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const currentSlug = searchParams.get("slug");
+  const navigationCourses = state.courses.map((course) => ({
+    href: `/app/course/?slug=${encodeURIComponent(course.slug)}`,
+    label: course.title,
+    icon: courseIcons[course.category],
+    slug: course.slug,
+  }));
 
   const isOnCoursePage = pathname?.startsWith("/app/course");
   const isOnPathsPage  = pathname?.startsWith("/app/paths");
@@ -28,7 +34,9 @@ export function MobileNav() {
   useEffect(() => { setOpen(false); }, [pathname, currentSlug]);
 
   const filteredItems = navItems.filter(
-    (item) => !("adminOnly" in item && item.adminOnly) || state.user?.role === "admin"
+    (item) =>
+      (!("adminOnly" in item && item.adminOnly) || state.user?.role === "admin") &&
+      (!("tutorOnly" in item && item.tutorOnly) || state.user?.role === "admin" || state.user?.role === "tutor")
   );
 
   // Split: dashboard first, rest after Learning Paths
@@ -128,7 +136,7 @@ export function MobileNav() {
                         <div className="mt-0.5 pl-4">
                           <div className="relative">
                             <div className="absolute left-1 top-0 h-full w-px bg-zinc-200" />
-                            {courses.map((course) => {
+                            {navigationCourses.map((course) => {
                               const active = isOnCoursePage && currentSlug === course.slug;
                               const Icon = course.icon;
                               return (
