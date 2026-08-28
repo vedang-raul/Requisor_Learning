@@ -154,7 +154,7 @@ export default function TutorAuth() {
       </div>
 
       <div className="relative z-10 w-full max-w-[408px]">
-        <div className="ta-card rounded-[26px] bg-white px-8 pb-7 pt-9 shadow-[0_24px_60px_-20px_rgba(30,36,48,0.22),0_4px_14px_-6px_rgba(30,36,48,0.10)] dark:bg-[#1B1F26] dark:shadow-[0_24px_60px_-18px_rgba(0,0,0,0.55),0_4px_14px_-6px_rgba(0,0,0,0.35)]">
+        <div className="ta-card rounded-[26px] bg-white px-8 pb-7 pt-9 shadow-[0_24px_60px_-20px_rgba(30,36,48,0.22),0_4px_14px_-6px_rgba(30,36,48,0.10)] dark:bg-[#1B1F26] dark:shadow-[0_24px_60px_-18px_rgba(0,0,0,0.55),0_4px_14px_-6px_rgba(30,36,48,0.35)]">
           {/* mascot */}
           <div className="mb-3.5 flex justify-center">
             <svg
