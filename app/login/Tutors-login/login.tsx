@@ -7,12 +7,17 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
+import { signIn } from "next-auth/react";
+import { Turnstile } from "@marsidev/react-turnstile";
+import type { TurnstileInstance } from "@marsidev/react-turnstile";
 
 type View = "login" | "signup" | "success";
 type PasswordField = "loginPassword" | "signupPassword" | "signupConfirm";
 type Direction = "forward" | "back";
 
 const VIEW_ORDER: Record<View, number> = { login: 0, signup: 1, success: 2 };
+const CAPTCHA_ENABLED = process.env.NEXT_PUBLIC_TURNSTILE_ENABLED === "true";
+const SITE_KEY = CAPTCHA_ENABLED ? process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "" : "";
 
 interface SuccessCopy {
   title: string;
@@ -36,7 +41,8 @@ export default function TutorAuth() {
   const [view, setView] = useState<View>("login");
   const [direction, setDirection] = useState<Direction>("forward");
   const [entering, setEntering] = useState<View | null>(null);
-  const [submitting, setSubmitting] = useState<false | "login" | "signup">(false);
+  const [submitting, setSubmitting] = useState<false | "login" | "signup" | "google">(false);
+  const [googleError, setGoogleError] = useState("");
   const [successCopy, setSuccessCopy] = useState<SuccessCopy>({
     title: "Welcome back",
     body: "You're signed in to the tutor workspace.",
@@ -51,6 +57,9 @@ export default function TutorAuth() {
   const loginRef = useRef<HTMLFormElement>(null);
   const signupRef = useRef<HTMLFormElement>(null);
   const successRef = useRef<HTMLDivElement>(null);
+  const turnstileRef = useRef<TurnstileInstance>(null);
+  const turnstileReadyRef = useRef(false);
+  const [captchaToken, setCaptchaToken] = useState("");
 
   useLayoutEffect(() => {
     const el =
@@ -61,6 +70,7 @@ export default function TutorAuth() {
 
   function go(next: View) {
     if (next === view) return;
+    setGoogleError("");
     const dir: Direction = VIEW_ORDER[next] > VIEW_ORDER[view] ? "forward" : "back";
     setDirection(dir);
     setEntering(next);
@@ -72,6 +82,66 @@ export default function TutorAuth() {
 
   function togglePassword(field: PasswordField) {
     setVisible((v) => ({ ...v, [field]: !v[field] }));
+  }
+
+  async function getCaptchaToken(): Promise<string> {
+    if (!CAPTCHA_ENABLED) return "";
+
+    for (let attempt = 0; attempt < 40 && !turnstileReadyRef.current; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    if (!turnstileReadyRef.current) return "";
+
+    const existing = turnstileRef.current?.getResponse() ?? captchaToken;
+    if (existing) return existing;
+
+    turnstileRef.current?.execute();
+    try {
+      const token = await turnstileRef.current?.getResponsePromise(10_000);
+      return token ?? "";
+    } catch {
+      return "";
+    }
+  }
+
+  async function handleGoogle() {
+    setGoogleError("");
+    if (CAPTCHA_ENABLED && !SITE_KEY) {
+      setGoogleError("Security verification is not configured. Please contact support.");
+      return;
+    }
+
+    setSubmitting("google");
+    const token = await getCaptchaToken();
+    if (CAPTCHA_ENABLED && !token) {
+      setGoogleError("Security check could not be completed. Please try again.");
+      setSubmitting(false);
+      return;
+    }
+
+    if (CAPTCHA_ENABLED) {
+      setCaptchaToken("");
+      turnstileRef.current?.reset();
+    }
+
+    try {
+      const response = await fetch("/api/auth/google-initiate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+
+      if (!response.ok) {
+        setGoogleError("Security check could not be completed. Please try again.");
+        setSubmitting(false);
+        return;
+      }
+
+      void signIn("google", { callbackUrl: "/app/dashboard/" });
+    } catch {
+      setGoogleError("Network error. Please try again.");
+      setSubmitting(false);
+    }
   }
 
   function handleLogin(e: FormEvent<HTMLFormElement>) {
@@ -225,6 +295,8 @@ export default function TutorAuth() {
               <SubmitButton loading={submitting === "login"} label="Login" />
 
               <Divider />
+              <GoogleButton loading={submitting === "google"} onClick={handleGoogle} />
+              {googleError && <p className="text-xs text-red-600" role="alert">{googleError}</p>}
 
             </form>
 
@@ -252,6 +324,9 @@ export default function TutorAuth() {
                 <IconInput icon={<MailIcon />} type="email" placeholder="you@requisor.io" autoComplete="email" required />
               </Field>
 
+              <Field label="University">
+                <IconInput icon={<CapIcon />} type="text" placeholder="Your university" autoComplete="organization" required />
+              </Field>
               <Field label="Password">
                 <IconInput
                   icon={<LockIcon />}
@@ -293,6 +368,8 @@ export default function TutorAuth() {
               <SubmitButton loading={submitting === "signup"} label="Create account" />
 
               <Divider />
+              <GoogleButton loading={submitting === "google"} onClick={handleGoogle} />
+              {googleError && <p className="text-xs text-red-600" role="alert">{googleError}</p>}
 
             </form>
 
@@ -330,6 +407,33 @@ export default function TutorAuth() {
               </div>
             </div>
           </div>
+
+          {CAPTCHA_ENABLED && SITE_KEY && (
+            <div aria-hidden="true" className="sr-only">
+              <Turnstile
+                ref={turnstileRef}
+                siteKey={SITE_KEY}
+                onWidgetLoad={() => {
+                  turnstileReadyRef.current = true;
+                }}
+                onSuccess={setCaptchaToken}
+                onExpire={() => setCaptchaToken("")}
+                onError={() => {
+                  turnstileReadyRef.current = false;
+                  setCaptchaToken("");
+                }}
+                onUnsupported={() => {
+                  turnstileReadyRef.current = false;
+                  setCaptchaToken("");
+                }}
+                options={{
+                  size: "invisible",
+                  execution: "execute",
+                  appearance: "execute",
+                }}
+              />
+            </div>
+          )}
 
           <p className="mt-4 text-center text-xs text-zinc-600">
             {activeCopy.switchLead}
@@ -377,6 +481,20 @@ function Divider() {
   );
 }
 
+function GoogleButton({ loading, onClick }: { loading: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={loading}
+      className="focus-ring flex w-full items-center justify-center gap-2.5 rounded-xl border border-zinc-300 bg-white py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 disabled:pointer-events-none disabled:opacity-60"
+    >
+      <GoogleIcon />
+      {loading ? "Connecting…" : "Continue with Google"}
+    </button>
+  );
+}
+
 function SubmitButton({ loading, label }: { loading: boolean; label: string }) {
   return (
     <button
@@ -396,6 +514,17 @@ function SubmitButton({ loading, label }: { loading: boolean; label: string }) {
         </>
       )}
     </button>
+  );
+}
+
+function GoogleIcon() {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z" />
+      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z" />
+      <path fill="#FBBC05" d="M5.84 14.1a6.6 6.6 0 0 1 0-4.2V7.06H2.18a11 11 0 0 0 0 9.88l3.66-2.84z" />
+      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1A11 11 0 0 0 2.18 7.06l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z" />
+    </svg>
   );
 }
 
