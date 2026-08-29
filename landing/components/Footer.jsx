@@ -7,7 +7,7 @@ export default function Footer() {
     <footer id="site-footer" className="border-t border-line py-[34px] text-[13.5px] text-ink-soft">
       <Wrap className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <span>
-          
+          <img src="/requisor.png" alt="Requisor" className="size-14" width="24" height="24" />
           <strong className="font-semibold text-ink">Requisor Learning</strong> — The AI-Native University · Milwaukee, WI
         </span>
 
