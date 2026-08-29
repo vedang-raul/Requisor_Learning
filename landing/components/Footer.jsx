@@ -20,7 +20,7 @@ export default function Footer() {
             <strong className="block font-semibold text-ink">Milwaukee School of Engineering</strong>
           </span>
         </div>
-        <span className="font-mono">Built by <a href="https://requisor.io/privacy" className="font-mono"></a>. Personalized by design.</span>
+        <span className="font-mono">Built by <a href="https://requisor.io" className="font-mono">Requisor.io</a>. Personalized by design.</span>
       </Wrap>
     </footer>
   )
