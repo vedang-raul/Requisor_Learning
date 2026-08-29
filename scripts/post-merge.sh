@@ -142,6 +142,34 @@ p.query(\`
   CREATE INDEX IF NOT EXISTS course_lessons_course_position_idx ON course_lessons (course_slug, position, id);
   CREATE INDEX IF NOT EXISTS course_reviews_slug_rating_idx ON course_reviews (course_slug, rating);
 
+  -- Privacy-safe learning activity used for aggregate tutor insights.
+  -- These tables come after the catalog tables they reference so fresh
+  -- database setup preserves foreign-key ordering.
+  CREATE TABLE IF NOT EXISTS course_enrollments (
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    course_slug VARCHAR(80) NOT NULL REFERENCES courses(slug) ON DELETE CASCADE,
+    enrolled_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, course_slug)
+  );
+
+  CREATE TABLE IF NOT EXISTS lesson_views (
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    course_slug VARCHAR(80) NOT NULL REFERENCES courses(slug) ON DELETE CASCADE,
+    -- Deliberately not an FK: course saves replace lesson rows in one
+    -- transaction, while stable lesson IDs must retain their view history.
+    lesson_id VARCHAR(120) NOT NULL,
+    first_viewed_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    last_viewed_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, lesson_id)
+  );
+  ALTER TABLE lesson_views
+    DROP CONSTRAINT IF EXISTS lesson_views_lesson_id_fkey;
+
+  CREATE INDEX IF NOT EXISTS course_enrollments_course_date_idx
+    ON course_enrollments (course_slug, enrolled_at);
+  CREATE INDEX IF NOT EXISTS lesson_views_course_dates_idx
+    ON lesson_views (course_slug, first_viewed_at, last_viewed_at);
+
   CREATE TABLE IF NOT EXISTS lesson_comments (
     id SERIAL PRIMARY KEY,
     user_id INT REFERENCES users(id) ON DELETE CASCADE,

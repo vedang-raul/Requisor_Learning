@@ -60,6 +60,16 @@ function syncCompletion(lessonId: string, courseSlug: string, completed: boolean
   }).catch(() => {});
 }
 
+/** Persist the first-party activity signal used for aggregate tutor insights. */
+function syncLessonView(lessonId: string, courseSlug: string) {
+  fetch("/api/course-activity", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ lessonId, courseSlug }),
+    keepalive: true,
+  }).catch(() => {});
+}
+
 function LearnView() {
   const params = useSearchParams();
   const router = useRouter();
@@ -90,6 +100,7 @@ function LearnView() {
   useEffect(() => {
     if (courseSlug && lessonId) {
       recordView(courseSlug, lessonId);
+      syncLessonView(lessonId, courseSlug);
       const t = setTimeout(() => setWatchPct(lessonId, 25), 15000);
       return () => clearTimeout(t);
     }
