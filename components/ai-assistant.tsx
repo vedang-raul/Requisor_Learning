@@ -10,11 +10,17 @@ import { cn } from "@/lib/utils";
 import { renderMarkdownLite, endsInOpenTag } from "@/components/markdown-lite";
 import { useVoice } from "@/hooks/use-voice";
 type ChatMessage = { role: "user" | "assistant"; content: string };
-const QUICK_PROMPTS = [
+const LEARNER_QUICK_PROMPTS = [
   { icon: TrendingUp, label: "How am I doing overall?" },
   { icon: Compass, label: "What should I learn next?" },
   { icon: ListChecks, label: "Summarize my progress" },
   { icon: TrendingUp, label: "How do I earn more XP?" },
+];
+const TUTOR_QUICK_PROMPTS = [
+  { icon: Sparkles, label: "Design a course from my topic" },
+  { icon: ListChecks, label: "Suggest modules and lessons" },
+  { icon: Compass, label: "Improve my course structure" },
+  { icon: TrendingUp, label: "Create activities and assessments" },
 ];
 const dotTransition = (delay: number) => ({
   duration: 0.9,
@@ -171,6 +177,7 @@ const MUTE_KEY = "ai-assistant-muted";
 export function AiAssistant() {
   const { state, hydrated } = useStore();
   const router = useRouter();
+  const isTutorMode = state.user?.role === "tutor" || state.user?.role === "admin";
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -190,12 +197,18 @@ export function AiAssistant() {
   const fullTextRef = useRef("");
   const revealedRef = useRef(0);
   const rafRef = useRef<number | null>(null);
+  const requestAbortRef = useRef<AbortController | null>(null);
+  const streamReaderRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
   const networkDoneRef = useRef(false);
   const pauseUntilRef = useRef(0);
   // Track whether we've already spoken / navigated for the current AI reply
   const didSpeakRef = useRef(false);
   const didNavigateRef = useRef(false);
-  const progressContext = useMemo(() => buildProgressContext(state), [state]);
+  const progressContext = useMemo(
+    () => isTutorMode ? "" : buildProgressContext(state),
+    [isTutorMode, state]
+  );
+  const quickPrompts = isTutorMode ? TUTOR_QUICK_PROMPTS : LEARNER_QUICK_PROMPTS;
   const initials = (state.user?.name ?? "U").slice(0, 1).toUpperCase();
   const voice = useVoice();
   const waveBars = useMicWaveform(voice.isListening);
@@ -230,12 +243,16 @@ export function AiAssistant() {
   }, [messages, streaming]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") closePanel();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-  useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
+  useEffect(() => () => {
+    requestAbortRef.current?.abort();
+    void streamReaderRef.current?.cancel("component_unmount").catch(() => undefined);
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+  }, []);
   // Auto-grow the composer textarea up to ~4 lines.
   useEffect(() => {
     const el = textareaRef.current;
@@ -245,15 +262,35 @@ export function AiAssistant() {
   }, [input]);
   // Once hydrated, check for a rule-based nudge (stalled course).
   useEffect(() => {
-    if (!hydrated || !state.user) return;
+    if (!hydrated || !state.user || isTutorMode) {
+      setNudge(null);
+      return;
+    }
     setNudge(getNudge(state));
-  }, [hydrated, state]);
+  }, [hydrated, isTutorMode, state]);
   // Persist mute preference
   function toggleMute() {
     const next = !voiceMuted;
     setVoiceMuted(next);
     localStorage.setItem(MUTE_KEY, String(next));
     if (next) voice.stopSpeaking();
+  }
+  function cancelActiveRequest() {
+    requestAbortRef.current?.abort();
+    requestAbortRef.current = null;
+    void streamReaderRef.current?.cancel("user_cancelled").catch(() => undefined);
+    streamReaderRef.current = null;
+    networkDoneRef.current = true;
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    setStreaming(false);
+  }
+  function closePanel() {
+    cancelActiveRequest();
+    voice.stopSpeaking();
+    setOpen(false);
   }
   function startRevealLoop() {
     const BASE_CPS = 60;
@@ -290,7 +327,7 @@ export function AiAssistant() {
           voice.speak(stripForSpeech(finalText));
         }
         // Auto-navigate to the first course/lesson tag in the reply
-        if (!didNavigateRef.current) {
+        if (!isTutorMode && !didNavigateRef.current) {
           didNavigateRef.current = true;
           const navUrl = extractFirstNavUrl(finalText, resolveLesson);
           if (navUrl) {
@@ -319,37 +356,51 @@ export function AiAssistant() {
     didSpeakRef.current = false;
     didNavigateRef.current = false;
     startRevealLoop();
+    const requestController = new AbortController();
+    requestAbortRef.current = requestController;
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: next, progressContext }),
+        signal: requestController.signal,
+        body: JSON.stringify(
+          isTutorMode ? { messages: next } : { messages: next, progressContext }
+        ),
       });
       if (!res.body) throw new Error("No response body");
       if (!res.ok) setRetryText(trimmed);
       const reader = res.body.getReader();
+      streamReaderRef.current = reader;
       const decoder = new TextDecoder();
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         fullTextRef.current += decoder.decode(value, { stream: true });
       }
-    } catch {
+    } catch (error) {
+      if (requestController.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) {
+        return;
+      }
       fullTextRef.current += "Sorry, something went wrong reaching the AI assistant.";
       setRetryText(trimmed);
     } finally {
-      networkDoneRef.current = true;
+      if (requestAbortRef.current === requestController) {
+        requestAbortRef.current = null;
+        streamReaderRef.current = null;
+        networkDoneRef.current = true;
+      }
     }
   }
   function openPanel() {
     setOpen(true);
-    if (nudge && messages.length === 0) {
+    if (!isTutorMode && nudge && messages.length === 0) {
       setMessages([{ role: "assistant", content: nudge.message }]);
       markNudgeSeen(nudge.id);
       setNudge(null);
     }
   }
   function newChat() {
+    cancelActiveRequest();
     voice.stopSpeaking();
     setMessages([]);
     setRetryText(null);
@@ -376,7 +427,9 @@ export function AiAssistant() {
               className="absolute bottom-full right-0 mb-3 w-52 rounded-2xl rounded-br-sm px-3.5 py-2.5 bg-gray-200   shadow-soft"
             >
               <p className="text-[11px] font-medium leading-snug text-zinc-700">
-                Hey! I&apos;m here to help with your learning journey 👋
+                {isTutorMode
+                  ? "Tell me your course topic and I’ll help shape the learning experience."
+                  : "Hey! I’m here to help with your learning journey."}
               </p>
               {/* Tail */}
               <span className="absolute -bottom-2 right-3 h-0 w-0 border-x-8 border-t-8 border-x-transparent border-t-gray-200 " />
@@ -384,7 +437,7 @@ export function AiAssistant() {
           )}
         </AnimatePresence>
         <motion.button
-          onClick={() => (open ? setOpen(false) : openPanel())}
+          onClick={() => (open ? closePanel() : openPanel())}
           aria-label={open ? "Close AI assistant" : "Open AI assistant"}
           whileHover={{ scale: 1.06 }}
           whileTap={{ scale: 0.95 }}
@@ -433,7 +486,7 @@ export function AiAssistant() {
             exit={{ opacity: 0, y: 16, scale: 0.96, filter: "blur(2px)" }}
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
             role="dialog"
-            aria-label="AI learning assistant"
+            aria-label={isTutorMode ? "AI course design assistant" : "AI learning assistant"}
             className="fixed bottom-24 right-5 z-40 flex h-[34rem] w-[23rem] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-3xl border border-zinc-100 bg-card shadow-[0_25px_60px_-15px_rgba(15,23,42,0.25)]"
           >
             {/* Header */}
@@ -459,7 +512,9 @@ export function AiAssistant() {
                   Requisor Assistant
 
                 </p>
-                <p className="truncate text-xs text-zinc-500">Knows your progress across all paths</p>
+                <p className="truncate text-xs text-zinc-500">
+                  {isTutorMode ? "Course structure and content copilot" : "Knows your progress across all paths"}
+                </p>
               </div>
               {/* Mute/unmute TTS button — only shown when TTS is supported */}
               {voice.ttsSupported && (
@@ -510,7 +565,7 @@ export function AiAssistant() {
                 </button>
               )}
               <button
-                onClick={() => setOpen(false)}
+                onClick={closePanel}
                 aria-label="Close"
                 className="focus-ring shrink-0 rounded-lg p-1.5 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
               >
@@ -519,13 +574,21 @@ export function AiAssistant() {
             </div>
             {/* Messages */}
             <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+              {isTutorMode && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+                  <strong>AI draft:</strong> Review and edit suggestions before adding them to your course. Nothing is saved automatically.
+                </div>
+              )}
               {messages.length === 0 && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }} className="space-y-4">
                   <p className="text-sm font-light text-zinc-600">
-                    Hi {state.user?.name?.split(" ")[0] ?? "there"} 👋 Ask me about your progress, or what to learn next.
+                    Hi {state.user?.name?.split(" ")[0] ?? "there"}.{" "}
+                    {isTutorMode
+                      ? "What course would you like to design? Include the topic, audience, or level if you know them."
+                      : "Ask me about your progress, or what to learn next."}
                   </p>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {QUICK_PROMPTS.map(({ icon: Icon, label }, i) => (
+                    {quickPrompts.map(({ icon: Icon, label }, i) => (
                       <motion.button
                         key={label}
                         initial={{ opacity: 0, y: 6 }}
@@ -646,13 +709,14 @@ export function AiAssistant() {
                       rows={1}
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
+                      maxLength={2000}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && !e.shiftKey) {
                           e.preventDefault();
                           send(input);
                         }
                       }}
-                      placeholder="Ask about your progress…"
+                      placeholder={isTutorMode ? "Describe a course you want to design…" : "Ask about your progress…"}
                       disabled={streaming}
                       className="max-h-[120px] flex-1 resize-none bg-transparent py-1.5 text-sm text-zinc-900 placeholder:text-zinc-500 focus:outline-none disabled:opacity-60"
                     />

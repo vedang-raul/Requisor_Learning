@@ -10,3 +10,4 @@
 - [Turnstile activation](turnstile-activation.md) — CAPTCHA is paused by user choice; only enable after matching real keys and approved production domain.
 - [Turnstile hostname authorization](turnstile-hostname-authorization.md) — Cloudflare must authorize every production and development hostname before widget tokens can be issued.
 - [Tutor-owned catalogs](tutor-owned-catalogs.md) — ownership checks are transactional, edits are revisioned, tutor ratings are aggregate-only, and seed import must never resurrect deletions.
+- [Role-aware AI assistant](role-aware-ai-assistant.md) — tutor AI is a server-selected, draft-only course copilot; learner progress must never enter tutor prompts.
