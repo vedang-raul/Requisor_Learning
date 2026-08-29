@@ -2,9 +2,9 @@ import { Wrap } from './ui.jsx'
 
 // TODO: swap these for your real profile URLs before shipping.
 const SOCIAL_LINKS = [
-  { name: 'LinkedIn', href: '#', Icon: LinkedInIcon },
+  { name: 'LinkedIn', href: 'https://www.linkedin.com/company/requisor', Icon: LinkedInIcon },
   { name: 'X (Twitter)', href: '#', Icon: XIcon },
-  { name: 'Instagram', href: '#', Icon: InstagramIcon },
+  { name: 'Instagram', href: 'https://www.instagram.com/requisor.io/', Icon: InstagramIcon },
 ]
 
 export default function Footer() {
