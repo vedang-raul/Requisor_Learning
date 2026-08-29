@@ -65,7 +65,7 @@ export default function Footer() {
             © {year} · Built by{' '}
 
     <a          href="https://requisor.io"
-              className="text-ink underline decoration-current decoration-1 underline-offset-4 transition-colors duration-200 hover:text-[#23AE97] focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#23AE97]"
+              className="text-ink decoration-current decoration-1  transition-colors duration-200 hover:text-[#23AE97] focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#23AE97] font-semibold"
             >
               Requisor.io
             </a>
