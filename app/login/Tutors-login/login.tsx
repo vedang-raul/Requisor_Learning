@@ -18,6 +18,7 @@ type Direction = "forward" | "back";
 const VIEW_ORDER: Record<View, number> = { login: 0, signup: 1, success: 2 };
 const CAPTCHA_ENABLED = process.env.NEXT_PUBLIC_TURNSTILE_ENABLED === "true";
 const SITE_KEY = CAPTCHA_ENABLED ? process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "" : "";
+const DEV_BYPASS_ENABLED = process.env.NODE_ENV !== "production";
 
 interface SuccessCopy {
   title: string;
@@ -41,7 +42,7 @@ export default function TutorAuth() {
   const [view, setView] = useState<View>("login");
   const [direction, setDirection] = useState<Direction>("forward");
   const [entering, setEntering] = useState<View | null>(null);
-  const [submitting, setSubmitting] = useState<false | "login" | "signup" | "google">(false);
+  const [submitting, setSubmitting] = useState<false | "login" | "signup" | "google" | "dev-tutor">(false);
   const [googleError, setGoogleError] = useState("");
   const [formError, setFormError] = useState("");
   const [successCopy, setSuccessCopy] = useState<SuccessCopy>({
@@ -176,6 +177,26 @@ export default function TutorAuth() {
       window.location.assign("/app/tutor/");
     } catch {
       setFormError("Network error. Please try again.");
+      setSubmitting(false);
+    }
+  }
+
+  async function handleDevTutor() {
+    setFormError("");
+    setSubmitting("dev-tutor");
+    try {
+      const result = await signIn("dev-tutor", {
+        callbackUrl: "/app/tutor/",
+        redirect: false,
+      });
+      if (result?.error) {
+        setFormError("Development tutor access is unavailable.");
+        setSubmitting(false);
+        return;
+      }
+      window.location.assign("/app/tutor/");
+    } catch {
+      setFormError("Development tutor access is unavailable.");
       setSubmitting(false);
     }
   }
@@ -364,6 +385,19 @@ export default function TutorAuth() {
               <Divider />
               <GoogleButton loading={submitting === "google"} onClick={handleGoogle} />
               {googleError && <p className="text-xs text-red-600" role="alert">{googleError}</p>}
+              {DEV_BYPASS_ENABLED && (
+                <div className="mt-1 rounded-xl border border-dashed border-amber-300 bg-amber-50 p-3">
+                  <p className="text-center text-[11px] leading-4 text-amber-800">Development-only shortcut</p>
+                  <button
+                    type="button"
+                    onClick={() => void handleDevTutor()}
+                    disabled={Boolean(submitting)}
+                    className="focus-ring mt-2 w-full rounded-lg border border-amber-400 bg-white px-3 py-2 text-xs font-semibold text-amber-900 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {submitting === "dev-tutor" ? "Opening tutor workspace…" : "Use development tutor access"}
+                  </button>
+                </div>
+              )}
 
             </form>
 

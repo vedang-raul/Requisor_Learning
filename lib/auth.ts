@@ -118,6 +118,24 @@ export const authOptions: NextAuthOptions = {
               return { id: String(rows[0].id), email: rows[0].email, name: rows[0].name ?? "Admin" };
             },
           }),
+          CredentialsProvider({
+            id: "dev-tutor",
+            name: "Dev Tutor",
+            credentials: {},
+            async authorize() {
+              // Reserved synthetic account for local and preview-only tutor checks.
+              // This provider is never registered when NODE_ENV is production.
+              const { rows } = await db.query<DbUser>(
+                `INSERT INTO users (email, name, email_verified, role)
+                 VALUES ('dev-tutor@requisor.local', 'Development Tutor', TRUE, 'tutor')
+                 ON CONFLICT (email) DO UPDATE
+                   SET name = 'Development Tutor', email_verified = TRUE, role = 'tutor'
+                 RETURNING *`,
+              );
+              db.query("UPDATE users SET last_login_at = NOW() WHERE id = $1", [rows[0].id]).catch(() => {});
+              return { id: String(rows[0].id), email: rows[0].email, name: rows[0].name ?? "Development Tutor" };
+            },
+          }),
         ]
       : []),
     CredentialsProvider({
