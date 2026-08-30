@@ -1,6 +1,5 @@
 import { Wrap } from './ui.jsx'
 
-// TODO: swap these for your real profile URLs before shipping.
 const SOCIAL_LINKS = [
   { name: 'LinkedIn', href: 'https://www.linkedin.com/company/requisor', Icon: LinkedInIcon },
   { name: 'X (Twitter)', href: 'https://x.com/Requisor_AI', Icon: XIcon },
