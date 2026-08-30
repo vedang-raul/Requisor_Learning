@@ -56,7 +56,7 @@ type Stage = "question" | "review" | "submitting" | "done";
 type Direction = "forward" | "back";
 
 export interface TutorSurveyProps {
-  onSubmit?: (answers: Answers) => void;
+  onSubmit?: (answers: Answers) => void | Promise<void>;
 }
 
 export default function TutorSurvey({ onSubmit }: TutorSurveyProps) {
@@ -67,6 +67,7 @@ export default function TutorSurvey({ onSubmit }: TutorSurveyProps) {
   const [answers, setAnswers] = useState<Answers>(EMPTY_ANSWERS);
   const [drafts, setDrafts] = useState<Answers>(EMPTY_ANSWERS);
   const [shake, setShake] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   const inputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -135,9 +136,15 @@ export default function TutorSurvey({ onSubmit }: TutorSurveyProps) {
 
   function submit() {
     setStage("submitting");
-    window.setTimeout(() => {
-      onSubmit?.(answers);
-      setStage("done");
+    setSubmitError("");
+    window.setTimeout(async () => {
+      try {
+        await onSubmit?.(answers);
+        setStage("done");
+      } catch {
+        setSubmitError("We couldn't save your profile. Please try again.");
+        setStage("review");
+      }
     }, 1100);
   }
 
@@ -274,6 +281,11 @@ export default function TutorSurvey({ onSubmit }: TutorSurveyProps) {
               <h1 className="mb-8 text-[28px] font-extrabold leading-tight [text-wrap:balance] sm:text-[34px]">
                 Review your answers
               </h1>
+              {submitError && (
+                <p role="alert" className="mb-4 rounded-xl bg-red-50 px-3.5 py-2 text-sm text-red-600">
+                  {submitError}
+                </p>
+              )}
 
               <div className="flex flex-col gap-3">
                 {QUESTIONS.map((q, i) => (

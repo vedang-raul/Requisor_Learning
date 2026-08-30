@@ -8,6 +8,7 @@ import { useStore } from "@/lib/store";
 import { GradientBlobs } from "@/components/gradient-blobs";
 import { AiAssistant } from "@/components/ai-assistant";
 import { OnboardingSurvey } from "@/components/onboarding-survey";
+import TutorSurvey from "@/components/onboarding-survey-tutor";
 import { InactivityGuard } from "@/components/inactivity-guard";
 
 interface MeData {
@@ -40,7 +41,31 @@ function Shell({ children }: { children: React.ReactNode }) {
     return <div className="min-h-screen bg-white" />;
   }
 
+  const user = state.user;
   const showSurvey = meLoaded && meData !== null && !meData.onboardingDone;
+  const isTutor = user.role === "tutor";
+
+  async function completeTutorSurvey(answers: {
+    expertise: string;
+    qualification: string;
+    experience: string;
+    purpose: string;
+  }) {
+    const response = await fetch("/api/profile", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: user.name,
+        employmentType: answers.experience,
+        position: answers.expertise,
+        qualification: answers.qualification,
+        learningGoal: answers.purpose,
+        onboardingDone: true,
+      }),
+    });
+    if (!response.ok) throw new Error("Unable to save tutor profile.");
+    setMeData((data) => data ? { ...data, onboardingDone: true } : data);
+  }
 
   return (
     <div className="relative flex min-h-screen animate-in fade-in duration-200">
@@ -53,10 +78,12 @@ function Shell({ children }: { children: React.ReactNode }) {
       <InactivityGuard />
       <AiAssistant />
       {showSurvey && (
-        <OnboardingSurvey
-          hasDob={!!meData?.dateOfBirth}
-          onComplete={() => setMeData((d) => d ? { ...d, onboardingDone: true } : d)}
-        />
+        isTutor
+          ? <TutorSurvey onSubmit={completeTutorSurvey} />
+          : <OnboardingSurvey
+              hasDob={!!meData?.dateOfBirth}
+              onComplete={() => setMeData((d) => d ? { ...d, onboardingDone: true } : d)}
+            />
       )}
     </div>
   );
