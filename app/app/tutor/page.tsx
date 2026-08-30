@@ -2,7 +2,7 @@
 
 import { FormEvent, ReactNode, SelectHTMLAttributes, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Activity, BarChart3, BookPlus, CheckCircle2, Loader2, Pencil, Plus, Star, Trash2, TrendingUp, Users } from "lucide-react";
+import { Activity, BarChart3, BookPlus, Check, CheckCircle2, Loader2, Pencil, Plus, Star, Trash2, TrendingUp, Users, X } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { CategoryKey, Course, Lesson } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -73,7 +73,7 @@ export default function TutorPage() {
       <Button className="min-h-11" onClick={() => { setSelected(null); setCreating(true); }}><Plus className="h-4 w-4" /> Create course</Button>
     </header>
     {error && <div role="alert" className="flex flex-col items-start justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 sm:flex-row sm:items-center">{error}<Button size="sm" variant="outline" onClick={() => void load()}>Try again</Button></div>}
-    {creating && <CourseEditor saving={saving} onCancel={() => setCreating(false)} onSave={saveCourse} />}
+    {creating && <CourseForm saving={saving} onCancel={() => setCreating(false)} onSave={saveCourse} />}
     {loading ? <Card className="flex items-center gap-2 py-10 text-sm text-zinc-600"><Loader2 className="h-5 w-5 animate-spin" /> Loading your courses…</Card> :
       items.length === 0 ? <Card className="py-12 text-center"><BookPlus className="mx-auto h-8 w-8 text-primary" /><CardTitle className="mt-3">No courses yet</CardTitle><p className="mt-1 text-sm text-zinc-600">Create your first course to start building a learning path.</p></Card> :
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{items.map((item) => <button key={item.course.slug} onClick={() => { setCreating(false); setSelected(item.course); }} className="focus-ring min-h-32 rounded-2xl text-left"><Card className="h-full transition hover:border-primary/40"><div className={`mb-3 h-2 rounded-full bg-gradient-to-r ${item.course.cover}`} /><CardTitle>{item.course.title}</CardTitle><p className="mt-1 text-xs text-zinc-600">{item.course.lessons.length} lessons · <span className="inline-flex items-center gap-1"><Star className="h-3 w-3 fill-amber-400 text-amber-400" aria-hidden="true" />{item.averageRating.toFixed(1)} ({item.ratingCount})</span></p><div className="mt-3 flex gap-1" aria-hidden="true">{[5,4,3,2,1].map((rating) => <span key={rating} title={`${rating} stars: ${distributionCount(item.ratingDistribution, rating)}`} className="h-1 flex-1 rounded bg-primary/20" style={{ opacity: item.ratingCount ? Math.max(.2, distributionCount(item.ratingDistribution, rating) / item.ratingCount) : .2 }} />)}</div><span className="sr-only">{[5,4,3,2,1].map((rating) => `${rating} stars: ${distributionCount(item.ratingDistribution, rating)}`).join(", ")}</span></Card></button>)}</div>}
@@ -178,6 +178,63 @@ function CourseInsights({ course }: { course: Course }) {
         </div>
       </Card></>}
   </section>;
+}
+
+function CourseForm({ saving, onCancel, onSave }: { saving: boolean; onCancel: () => void; onSave: (course: Course) => Promise<void> }) {
+  const [title, setTitle] = useState("");
+  const [tagline, setTagline] = useState("");
+  const [category, setCategory] = useState<CategoryKey>("product");
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const cleanTitle = title.trim();
+    if (!cleanTitle) return;
+    void onSave({
+      slug: cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || `course-${Date.now()}`,
+      title: cleanTitle,
+      tagline: tagline.trim() || "New learning path.",
+      category,
+      level: "Beginner",
+      tags: [cleanTitle],
+      cover: covers[category],
+      addedAt: new Date().toISOString().slice(0, 10),
+      lessons: [],
+    });
+  }
+
+  return (
+    <Card className="space-y-3">
+      <div className="flex items-center justify-between">
+        <CardTitle>New category / course</CardTitle>
+        <Button type="button" size="sm" variant="ghost" onClick={onCancel} aria-label="Close course creation">
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+      <form onSubmit={submit} className="space-y-3">
+        <label className="block text-sm font-medium text-zinc-800">
+          Course title
+          <Input className="mt-1" placeholder="Course title (e.g. System Design)" value={title} onChange={(event) => setTitle(event.target.value)} required maxLength={160} />
+        </label>
+        <label className="block text-sm font-medium text-zinc-800">
+          One-line tagline
+          <Input className="mt-1" placeholder="One-line tagline" value={tagline} onChange={(event) => setTagline(event.target.value)} maxLength={400} />
+        </label>
+        <label className="block text-sm font-medium text-zinc-800">
+          Category
+          <select value={category} onChange={(event) => setCategory(event.target.value as CategoryKey)} className="focus-ring mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm">
+            <option value="product">Product Management</option>
+            <option value="data">Data Analytics</option>
+            <option value="ai">Agentic AI</option>
+            <option value="security">Cyber Security</option>
+          </select>
+        </label>
+        <Button type="submit" disabled={saving || !title.trim()} className="min-h-11">
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+          Create course
+        </Button>
+      </form>
+    </Card>
+  );
 }
 
 function CourseEditor({ course, saving, onCancel, onSave, onAddLesson, onDeleteLesson, onDeleteCourse }: { course?: Course | null; saving: boolean; onCancel: () => void; onSave: (course: Course) => Promise<void>; onAddLesson?: (lesson: Lesson) => Promise<void>; onDeleteLesson?: (lesson: Lesson) => Promise<void>; onDeleteCourse?: () => Promise<void> }) {
