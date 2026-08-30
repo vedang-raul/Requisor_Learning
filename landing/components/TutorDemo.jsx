@@ -1,31 +1,66 @@
 import { useEffect, useRef, useState } from 'react'
 import Message, { TypingBubble } from './Message.jsx'
+import CourseSuggestion, { parseCourseTags } from './CourseSuggestion.jsx'
+import LandingCourseCard from './LandingCourseCard.jsx'
+import { landingCourses } from '../../lib/courses'
+
+/* A reply naming 3+ paths reads as "show me everything you offer" — render
+   the full learning-path card grid instead of inline chips. */
+const ALL_COURSES_THRESHOLD = 3
+
+function renderAiMessage(text, tag, idx) {
+  const segments = parseCourseTags(text)
+  const courseSlugs = new Set(segments.filter((s) => s.type === 'course').map((s) => s.slug))
+
+  if (courseSlugs.size >= ALL_COURSES_THRESHOLD) {
+    const introText = segments
+      .filter((s) => s.type === 'text')
+      .map((s) => s.value)
+      .join(' ')
+      .trim()
+    return (
+      <div key={idx} className="flex flex-col gap-3">
+        {introText && (
+          <Message role="ai" tag={tag}>
+            <span>{introText}</span>
+          </Message>
+        )}
+        <div className="grid grid-cols-2 gap-2.5" aria-label="All learning paths">
+          {landingCourses.map((course) => (
+            <LandingCourseCard key={course.slug} course={course} />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <Message key={idx} role="ai" tag={tag}>
+      {segments.map((seg, si) =>
+        seg.type === 'course' ? (
+          <CourseSuggestion key={si} slug={seg.slug} title={seg.title} />
+        ) : (
+          <span key={si}>{seg.value}</span>
+        )
+      )}
+    </Message>
+  )
+}
 
 const SEED = [
   {
     role: 'ai',
-    tag: 'Adapted to: Healthcare PM',
-    text: "Welcome back, Maya. Last session you mastered prompt evaluation — your retention check is due Thursday. Today: retrieval. Since you work in care coordination, let's ground it there. What patient-data problem would you not trust a plain chatbot with?",
-  },
-  { role: 'me', text: 'Anything with actual patient records — it could just make things up.' },
-  {
-    role: 'ai',
-    text: 'Exactly — hallucination risk. So what if the model could only answer from documents we hand it, and had to cite which record it used? What would you need to build first?',
+    tag: 'Ask me anything',
+    text: "Hi — I'm the Requisor Learning assistant. Tell me about your role or what you're trying to learn, and I'll point you to the right path.",
   },
 ]
-
-const SYSTEM =
-  "You are Adept's Socratic AI tutor on a landing page demo, teaching applied AI engineering. Be warm, brief (2-4 sentences), and guide with questions and hints. Never give direct final answers to assignment-style questions; scaffold instead. If asked something off-topic, gently steer back to learning."
 
 const CANNED = [
-  "Good question — let's reason through it. If your retrieval step returned nothing relevant, what should the tutor's honest move be: guess, or say so and ask for more context? Why?",
-  "You're circling the right idea. Try this: explain it back to me as if to a colleague in your industry — where does your explanation feel shaky? That's exactly where we'll dig.",
-  'Instead of the answer, here’s a nudge: think about what changes between a demo and production — data freshness, edge cases, trust. Which of those three bites first in your world?',
+  "I'm having trouble reaching the assistant right now — but here's a starting point: {{course|product-management|Product Management}}, {{course|data-analytics|Data Analytics}}, {{course|agentic-ai|Agentic AI}}, and {{course|cyber-security|Cyber Security}} are our four learning paths. Sign in to explore any of them.",
 ]
 
-/* Point this at your own server-side proxy; the Anthropic API cannot be called
-   directly from a browser (no key, and CORS blocks it). Unset -> canned replies. */
-const TUTOR_API = process.env.NEXT_PUBLIC_TUTOR_API
+/* Same-origin Next.js API route — no key needed client-side, no CORS issue. */
+const TUTOR_API = '/api/landing-chat'
 
 export default function TutorDemo() {
   const [messages, setMessages] = useState([])
@@ -77,26 +112,16 @@ export default function TutorDemo() {
     setTyping(true)
     let reply
     try {
-      if (!TUTOR_API) throw new Error('no endpoint')
-      historyRef.current.push({ role: 'user', content: userText })
+      const nextHistory = [...historyRef.current, { role: 'user', content: userText }]
       const res = await fetch(TUTOR_API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-5',
-          max_tokens: 1000,
-          system: SYSTEM,
-          messages: historyRef.current,
-        }),
+        body: JSON.stringify({ messages: nextHistory }),
       })
       const data = await res.json()
-      reply = (data.content || [])
-        .filter((b) => b.type === 'text')
-        .map((b) => b.text)
-        .join('\n')
-        .trim()
-      if (!reply) throw new Error('empty')
-      historyRef.current.push({ role: 'assistant', content: reply })
+      if (!res.ok || !data.reply) throw new Error(data.error || 'empty')
+      reply = data.reply
+      historyRef.current = [...nextHistory, { role: 'assistant', content: reply }]
     } catch {
       reply = CANNED[cannedRef.current++ % CANNED.length]
     }
@@ -140,11 +165,15 @@ export default function TutorDemo() {
         ref={chatRef}
         className="flex max-h-[340px] flex-1 flex-col gap-3 overflow-y-auto px-4 py-5 sm:max-h-[380px] sm:px-[18px]"
       >
-        {messages.map((m, idx) => (
-          <Message key={idx} role={m.role} tag={m.tag}>
-            {m.text}
-          </Message>
-        ))}
+        {messages.map((m, idx) =>
+          m.role === 'ai' ? (
+            renderAiMessage(m.text, m.tag, idx)
+          ) : (
+            <Message key={idx} role={m.role} tag={m.tag}>
+              {m.text}
+            </Message>
+          )
+        )}
         {typing && <TypingBubble />}
       </div>
 
@@ -167,8 +196,7 @@ export default function TutorDemo() {
       </div>
 
       <p className="bg-[#FBFBFE] px-3.5 pb-3 text-center text-[11.5px] text-ink-soft">
-        This is the real thing — a Socratic tutor. It will guide you to the answer, never hand it to
-        you.
+        Ask about any learning path — full courses unlock after you sign in.
       </p>
     </div>
   )
