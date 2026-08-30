@@ -6,9 +6,12 @@ import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { buildProgressContext } from "@/lib/ai-context";
 import { getNudge, markNudgeSeen, type Nudge } from "@/lib/nudges";
+import { scoreCourses, formatRecommendationContext, type MatchProfile } from "@/lib/course-match";
 import { cn } from "@/lib/utils";
 import { renderMarkdownLite, endsInOpenTag } from "@/components/markdown-lite";
 import { useVoice } from "@/hooks/use-voice";
+import { PersonaAvatar } from "@/components/persona-avatar";
+import { getPersona } from "@/lib/personas";
 type ChatMessage = { role: "user" | "assistant"; content: string };
 const LEARNER_QUICK_PROMPTS = [
   { icon: TrendingUp, label: "How am I doing overall?" },
@@ -22,6 +25,24 @@ const TUTOR_QUICK_PROMPTS = [
   { icon: Compass, label: "Improve my course structure" },
   { icon: TrendingUp, label: "Create activities and assessments" },
 ];
+/** Best-effort match from a preferred language code to a Web Speech voice lang prefix. */
+const LANGUAGE_VOICE_PREFIXES: Record<string, string[]> = {
+  en: ["en-US", "en-"],
+  es: ["es-"],
+  fr: ["fr-"],
+  de: ["de-"],
+  pt: ["pt-BR", "pt-"],
+  hi: ["hi-", "en-IN"],
+  ar: ["ar-"],
+  zh: ["zh-CN", "zh-"],
+  ja: ["ja-"],
+  ko: ["ko-"],
+  it: ["it-"],
+  nl: ["nl-"],
+  ru: ["ru-"],
+  pl: ["pl-"],
+  id: ["id-"],
+};
 const dotTransition = (delay: number) => ({
   duration: 0.9,
   repeat: Infinity,
@@ -184,6 +205,9 @@ export function AiAssistant() {
   const [streaming, setStreaming] = useState(false);
   const [retryText, setRetryText] = useState<string | null>(null);
   const [nudge, setNudge] = useState<Nudge | null>(null);
+  const [assistantPersona, setAssistantPersona] = useState<string>("");
+  const [preferredLanguage, setPreferredLanguage] = useState<string>("");
+  const [matchProfile, setMatchProfile] = useState<MatchProfile>({});
   const [voiceMuted, setVoiceMuted] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
     return localStorage.getItem(MUTE_KEY) === "true";
@@ -212,6 +236,48 @@ export function AiAssistant() {
   const initials = (state.user?.name ?? "U").slice(0, 1).toUpperCase();
   const voice = useVoice();
   const waveBars = useMicWaveform(voice.isListening);
+  const avatarState = voice.isSpeaking ? "speaking" : voice.isListening ? "listening" : "idle";
+  // Load the user's AI-guide appearance/language preference, plus the
+  // profile signals (role, background, goal) the course-match engine needs —
+  // once per session.
+  useEffect(() => {
+    if (!hydrated || !state.user) return;
+    fetch("/api/profile")
+      .then((r) => r.json())
+      .then((data: {
+        assistantPersona?: string; preferredLanguage?: string;
+        position?: string; qualification?: string; learningGoal?: string;
+      }) => {
+        setAssistantPersona(data.assistantPersona ?? "");
+        setPreferredLanguage(data.preferredLanguage ?? "");
+        setMatchProfile({
+          position: data.position || null,
+          qualification: data.qualification || null,
+          learningGoal: data.learningGoal || null,
+        });
+      })
+      .catch(() => {});
+  }, [hydrated, state.user]);
+  // Deterministic "best suited course" ranking — computed here (not guessed
+  // by the model) from the learner's own profile text and real progress.
+  const recommendationContext = useMemo(
+    () => (isTutorMode ? "" : formatRecommendationContext(scoreCourses(state.courses, state.progress, matchProfile))),
+    [isTutorMode, state.courses, state.progress, matchProfile]
+  );
+  // Once voices and a language preference are both known, pick a matching
+  // voice automatically — but only if the user hasn't manually chosen one.
+  useEffect(() => {
+    if (voice.selectedVoiceName || !preferredLanguage || voice.voices.length === 0) return;
+    const prefixes = LANGUAGE_VOICE_PREFIXES[preferredLanguage];
+    if (!prefixes) return;
+    for (const prefix of prefixes) {
+      const match = voice.voices.find((v) => v.lang.startsWith(prefix));
+      if (match) {
+        voice.setSelectedVoiceName(match.name);
+        break;
+      }
+    }
+  }, [preferredLanguage, voice.voices, voice.selectedVoiceName, voice.setSelectedVoiceName]);
   // When a transcript arrives from STT, put it in the input box so the user
   // can see what was heard before it's sent.
   useEffect(() => {
@@ -364,7 +430,7 @@ export function AiAssistant() {
         headers: { "Content-Type": "application/json" },
         signal: requestController.signal,
         body: JSON.stringify(
-          isTutorMode ? { messages: next } : { messages: next, progressContext }
+          isTutorMode ? { messages: next } : { messages: next, progressContext, recommendationContext }
         ),
       });
       if (!res.body) throw new Error("No response body");
@@ -457,15 +523,8 @@ export function AiAssistant() {
                   <X className="h-5 w-5 text-zinc-700" />
                 </span>
               ) : (
-                <span className="flex items-center justify-center ">
-                  <div className="ai-bot">
-                    <div className="head">
-                      <div className="face">
-                        <div className="eyes"></div>
-                        <div className="mouth"></div>
-                      </div>
-                    </div>
-                  </div>
+                <span className="flex items-center justify-center">
+                  <PersonaAvatar personaId={assistantPersona} size="lg" state={avatarState} />
                 </span>
               )}
             </motion.span>
@@ -498,10 +557,7 @@ export function AiAssistant() {
                 style={{ backgroundSize: "200% 100%" }}
               />
               <div className="relative shrink-0">
-                <div className="h-9 w-9 overflow-hidden rounded-xl shadow-glow-sm">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/requisor.png" alt="Requisor" className="h-full w-full scale-[1.35] object-cover" />
-                </div>
+                <PersonaAvatar personaId={assistantPersona} size="sm" state={avatarState} className="shadow-glow-sm" />
                 <span className="absolute -bottom-0.5 -right-0.5 flex h-2.5 w-2.5">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                   <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
@@ -509,8 +565,7 @@ export function AiAssistant() {
               </div>
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-1 truncate text-sm font-semibold text-zinc-900">
-                  Requisor Assistant
-
+                  {isTutorMode ? "Requisor Assistant" : getPersona(assistantPersona).name}
                 </p>
                 <p className="truncate text-xs text-zinc-500">
                   {isTutorMode ? "Course structure and content copilot" : "Knows your progress across all paths"}
@@ -621,10 +676,12 @@ export function AiAssistant() {
                     className={cn("flex items-end gap-2", isUser ? "justify-end" : "justify-start")}
                   >
                     {!isUser && (
-                      <div className="mb-0.5 h-6 w-6 shrink-0 overflow-hidden rounded-full">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src="/requisor.png" alt="" className="h-full w-full scale-[1.35] object-cover" />
-                      </div>
+                      <PersonaAvatar
+                        personaId={assistantPersona}
+                        size="xs"
+                        state={isLastAssistant && streaming ? "speaking" : "idle"}
+                        className="mb-0.5"
+                      />
                     )}
                     <motion.div
                       layout

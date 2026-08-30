@@ -63,7 +63,10 @@ describe("POST /api/chat role-aware assistant", () => {
     await response.text();
 
     expect(response.status).toBe(200);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(String(mockQuery.mock.calls[0][0])).toContain("assistant_persona");
+    expect(String(mockQuery.mock.calls[0][0])).not.toContain("FROM courses");
+    expect(mockQuery.mock.calls[0][1]).toEqual([4]);
     const request = (global.fetch as jest.Mock).mock.calls[0][1] as RequestInit;
     const upstreamBody = JSON.parse(String(request.body));
     expect(upstreamBody.messages[0].content).toContain("Requisor Learning Assistant");
@@ -90,8 +93,11 @@ describe("POST /api/chat role-aware assistant", () => {
     }));
     await response.text();
 
-    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+    expect(String(mockQuery.mock.calls[0][0])).toContain("FROM courses");
     expect(mockQuery.mock.calls[0][1]).toEqual([7]);
+    expect(String(mockQuery.mock.calls[1][0])).toContain("assistant_persona");
+    expect(mockQuery.mock.calls[1][1]).toEqual([7]);
     const request = (global.fetch as jest.Mock).mock.calls[0][1] as RequestInit;
     const upstreamBody = JSON.parse(String(request.body));
     const systemPrompt = upstreamBody.messages[0].content as string;

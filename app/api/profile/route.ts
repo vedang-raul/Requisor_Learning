@@ -2,13 +2,14 @@ import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
 import { db, type DbUser } from "@/lib/db";
+import { PERSONAS, LANGUAGES, COUNTRIES } from "@/lib/personas";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { rows } = await db.query<DbUser>(
-    "SELECT name, email, role, employment_type, position, date_of_birth, gender, qualification, learning_goal, onboarding_done FROM users WHERE email = $1",
+    "SELECT name, email, role, employment_type, position, date_of_birth, gender, qualification, learning_goal, onboarding_done, assistant_persona, preferred_language, preferred_country FROM users WHERE email = $1",
     [session.user.email.toLowerCase()]
   );
   if (!rows[0]) return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -25,6 +26,9 @@ export async function GET() {
     qualification: r.qualification ?? "",
     learningGoal: r.learning_goal ?? "",
     onboardingDone: r.onboarding_done ?? false,
+    assistantPersona: r.assistant_persona ?? "",
+    preferredLanguage: r.preferred_language ?? "",
+    preferredCountry: r.preferred_country ?? "",
   });
 }
 
@@ -47,12 +51,19 @@ export async function PATCH(req: Request) {
       badges: boolean;
       announcements: boolean;
     };
+    assistantPersona?: string;
+    preferredLanguage?: string;
+    preferredCountry?: string;
   };
 
-  // Name is only required when it's being explicitly updated (not during onboarding-only or notif-only saves)
+  const isAssistantOnly =
+    (body.assistantPersona !== undefined || body.preferredLanguage !== undefined || body.preferredCountry !== undefined) &&
+    !body.name && !body.onboardingDone && body.notificationSettings === undefined;
+
+  // Name is only required when it's being explicitly updated (not during onboarding-only, notif-only, or assistant-only saves)
   const isOnboardingOnly = body.onboardingDone === true && !body.name;
   const isNotifOnly = body.notificationSettings !== undefined && !body.name && !body.onboardingDone;
-  if (!isOnboardingOnly && !isNotifOnly) {
+  if (!isOnboardingOnly && !isNotifOnly && !isAssistantOnly) {
     const name = body.name?.trim();
     if (!name) return NextResponse.json({ error: "Name is required." }, { status: 400 });
   }
@@ -64,6 +75,37 @@ export async function PATCH(req: Request) {
       [JSON.stringify(body.notificationSettings), session.user.email.toLowerCase()]
     );
     return NextResponse.json({ notificationSettings: body.notificationSettings });
+  }
+
+  // AI guide preferences-only fast path — validate against known option lists so
+  // only vetted values ever reach the chat system prompt.
+  if (isAssistantOnly) {
+    const persona = body.assistantPersona !== undefined
+      ? (PERSONAS.some((p) => p.id === body.assistantPersona) ? body.assistantPersona : null)
+      : undefined;
+    const language = body.preferredLanguage !== undefined
+      ? (LANGUAGES.some((l) => l.code === body.preferredLanguage) ? body.preferredLanguage : null)
+      : undefined;
+    const country = body.preferredCountry !== undefined
+      ? (COUNTRIES.includes(body.preferredCountry ?? "") ? body.preferredCountry : null)
+      : undefined;
+
+    const { rows } = await db.query<DbUser>(
+      `UPDATE users
+       SET assistant_persona = COALESCE($1, assistant_persona),
+           preferred_language = COALESCE($2, preferred_language),
+           preferred_country = COALESCE($3, preferred_country)
+       WHERE email = $4
+       RETURNING assistant_persona, preferred_language, preferred_country`,
+      [persona ?? null, language ?? null, country ?? null, session.user.email.toLowerCase()]
+    );
+    if (!rows[0]) return NextResponse.json({ error: "User not found" }, { status: 404 });
+    const r = rows[0];
+    return NextResponse.json({
+      assistantPersona: r.assistant_persona ?? "",
+      preferredLanguage: r.preferred_language ?? "",
+      preferredCountry: r.preferred_country ?? "",
+    });
   }
 
   // DOB must be a valid past date if provided

@@ -25,7 +25,10 @@ p.query(\`
     ADD COLUMN IF NOT EXISTS qualification TEXT,
     ADD COLUMN IF NOT EXISTS learning_goal TEXT,
     ADD COLUMN IF NOT EXISTS onboarding_done BOOLEAN DEFAULT FALSE,
-    ADD COLUMN IF NOT EXISTS notification_settings JSONB DEFAULT '{"courses":true,"assignments":true,"badges":true,"announcements":true}';
+    ADD COLUMN IF NOT EXISTS notification_settings JSONB DEFAULT '{"courses":true,"assignments":true,"badges":true,"announcements":true}',
+    ADD COLUMN IF NOT EXISTS assistant_persona VARCHAR(20),
+    ADD COLUMN IF NOT EXISTS preferred_language VARCHAR(10),
+    ADD COLUMN IF NOT EXISTS preferred_country VARCHAR(60);
 
   DO \$\$
   BEGIN

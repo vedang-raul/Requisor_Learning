@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
 import { acquireAiSlot, SemaphoreFullError } from "@/lib/ai-semaphore";
+import { getPersona, LANGUAGES, getLanguageLabel } from "@/lib/personas";
 import {
   InvalidJsonBodyError,
   readJsonBody,
@@ -18,6 +19,7 @@ const MODEL = process.env.XAI_MODEL || "grok-3-mini";
 const MAX_HISTORY = 20;
 const MAX_MESSAGE_LENGTH = 2000;
 const MAX_PROGRESS_CONTEXT_LENGTH = 4000;
+const MAX_RECOMMENDATION_CONTEXT_LENGTH = 1200;
 const MAX_CHAT_REQUEST_BYTES = 64 * 1024;
 const MAX_TUTOR_CONTEXT_LENGTH = 6000;
 const MAX_OUTPUT_CHARS = 12000;
@@ -43,11 +45,15 @@ function escapePromptData(value: string): string {
     .replaceAll(">", "&gt;");
 }
 
+type GuidePrefs = { personaName: string; language: string | null; country: string | null };
+
 // ── System prompt ─────────────────────────────────────────────────────────────
 function buildSystemPrompt(
   role: AssistantRole,
   progressContext: string,
-  tutorContext: string
+  tutorContext: string,
+  guide: GuidePrefs,
+  recommendationContext: string
 ): string {
   if (role === "tutor" || role === "admin") {
     return `You are Requisor Learning's Tutor Course Copilot. You act as an experienced instructional designer and teaching assistant for tutors and admins.
@@ -72,7 +78,7 @@ ${tutorContext}
 </managed-course-data>`;
   }
 
-  return `You are the Requisor Learning Assistant. Your sole responsibility is to help users navigate and use the Requisor Learning platform. You do NOT act as a full educational tutor.
+  return `You are the Requisor Learning Assistant — an on-screen guide the user has personalized as "${guide.personaName}". Your sole responsibility is to help users navigate and use the Requisor Learning platform. You do NOT act as a full educational tutor.
 
 You help users:
 - find courses and lessons
@@ -90,9 +96,39 @@ Rules:
 - Keep answers concise (1–5 sentences).
 - When referencing a lesson that exists in the provided data, wrap it as: {{lesson|Course Name|Lesson Name}}. Only use lesson tags for lessons present in the supplied context.
 - When suggesting or recommending a whole course, wrap it as: {{course|slug|Course Title}} using exactly these slugs — data-analytics, product-management, cyber-security, agentic-ai. Never output raw JSON, curly braces, or structured data; always use these tags.
+- When asked "what should I learn next" or for a course recommendation, base your answer on the computed ranking below rather than guessing from scratch — it already accounts for the learner's role/goals and their real progress. You may still phrase it naturally and add a sentence of your own reasoning.
+${guide.language && guide.language !== "English" ? `- The user's preferred language is ${guide.language}. Reply in ${guide.language} unless they write to you in a different language, in which case match their language.` : ""}
+${guide.country ? `- The user is based in ${guide.country} — you may use this for locale-appropriate small talk (timezones, greetings) only. Never assume anything else about the user from their country or language.` : ""}
 
 Current user progress context:
-${progressContext}`;
+${progressContext}
+${recommendationContext ? `\n${recommendationContext}` : ""}`;
+}
+
+async function getGuidePrefs(userId: string): Promise<GuidePrefs> {
+  const numericUserId = Number(userId);
+  const fallback: GuidePrefs = { personaName: "Nova", language: null, country: null };
+  if (!Number.isSafeInteger(numericUserId) || numericUserId <= 0) return fallback;
+
+  try {
+    const { rows } = await db.query<{
+      assistant_persona: string | null;
+      preferred_language: string | null;
+      preferred_country: string | null;
+    }>(
+      "SELECT assistant_persona, preferred_language, preferred_country FROM users WHERE id = $1",
+      [numericUserId]
+    );
+    const r = rows[0];
+    if (!r) return fallback;
+    return {
+      personaName: getPersona(r.assistant_persona).name,
+      language: LANGUAGES.some((l) => l.code === r.preferred_language) ? getLanguageLabel(r.preferred_language) : null,
+      country: r.preferred_country ? escapePromptData(r.preferred_country) : null,
+    };
+  } catch {
+    return fallback;
+  }
 }
 
 async function getTutorContext(role: "tutor" | "admin", userId: string): Promise<string> {
@@ -161,7 +197,7 @@ export async function POST(req: Request) {
 
   // 4. Parse and validate body. The role is intentionally not accepted from
   // the client; it comes only from the authenticated session.
-  let body: { messages?: unknown; progressContext?: unknown };
+  let body: { messages?: unknown; progressContext?: unknown; recommendationContext?: unknown };
   try {
     const parsed = await readJsonBody(req, MAX_CHAT_REQUEST_BYTES);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -205,11 +241,17 @@ export async function POST(req: Request) {
   const rawContext = typeof body.progressContext === "string"
     ? body.progressContext.slice(0, MAX_PROGRESS_CONTEXT_LENGTH)
     : "No progress data available.";
+  // Client-computed (not model-guessed) course ranking — same trust level as
+  // progressContext above: it only shapes advice text, never a privileged action.
+  const recommendationContext = role === "employee" && typeof body.recommendationContext === "string"
+    ? body.recommendationContext.slice(0, MAX_RECOMMENDATION_CONTEXT_LENGTH)
+    : "";
   // Tutor/admin prompts intentionally receive no learner progress context.
   const tutorContext = role === "employee"
     ? ""
     : await getTutorContext(role, session.user.id ?? "");
-  const system = buildSystemPrompt(role, role === "employee" ? rawContext : "", tutorContext);
+  const guidePrefs = await getGuidePrefs(session.user.id ?? "");
+  const system = buildSystemPrompt(role, role === "employee" ? rawContext : "", tutorContext, guidePrefs, recommendationContext);
 
   // 6. Build combined AbortController (client disconnect + upstream timeout)
   const timeoutController = new AbortController();

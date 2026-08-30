@@ -55,6 +55,9 @@ export interface DbUser {
   qualification: string | null;
   learning_goal: string | null;
   onboarding_done: boolean;
+  assistant_persona: string | null;
+  preferred_language: string | null;
+  preferred_country: string | null;
   notification_settings: {
     courses: boolean;
     assignments: boolean;

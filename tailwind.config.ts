@@ -88,6 +88,28 @@ const config: Config = {
           "0%, 100%": { opacity: "1" },
           "50%": { opacity: "0" },
         },
+        "persona-breathe": {
+          "0%, 100%": { transform: "scale(1)", opacity: "0.55" },
+          "50%": { transform: "scale(1.06)", opacity: "0.7" },
+        },
+        "persona-pulse": {
+          "0%, 100%": { transform: "scale(1)", opacity: "0.7" },
+          "50%": { transform: "scale(1.12)", opacity: "0.95" },
+        },
+        "persona-pulse-fast": {
+          "0%, 100%": { transform: "scale(1)", opacity: "0.85" },
+          "50%": { transform: "scale(1.15)", opacity: "1" },
+        },
+        "persona-core": {
+          "0%, 100%": { transform: "scale(1)", opacity: "0.85" },
+          "25%": { transform: "scale(1.35)", opacity: "1" },
+          "50%": { transform: "scale(0.85)", opacity: "0.7" },
+          "75%": { transform: "scale(1.25)", opacity: "1" },
+        },
+        "persona-core-slow": {
+          "0%, 100%": { transform: "scale(1)", opacity: "0.8" },
+          "50%": { transform: "scale(1.2)", opacity: "1" },
+        },
       },
       animation: {
         eq: "eq 1.1s ease-in-out infinite",
@@ -101,6 +123,11 @@ const config: Config = {
         shimmer: "shimmer 1.6s infinite",
         "pulse-slow": "pulse-slow 6s ease-in-out infinite",
         "pulse-cursor": "pulse-cursor 0.9s step-end infinite",
+        "persona-breathe": "persona-breathe 3.4s ease-in-out infinite",
+        "persona-pulse": "persona-pulse 1.1s ease-in-out infinite",
+        "persona-pulse-fast": "persona-pulse-fast 0.55s ease-in-out infinite",
+        "persona-core": "persona-core 0.5s ease-in-out infinite",
+        "persona-core-slow": "persona-core-slow 1s ease-in-out infinite",
       },
     },
   },
