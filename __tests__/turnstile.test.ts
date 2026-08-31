@@ -13,9 +13,12 @@ import { isTurnstileEnabled, verifyTurnstile } from "@/lib/turnstile";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function mockFetch(response: { success: boolean }) {
+function mockFetch(response: { success: boolean }, init: { ok?: boolean; status?: number } = {}) {
   (global.fetch as jest.Mock).mockResolvedValueOnce({
+    ok: init.ok ?? true,
+    status: init.status ?? 200,
     json: async () => response,
+    text: async () => JSON.stringify(response),
   });
 }
 
@@ -55,11 +58,29 @@ describe("verifyTurnstile — with a configured secret", () => {
     expect(success).toBe(true);
   });
 
+  it("fails closed and logs when siteverify returns a non-OK status", async () => {
+    // Regression: the endpoint URL was once /turnstile/v1/siteverify, which
+    // 404s with an empty body. res.json() then threw and the catch swallowed
+    // it, so a wrong URL was indistinguishable from a genuine bot rejection.
+    const error = jest.spyOn(console, "error").mockImplementation(() => {});
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      json: async () => { throw new SyntaxError("Unexpected end of JSON input"); },
+      text: async () => "",
+    });
+    expect(await verifyTurnstile("valid-token")).toEqual({ success: false });
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining("non-OK status"), 404, ""
+    );
+    error.mockRestore();
+  });
+
   it("calls the Cloudflare siteverify endpoint with the secret and token", async () => {
     mockFetch({ success: true });
     await verifyTurnstile("my-token");
     expect(global.fetch).toHaveBeenCalledWith(
-      "https://challenges.cloudflare.com/turnstile/v1/siteverify",
+      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
       expect.objectContaining({ method: "POST" })
     );
   });

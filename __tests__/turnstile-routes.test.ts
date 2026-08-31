@@ -2,7 +2,7 @@
  * __tests__/turnstile-routes.test.ts
  *
  * Verifies that CAPTCHA enforcement is wired into the login, signup,
- * forgot-password, and Google-initiate routes.
+ * forgot-password, password-reset, and Google-initiate routes.
  *
  * lib/turnstile is mocked so tests run without Cloudflare credentials.
  * The mock exposes a controllable function so individual tests can simulate
@@ -76,6 +76,7 @@ jest.mock("@/lib/request-body", () => ({
 
 import { POST as signupPost } from "@/app/api/signup/route";
 import { POST as forgotPost } from "@/app/api/forgot/route";
+import { POST as resetPost } from "@/app/api/reset/route";
 import { POST as authPost } from "@/app/api/auth/[...nextauth]/route";
 import { POST as googleInitiatePost } from "@/app/api/auth/google-initiate/route";
 // Real captcha-grant implementation used so we can issue + verify grants in tests.
@@ -103,6 +104,23 @@ function makeForgotRequest(token?: string) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       email: "alice@example.com",
+      ...(token !== undefined ? { turnstileToken: token } : {}),
+    }),
+  });
+}
+
+// A syntactically valid reset token (64 lowercase hex chars). The route
+// validates the shape before CAPTCHA, so the token must pass that check for
+// these tests to exercise the CAPTCHA gate rather than the format guard.
+const VALID_RESET_TOKEN = "a".repeat(64);
+
+function makeResetRequest(token?: string) {
+  return new Request("http://localhost/api/reset", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      token: VALID_RESET_TOKEN,
+      password: "securepassword",
       ...(token !== undefined ? { turnstileToken: token } : {}),
     }),
   });
@@ -209,6 +227,52 @@ describe("POST /api/forgot — CAPTCHA enforcement", () => {
   it("calls verifyTurnstile with the submitted token", async () => {
     await forgotPost(makeForgotRequest("my-token"));
     expect(mockVerifyTurnstile).toHaveBeenCalledWith("my-token");
+  });
+});
+
+// ── POST /api/reset ─────────────────────────────────────────────
+
+describe("POST /api/reset — CAPTCHA enforcement", () => {
+  it("returns 403 when CAPTCHA verification fails", async () => {
+    mockVerifyTurnstile.mockResolvedValueOnce({ success: false });
+    const res = await resetPost(makeResetRequest("bad-token"));
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toMatch(/bot check/i);
+  });
+
+  it("does not touch the database when CAPTCHA fails", async () => {
+    const { db } = jest.requireMock("@/lib/db") as { db: { query: jest.Mock } };
+    mockVerifyTurnstile.mockResolvedValueOnce({ success: false });
+    await resetPost(makeResetRequest("bad-token"));
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
+  it("passes through when CAPTCHA succeeds", async () => {
+    const res = await resetPost(makeResetRequest("good-token"));
+    expect(res.status).not.toBe(403);
+  });
+
+  it("calls verifyTurnstile with the submitted token", async () => {
+    await resetPost(makeResetRequest("my-token"));
+    expect(mockVerifyTurnstile).toHaveBeenCalledWith("my-token");
+  });
+
+  it("passes null to verifyTurnstile when no token is supplied", async () => {
+    await resetPost(makeResetRequest());
+    expect(mockVerifyTurnstile).toHaveBeenCalledWith(null);
+  });
+
+  it("rejects a malformed reset token before CAPTCHA verification", async () => {
+    const res = await resetPost(
+      new Request("http://localhost/api/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: "not-hex", password: "securepassword" }),
+      })
+    );
+    expect(res.status).toBe(400);
+    expect(mockVerifyTurnstile).not.toHaveBeenCalled();
   });
 });
 

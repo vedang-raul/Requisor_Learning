@@ -22,7 +22,7 @@
  */
 
 const SITEVERIFY_URL =
-  "https://challenges.cloudflare.com/turnstile/v1/siteverify";
+  "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 
 /** Whether the server-side Turnstile gate is enabled. */
 export function isTurnstileEnabled(): boolean {
@@ -69,7 +69,21 @@ export async function verifyTurnstile(
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ secret, response: token }).toString(),
     });
-    const data = (await res.json()) as { success: boolean };
+    // Check the status before parsing. A non-OK response has no JSON body, so
+    // res.json() would throw and be swallowed by the catch below — turning an
+    // endpoint/transport fault into an indistinguishable "CAPTCHA failed".
+    if (!res.ok) {
+      console.error(
+        "[turnstile] siteverify returned a non-OK status:",
+        res.status,
+        await res.text().catch(() => "")
+      );
+      return { success: false };
+    }
+    const data = (await res.json()) as { success: boolean; "error-codes"?: string[] };
+    if (data.success !== true) {
+      console.error("[turnstile] siteverify rejected the token:", data["error-codes"] ?? []);
+    }
     return { success: data.success === true };
   } catch (err) {
     console.error("[turnstile] siteverify request failed:", err);

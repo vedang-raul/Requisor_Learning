@@ -3,6 +3,7 @@ import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { db, type DbUser } from "@/lib/db";
 import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/request-body";
+import { verifyTurnstile } from "@/lib/turnstile";
 
 const MAX_RESET_REQUEST_BYTES = 4 * 1024;
 const MAX_PASSWORD_LENGTH = 1024;
@@ -30,12 +31,24 @@ export async function POST(req: Request) {
     if (!isRecord(body)) {
       return NextResponse.json({ error: "Invalid reset link." }, { status: 400 });
     }
-    const { token, password } = body;
+    const { token, password, turnstileToken } = body;
     if (typeof token !== "string" || !RESET_TOKEN_PATTERN.test(token)) {
       return NextResponse.json({ error: "Invalid reset link." }, { status: 400 });
     }
     if (typeof password !== "string" || password.length < 8 || password.length > MAX_PASSWORD_LENGTH) {
       return NextResponse.json({ error: "Password must be between 8 and 1024 characters." }, { status: 400 });
+    }
+
+    // Turnstile CAPTCHA — verify before any DB access or password hashing.
+    // Mirrors /api/forgot so both halves of the reset flow are gated.
+    const { success: captchaOk } = await verifyTurnstile(
+      typeof turnstileToken === "string" ? turnstileToken : null
+    );
+    if (!captchaOk) {
+      return NextResponse.json(
+        { error: "Bot check failed — please try again." },
+        { status: 403 }
+      );
     }
 
     const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
