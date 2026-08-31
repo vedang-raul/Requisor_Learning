@@ -512,9 +512,9 @@ export function AiAssistant() {
           <AnimatePresence mode="wait" initial={false}>
             <motion.span
               key={open ? "close" : "open"}
-              initial={{ opacity: 0, rotate: -45, scale: 0.7 }}
-              animate={{ opacity: 1, rotate: 0, scale: 1 }}
-              exit={{ opacity: 0, rotate: 45, scale: 0.7 }}
+              initial={{ rotate: -45, scale: 0.7 }}
+              animate={{ rotate: 0, scale: 1 }}
+              exit={{ rotate: 45, scale: 0.7 }}
               transition={{ duration: 0.15 }}
               className="flex h-full w-full items-center justify-center rounded-full"
             >
