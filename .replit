@@ -45,7 +45,6 @@ build = ["npm", "run", "build"]
 [userenv]
 
 [userenv.shared]
-NEXT_PUBLIC_TURNSTILE_ENABLED = "true "
 TURNSTILE_ENABLED = "true"
 
 [userenv.production]
