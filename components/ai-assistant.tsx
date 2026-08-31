@@ -523,8 +523,15 @@ export function AiAssistant() {
                   <X className="h-5 w-5 text-zinc-700" />
                 </span>
               ) : (
-                <span className="flex items-center justify-center">
-                  <PersonaAvatar personaId={assistantPersona} size="lg" state={avatarState} />
+                <span className="flex h-full w-full items-center justify-center">
+                  <span className="ai-bot" aria-hidden="true">
+                    <span className="head">
+                      <span className="face">
+                        <span className="eyes" />
+                        <span className="mouth" />
+                      </span>
+                    </span>
+                  </span>
                 </span>
               )}
             </motion.span>
