@@ -9,7 +9,6 @@ import { formatMinutes } from "./utils";
 export function buildProgressContext(state: AppState): string {
   const lines: string[] = [];
 
-  lines.push(`Learner: ${state.user?.name ?? "Unknown"} (${state.user?.email ?? "no email"})`);
   lines.push(`XP: ${state.xp}`);
 
   const allLessons = state.courses.flatMap((c) => c.lessons);

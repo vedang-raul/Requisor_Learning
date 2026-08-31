@@ -4,9 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Check, Compass, ListChecks, Loader2, RotateCcw, Send, Sparkles, TrendingUp, Volume2, VolumeX, X, ChevronDown } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
-import { buildProgressContext } from "@/lib/ai-context";
 import { getNudge, markNudgeSeen, type Nudge } from "@/lib/nudges";
-import { scoreCourses, formatRecommendationContext, type MatchProfile } from "@/lib/course-match";
 import { cn } from "@/lib/utils";
 import { renderMarkdownLite, endsInOpenTag } from "@/components/markdown-lite";
 import { useVoice } from "@/hooks/use-voice";
@@ -14,10 +12,10 @@ import { PersonaAvatar } from "@/components/persona-avatar";
 import { getPersona } from "@/lib/personas";
 type ChatMessage = { role: "user" | "assistant"; content: string };
 const LEARNER_QUICK_PROMPTS = [
-  { icon: TrendingUp, label: "How am I doing overall?" },
+  { icon: Compass, label: "Recommend a course for my background" },
   { icon: Compass, label: "What should I learn next?" },
   { icon: ListChecks, label: "Summarize my progress" },
-  { icon: TrendingUp, label: "How do I earn more XP?" },
+  { icon: TrendingUp, label: "How am I doing overall?" },
 ];
 const TUTOR_QUICK_PROMPTS = [
   { icon: Sparkles, label: "Design a course from my topic" },
@@ -207,7 +205,6 @@ export function AiAssistant() {
   const [nudge, setNudge] = useState<Nudge | null>(null);
   const [assistantPersona, setAssistantPersona] = useState<string>("");
   const [preferredLanguage, setPreferredLanguage] = useState<string>("");
-  const [matchProfile, setMatchProfile] = useState<MatchProfile>({});
   const [voiceMuted, setVoiceMuted] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
     return localStorage.getItem(MUTE_KEY) === "true";
@@ -228,42 +225,25 @@ export function AiAssistant() {
   // Track whether we've already spoken / navigated for the current AI reply
   const didSpeakRef = useRef(false);
   const didNavigateRef = useRef(false);
-  const progressContext = useMemo(
-    () => isTutorMode ? "" : buildProgressContext(state),
-    [isTutorMode, state]
-  );
   const quickPrompts = isTutorMode ? TUTOR_QUICK_PROMPTS : LEARNER_QUICK_PROMPTS;
   const initials = (state.user?.name ?? "U").slice(0, 1).toUpperCase();
   const voice = useVoice();
   const waveBars = useMicWaveform(voice.isListening);
   const avatarState = voice.isSpeaking ? "speaking" : voice.isListening ? "listening" : "idle";
-  // Load the user's AI-guide appearance/language preference, plus the
-  // profile signals (role, background, goal) the course-match engine needs —
-  // once per session.
+  // Load the user's AI-guide appearance/language preference once per session.
+  // Student profile/progress context is loaded by the authenticated chat route.
   useEffect(() => {
     if (!hydrated || !state.user) return;
     fetch("/api/profile")
       .then((r) => r.json())
       .then((data: {
         assistantPersona?: string; preferredLanguage?: string;
-        position?: string; qualification?: string; learningGoal?: string;
       }) => {
         setAssistantPersona(data.assistantPersona ?? "");
         setPreferredLanguage(data.preferredLanguage ?? "");
-        setMatchProfile({
-          position: data.position || null,
-          qualification: data.qualification || null,
-          learningGoal: data.learningGoal || null,
-        });
       })
       .catch(() => {});
   }, [hydrated, state.user]);
-  // Deterministic "best suited course" ranking — computed here (not guessed
-  // by the model) from the learner's own profile text and real progress.
-  const recommendationContext = useMemo(
-    () => (isTutorMode ? "" : formatRecommendationContext(scoreCourses(state.courses, state.progress, matchProfile))),
-    [isTutorMode, state.courses, state.progress, matchProfile]
-  );
   // Once voices and a language preference are both known, pick a matching
   // voice automatically — but only if the user hasn't manually chosen one.
   useEffect(() => {
@@ -429,9 +409,7 @@ export function AiAssistant() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: requestController.signal,
-        body: JSON.stringify(
-          isTutorMode ? { messages: next } : { messages: next, progressContext, recommendationContext }
-        ),
+        body: JSON.stringify({ messages: next }),
       });
       if (!res.body) throw new Error("No response body");
       if (!res.ok) setRetryText(trimmed);
@@ -495,7 +473,7 @@ export function AiAssistant() {
               <p className="text-[11px] font-medium leading-snug text-zinc-700">
                 {isTutorMode
                   ? "Tell me your course topic and I’ll help shape the learning experience."
-                  : "Hey! I’m here to help with your learning journey."}
+                  : "I’ll recommend courses using your background and progress."}
               </p>
               {/* Tail */}
               <span className="absolute -bottom-2 right-3 h-0 w-0 border-x-8 border-t-8 border-x-transparent border-t-gray-200 " />
@@ -575,7 +553,7 @@ export function AiAssistant() {
                   {isTutorMode ? "Requisor Assistant" : getPersona(assistantPersona).name}
                 </p>
                 <p className="truncate text-xs text-zinc-500">
-                  {isTutorMode ? "Course structure and content copilot" : "Knows your progress across all paths"}
+                  {isTutorMode ? "Course structure and content copilot" : "Guidance based on your background and progress"}
                 </p>
               </div>
               {/* Mute/unmute TTS button — only shown when TTS is supported */}
@@ -647,7 +625,7 @@ export function AiAssistant() {
                     Hi {state.user?.name?.split(" ")[0] ?? "there"}.{" "}
                     {isTutorMode
                       ? "What course would you like to design? Include the topic, audience, or level if you know them."
-                      : "Ask me about your progress, or what to learn next."}
+                      : "Ask which course fits your background, or what to learn next based on your progress."}
                   </p>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {quickPrompts.map(({ icon: Icon, label }, i) => (
@@ -780,7 +758,7 @@ export function AiAssistant() {
                           send(input);
                         }
                       }}
-                      placeholder={isTutorMode ? "Describe a course you want to design…" : "Ask about your progress…"}
+                      placeholder={isTutorMode ? "Describe a course you want to design…" : "Ask what course fits you next…"}
                       disabled={streaming}
                       className="max-h-[120px] flex-1 resize-none bg-transparent py-1.5 text-sm text-zinc-900 placeholder:text-zinc-500 focus:outline-none disabled:opacity-60"
                     />
