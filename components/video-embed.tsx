@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { isPlaceholder } from "@/lib/utils";
-import { ExternalLink, FileText, MonitorPlay } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { extractYouTubeId, isPlaceholder } from "@/lib/utils";
+import { ExternalLink, FileText, Loader2, MonitorPlay } from "lucide-react";
 
 /* ── YouTube IFrame API globals ─────────────────────────────────────── */
 declare global {
@@ -19,7 +19,11 @@ interface YTPlayerOptions {
   width?: string;
   height?: string;
   playerVars?: Record<string, number | string>;
-  events?: { onStateChange?: (e: { data: number }) => void };
+  events?: {
+    onReady?: () => void;
+    onError?: () => void;
+    onStateChange?: (e: { data: number }) => void;
+  };
 }
 interface YTPlayerInstance {
   destroy(): void;
@@ -61,14 +65,20 @@ export function VideoEmbed({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YTPlayerInstance | null>(null);
+  const [playerStatus, setPlayerStatus] = useState<"loading" | "ready" | "error">("loading");
+  const normalizedVideoId = extractYouTubeId(youtubeId);
   // Keep onEnded in a ref so the effect doesn't need it as a dependency
   // (avoids destroying/recreating the player when the callback identity changes).
   const onEndedRef = useRef(onEnded);
   useEffect(() => { onEndedRef.current = onEnded; }, [onEnded]);
 
   useEffect(() => {
-    if (format !== "video" || isPlaceholder(youtubeId)) return;
+    if (format !== "video" || !normalizedVideoId) return;
     let cancelled = false;
+    setPlayerStatus("loading");
+    const timeout = window.setTimeout(() => {
+      if (!cancelled) setPlayerStatus("error");
+    }, 10_000);
 
     onYTReady(() => {
       if (cancelled || !containerRef.current) return;
@@ -78,11 +88,19 @@ export function VideoEmbed({
       containerRef.current.appendChild(div);
 
       playerRef.current = new window.YT.Player(div, {
-        videoId: youtubeId,
+        videoId: normalizedVideoId,
         width: "100%",
         height: "100%",
         playerVars: { rel: 0, modestbranding: 1 },
         events: {
+          onReady: () => {
+            window.clearTimeout(timeout);
+            if (!cancelled) setPlayerStatus("ready");
+          },
+          onError: () => {
+            window.clearTimeout(timeout);
+            if (!cancelled) setPlayerStatus("error");
+          },
           onStateChange: (e) => {
             if (e.data === window.YT.PlayerState.ENDED) {
               onEndedRef.current?.();
@@ -94,10 +112,11 @@ export function VideoEmbed({
 
     return () => {
       cancelled = true;
+      window.clearTimeout(timeout);
       playerRef.current?.destroy();
       playerRef.current = null;
     };
-  }, [youtubeId, format]);
+  }, [normalizedVideoId, format]);
 
   /* Reading lesson */
   if (format === "reading") {
@@ -125,7 +144,7 @@ export function VideoEmbed({
   }
 
   /* Placeholder — video not yet uploaded */
-  if (isPlaceholder(youtubeId)) {
+  if (isPlaceholder(youtubeId) || !normalizedVideoId) {
     return (
       <div className="glass flex aspect-video w-full flex-col items-center justify-center gap-3 rounded-2xl text-center">
         <div className="rounded-2xl bg-primary/15 p-4">
@@ -133,8 +152,8 @@ export function VideoEmbed({
         </div>
         <p className="text-sm font-medium text-zinc-800">Video coming soon</p>
         <p className="max-w-sm px-6 text-xs leading-relaxed text-zinc-500">
-          This lesson doesn&apos;t have a video yet. An admin can paste a YouTube URL in{" "}
-          <span className="text-primary">Admin → Lessons</span> and it will appear here automatically.
+          This lesson doesn&apos;t have a valid video yet. A tutor can paste a YouTube URL or video ID
+          in the lesson editor and it will appear here automatically.
         </p>
       </div>
     );
@@ -143,7 +162,33 @@ export function VideoEmbed({
   /* Real YouTube video — YT IFrame API manages the iframe inside the div */
   return (
     <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-black shadow-soft">
-      <div ref={containerRef} className="aspect-video w-full" />
+      <div className="relative aspect-video w-full">
+        <div ref={containerRef} className="h-full w-full" />
+        {playerStatus !== "ready" && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-zinc-950 px-6 text-center text-white">
+            {playerStatus === "loading" ? (
+              <>
+                <Loader2 className="h-7 w-7 animate-spin text-primary" aria-hidden="true" />
+                <p className="text-sm">Loading video…</p>
+              </>
+            ) : (
+              <>
+                <MonitorPlay className="h-8 w-8 text-primary" aria-hidden="true" />
+                <p className="text-sm font-medium">This video could not be embedded.</p>
+                <p className="text-xs text-zinc-400">It may be private or have embedding disabled.</p>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+      <a
+        href={`https://www.youtube.com/watch?v=${normalizedVideoId}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="focus-ring flex items-center justify-center gap-1.5 border-t border-white/10 bg-zinc-950 px-4 py-2.5 text-xs font-medium text-white transition hover:bg-zinc-900"
+      >
+        Open {title} on YouTube <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+      </a>
     </div>
   );
 }

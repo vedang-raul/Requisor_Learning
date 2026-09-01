@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "requisor-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "requisor-learning", "run", "dev"],
+      "port": 3000
+    }
+  ]
+}

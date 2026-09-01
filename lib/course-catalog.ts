@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import { db } from "@/lib/db";
 import { seedCourses } from "@/lib/data";
 import type { Course, Lesson, Resource } from "@/lib/types";
+import { extractYouTubeId, PLACEHOLDER_VIDEO } from "@/lib/utils";
 
 type CourseRow = {
   slug: string;
@@ -142,7 +143,10 @@ export async function getCourses(where = "", params: unknown[] = []): Promise<Co
       courses.set(row.slug, course);
     }
     if (row.id) course.lessons.push({
-      id: row.id, title: row.lesson_title!, description: row.lesson_description!, youtubeId: row.youtube_id!,
+      id: row.id, title: row.lesson_title!, description: row.lesson_description!,
+      youtubeId: row.format === "reading"
+        ? ""
+        : extractYouTubeId(row.youtube_id ?? "") ?? PLACEHOLDER_VIDEO,
       durationMin: row.duration_min!, resources: row.resources!, keyTakeaways: row.key_takeaways!,
       ...(row.assignment ? { assignment: row.assignment } : {}), ...(row.section ? { section: row.section } : {}),
       format: row.format ?? "video",
@@ -180,17 +184,25 @@ export function validateCourse(value: unknown, expectedSlug?: string, requireRev
   if ((requireRevision && !Number.isInteger(c.revision)) ||
     (c.revision !== undefined && (!Number.isInteger(c.revision) || (c.revision as number) < 1))) return { ok: false, error: "Invalid course revision." };
   const ids = new Set<string>();
+  const normalizedLessons: Lesson[] = [];
   for (const raw of c.lessons) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ok: false, error: "Invalid lesson." };
     const l = raw as Record<string, unknown>;
     const lessonKeys = new Set(["id", "title", "description", "youtubeId", "durationMin", "resources", "keyTakeaways", "assignment", "section", "format"]);
+    const format = l.format ?? "video";
+    const rawYoutubeId = typeof l.youtubeId === "string" ? l.youtubeId.trim() : "";
+    const youtubeId = format === "reading"
+      ? ""
+      : rawYoutubeId === "" || rawYoutubeId === PLACEHOLDER_VIDEO
+        ? PLACEHOLDER_VIDEO
+        : extractYouTubeId(rawYoutubeId);
     if (Object.keys(l).some((key) => !lessonKeys.has(key)) || !string(l.id, 120) || !slugPattern.test(l.id as string) ||
-      !string(l.title, 200) || !string(l.description, 2000) || !string(l.youtubeId, 120, 0) ||
+      !string(l.title, 200) || !string(l.description, 2000) || !string(l.youtubeId, 2048, 0) ||
       !Number.isInteger(l.durationMin) || (l.durationMin as number) < 1 || (l.durationMin as number) > 1440 ||
       !Array.isArray(l.keyTakeaways) || l.keyTakeaways.length > 20 || !l.keyTakeaways.every((x) => string(x, 500)) ||
       !Array.isArray(l.resources) || l.resources.length > 20 ||
       (l.assignment !== undefined && !string(l.assignment, 5000)) || (l.section !== undefined && !string(l.section, 200)) ||
-      (l.format !== undefined && l.format !== "video" && l.format !== "reading") || ids.has(l.id as string) ||
+      (l.format !== undefined && l.format !== "video" && l.format !== "reading") || !youtubeId || ids.has(l.id as string) ||
       !(l.id as string).startsWith(`${c.slug}-`)) return { ok: false, error: "Invalid lesson fields." };
     ids.add(l.id as string);
     for (const resource of l.resources) {
@@ -199,8 +211,9 @@ export function validateCourse(value: unknown, expectedSlug?: string, requireRev
       if (Object.keys(r).some((key) => !["label", "url", "type"].includes(key)) || !string(r.label, 200) ||
         !string(r.url, 2048) || !safeUrl(r.url as string) || (r.type !== "pdf" && r.type !== "link")) return { ok: false, error: "Invalid lesson resource." };
     }
+    normalizedLessons.push({ ...l, youtubeId, format } as unknown as Lesson);
   }
-  return { ok: true, course: c as unknown as Course };
+  return { ok: true, course: { ...c, lessons: normalizedLessons } as unknown as Course };
 }
 
 export async function replaceCourse(
