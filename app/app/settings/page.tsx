@@ -5,14 +5,15 @@ import {
   Bell, Pencil, User, X, Check, Loader2, Briefcase, Calendar, GraduationCap,
   Target, UserCircle2, Mail, ShieldCheck, Sparkles, BookOpenCheck, Megaphone, Award,
   Bug, Upload, Clock, AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Image, Video, FileText,
-  Play, FileVideo, ImagePlus, Bot, Languages, Globe2,
+  Play, FileVideo, ImagePlus, Bot, Languages, Globe2, RotateCcw,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useStore } from "@/lib/store";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/motion";
-import { cn } from "@/lib/utils";
+import { cn, REPLAY_TOUR_KEY } from "@/lib/utils";
 import { PersonaAvatar } from "@/components/persona-avatar";
 import { PERSONAS, LANGUAGES, COUNTRIES } from "@/lib/personas";
 
@@ -409,9 +410,15 @@ interface GuidePrefs {
 }
 
 function AiGuideCard() {
+  const router = useRouter();
   const [prefs, setPrefs] = useState<GuidePrefs | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingField, setSavingField] = useState<keyof GuidePrefs | null>(null);
+
+  function replayTour() {
+    sessionStorage.setItem(REPLAY_TOUR_KEY, "1");
+    router.push("/app/dashboard/");
+  }
 
   useEffect(() => {
     fetch("/api/profile")
@@ -518,6 +525,9 @@ function AiGuideCard() {
             Country is used only for locale-appropriate small talk (timezones, greetings) — never for
             appearance or content decisions.
           </p>
+          <Button variant="outline" size="sm" onClick={replayTour} className="gap-1.5">
+            <RotateCcw className="h-3.5 w-3.5" /> Replay welcome tour
+          </Button>
         </div>
       )}
     </Card>

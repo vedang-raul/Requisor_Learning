@@ -1,35 +1,111 @@
-import type { Metadata } from "next";
-import "./globals.css";
-import "../landing/index.css";
-import { StoreProvider } from "@/lib/store";
-import { Providers } from "@/components/providers";
-import { headers } from "next/headers";
+"use client";
 
-export const metadata: Metadata = {
-  title: "Requisor Learning",
-  description: "Internal employee learning platform for Requisor — curated learning paths for new interns and employees.",
-  icons: { icon: "/requisor.png" },
-};
+import { Suspense, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Sidebar } from "@/components/sidebar";
+import { Topbar } from "@/components/topbar";
+import { useStore } from "@/lib/store";
+import { GradientBlobs } from "@/components/gradient-blobs";
+import { AiAssistant } from "@/components/ai-assistant";
+import { OnboardingGuide } from "@/components/onboarding-guide";
+import TutorSurvey from "@/components/onboarding-survey-tutor";
+import { InactivityGuard } from "@/components/inactivity-guard";
+import { REPLAY_TOUR_KEY } from "@/lib/utils";
 
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  // Calling headers() here opts the entire app into dynamic (per-request)
-  // rendering.  This is required for nonce-based CSP: the nonce changes on
-  // every request, so the HTML must be generated fresh each time — it cannot
-  // be pre-rendered at build time.
-  //
-  // The nonce is set on the request by middleware.ts and is available here for
-  // any explicit <Script nonce={nonce}> elements that may be added in future.
-  const headersList = await headers();
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const nonce = headersList.get("x-nonce") ?? "";
+interface MeData {
+  onboardingDone: boolean;
+  dateOfBirth: string | null;
+}
+
+function Shell({ children }: { children: React.ReactNode }) {
+  const { state, hydrated } = useStore();
+  const router = useRouter();
+  const [meData, setMeData] = useState<MeData | null>(null);
+  const [meLoaded, setMeLoaded] = useState(false);
+  const [replayTour, setReplayTour] = useState(false);
+
+  useEffect(() => {
+    if (hydrated && !state.user) router.replace("/");
+  }, [hydrated, state.user, router]);
+
+  // Fetch onboarding status once the user is confirmed
+  useEffect(() => {
+    if (!hydrated || !state.user) return;
+    fetch("/api/me")
+      .then((r) => r.json())
+      .then((data: MeData) => { setMeData(data); setMeLoaded(true); })
+      .catch(() => setMeLoaded(true)); // fail open — don't block the app
+  }, [hydrated, state.user]);
+
+  // A one-shot flag Settings sets to replay the walkthrough on demand —
+  // doesn't touch onboarding_done, so it never re-triggers on its own.
+  useEffect(() => {
+    if (sessionStorage.getItem(REPLAY_TOUR_KEY) === "1") setReplayTour(true);
+  }, []);
+
+  // Plain white screen while session resolves or redirect is in-flight —
+  // no skeleton structure means no layout shift (shake) during transitions.
+  if (!hydrated || !state.user) {
+    return <div className="min-h-screen bg-white" />;
+  }
+
+  const user = state.user;
+  const showSurvey = meLoaded && meData !== null && (!meData.onboardingDone || replayTour);
+  const isTutor = user.role === "tutor";
+
+  function dismissTour() {
+    sessionStorage.removeItem(REPLAY_TOUR_KEY);
+    setReplayTour(false);
+  }
+
+  async function completeTutorSurvey(answers: {
+    expertise: string;
+    qualification: string;
+    experience: string;
+    purpose: string;
+  }) {
+    const response = await fetch("/api/profile", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: user.name,
+        employmentType: answers.experience,
+        position: answers.expertise,
+        qualification: answers.qualification,
+        learningGoal: answers.purpose,
+        onboardingDone: true,
+      }),
+    });
+    if (!response.ok) throw new Error("Unable to save tutor profile.");
+    setMeData((data) => data ? { ...data, onboardingDone: true } : data);
+  }
 
   return (
-    <html lang="en">
-      <body className="min-h-screen bg-background font-sans text-[#111827]">
-        <Providers>
-          <StoreProvider>{children}</StoreProvider>
-        </Providers>
-      </body>
-    </html>
+    <div className="relative flex min-h-screen animate-in fade-in duration-200">
+      <GradientBlobs />
+      <Sidebar />
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        <Topbar />
+        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 md:px-8">{children}</main>
+      </div>
+      <InactivityGuard />
+      <AiAssistant />
+      {showSurvey && (
+        isTutor
+          ? <TutorSurvey onSubmit={completeTutorSurvey} />
+          : <OnboardingGuide
+              hasDob={!!meData?.dateOfBirth}
+              onComplete={() => { setMeData((d) => d ? { ...d, onboardingDone: true } : d); dismissTour(); }}
+            />
+      )}
+    </div>
+  );
+}
+
+export default function AppLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense>
+      <Shell children={children} />
+    </Suspense>
   );
 }
