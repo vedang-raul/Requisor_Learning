@@ -12,6 +12,7 @@ const Tailored = lazy(() => import('./components/Tailored.jsx'))
 const HowItWorks = lazy(() => import('./components/HowItWorks.jsx'))
 const Guardrail = lazy(() => import('./components/Guardrail.jsx'))
 const Partners = lazy(() => import('./components/Partners.jsx'))
+const Tutors = lazy(() => import('./components/Tutors.jsx'))
 const Credentials = lazy(() => import('./components/Credentials.jsx'))
 const FinalCta = lazy(() => import('./components/FinalCta.jsx'))
 
@@ -35,6 +36,9 @@ export default function App() {
       </LazySection>
       <LazySection minHeight={460}>
         <Partners />
+      </LazySection>
+      <LazySection minHeight={420}>
+        <Tutors />
       </LazySection>
       <LazySection minHeight={560}>
         <Credentials />

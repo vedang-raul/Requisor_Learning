@@ -1,15 +1,17 @@
-import { Wrap, btnPrimary } from "./ui.jsx";
+import { Wrap } from "./ui.jsx";
+import LoginPowerButton from "./LoginPowerButton.jsx";
 
 const links = [
   { href: "#tailored", label: "Why Adept" },
   { href: "#how", label: "How it works" },
   { href: "#partners", label: "Universities" },
+  { href: "#tutors", label: "Tutors" },
   { href: "#credentials", label: "Credentials" },
 ];
 
 export default function Nav() {
   return (
-    <nav className="sticky top-0 z-50 border-b border-line bg-paper/85 backdrop-blur-[12px]">
+    <nav className="sticky top-0 z-50 border-b border-line bg-gradient-to-r from-zinc-100/90 to-zinc-500/90 backdrop-blur-[12px]">
       <Wrap className="flex h-16 items-center justify-between sm:h-[68px]">
         <div className="flex min-w-0 shrink items-center gap-1 sm:gap-3">
           <a
@@ -58,12 +60,9 @@ export default function Nav() {
           ))}
         </div>
 
-        <a
-          className={`${btnPrimary} shrink-0 max-[480px]:px-4 max-[480px]:py-2.5 max-[480px]:text-sm`}
-          href="/login/"
-        >
-          Log in
-        </a>
+        <div className="shrink-0">
+          <LoginPowerButton />
+        </div>
       </Wrap>
     </nav>
   );
