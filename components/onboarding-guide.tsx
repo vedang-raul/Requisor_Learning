@@ -55,7 +55,7 @@ export function OnboardingGuide({ hasDob, onComplete }: Props) {
   const recommended = useMemo(() => {
     if (step !== "recommend") return null;
     const ranked = scoreCourses(state.courses, state.progress, { qualification, learningGoal });
-    return ranked.find((r) => r.pct < 100) ?? null;
+    return ranked.find((match) => !match.completed) ?? null;
   }, [step, state.courses, state.progress, qualification, learningGoal]);
 
   const narration: Record<StepKey, string> = {
@@ -178,7 +178,7 @@ export function OnboardingGuide({ hasDob, onComplete }: Props) {
         <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-start sm:gap-7">
           {/* Large, persistent on-screen character */}
           <div className="flex shrink-0 flex-col items-center gap-2">
-            <PersonaAvatar personaId={personaId} size="xxl" state={avatarState} />
+            <PersonaAvatar personaId={personaId} size="xl" state={avatarState} />
             {voice.ttsSupported && (
               <button
                 type="button"

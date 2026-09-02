@@ -7,9 +7,10 @@ import { Topbar } from "@/components/topbar";
 import { useStore } from "@/lib/store";
 import { GradientBlobs } from "@/components/gradient-blobs";
 import { AiAssistant } from "@/components/ai-assistant";
-import { OnboardingSurvey } from "@/components/onboarding-survey";
+import { OnboardingGuide } from "@/components/onboarding-guide";
 import TutorSurvey from "@/components/onboarding-survey-tutor";
 import { InactivityGuard } from "@/components/inactivity-guard";
+import { REPLAY_TOUR_KEY } from "@/lib/utils";
 
 interface MeData {
   onboardingDone: boolean;
@@ -21,6 +22,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [meData, setMeData] = useState<MeData | null>(null);
   const [meLoaded, setMeLoaded] = useState(false);
+  const [replayTour, setReplayTour] = useState(false);
 
   useEffect(() => {
     if (hydrated && !state.user) router.replace("/");
@@ -35,6 +37,12 @@ function Shell({ children }: { children: React.ReactNode }) {
       .catch(() => setMeLoaded(true)); // fail open — don't block the app
   }, [hydrated, state.user]);
 
+  // Settings uses this session-only flag to replay the walkthrough without
+  // changing the persisted onboarding completion state.
+  useEffect(() => {
+    if (sessionStorage.getItem(REPLAY_TOUR_KEY) === "1") setReplayTour(true);
+  }, []);
+
   // Plain white screen while session resolves or redirect is in-flight —
   // no skeleton structure means no layout shift (shake) during transitions.
   if (!hydrated || !state.user) {
@@ -42,8 +50,13 @@ function Shell({ children }: { children: React.ReactNode }) {
   }
 
   const user = state.user;
-  const showSurvey = meLoaded && meData !== null && !meData.onboardingDone;
+  const showSurvey = meLoaded && meData !== null && (!meData.onboardingDone || replayTour);
   const isTutor = user.role === "tutor";
+
+  function dismissTour() {
+    sessionStorage.removeItem(REPLAY_TOUR_KEY);
+    setReplayTour(false);
+  }
 
   async function completeTutorSurvey(answers: {
     expertise: string;
@@ -80,9 +93,12 @@ function Shell({ children }: { children: React.ReactNode }) {
       {showSurvey && (
         isTutor
           ? <TutorSurvey onSubmit={completeTutorSurvey} />
-          : <OnboardingSurvey
+          : <OnboardingGuide
               hasDob={!!meData?.dateOfBirth}
-              onComplete={() => setMeData((d) => d ? { ...d, onboardingDone: true } : d)}
+              onComplete={() => {
+                setMeData((data) => data ? { ...data, onboardingDone: true } : data);
+                dismissTour();
+              }}
             />
       )}
     </div>
