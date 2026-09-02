@@ -37,6 +37,8 @@ export interface Course {
   lessons: Lesson[];
   /** Base capstone assessment brief, personalised by AI on the course overview page. */
   baseAssessment?: string;
+  /** Server-derived from owner_user_id — never write this, it's ignored on save. Null when unowned. */
+  tutorName?: string | null;
 }
 
 export interface LessonProgress {

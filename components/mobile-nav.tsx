@@ -3,14 +3,14 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { LogOut, Menu, X, Library, ChevronDown } from "lucide-react";
+import { LogOut, Menu, X, Library, ChevronDown, GraduationCap } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { courseIcons, navItems } from "@/components/sidebar";
 
 export function MobileNav() {
-  const { state, logout } = useStore();
+  const { state, workspaceMode, setWorkspaceMode, logout } = useStore();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -36,8 +36,15 @@ export function MobileNav() {
   const filteredItems = navItems.filter(
     (item) =>
       (!("adminOnly" in item && item.adminOnly) || state.user?.role === "admin") &&
-      (!("tutorOnly" in item && item.tutorOnly) || state.user?.role === "admin" || state.user?.role === "tutor")
+      (!("tutorOnly" in item && item.tutorOnly) || state.user?.role === "admin" || (state.user?.role === "tutor" && workspaceMode === "tutor"))
   );
+
+  const switchWorkspaceMode = () => {
+    const nextMode = workspaceMode === "tutor" ? "student" : "tutor";
+    setWorkspaceMode(nextMode);
+    setOpen(false);
+    if (nextMode === "student" && pathname?.startsWith("/app/tutor")) router.push("/app/dashboard/");
+  };
 
   // Split: dashboard first, rest after Learning Paths
   const topItems    = filteredItems.filter((i) => i.href === "/app/dashboard/");
@@ -187,6 +194,16 @@ export function MobileNav() {
               </nav>
 
               <div className="border-t border-zinc-200 p-3">
+                {state.user?.role === "tutor" && (
+                  <button
+                    onClick={switchWorkspaceMode}
+                    aria-label={workspaceMode === "tutor" ? "Switch to student mode" : "Switch to tutor mode"}
+                    className="focus-ring flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-primary transition hover:bg-primary/10"
+                  >
+                    <GraduationCap className="h-[18px] w-[18px]" />
+                    {workspaceMode === "tutor" ? "Switch to student mode" : "Switch to tutor mode"}
+                  </button>
+                )}
                 <button
                   onClick={() => { setOpen(false); logout(); router.push("/"); }}
                   className="focus-ring flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900"

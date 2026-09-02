@@ -32,7 +32,7 @@ export const navItems = [
 const springTransition = { type: "spring" as const, stiffness: 500, damping: 35 };
 
 export function Sidebar() {
-  const { state, toggleSidebar, logout } = useStore();
+  const { state, workspaceMode, setWorkspaceMode, toggleSidebar, logout } = useStore();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -68,8 +68,14 @@ export function Sidebar() {
   const bottomItems = navItems.filter(
     (item) => item.href !== "/app/dashboard/" &&
       (!("adminOnly" in item && item.adminOnly) || state.user?.role === "admin") &&
-      (!("tutorOnly" in item && item.tutorOnly) || state.user?.role === "admin" || state.user?.role === "tutor")
+      (!("tutorOnly" in item && item.tutorOnly) || state.user?.role === "admin" || (state.user?.role === "tutor" && workspaceMode === "tutor"))
   );
+
+  const switchWorkspaceMode = () => {
+    const nextMode = workspaceMode === "tutor" ? "student" : "tutor";
+    setWorkspaceMode(nextMode);
+    if (nextMode === "student" && pathname?.startsWith("/app/tutor")) router.push("/app/dashboard/");
+  };
 
   const renderItem = (item: { href: string; label: string; icon: React.ElementType }, index: number) => {
     const Icon = item.icon;
@@ -281,6 +287,19 @@ export function Sidebar() {
 
       {/* Footer */}
       <div className="space-y-1 border-t border-zinc-200 p-3">
+        {state.user?.role === "tutor" && (
+          <motion.button
+            onClick={switchWorkspaceMode}
+            whileHover={{ x: collapsed ? 0 : 2 }}
+            whileTap={{ scale: 0.97 }}
+            aria-label={workspaceMode === "tutor" ? "Switch to student mode" : "Switch to tutor mode"}
+            title={collapsed ? (workspaceMode === "tutor" ? "Switch to student mode" : "Switch to tutor mode") : undefined}
+            className={cn("focus-ring flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-primary transition-colors duration-200 hover:bg-primary/10", collapsed && "justify-center px-2")}
+          >
+            <GraduationCap className="h-[18px] w-[18px]" />
+            {!collapsed && (workspaceMode === "tutor" ? "Switch to student mode" : "Switch to tutor mode")}
+          </motion.button>
+        )}
         <motion.button
           onClick={() => { logout(); router.push("/"); }}
           whileHover={{ x: collapsed ? 0 : 2 }}

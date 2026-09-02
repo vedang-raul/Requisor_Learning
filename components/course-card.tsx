@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Clock, PlayCircle, Video, Bookmark, BookmarkCheck, ArrowRight, CheckCircle2, Flame } from "lucide-react";
+import { Clock, PlayCircle, Video, Bookmark, BookmarkCheck, ArrowRight, CheckCircle2, Flame, GraduationCap } from "lucide-react";
 import { Course } from "@/lib/types";
 import { useCourseProgress, useStore } from "@/lib/store";
 import { formatMinutes, cn } from "@/lib/utils";
@@ -96,6 +96,12 @@ export function CourseCard({ course }: { course: Course }) {
         <div>
           <h3 className="mt-1 text-base font-semibold transition-colors group-hover:text-primary">{course.title}</h3>
           <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-zinc-600">{course.tagline}</p>
+          {course.tutorName && (
+            <p className="mt-1 flex items-center gap-1 text-[11px] text-zinc-500">
+              <GraduationCap className="h-3 w-3 shrink-0" />
+              {course.tutorName}
+            </p>
+          )}
         </div>
 
         <div className="flex items-center gap-4 text-xs text-zinc-600">

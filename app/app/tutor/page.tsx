@@ -22,7 +22,7 @@ function distributionCount(distribution: TutorCourse["ratingDistribution"], rati
 }
 
 export default function TutorPage() {
-  const { state, hydrated, upsertCourse, upsertLesson, deleteLesson, deleteCourse } = useStore();
+  const { state, hydrated, workspaceMode, upsertCourse, upsertLesson, deleteLesson, deleteCourse } = useStore();
   const router = useRouter();
   const [items, setItems] = useState<TutorCourse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,10 +45,15 @@ export default function TutorPage() {
 
   useEffect(() => {
     if (hydrated && state.user && state.user.role !== "tutor" && state.user.role !== "admin") router.replace("/app/dashboard/");
-  }, [hydrated, router, state.user]);
-  useEffect(() => { if (hydrated && state.user && (state.user.role === "tutor" || state.user.role === "admin")) void load(); }, [hydrated, state.user, load]);
+    if (hydrated && state.user?.role === "tutor" && workspaceMode !== "tutor") router.replace("/app/dashboard/");
+  }, [hydrated, router, state.user, workspaceMode]);
+  useEffect(() => {
+    if (hydrated && state.user && (state.user.role === "admin" || (state.user.role === "tutor" && workspaceMode === "tutor"))) {
+      void load();
+    }
+  }, [hydrated, state.user, workspaceMode, load]);
 
-  if (!hydrated || !state.user || (state.user.role !== "tutor" && state.user.role !== "admin")) return null;
+  if (!hydrated || !state.user || (state.user.role !== "tutor" && state.user.role !== "admin") || (state.user.role === "tutor" && workspaceMode !== "tutor")) return null;
   const saveCourse = async (course: Course) => {
     setSaving(true); setError(null);
     try { const saved = await upsertCourse(course); setCreating(false); setSelected(saved); await load(); }

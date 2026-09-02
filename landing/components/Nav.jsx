@@ -11,7 +11,7 @@ const links = [
 
 export default function Nav() {
   return (
-    <nav className="sticky top-0 z-50 border-b border-line bg-gradient-to-r from-zinc-100/90 to-zinc-500/90 backdrop-blur-[12px]">
+    <nav className="sticky top-0 z-50 border-b border-line bg-zinc-100/90  backdrop-blur-[12px]">
       <Wrap className="flex h-16 items-center justify-between sm:h-[68px]">
         <div className="flex min-w-0 shrink items-center gap-1 sm:gap-3">
           <a

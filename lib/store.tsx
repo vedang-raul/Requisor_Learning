@@ -11,6 +11,8 @@ const STORAGE_KEY_BASE = "requisor-learning-v14"; // v14: added 4 DeepLearning.A
 const storageKeyFor = (email: string) => `${STORAGE_KEY_BASE}:${email.toLowerCase()}`;
 const XP_PER_LESSON = 50;
 const XP_PER_COURSE = 200;
+export type WorkspaceMode = "tutor" | "student";
+const workspaceModeKeyFor = (email: string) => `requisor-workspace-mode:${email.toLowerCase()}`;
 
 const initialState: AppState = {
   user: null,
@@ -32,6 +34,8 @@ const initialState: AppState = {
 interface StoreApi {
   state: AppState;
   hydrated: boolean;
+  workspaceMode: WorkspaceMode;
+  setWorkspaceMode: (mode: WorkspaceMode) => void;
   logout: () => void;
   toggleSidebar: () => void;
   recordView: (courseSlug: string, lessonId: string) => void;
@@ -55,6 +59,7 @@ const StoreContext = createContext<StoreApi | null>(null);
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AppState>(initialState);
   const [hydrated, setHydrated] = useState(false);
+  const [workspaceMode, setWorkspaceModeState] = useState<WorkspaceMode>("tutor");
   const { data: session, status } = useSession();
   // Tracks whether the initial DB fetch has completed so we don't sync stale values back.
   const dbSynced = useRef(false);
@@ -73,6 +78,35 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [session]);
 
   const email = sessionUser?.email ?? null;
+
+  // Workspace mode only changes the tutor's local view. The server session
+  // role remains authoritative for permissions and AI privacy boundaries.
+  useEffect(() => {
+    if (!email) {
+      setWorkspaceModeState("student");
+      return;
+    }
+    if (sessionUser?.role !== "tutor") {
+      setWorkspaceModeState(sessionUser?.role === "admin" ? "tutor" : "student");
+      return;
+    }
+    try {
+      const saved = sessionStorage.getItem(workspaceModeKeyFor(email));
+      setWorkspaceModeState(saved === "student" ? "student" : "tutor");
+    } catch {
+      setWorkspaceModeState("tutor");
+    }
+  }, [email, sessionUser?.role]);
+
+  const setWorkspaceMode = useCallback((mode: WorkspaceMode) => {
+    if (sessionUser?.role !== "tutor") return;
+    setWorkspaceModeState(mode);
+    try {
+      sessionStorage.setItem(workspaceModeKeyFor(sessionUser.email), mode);
+    } catch {
+      // Session storage can be unavailable in privacy-restricted browsers.
+    }
+  }, [sessionUser]);
 
   // Hydrate from the signed-in user's own localStorage bucket (re-runs on account switch).
   useEffect(() => {
@@ -430,12 +464,18 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     () => ({
       state: { ...state, user: sessionUser },
       hydrated: hydrated && status !== "loading",
+      workspaceMode: sessionUser?.role === "tutor"
+        ? workspaceMode
+        : sessionUser?.role === "admin"
+          ? "tutor"
+          : "student",
+      setWorkspaceMode,
       logout, toggleSidebar, recordView, setWatchPct, toggleComplete,
       toggleBookmark, toggleSavedLesson, setNote, markNotificationsRead,
       toggleAssessmentComplete,
       upsertCourse, deleteCourse, upsertLesson, deleteLesson, resetAll,
     }),
-    [state, sessionUser, hydrated, status, logout, toggleSidebar, recordView, setWatchPct, toggleComplete, toggleBookmark, toggleSavedLesson, setNote, markNotificationsRead, toggleAssessmentComplete, upsertCourse, deleteCourse, upsertLesson, deleteLesson, resetAll]
+    [state, sessionUser, hydrated, status, workspaceMode, setWorkspaceMode, logout, toggleSidebar, recordView, setWatchPct, toggleComplete, toggleBookmark, toggleSavedLesson, setNote, markNotificationsRead, toggleAssessmentComplete, upsertCourse, deleteCourse, upsertLesson, deleteLesson, resetAll]
   );
 
   return <StoreContext.Provider value={api}>{children}</StoreContext.Provider>;

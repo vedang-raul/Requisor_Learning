@@ -16,6 +16,7 @@ type CourseRow = {
   owner_user_id: number | null;
   base_assessment: string | null;
   revision: number;
+  tutor_name: string | null;
 };
 type LessonRow = {
   course_slug: string | null; id: string | null; lesson_title: string | null; lesson_description: string | null; youtube_id: string | null;
@@ -127,11 +128,13 @@ export function ensureCourseCatalog(): Promise<void> {
 export async function getCourses(where = "", params: unknown[] = []): Promise<Course[]> {
   const { rows } = await db.query<CourseRow & LessonRow>(
     `SELECT c.slug, c.title, c.tagline, c.category, c.level, c.tags, c.cover, c.added_at,
-             c.base_assessment, c.owner_user_id, c.revision,
+             c.base_assessment, c.owner_user_id, c.revision, u.name AS tutor_name,
             l.id, l.course_slug, l.title AS lesson_title, l.description AS lesson_description,
             l.youtube_id, l.duration_min, l.resources, l.key_takeaways, l.assignment,
             l.section, l.format
-     FROM courses c LEFT JOIN course_lessons l ON l.course_slug = c.slug
+     FROM courses c
+     LEFT JOIN course_lessons l ON l.course_slug = c.slug
+     LEFT JOIN users u ON u.id = c.owner_user_id
      ${where} ORDER BY c.added_at, c.slug, l.position, l.id`, params);
   const courses = new Map<string, Course>();
   for (const row of rows) {
@@ -139,6 +142,7 @@ export async function getCourses(where = "", params: unknown[] = []): Promise<Co
     if (!course) {
       course = { slug: row.slug, title: row.title, tagline: row.tagline, category: row.category,
         level: row.level, tags: row.tags, cover: row.cover, addedAt: new Date(row.added_at).toISOString().slice(0, 10), revision: row.revision,
+        tutorName: row.tutor_name ?? null,
         lessons: [], ...(row.base_assessment ? { baseAssessment: row.base_assessment } : {}) };
       courses.set(row.slug, course);
     }
@@ -165,7 +169,10 @@ const string = (value: unknown, max: number, min = 1) =>
 export function validateCourse(value: unknown, expectedSlug?: string, requireRevision = false): { ok: true; course: Course } | { ok: false; error: string } {
   if (!value || typeof value !== "object" || Array.isArray(value)) return { ok: false, error: "Course must be an object." };
   const c = value as Record<string, unknown>;
-  const allowed = new Set(["slug", "title", "tagline", "category", "level", "tags", "cover", "addedAt", "lessons", "baseAssessment", "revision"]);
+  // tutorName is server-derived (from owner_user_id) and round-trips through
+  // the editor UI, but it's never read below — only owner_user_id, set from
+  // the session, controls actual ownership.
+  const allowed = new Set(["slug", "title", "tagline", "category", "level", "tags", "cover", "addedAt", "lessons", "baseAssessment", "revision", "tutorName"]);
   if (Object.keys(c).some((key) => !allowed.has(key))) return { ok: false, error: "Course contains unsupported fields." };
   if (!string(c.slug, 80) || !slugPattern.test(c.slug as string) || (expectedSlug && c.slug !== expectedSlug)) return { ok: false, error: "Invalid course slug." };
   if (!string(c.title, 160) || !string(c.tagline, 400) || !string(c.cover, 200) ||

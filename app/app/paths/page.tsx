@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Filter, SlidersHorizontal } from "lucide-react";
+import { Filter, SlidersHorizontal, GraduationCap } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { CourseCard } from "@/components/course-card";
 import { PageTransition } from "@/components/motion";
@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 
 type StatusFilter = "all" | "completed" | "in-progress" | "not-started";
 type SortKey = "newest" | "duration";
+const UNASSIGNED = "__unassigned__";
 
 const statusFilters: { key: StatusFilter; label: string }[] = [
   { key: "all", label: "All" },
@@ -22,6 +23,13 @@ export default function PathsPage() {
   const { state } = useStore();
   const [status, setStatus] = useState<StatusFilter>("all");
   const [sort, setSort] = useState<SortKey>("newest");
+  const [tutor, setTutor] = useState<string>("all");
+
+  const tutorOptions = useMemo(() => {
+    const names = new Set(state.courses.map((c) => c.tutorName).filter((n): n is string => !!n));
+    const hasUnassigned = state.courses.some((c) => !c.tutorName);
+    return [...[...names].sort(), ...(hasUnassigned ? [UNASSIGNED] : [])];
+  }, [state.courses]);
 
   const courses = useMemo(() => {
     const withMeta = state.courses.map((c) => {
@@ -34,11 +42,14 @@ export default function PathsPage() {
     if (status === "completed") filtered = withMeta.filter((x) => x.pct === 1);
     if (status === "in-progress") filtered = withMeta.filter((x) => x.pct > 0 && x.pct < 1);
     if (status === "not-started") filtered = withMeta.filter((x) => x.pct === 0);
+    if (tutor !== "all") {
+      filtered = filtered.filter((x) => (tutor === UNASSIGNED ? !x.c.tutorName : x.c.tutorName === tutor));
+    }
     const sorted = [...filtered].sort((a, b) =>
       sort === "newest" ? b.c.addedAt.localeCompare(a.c.addedAt) : a.totalMin - b.totalMin
     );
     return sorted.map((x) => x.c);
-  }, [state.courses, state.progress, status, sort]);
+  }, [state.courses, state.progress, status, sort, tutor]);
 
   return (
     <PageTransition className="space-y-6">
@@ -68,6 +79,22 @@ export default function PathsPage() {
             </button>
           ))}
         </div>
+        {tutorOptions.length > 0 && (
+          <div className="flex items-center gap-2">
+            <GraduationCap className="h-3.5 w-3.5 text-zinc-500" />
+            <select
+              value={tutor}
+              onChange={(e) => setTutor(e.target.value)}
+              aria-label="Filter by tutor"
+              className="focus-ring rounded-xl border border-border bg-card px-3 py-1.5 text-xs text-zinc-700"
+            >
+              <option value="all">All tutors</option>
+              {tutorOptions.map((name) => (
+                <option key={name} value={name}>{name === UNASSIGNED ? "Unassigned" : name}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="ml-auto flex items-center gap-2">
           <SlidersHorizontal className="h-3.5 w-3.5 text-zinc-500" />
           <select

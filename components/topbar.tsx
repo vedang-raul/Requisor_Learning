@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { Bell, ChevronRight, Search, Sparkles, X, Zap } from "lucide-react";
+import { Bell, ChevronRight, Search, Sparkles, X, Zap, GraduationCap } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "@/lib/store";
 import { cn, formatMinutes } from "@/lib/utils";
@@ -17,7 +17,7 @@ const crumbNames: Record<string, string> = {
 const springHover = { type: "spring" as const, stiffness: 320, damping: 22 };
 
 export function Topbar() {
-  const { state, markNotificationsRead } = useStore();
+  const { state, workspaceMode, markNotificationsRead } = useStore();
   const pathname = usePathname();
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -103,6 +103,12 @@ export function Topbar() {
       <motion.div whileHover={{ scale: 1.05 }} className="hidden items-center gap-2 lg:flex">
         <Tag tone="primary"><Zap className="h-3 w-3" />{state.xp} XP</Tag>
       </motion.div>
+      {state.user?.role === "tutor" && (
+        <Tag className="hidden sm:inline-flex" tone={workspaceMode === "student" ? "accent" : "primary"}>
+          <GraduationCap className="h-3 w-3" />
+          {workspaceMode === "student" ? "Student mode" : "Tutor mode"}
+        </Tag>
+      )}
 
       {/* Notifications */}
       <div className="relative">
