@@ -7,6 +7,8 @@ export const tutors = [
     name: 'Naveen Kankate',
     role: 'Course Instructor',
     initials: 'NK',
+    imageSrc: '/naveen-kankate.jpg',
+    linkedinUrl: 'https://www.linkedin.com/in/naveenkankate/',
     accent: 'from-primary to-secondary',
     courseSlugs: ['product-management', 'data-analytics', 'agentic-ai', 'cyber-security'],
   },

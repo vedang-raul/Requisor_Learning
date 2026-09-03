@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Star } from 'lucide-react'
+import { ExternalLink, Star } from 'lucide-react'
 import { Wrap, Eyebrow, H2, Lede, SectionHead, hoverLift } from './ui.jsx'
 import Reveal from './Reveal.jsx'
 import { tutors } from '../lib/tutors.js'
@@ -59,15 +59,33 @@ export default function Tutors() {
               <Reveal key={tutor.id} delay={tIdx * 90} as="div">
                 <div className={`rounded-card border border-line bg-card p-5 sm:p-[30px] ${hoverLift}`}>
                   <div className="mb-5 flex items-center gap-4">
-                    <span
-                      className={`flex size-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br text-lg font-bold text-white shadow-[0_10px_24px_-10px_rgba(16,20,48,.35)] ${tutor.accent}`}
-                      aria-hidden="true"
-                    >
-                      {tutor.initials}
-                    </span>
+                    {tutor.imageSrc ? (
+                      <img
+                        src={tutor.imageSrc}
+                        alt={`${tutor.name} portrait`}
+                        className="size-14 shrink-0 rounded-2xl object-cover shadow-[0_10px_24px_-10px_rgba(16,20,48,.35)]"
+                      />
+                    ) : (
+                      <span
+                        className={`flex size-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br text-lg font-bold text-white shadow-[0_10px_24px_-10px_rgba(16,20,48,.35)] ${tutor.accent}`}
+                        aria-hidden="true"
+                      >
+                        {tutor.initials}
+                      </span>
+                    )}
                     <div className="min-w-0">
                       <h3 className="font-display text-[20px] leading-[1.1] tracking-[-.02em]">{tutor.name}</h3>
                       <p className="font-mono text-[12px] uppercase tracking-[.08em] text-ultra">{tutor.role}</p>
+                      {tutor.linkedinUrl && (
+                        <a
+                          href={tutor.linkedinUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-1 inline-flex items-center gap-1 text-[12px] font-medium text-ink-soft underline-offset-2 hover:text-ultra hover:underline"
+                        >
+                          LinkedIn <ExternalLink className="size-3" aria-hidden="true" />
+                        </a>
+                      )}
                     </div>
                   </div>
 
