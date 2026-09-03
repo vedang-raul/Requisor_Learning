@@ -22,8 +22,8 @@ export const courseIcons: Record<CategoryKey, React.ElementType> = {
 // Flat list used by mobile-nav (courses excluded — handled by dropdown)
 export const navItems = [
   { href: "/app/dashboard/",  label: "Dashboard",   icon: LayoutDashboard },
-  { href: "/app/my-learning/",label: "My Learning", icon: MonitorPlay },
-  { href: "/app/badges/",     label: "Badges",      icon: Trophy },
+  { href: "/app/my-learning/",label: "My Learning", icon: MonitorPlay, learnerOnly: true },
+  { href: "/app/badges/",     label: "Badges",      icon: Trophy, learnerOnly: true },
   { href: "/app/tutor/",      label: "Tutor Workspace", icon: GraduationCap, tutorOnly: true },
   { href: "/app/admin/",      label: "Admin Panel", icon: ShieldCheck, adminOnly: true },
   { href: "/app/settings/",   label: "Settings",    icon: Settings },
@@ -68,8 +68,10 @@ export function Sidebar() {
   const bottomItems = navItems.filter(
     (item) => item.href !== "/app/dashboard/" &&
       (!("adminOnly" in item && item.adminOnly) || state.user?.role === "admin") &&
+      (!("learnerOnly" in item && item.learnerOnly) || state.user?.role !== "tutor" || workspaceMode === "student") &&
       (!("tutorOnly" in item && item.tutorOnly) || state.user?.role === "admin" || (state.user?.role === "tutor" && workspaceMode === "tutor"))
   );
+  const showLearnerNavigation = state.user?.role !== "tutor" || workspaceMode === "student";
 
   const switchWorkspaceMode = () => {
     const nextMode = workspaceMode === "tutor" ? "student" : "tutor";
@@ -164,7 +166,7 @@ export function Sidebar() {
         {topItems.map((item, i) => renderItem(item, i))}
 
         {/* Learning Paths + dropdown */}
-        <div>
+        {showLearnerNavigation && <div>
           <button
             onClick={() => {
               router.push("/app/paths/");
@@ -262,7 +264,7 @@ export function Sidebar() {
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
+        </div>}
 
         {/* Remaining items */}
         {bottomItems.map((item, i) => renderItem(item, i + 2))}

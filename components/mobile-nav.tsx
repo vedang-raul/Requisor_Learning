@@ -36,8 +36,10 @@ export function MobileNav() {
   const filteredItems = navItems.filter(
     (item) =>
       (!("adminOnly" in item && item.adminOnly) || state.user?.role === "admin") &&
+      (!("learnerOnly" in item && item.learnerOnly) || state.user?.role !== "tutor" || workspaceMode === "student") &&
       (!("tutorOnly" in item && item.tutorOnly) || state.user?.role === "admin" || (state.user?.role === "tutor" && workspaceMode === "tutor"))
   );
+  const showLearnerNavigation = state.user?.role !== "tutor" || workspaceMode === "student";
 
   const switchWorkspaceMode = () => {
     const nextMode = workspaceMode === "tutor" ? "student" : "tutor";
@@ -113,7 +115,7 @@ export function MobileNav() {
                 })}
 
                 {/* Learning Paths + dropdown */}
-                <div>
+                {showLearnerNavigation && <div>
                   <button
                     onClick={() => {
                       router.push("/app/paths/");
@@ -167,7 +169,7 @@ export function MobileNav() {
                       </motion.div>
                     )}
                   </AnimatePresence>
-                </div>
+                </div>}
 
                 {/* Remaining items */}
                 {bottomItems.map((item) => {
