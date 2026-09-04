@@ -1,55 +1,32 @@
 "use client";
 
-import { useId } from "react";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { getPersona, type Persona } from "@/lib/personas";
+import { getPersona, getPersonaAvatarUrl } from "@/lib/personas";
 
 /**
- * Renders a persona as an abstract glowing "digital companion" orb — not a
- * human portrait. Diversity between personas is expressed purely through
- * color and silhouette (the `variant` field), a stylistic choice the user
- * picks for themselves; it is never derived from or tied to anything about
- * the user (see lib/personas.ts).
+ * Renders a persona as an illustrated human character portrait (DiceBear's
+ * "avataaars" style — MIT-licensed, rendered from api.dicebear.com). Every
+ * persona's look (hairstyle, hair color, skin tone, clothing, expression) is
+ * a fixed combination hand-picked in lib/personas.ts — the user freely picks
+ * which persona to use, but nothing about the portrait is inferred from or
+ * tied to anything about the user themselves.
+ *
+ * This depends on api.dicebear.com being reachable at runtime. If that ever
+ * needs to go away (offline use, reliability), swap getPersonaAvatarUrl in
+ * lib/personas.ts to render via the self-hosted @dicebear/core package
+ * instead — nothing here would need to change.
  */
 export type PersonaAvatarState = "idle" | "listening" | "speaking";
 
-const SIZE_PX: Record<"xs" | "sm" | "md" | "lg" | "xl", number> = {
+const SIZE_PX: Record<"xs" | "sm" | "md" | "lg" | "xl" | "xxl", number> = {
   xs: 28,
   sm: 36,
   md: 56,
   lg: 88,
   xl: 128,
+  xxl: 200,
 };
-
-function VariantMark({ variant, id, color }: { variant: Persona["variant"]; id: string; color: string }) {
-  const stroke = { stroke: color, strokeWidth: 2.5, fill: "none" } as const;
-  switch (variant) {
-    case "wave":
-      return <path d="M28 34 Q40 22 50 30 Q60 38 72 26" strokeLinecap="round" {...stroke} />;
-    case "spike":
-      return (
-        <path
-          d="M30 36 L38 20 L46 34 L50 18 L54 34 L62 20 L70 36"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          {...stroke}
-        />
-      );
-    case "coil":
-      return <path d="M30 34 Q38 20 50 28 Q62 36 70 22" strokeLinecap="round" {...stroke} />;
-    case "halo":
-      return <ellipse cx="50" cy="24" rx="20" ry="7" {...stroke} />;
-    case "fin":
-      return <path d="M50 12 Q62 22 56 38 Q50 30 50 12 Z" fill={color} stroke="none" opacity={0.85} />;
-    case "orbit":
-      return (
-        <>
-          <circle cx="50" cy="30" r="24" strokeDasharray="2 5" {...stroke} opacity={0.6} />
-          <circle cx="74" cy="30" r="3.5" fill={color} stroke="none" />
-        </>
-      );
-  }
-}
 
 export function PersonaAvatar({
   personaId,
@@ -58,20 +35,20 @@ export function PersonaAvatar({
   className,
 }: {
   personaId?: string | null;
-  size?: "xs" | "sm" | "md" | "lg" | "xl";
+  size?: "xs" | "sm" | "md" | "lg" | "xl" | "xxl";
   state?: PersonaAvatarState;
   className?: string;
 }) {
   const persona = getPersona(personaId);
-  const gradId = useId();
   const px = SIZE_PX[size];
   const [c1, c2] = persona.accentHex;
+  const [failed, setFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   return (
     <div
       className={cn("relative inline-flex shrink-0 items-center justify-center rounded-full", className)}
       style={{ width: px, height: px }}
-      aria-hidden="true"
     >
       {/* Outer glow ring — brightens while listening/speaking */}
       <span
@@ -82,31 +59,37 @@ export function PersonaAvatar({
           state === "speaking" && "animate-persona-pulse-fast opacity-100"
         )}
         style={{ background: `linear-gradient(135deg, ${c1}, ${c2})` }}
+        aria-hidden="true"
       />
-      <svg viewBox="0 0 100 100" width={px} height={px} className="relative rounded-full">
-        <defs>
-          <radialGradient id={`bg-${gradId}`} cx="35%" cy="30%" r="75%">
-            <stop offset="0%" stopColor={c1} stopOpacity="0.95" />
-            <stop offset="100%" stopColor={c2} stopOpacity="1" />
-          </radialGradient>
-        </defs>
-        <circle cx="50" cy="50" r="48" fill={`url(#bg-${gradId})`} />
-        <circle cx="50" cy="50" r="48" fill="none" stroke="white" strokeOpacity="0.25" strokeWidth="1.5" />
-        {/* Radial "energy" facets */}
-        <circle cx="50" cy="58" r="22" fill="white" fillOpacity="0.1" />
-        <VariantMark variant={persona.variant} id={gradId} color="rgba(255,255,255,0.9)" />
-        {/* Core — pulses with speech */}
-        <circle
-          cx="50"
-          cy="60"
-          r="7"
-          fill="white"
-          className={cn(
-            state === "speaking" && "animate-persona-core",
-            state === "listening" && "animate-persona-core-slow"
-          )}
-        />
-      </svg>
+      <div
+        className={cn(
+          "relative h-full w-full overflow-hidden rounded-full ring-1 ring-inset ring-white/40 transition-transform duration-200",
+          state === "speaking" && "animate-persona-pulse-fast",
+          state === "listening" && "animate-persona-pulse"
+        )}
+        style={{ background: `linear-gradient(135deg, ${c1}, ${c2})` }}
+      >
+        {failed ? (
+          <span
+            className="flex h-full w-full items-center justify-center text-white"
+            style={{ fontSize: px * 0.4, fontWeight: 700 }}
+            aria-label={persona.name}
+          >
+            {persona.name[0]}
+          </span>
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={getPersonaAvatarUrl(persona, px * 2)}
+            alt={persona.name}
+            width={px}
+            height={px}
+            className={cn("h-full w-full object-cover transition-opacity duration-300", loaded ? "opacity-100" : "opacity-0")}
+            onLoad={() => setLoaded(true)}
+            onError={() => setFailed(true)}
+          />
+        )}
+      </div>
     </div>
   );
 }
