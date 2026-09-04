@@ -7,8 +7,8 @@ npm install --ignore-scripts
 # Fix bin permissions (common after zip imports / npm installs on this repl)
 chmod -R +x node_modules/.bin/ 2>/dev/null || true
 
-# Run any pending DB column additions / table creations idempotently.
-# A literal heredoc avoids shell expansion of SQL quotes, backticks, and dollar blocks.
+# Run schema migrations using a literal heredoc so shell quoting cannot alter
+# JavaScript template literals, SQL dollar blocks, or JSON defaults.
 node <<'NODE'
 const {Pool}=require('pg');
 const p=new Pool({connectionString:process.env.DATABASE_URL});
@@ -90,7 +90,7 @@ p.query(`
     slug VARCHAR(80) PRIMARY KEY,
     title VARCHAR(160) NOT NULL,
     tagline VARCHAR(400) NOT NULL,
-    category VARCHAR(20) NOT NULL CHECK (category IN ('product','data','ai','security')),
+    category TEXT NOT NULL,
     level VARCHAR(20) NOT NULL CHECK (level IN ('Beginner','Intermediate','Advanced')),
     tags JSONB NOT NULL DEFAULT '[]',
     cover VARCHAR(200) NOT NULL,
@@ -105,6 +105,31 @@ p.query(`
   -- newly-created courses (app code now sends published:false explicitly)
   -- start as drafts.
   ALTER TABLE courses ADD COLUMN IF NOT EXISTS published BOOLEAN NOT NULL DEFAULT TRUE;
+
+  -- Category used to be a closed 4-value enum (CHECK + VARCHAR(20)); a
+  -- tutor/admin can now add their own category from the course editor, so
+  -- both the length limit and the fixed value list have to go. The CHECK
+  -- constraint's name isn't tracked anywhere in this app, so it's found and
+  -- dropped dynamically rather than assumed (e.g. as courses_category_check)
+  -- — installs from different Postgres versions/history can end up with a
+  -- differently-named constraint on the same column.
+  DO $$
+  DECLARE
+    con RECORD;
+  BEGIN
+    FOR con IN
+      SELECT pgc.conname
+      FROM pg_constraint pgc
+      JOIN pg_class rel ON rel.oid = pgc.conrelid
+      JOIN pg_attribute att ON att.attrelid = rel.oid AND att.attnum = ANY(pgc.conkey)
+      WHERE rel.relname = 'courses' AND pgc.contype = 'c' AND att.attname = 'category'
+    LOOP
+      EXECUTE format('ALTER TABLE courses DROP CONSTRAINT %I', con.conname);
+    END LOOP;
+  END
+  $$;
+  ALTER TABLE courses ALTER COLUMN category TYPE TEXT;
+
   CREATE TABLE IF NOT EXISTS course_catalog_metadata (
     key VARCHAR(80) PRIMARY KEY,
     seeded_at TIMESTAMP NOT NULL DEFAULT NOW()

@@ -12,6 +12,21 @@ describe("course catalog validation", () => {
     expect(validateCourse(courseFixture()).ok).toBe(true);
   });
 
+  it("accepts a bounded custom category and draft status", () => {
+    const course = courseFixture();
+    course.category = "System Design";
+    course.published = false;
+    expect(validateCourse(course)).toEqual(expect.objectContaining({ ok: true }));
+  });
+
+  it("rejects empty, oversized, or non-string custom categories", () => {
+    for (const category of ["", "x".repeat(41), 42]) {
+      const course = courseFixture() as unknown as Record<string, unknown>;
+      course.category = category;
+      expect(validateCourse(course)).toEqual(expect.objectContaining({ ok: false }));
+    }
+  });
+
   it("rejects normalized/non-calendar dates despite YYYY-MM-DD appearance", () => {
     const course = courseFixture();
     course.addedAt = "2026-02-30";

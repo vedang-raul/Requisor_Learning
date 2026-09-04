@@ -3,21 +3,14 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  LayoutDashboard, Library, Bot, BarChart3, Package, Shield,
+  LayoutDashboard, Library,
   MonitorPlay, Trophy, Settings, ShieldCheck, ChevronsLeft, LogOut, ChevronDown, GraduationCap,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
-import type { CategoryKey } from "@/lib/types";
-
-export const courseIcons: Record<CategoryKey, React.ElementType> = {
-  ai: Bot,
-  data: BarChart3,
-  product: Package,
-  security: Shield,
-};
+import { getCategoryMeta } from "@/components/category-icon";
 
 // Flat list used by mobile-nav (courses excluded — handled by dropdown)
 export const navItems = [
@@ -41,7 +34,7 @@ export function Sidebar() {
   const navigationCourses = state.courses.map((course) => ({
     href: `/app/course/?slug=${encodeURIComponent(course.slug)}`,
     label: course.title,
-    icon: courseIcons[course.category],
+    icon: getCategoryMeta(course.category).icon,
     slug: course.slug,
   }));
 

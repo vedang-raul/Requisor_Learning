@@ -17,6 +17,7 @@ type CourseRow = {
   base_assessment: string | null;
   revision: number;
   tutor_name: string | null;
+  published: boolean;
 };
 type LessonRow = {
   course_slug: string | null; id: string | null; lesson_title: string | null; lesson_description: string | null; youtube_id: string | null;
@@ -128,7 +129,7 @@ export function ensureCourseCatalog(): Promise<void> {
 export async function getCourses(where = "", params: unknown[] = []): Promise<Course[]> {
   const { rows } = await db.query<CourseRow & LessonRow>(
     `SELECT c.slug, c.title, c.tagline, c.category, c.level, c.tags, c.cover, c.added_at,
-             c.base_assessment, c.owner_user_id, c.revision, u.name AS tutor_name,
+             c.base_assessment, c.owner_user_id, c.revision, c.published, u.name AS tutor_name,
             l.id, l.course_slug, l.title AS lesson_title, l.description AS lesson_description,
             l.youtube_id, l.duration_min, l.resources, l.key_takeaways, l.assignment,
             l.section, l.format
@@ -142,7 +143,7 @@ export async function getCourses(where = "", params: unknown[] = []): Promise<Co
     if (!course) {
       course = { slug: row.slug, title: row.title, tagline: row.tagline, category: row.category,
         level: row.level, tags: row.tags, cover: row.cover, addedAt: new Date(row.added_at).toISOString().slice(0, 10), revision: row.revision,
-        tutorName: row.tutor_name ?? null,
+        tutorName: row.tutor_name ?? null, published: row.published,
         lessons: [], ...(row.base_assessment ? { baseAssessment: row.base_assessment } : {}) };
       courses.set(row.slug, course);
     }
@@ -159,7 +160,6 @@ export async function getCourses(where = "", params: unknown[] = []): Promise<Co
   return [...courses.values()];
 }
 
-const categories = new Set(["product", "data", "ai", "security"]);
 const levels = new Set(["Beginner", "Intermediate", "Advanced"]);
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const safeUrl = (value: string) => value === "#" || /^https:\/\//i.test(value);
@@ -172,14 +172,15 @@ export function validateCourse(value: unknown, expectedSlug?: string, requireRev
   // tutorName is server-derived (from owner_user_id) and round-trips through
   // the editor UI, but it's never read below — only owner_user_id, set from
   // the session, controls actual ownership.
-  const allowed = new Set(["slug", "title", "tagline", "category", "level", "tags", "cover", "addedAt", "lessons", "baseAssessment", "revision", "tutorName"]);
+  const allowed = new Set(["slug", "title", "tagline", "category", "level", "tags", "cover", "addedAt", "lessons", "baseAssessment", "revision", "tutorName", "published"]);
   if (Object.keys(c).some((key) => !allowed.has(key))) return { ok: false, error: "Course contains unsupported fields." };
   if (!string(c.slug, 80) || !slugPattern.test(c.slug as string) || (expectedSlug && c.slug !== expectedSlug)) return { ok: false, error: "Invalid course slug." };
   if (!string(c.title, 160) || !string(c.tagline, 400) || !string(c.cover, 200) ||
-    !categories.has(c.category as string) || !levels.has(c.level as string) ||
+    !string(c.category, 40) || !levels.has(c.level as string) ||
     !Array.isArray(c.tags) || c.tags.length > 20 || !c.tags.every((x) => string(x, 50)) ||
     !Array.isArray(c.lessons) || c.lessons.length > 200 ||
-    (c.baseAssessment !== undefined && !string(c.baseAssessment, 5000))) {
+    (c.baseAssessment !== undefined && !string(c.baseAssessment, 5000)) ||
+    (c.published !== undefined && typeof c.published !== "boolean")) {
     return { ok: false, error: "Invalid course fields." };
   }
   // Date.parse accepts normalized dates (such as 2024-02-30), so compare its
@@ -234,15 +235,16 @@ export async function replaceCourse(
     await client.query("BEGIN");
     await client.query(
       createOnly
-        ? `INSERT INTO courses (slug,title,tagline,category,level,tags,cover,added_at,base_assessment,owner_user_id)
-           VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10)`
-        : `INSERT INTO courses (slug,title,tagline,category,level,tags,cover,added_at,base_assessment,owner_user_id)
-       VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10)
+        ? `INSERT INTO courses (slug,title,tagline,category,level,tags,cover,added_at,base_assessment,owner_user_id,published)
+           VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11)`
+        : `INSERT INTO courses (slug,title,tagline,category,level,tags,cover,added_at,base_assessment,owner_user_id,published)
+       VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11)
        ON CONFLICT (slug) DO UPDATE SET title=EXCLUDED.title,tagline=EXCLUDED.tagline,category=EXCLUDED.category,
        level=EXCLUDED.level,tags=EXCLUDED.tags,cover=EXCLUDED.cover,added_at=EXCLUDED.added_at,
-       base_assessment=EXCLUDED.base_assessment,owner_user_id=CASE WHEN $11 THEN courses.owner_user_id ELSE EXCLUDED.owner_user_id END`,
+       base_assessment=EXCLUDED.base_assessment,published=EXCLUDED.published,
+       owner_user_id=CASE WHEN $12 THEN courses.owner_user_id ELSE EXCLUDED.owner_user_id END`,
       [course.slug, course.title, course.tagline, course.category, course.level, JSON.stringify(course.tags), course.cover,
-        course.addedAt, course.baseAssessment ?? null, ownerId, ...(!createOnly ? [preserveOwner] : [])]);
+         course.addedAt, course.baseAssessment ?? null, ownerId, course.published !== false, ...(!createOnly ? [preserveOwner] : [])]);
     await client.query("DELETE FROM course_lessons WHERE course_slug=$1", [course.slug]);
     for (let i = 0; i < course.lessons.length; i++) {
       const l = course.lessons[i];
@@ -284,9 +286,9 @@ export async function updateOwnedCourse(course: Course, userId: number, isAdmin:
     const next = lock.rows[0].revision + 1;
     await client.query(
       `UPDATE courses SET title=$1,tagline=$2,category=$3,level=$4,tags=$5::jsonb,cover=$6,added_at=$7,
-       base_assessment=$8,revision=$9,updated_at=NOW() WHERE slug=$10 AND revision=$11`,
+       base_assessment=$8,published=$9,revision=$10,updated_at=NOW() WHERE slug=$11 AND revision=$12`,
       [course.title, course.tagline, course.category, course.level, JSON.stringify(course.tags), course.cover,
-        course.addedAt, course.baseAssessment ?? null, next, course.slug, course.revision]
+        course.addedAt, course.baseAssessment ?? null, course.published !== false, next, course.slug, course.revision]
     );
     await client.query("DELETE FROM course_lessons WHERE course_slug=$1", [course.slug]);
     for (let i = 0; i < course.lessons.length; i++) {

@@ -20,7 +20,14 @@ export interface Lesson {
   format?: "video" | "reading";
 }
 
-export type CategoryKey = "product" | "data" | "ai" | "security";
+/**
+ * Free-form: a tutor/admin can add a new category from the course editor,
+ * not just pick one of the four the platform launched with. Those four
+ * ("product" | "data" | "ai" | "security") keep their specific icon/label/
+ * color — see components/category-icon.tsx — anything else gets a generic
+ * fallback rather than being rejected.
+ */
+export type CategoryKey = string;
 
 export interface Course {
   slug: string;
@@ -39,6 +46,10 @@ export interface Course {
   baseAssessment?: string;
   /** Server-derived from owner_user_id — never write this, it's ignored on save. Null when unowned. */
   tutorName?: string | null;
+  /** Drafts are hidden from the general catalog. Undefined (e.g. static seed
+   *  data never sent through the DB) is treated as published — only an
+   *  explicit `false` hides a course. */
+  published?: boolean;
 }
 
 export interface LessonProgress {

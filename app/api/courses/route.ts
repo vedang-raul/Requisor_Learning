@@ -10,7 +10,13 @@ export async function GET() {
   const id = requestId();
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  try { await ensureCourseCatalog(); return NextResponse.json({ courses: await getCourses() }); }
+  try {
+    await ensureCourseCatalog();
+    const courses = session.user.role === "admin"
+      ? await getCourses()
+      : await getCourses("WHERE c.published = TRUE");
+    return NextResponse.json({ courses });
+  }
   catch (error) { console.error(JSON.stringify({ operation: "courses.get", requestId: id, error: error instanceof Error ? error.message : "unknown" })); return NextResponse.json({ error: "Unable to load courses." }, { status: 500 }); }
 }
 export async function POST(req: NextRequest) {

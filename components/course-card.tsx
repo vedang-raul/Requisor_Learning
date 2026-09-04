@@ -7,7 +7,7 @@ import { useCourseProgress, useStore } from "@/lib/store";
 import { formatMinutes, cn } from "@/lib/utils";
 import { ProgressBar } from "@/components/ui/progress";
 import { Tag } from "@/components/ui/badge";
-import { categoryMeta } from "@/components/category-icon";
+import { getCategoryMeta } from "@/components/category-icon";
 
 const courseIllustrations: Record<string, string> = {
   "agentic-ai": "/course-agentic-ai.jpg",
@@ -21,7 +21,7 @@ const springHover = { type: "spring" as const, stiffness: 320, damping: 22 };
 export function CourseCard({ course }: { course: Course }) {
   const { pct, completed, total } = useCourseProgress(course);
   const { state, toggleBookmark } = useStore();
-  const meta = categoryMeta[course.category];
+  const meta = getCategoryMeta(course.category);
   const Icon = meta.icon;
   const totalMin = course.lessons.reduce((a, l) => a + l.durationMin, 0);
   const bookmarked = state.bookmarks.includes(course.slug);
@@ -87,6 +87,7 @@ export function CourseCard({ course }: { course: Course }) {
               <Flame className="h-3 w-3" />In progress
             </motion.span>
           )}
+          {course.published === false && <Tag className="bg-amber-500/80 text-white backdrop-blur-sm">Draft</Tag>}
           <Tag className="bg-black/30 text-white backdrop-blur-sm">{course.level}</Tag>
         </div>
       </div>

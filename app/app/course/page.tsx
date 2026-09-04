@@ -11,7 +11,7 @@ import { Card } from "@/components/ui/card";
 import { Tag } from "@/components/ui/badge";
 import { ProgressBar } from "@/components/ui/progress";
 import { PageTransition, Reveal } from "@/components/motion";
-import { categoryMeta } from "@/components/category-icon";
+import { getCategoryMeta } from "@/components/category-icon";
 import { Button } from "@/components/ui/button";
 import { CourseReviews } from "@/components/course-reviews";
 
@@ -131,7 +131,7 @@ function CourseView() {
     );
   }
 
-  const meta = categoryMeta[course.category];
+  const meta = getCategoryMeta(course.category);
   const Icon = meta.icon;
   const totalMin = course.lessons.reduce((a, l) => a + l.durationMin, 0);
   const bookmarked = state.bookmarks.includes(course.slug);

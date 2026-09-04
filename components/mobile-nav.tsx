@@ -7,7 +7,8 @@ import { LogOut, Menu, X, Library, ChevronDown, GraduationCap } from "lucide-rea
 import { useEffect, useState } from "react";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
-import { courseIcons, navItems } from "@/components/sidebar";
+import { navItems } from "@/components/sidebar";
+import { getCategoryMeta } from "@/components/category-icon";
 
 export function MobileNav() {
   const { state, workspaceMode, setWorkspaceMode, logout } = useStore();
@@ -19,7 +20,7 @@ export function MobileNav() {
   const navigationCourses = state.courses.map((course) => ({
     href: `/app/course/?slug=${encodeURIComponent(course.slug)}`,
     label: course.title,
-    icon: courseIcons[course.category],
+    icon: getCategoryMeta(course.category).icon,
     slug: course.slug,
   }));
 
@@ -195,11 +196,10 @@ export function MobileNav() {
                 })}
               </nav>
 
-              <div className="border-t border-zinc-200 p-3">
+              <div className="space-y-1 border-t border-zinc-200 p-3">
                 {state.user?.role === "tutor" && (
                   <button
                     onClick={switchWorkspaceMode}
-                    aria-label={workspaceMode === "tutor" ? "Switch to student mode" : "Switch to tutor mode"}
                     className="focus-ring flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-primary transition hover:bg-primary/10"
                   >
                     <GraduationCap className="h-[18px] w-[18px]" />

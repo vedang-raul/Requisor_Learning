@@ -26,6 +26,22 @@ describe("course route authorization and ownership isolation", () => {
     expect(mockGetCourses).not.toHaveBeenCalled();
   });
 
+  it("hides draft courses from the learner catalog", async () => {
+    session.mockResolvedValue({ user: { id: "8", role: "employee" } });
+    mockGetCourses.mockResolvedValue([]);
+    const response = await catalogGet();
+    expect(response.status).toBe(200);
+    expect(mockGetCourses).toHaveBeenCalledWith("WHERE c.published = TRUE");
+  });
+
+  it("lets admins load drafts for content management", async () => {
+    session.mockResolvedValue({ user: { id: "1", role: "admin" } });
+    mockGetCourses.mockResolvedValue([]);
+    const response = await catalogGet();
+    expect(response.status).toBe(200);
+    expect(mockGetCourses).toHaveBeenCalledWith();
+  });
+
   it("scopes tutor summary queries to their owner id and returns full course contract", async () => {
     session.mockResolvedValue({ user: { id: "7", role: "tutor" } });
     const course = { slug: "owned-course", title: "Owned", lessons: [] };

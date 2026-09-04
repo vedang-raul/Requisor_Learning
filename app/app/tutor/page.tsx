@@ -2,35 +2,50 @@
 
 import { FormEvent, ReactNode, SelectHTMLAttributes, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Activity, BarChart3, BookPlus, Check, CheckCircle2, Loader2, Pencil, Plus, Star, Trash2, TrendingUp, Users, X } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  Activity, BarChart3, BookPlus, Check, CheckCircle2, GraduationCap, LayoutGrid,
+  Loader2, Pencil, Plus, Send, Star, Trash2, TrendingUp, Users, X,
+} from "lucide-react";
 import { useStore } from "@/lib/store";
-import { CategoryKey, Course, Lesson } from "@/lib/types";
+import { Course, Lesson } from "@/lib/types";
+import { cn, isPlaceholder } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Input, Textarea } from "@/components/ui/input";
 import { PageTransition } from "@/components/motion";
-import { extractYouTubeId, PLACEHOLDER_VIDEO, youTubeThumb } from "@/lib/utils";
+import { getCategoryCover, DEFAULT_CATEGORIES } from "@/components/category-icon";
 import { trackEvent } from "@/lib/analytics";
 
+type TabKey = "analytics" | "courses" | "learners" | "ratings";
 type TutorCourse = { course: Course; averageRating: number; ratingCount: number; ratingDistribution: number[] | Record<string, number> };
-const covers: Record<CategoryKey, string> = {
-  product: "from-indigo-500 via-violet-500 to-fuchsia-500", data: "from-cyan-500 via-sky-500 to-blue-600",
-  ai: "from-violet-500 via-purple-500 to-indigo-600", security: "from-emerald-500 via-teal-500 to-cyan-600",
-};
+
+const springTab = { type: "spring" as const, stiffness: 500, damping: 35 };
 
 function distributionCount(distribution: TutorCourse["ratingDistribution"], rating: number) {
   return Array.isArray(distribution) ? distribution[rating] ?? distribution[rating - 1] ?? 0 : distribution[String(rating)] ?? 0;
 }
 
+/** Categories already in use across the catalog, merged with the four
+ *  defaults every install ships with — offered as datalist suggestions so a
+ *  tutor can reuse an existing category or type a brand-new one. */
+function categoryOptions(courses: Course[]): string[] {
+  const inUse = new Set<string>(DEFAULT_CATEGORIES);
+  for (const c of courses) if (c.category) inUse.add(c.category);
+  return [...inUse].sort();
+}
+
 export default function TutorPage() {
   const { state, hydrated, workspaceMode, upsertCourse, upsertLesson, deleteLesson, deleteCourse } = useStore();
   const router = useRouter();
+  const [tab, setTab] = useState<TabKey>("analytics");
   const [items, setItems] = useState<TutorCourse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Course | null>(null);
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [analyticsSlug, setAnalyticsSlug] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -39,6 +54,7 @@ export default function TutorPage() {
       const data = await response.json().catch(() => ({})) as { courses?: TutorCourse[]; error?: string };
       if (!response.ok || !Array.isArray(data.courses)) throw new Error(data.error ?? "Couldn't load your courses.");
       setItems(data.courses);
+      setAnalyticsSlug((prev) => prev && data.courses!.some((i) => i.course.slug === prev) ? prev : data.courses![0]?.course.slug ?? null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Couldn't load your courses.");
     } finally { setLoading(false); }
@@ -46,13 +62,8 @@ export default function TutorPage() {
 
   useEffect(() => {
     if (hydrated && state.user && state.user.role !== "tutor" && state.user.role !== "admin") router.replace("/app/dashboard/");
-    if (hydrated && state.user?.role === "tutor" && workspaceMode !== "tutor") router.replace("/app/dashboard/");
-  }, [hydrated, router, state.user, workspaceMode]);
-  useEffect(() => {
-    if (hydrated && state.user && (state.user.role === "admin" || (state.user.role === "tutor" && workspaceMode === "tutor"))) {
-      void load();
-    }
-  }, [hydrated, state.user, workspaceMode, load]);
+  }, [hydrated, router, state.user]);
+  useEffect(() => { if (hydrated && state.user && (state.user.role === "tutor" || state.user.role === "admin")) void load(); }, [hydrated, state.user, load]);
 
   if (!hydrated || !state.user || (state.user.role !== "tutor" && state.user.role !== "admin") || (state.user.role === "tutor" && workspaceMode !== "tutor")) return null;
   const saveCourse = async (course: Course) => {
@@ -65,6 +76,7 @@ export default function TutorPage() {
         category: saved.category,
         level: saved.level,
         lesson_count: saved.lessons.length,
+        published: saved.published !== false,
       });
       setCreating(false);
       setSelected(saved);
@@ -86,18 +98,107 @@ export default function TutorPage() {
     finally { setSaving(false); }
   };
 
-  return <PageTransition className="space-y-5">
-    <header className="flex flex-wrap items-end justify-between gap-3">
-      <div><h1 className="text-2xl font-bold text-zinc-900 md:text-3xl">Tutor workspace</h1><p className="mt-1 text-sm text-zinc-600">Create and manage your courses. Ratings update from learner feedback.</p></div>
-      <Button className="min-h-11" onClick={() => { setSelected(null); setCreating(true); }}><Plus className="h-4 w-4" /> Create course</Button>
-    </header>
-    {error && <div role="alert" className="flex flex-col items-start justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 sm:flex-row sm:items-center">{error}<Button size="sm" variant="outline" onClick={() => void load()}>Try again</Button></div>}
-    {creating && <CourseForm saving={saving} onCancel={() => setCreating(false)} onSave={saveCourse} />}
-    {loading ? <Card className="flex items-center gap-2 py-10 text-sm text-zinc-600"><Loader2 className="h-5 w-5 animate-spin" /> Loading your courses…</Card> :
-      items.length === 0 ? <Card className="py-12 text-center"><BookPlus className="mx-auto h-8 w-8 text-primary" /><CardTitle className="mt-3">No courses yet</CardTitle><p className="mt-1 text-sm text-zinc-600">Create your first course to start building a learning path.</p></Card> :
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{items.map((item) => <button key={item.course.slug} onClick={() => { setCreating(false); setSelected(item.course); }} className="focus-ring min-h-32 rounded-2xl text-left"><Card className="h-full transition hover:border-primary/40"><div className={`mb-3 h-2 rounded-full bg-gradient-to-r ${item.course.cover}`} /><CardTitle>{item.course.title}</CardTitle><p className="mt-1 text-xs text-zinc-600">{item.course.lessons.length} lessons · <span className="inline-flex items-center gap-1"><Star className="h-3 w-3 fill-amber-400 text-amber-400" aria-hidden="true" />{item.averageRating.toFixed(1)} ({item.ratingCount})</span></p><div className="mt-3 flex gap-1" aria-hidden="true">{[5,4,3,2,1].map((rating) => <span key={rating} title={`${rating} stars: ${distributionCount(item.ratingDistribution, rating)}`} className="h-1 flex-1 rounded bg-primary/20" style={{ opacity: item.ratingCount ? Math.max(.2, distributionCount(item.ratingDistribution, rating) / item.ratingCount) : .2 }} />)}</div><span className="sr-only">{[5,4,3,2,1].map((rating) => `${rating} stars: ${distributionCount(item.ratingDistribution, rating)}`).join(", ")}</span></Card></button>)}</div>}
-    {selected && <><CourseInsights course={selected} /><CourseEditor course={selected} saving={saving} onCancel={() => setSelected(null)} onSave={saveCourse} onAddLesson={updateLessons} onDeleteLesson={(lesson) => updateLessons(lesson, true)} onDeleteCourse={async () => { if (!confirm(`Delete "${selected.title}"?`)) return; setSaving(true); try { await deleteCourse(selected.slug); setSelected(null); await load(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Couldn't delete the course."); } finally { setSaving(false); } }} /></>}
-  </PageTransition>;
+  const analyticsCourse = items.find((i) => i.course.slug === analyticsSlug)?.course ?? null;
+
+  return (
+    <PageTransition className="space-y-6">
+      <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25 }} className="flex items-center gap-2.5">
+        <motion.div
+          className="rounded-xl bg-primary/10 p-2"
+          animate={{ rotate: [0, -6, 6, 0] }}
+          transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
+        >
+          <GraduationCap className="h-5 w-5 text-primary" />
+        </motion.div>
+        <div>
+          <h1 className="text-2xl font-bold md:text-3xl">Tutor <span className="text-gradient">Panel</span></h1>
+          <p className="mt-1 text-sm text-zinc-600">Manage your courses, and see aggregate analytics, learners and ratings.</p>
+        </div>
+      </motion.div>
+
+      <div
+        className="flex gap-1 overflow-x-auto border-b border-zinc-200 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        style={{ msOverflowStyle: "none" }}
+        role="tablist"
+      >
+        {([
+          ["analytics", "Analytics", BarChart3],
+          ["courses", "My Courses", LayoutGrid],
+          ["learners", "Learners", Users],
+          ["ratings", "Ratings", Star],
+        ] as [TabKey, string, typeof BarChart3][]).map(([key, label, Icon]) => {
+          const active = tab === key;
+          return (
+            <motion.button
+              key={key}
+              role="tab"
+              aria-selected={active}
+              onClick={() => setTab(key)}
+              whileHover={{ y: active ? 0 : -1 }}
+              whileTap={{ scale: 0.97 }}
+              className={cn("focus-ring relative flex shrink-0 items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors", active ? "text-primary" : "text-zinc-500 hover:text-zinc-700")}
+            >
+              <motion.span animate={{ scale: active ? 1.1 : 1 }} transition={springTab} className="inline-flex">
+                <Icon className="h-3.5 w-3.5" />
+              </motion.span>
+              {label}
+              {active && <motion.span layoutId="tutor-underline" transition={springTab} className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-gradient-to-r from-primary to-accent" />}
+            </motion.button>
+          );
+        })}
+      </div>
+
+      {error && <div role="alert" className="flex flex-col items-start justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 sm:flex-row sm:items-center">{error}<Button size="sm" variant="outline" onClick={() => void load()}>Try again</Button></div>}
+
+      <AnimatePresence mode="wait">
+        <motion.div key={tab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.22 }}>
+          {tab === "analytics" && (
+            loading ? <Card className="flex items-center gap-2 py-10 text-sm text-zinc-600"><Loader2 className="h-5 w-5 animate-spin" /> Loading your courses…</Card> :
+            items.length === 0 ? <EmptyCoursesState /> :
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-2" role="tablist" aria-label="Select a course">
+                {items.map(({ course }) => (
+                  <button
+                    key={course.slug}
+                    onClick={() => setAnalyticsSlug(course.slug)}
+                    className={cn(
+                      "focus-ring flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors",
+                      analyticsSlug === course.slug ? "border-primary/50 bg-primary/10 text-primary" : "border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300"
+                    )}
+                  >
+                    <span className={cn("h-2 w-2 rounded-full bg-gradient-to-br", course.cover)} />
+                    {course.title}
+                  </button>
+                ))}
+              </div>
+              {analyticsCourse && <CourseInsights course={analyticsCourse} />}
+            </div>
+          )}
+          {tab === "courses" && (
+            <div className="space-y-4">
+              <div className="flex justify-end">
+                <Button className="min-h-11" onClick={() => { setSelected(null); setCreating(true); }}><Plus className="h-4 w-4" /> Create course</Button>
+              </div>
+              {creating && <CourseForm saving={saving} onCancel={() => setCreating(false)} onSave={saveCourse} />}
+              {loading ? <Card className="flex items-center gap-2 py-10 text-sm text-zinc-600"><Loader2 className="h-5 w-5 animate-spin" /> Loading your courses…</Card> :
+                items.length === 0 ? <EmptyCoursesState /> :
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{items.map((item) => <button key={item.course.slug} onClick={() => { setCreating(false); setSelected(item.course); }} className="focus-ring group min-h-32 rounded-2xl text-left"><Card className="relative h-full transition hover:border-primary/40">{item.course.published === false && <span className="absolute left-3 top-3 rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700">Draft</span>}<span className="absolute right-3 top-3 flex items-center gap-1 rounded-full border border-transparent px-2 py-1 text-[11px] font-medium text-zinc-400 opacity-0 transition group-hover:border-primary/30 group-hover:bg-primary/10 group-hover:text-primary group-hover:opacity-100"><Pencil className="h-3 w-3" aria-hidden="true" />Edit</span><div className={`mb-3 h-2 rounded-full bg-gradient-to-r ${item.course.cover}`} /><CardTitle>{item.course.title}</CardTitle><p className="mt-1 text-xs text-zinc-600">{item.course.lessons.length} lessons · <span className="inline-flex items-center gap-1"><Star className="h-3 w-3 fill-amber-400 text-amber-400" aria-hidden="true" />{item.averageRating.toFixed(1)} ({item.ratingCount})</span></p><div className="mt-3 flex gap-1" aria-hidden="true">{[5,4,3,2,1].map((rating) => <span key={rating} title={`${rating} stars: ${distributionCount(item.ratingDistribution, rating)}`} className="h-1 flex-1 rounded bg-primary/20" style={{ opacity: item.ratingCount ? Math.max(.2, distributionCount(item.ratingDistribution, rating) / item.ratingCount) : .2 }} />)}</div><span className="sr-only">{[5,4,3,2,1].map((rating) => `${rating} stars: ${distributionCount(item.ratingDistribution, rating)}`).join(", ")}</span></Card></button>)}</div>}
+              {selected && <CourseEditor course={selected} saving={saving} onCancel={() => setSelected(null)} onSave={saveCourse} onAddLesson={updateLessons} onDeleteLesson={(lesson) => updateLessons(lesson, true)} onDeleteCourse={async () => { if (!confirm(`Delete "${selected.title}"?`)) return; setSaving(true); try { await deleteCourse(selected.slug); setSelected(null); await load(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Couldn't delete the course."); } finally { setSaving(false); } }} />}
+            </div>
+          )}
+          {tab === "learners" && <LearnersPanel />}
+          {tab === "ratings" && (
+            loading ? <Card className="flex items-center gap-2 py-10 text-sm text-zinc-600"><Loader2 className="h-5 w-5 animate-spin" /> Loading ratings…</Card> :
+            <RatingsPanel items={items} />
+          )}
+        </motion.div>
+      </AnimatePresence>
+    </PageTransition>
+  );
+}
+
+function EmptyCoursesState() {
+  return <Card className="py-12 text-center"><BookPlus className="mx-auto h-8 w-8 text-primary" /><CardTitle className="mt-3">No courses yet</CardTitle><p className="mt-1 text-sm text-zinc-600">Create your first course in the "My Courses" tab to start building a learning path.</p></Card>;
 }
 
 type InsightsData = {
@@ -199,25 +300,160 @@ function CourseInsights({ course }: { course: Course }) {
   </section>;
 }
 
+/* ---------------- Learners (cross-course, aggregate-only rollup) ---------------- */
+
+type LearnersData = {
+  period: { days: number; since: string };
+  privacy: { minimumLearners: number };
+  overall: { suppressed: boolean; totalLearners: number | null; activeInPeriod: number | null; totalCompletions: number | null };
+  courses: Array<{ slug: string; title: string; lessonCount: number; suppressed: boolean; enrolled: number | null; active: number | null; completed: number | null }>;
+};
+
+function LearnersPanel() {
+  const [days, setDays] = useState(30);
+  const [data, setData] = useState<LearnersData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async (signal?: AbortSignal) => {
+    setLoading(true); setError(null);
+    try {
+      const response = await fetch(`/api/tutor/learners?days=${days}`, { signal });
+      const json = await response.json().catch(() => ({})) as LearnersData & { error?: string };
+      if (!response.ok) throw new Error(json.error ?? "Couldn't load learner data.");
+      setData(json);
+    } catch (cause) {
+      if (cause instanceof DOMException && cause.name === "AbortError") return;
+      setError(cause instanceof Error ? cause.message : "Couldn't load learner data.");
+    } finally {
+      if (!signal?.aborted) setLoading(false);
+    }
+  }, [days]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
+  }, [load]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2"><Users className="h-5 w-5 text-primary" aria-hidden="true" /><h2 className="text-lg font-bold text-zinc-900">Learners</h2></div>
+          <p className="mt-1 text-sm text-zinc-600">Aggregate audience across all your courses. No learner names or emails are ever shown here.</p>
+        </div>
+        <label className="text-sm font-medium text-zinc-700">Time range
+          <select value={days} onChange={(event) => setDays(Number(event.target.value))} className="focus-ring mt-1 block h-10 w-full rounded-xl border border-border bg-white px-3 text-sm sm:w-44">
+            <option value={7}>Last 7 days</option><option value={30}>Last 30 days</option><option value={90}>Last 90 days</option><option value={365}>Last 12 months</option>
+          </select>
+        </label>
+      </div>
+
+      {loading ? <Card className="grid gap-3 sm:grid-cols-3">{[1, 2, 3].map((i) => <div key={i} className="h-28 animate-pulse rounded-2xl bg-zinc-100" />)}</Card> :
+        error ? <Card className="flex flex-col items-start gap-3 border-red-200 bg-red-50 sm:flex-row sm:items-center sm:justify-between"><p role="alert" className="text-sm text-red-700">{error}</p><Button size="sm" variant="outline" onClick={() => void load()}>Try again</Button></Card> :
+        data?.overall.suppressed ? <Card className="border-amber-200 bg-amber-50"><div className="flex gap-3"><Users className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" aria-hidden="true" /><div><CardTitle>Learner totals are temporarily hidden</CardTitle><p className="mt-1 text-sm leading-6 text-amber-800">Your combined audience is currently below {data.privacy.minimumLearners} learners, so this stays hidden to protect their privacy.</p></div></div></Card> :
+        <>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <InsightMetric label="Total learners" value={String(data?.overall.totalLearners ?? 0)} detail="Distinct employees with activity across all your courses." icon={Users} tone="from-indigo-500/20 to-indigo-500/5 text-indigo-700" />
+            <InsightMetric label="Active in period" value={String(data?.overall.activeInPeriod ?? 0)} detail={`Opened or completed a lesson in the last ${days === 365 ? "12 months" : `${days} days`}.`} icon={Activity} tone="from-amber-500/20 to-amber-500/5 text-amber-700" />
+            <InsightMetric label="Total completions" value={String(data?.overall.totalCompletions ?? 0)} detail="Course completions summed across all your courses." icon={CheckCircle2} tone="from-emerald-500/20 to-emerald-500/5 text-emerald-700" />
+          </div>
+          <Card>
+            <CardTitle className="mb-3">By course</CardTitle>
+            <div className="space-y-2">
+              {(data?.courses ?? []).map((c) => (
+                <div key={c.slug} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-100 p-3">
+                  <span className="min-w-0 truncate text-sm font-medium text-zinc-800">{c.title}</span>
+                  {c.suppressed ? (
+                    <span className="text-xs text-amber-700">Hidden — fewer than {data?.privacy.minimumLearners} learners</span>
+                  ) : (
+                    <span className="flex items-center gap-3 text-xs text-zinc-600">
+                      <span>{c.enrolled} enrolled</span><span>·</span><span>{c.active} active</span><span>·</span><span>{c.completed} completed</span>
+                    </span>
+                  )}
+                </div>
+              ))}
+              {(data?.courses ?? []).length === 0 && <p className="text-sm text-zinc-500">No courses to show yet.</p>}
+            </div>
+          </Card>
+        </>}
+    </div>
+  );
+}
+
+/* ---------------- Ratings (aggregate distributions only — no review text) ---------------- */
+
+function RatingBar({ label, count, total }: { label: string; count: number; total: number }) {
+  const pct = total ? Math.round((count / total) * 100) : 0;
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <span className="w-10 shrink-0 text-zinc-500">{label}</span>
+      <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-100"><div className="h-full rounded-full bg-gradient-to-r from-amber-400 to-amber-500" style={{ width: `${pct}%` }} /></div>
+      <span className="w-8 shrink-0 text-right text-zinc-500">{count}</span>
+    </div>
+  );
+}
+
+function RatingsPanel({ items }: { items: TutorCourse[] }) {
+  if (items.length === 0) return <EmptyCoursesState />;
+  return (
+    <div className="space-y-4">
+      <div>
+        <div className="flex items-center gap-2"><Star className="h-5 w-5 text-primary" aria-hidden="true" /><h2 className="text-lg font-bold text-zinc-900">Ratings</h2></div>
+        <p className="mt-1 text-sm text-zinc-600">Star distribution and average per course. Individual review comments aren&apos;t shown to tutors, only aggregate ratings.</p>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        {items.map(({ course, averageRating, ratingCount, ratingDistribution }) => (
+          <Card key={course.slug}>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <CardTitle>{course.title}</CardTitle>
+              <span className="flex shrink-0 items-center gap-1 text-sm font-semibold text-zinc-800">
+                <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" aria-hidden="true" />
+                {averageRating.toFixed(1)}
+                <span className="font-normal text-zinc-500">({ratingCount})</span>
+              </span>
+            </div>
+            {ratingCount === 0 ? (
+              <p className="py-2 text-sm text-zinc-500">No ratings yet.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {[5, 4, 3, 2, 1].map((rating) => (
+                  <RatingBar key={rating} label={`${rating} ★`} count={distributionCount(ratingDistribution, rating)} total={ratingCount} />
+                ))}
+              </div>
+            )}
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function CourseForm({ saving, onCancel, onSave }: { saving: boolean; onCancel: () => void; onSave: (course: Course) => Promise<void> }) {
+  const { state } = useStore();
   const [title, setTitle] = useState("");
   const [tagline, setTagline] = useState("");
-  const [category, setCategory] = useState<CategoryKey>("product");
+  const [category, setCategory] = useState("product");
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const cleanTitle = title.trim();
-    if (!cleanTitle) return;
+    const cleanCategory = category.trim();
+    if (!cleanTitle || !cleanCategory) return;
     void onSave({
       slug: cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || `course-${Date.now()}`,
       title: cleanTitle,
       tagline: tagline.trim() || "New learning path.",
-      category,
+      category: cleanCategory,
       level: "Beginner",
       tags: [cleanTitle],
-      cover: covers[category],
+      cover: getCategoryCover(cleanCategory),
       addedAt: new Date().toISOString().slice(0, 10),
       lessons: [],
+      // Starts private — build it out on the "Publish" toggle in the editor
+      // once it's ready for learners.
+      published: false,
     });
   }
 
@@ -240,13 +476,20 @@ function CourseForm({ saving, onCancel, onSave }: { saving: boolean; onCancel: (
         </label>
         <label className="block text-sm font-medium text-zinc-800">
           Category
-          <select value={category} onChange={(event) => setCategory(event.target.value as CategoryKey)} className="focus-ring mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm">
-            <option value="product">Product Management</option>
-            <option value="data">Data Analytics</option>
-            <option value="ai">Agentic AI</option>
-            <option value="security">Cyber Security</option>
-          </select>
+          <Input
+            list="tutor-new-course-categories"
+            className="mt-1"
+            placeholder="Pick an existing one or type a new one"
+            value={category}
+            onChange={(event) => setCategory(event.target.value)}
+            required
+            maxLength={40}
+          />
+          <datalist id="tutor-new-course-categories">
+            {categoryOptions(state.courses).map((c) => <option key={c} value={c} />)}
+          </datalist>
         </label>
+        <p className="text-xs text-zinc-500">Starts as a private draft — publish it from the editor once it's ready for learners.</p>
         <Button type="submit" disabled={saving || !title.trim()} className="min-h-11">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
           Create course
@@ -256,11 +499,56 @@ function CourseForm({ saving, onCancel, onSave }: { saving: boolean; onCancel: (
   );
 }
 
+/* Emails learners with recorded activity on this course about a lesson —
+   tutor-scoped equivalent of the admin panel's NotifyButton. See
+   /api/tutor/notify-lesson for the ownership + recipient-scoping rules. */
+function TutorNotifyButton({ courseSlug, courseTitle, lesson }: { courseSlug: string; courseTitle: string; lesson: Lesson }) {
+  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const notify = async () => {
+    if (status === "sending") return;
+    if (!confirm(`Email learners enrolled in "${courseTitle}" about "${lesson.title}"? Sent from support@requisor.io.`)) return;
+    setStatus("sending");
+    setErrorMsg(null);
+    try {
+      const res = await fetch("/api/tutor/notify-lesson", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ courseSlug, lessonId: lesson.id }),
+      });
+      const data = await res.json().catch(() => ({})) as { sent?: number; total?: number; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Couldn't send notifications.");
+      setStatus("sent");
+      setErrorMsg(data.total === 0 ? "No enrolled learners to notify yet." : null);
+      setTimeout(() => setStatus("idle"), 4000);
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : "Couldn't send notifications.");
+      setStatus("error");
+      setTimeout(() => setStatus("idle"), 4000);
+    }
+  };
+
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      disabled={status === "sending"}
+      onClick={notify}
+      aria-label={`Email learners about ${lesson.title}`}
+      title={errorMsg ?? "Email enrolled learners about this lesson"}
+    >
+      {status === "sent" ? <Check className="h-4 w-4 text-emerald-600" /> : status === "error" ? <X className="h-4 w-4 text-red-600" /> : <Send className={cn("h-4 w-4", status === "sending" && "animate-pulse")} />}
+    </Button>
+  );
+}
+
 function CourseEditor({ course, saving, onCancel, onSave, onAddLesson, onDeleteLesson, onDeleteCourse }: { course?: Course | null; saving: boolean; onCancel: () => void; onSave: (course: Course) => Promise<void>; onAddLesson?: (lesson: Lesson) => Promise<void>; onDeleteLesson?: (lesson: Lesson) => Promise<void>; onDeleteCourse?: () => Promise<void> }) {
-  const [title, setTitle] = useState(course?.title ?? ""); const [tagline, setTagline] = useState(course?.tagline ?? ""); const [category, setCategory] = useState<CategoryKey>(course?.category ?? "product"); const [level, setLevel] = useState<Course["level"]>(course?.level ?? "Beginner"); const [tags, setTags] = useState(course?.tags.join(", ") ?? ""); const [assessment, setAssessment] = useState(course?.baseAssessment ?? ""); const [editing, setEditing] = useState<Lesson | null>(null);
-  const submit = (event: FormEvent) => { event.preventDefault(); if (!title.trim()) return; void onSave(course ? { ...course, title: title.trim(), tagline: tagline.trim(), category, level, tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean), baseAssessment: assessment.trim() || undefined, cover: covers[category] } : { slug: title.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || `course-${Date.now()}`, title: title.trim(), tagline: tagline.trim() || "New learning path.", category, level, tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean), cover: covers[category], addedAt: new Date().toISOString().slice(0, 10), lessons: [], baseAssessment: assessment.trim() || undefined }); };
-  return <Card className="space-y-4"><div className="flex items-center justify-between"><CardTitle>{course ? `Edit ${course.title}` : "New course"}</CardTitle><Button size="sm" variant="ghost" onClick={onCancel}>Close</Button></div><form onSubmit={submit} className="grid gap-3 sm:grid-cols-2"><Field label="Course title"><Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={160} /></Field><Field label="Tagline"><Input value={tagline} onChange={(e) => setTagline(e.target.value)} required maxLength={400} /></Field><Field label="Category"><Select value={category} onChange={(e) => setCategory(e.target.value as CategoryKey)}><option value="product">Product</option><option value="data">Data</option><option value="ai">AI</option><option value="security">Security</option></Select></Field><Field label="Level"><Select value={level} onChange={(e) => setLevel(e.target.value as Course["level"])}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></Select></Field><Field label="Tags (comma separated)"><Input value={tags} onChange={(e) => setTags(e.target.value)} /></Field><Field label="Base assessment"><Textarea value={assessment} onChange={(e) => setAssessment(e.target.value)} maxLength={5000} /></Field><div className="flex items-end gap-2"><Button type="submit" disabled={saving} className="min-h-11">{saving && <Loader2 className="h-4 w-4 animate-spin" />}Save course</Button>{course && onDeleteCourse && <Button type="button" variant="danger" disabled={saving} onClick={() => void onDeleteCourse()} aria-label={`Delete ${course.title}`}><Trash2 className="h-4 w-4" /></Button>}</div></form>
-    {course && onAddLesson && <section className="border-t pt-4"><h2 className="font-semibold text-zinc-900">Lessons</h2><ul className="mt-2 space-y-2">{course.lessons.map((lesson) => <li key={lesson.id} className="flex items-center justify-between rounded-xl border p-3 text-sm"><span>{lesson.title}</span><span className="flex gap-1"><Button size="sm" variant="ghost" disabled={saving} onClick={() => setEditing(lesson)} aria-label={`Edit ${lesson.title}`}><Pencil className="h-4 w-4" /></Button><Button size="sm" variant="ghost" disabled={saving} onClick={() => void onDeleteLesson?.(lesson)} aria-label={`Delete ${lesson.title}`}><Trash2 className="h-4 w-4 text-red-600" /></Button></span></li>)}</ul><LessonEditor key={editing?.id ?? "new"} courseSlug={course.slug} lesson={editing} saving={saving} onCancel={() => setEditing(null)} onSave={async (lesson) => { await onAddLesson(lesson); setEditing(null); }} /></section>}
+  const { state } = useStore();
+  const [title, setTitle] = useState(course?.title ?? ""); const [tagline, setTagline] = useState(course?.tagline ?? ""); const [category, setCategory] = useState(course?.category ?? "product"); const [level, setLevel] = useState<Course["level"]>(course?.level ?? "Beginner"); const [tags, setTags] = useState(course?.tags.join(", ") ?? ""); const [assessment, setAssessment] = useState(course?.baseAssessment ?? ""); const [published, setPublished] = useState(course?.published ?? false); const [editing, setEditing] = useState<Lesson | null>(null);
+  const submit = (event: FormEvent) => { event.preventDefault(); const cleanCategory = category.trim(); if (!title.trim() || !cleanCategory) return; void onSave(course ? { ...course, title: title.trim(), tagline: tagline.trim(), category: cleanCategory, level, tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean), baseAssessment: assessment.trim() || undefined, cover: getCategoryCover(cleanCategory), published } : { slug: title.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || `course-${Date.now()}`, title: title.trim(), tagline: tagline.trim() || "New learning path.", category: cleanCategory, level, tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean), cover: getCategoryCover(cleanCategory), addedAt: new Date().toISOString().slice(0, 10), lessons: [], baseAssessment: assessment.trim() || undefined, published }); };
+  return <Card className="space-y-4"><div className="flex items-center justify-between"><CardTitle>{course ? `Edit ${course.title}` : "New course"}</CardTitle><Button size="sm" variant="ghost" onClick={onCancel}>Close</Button></div><form onSubmit={submit} className="grid gap-3 sm:grid-cols-2"><Field label="Course title"><Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={160} /></Field><Field label="Tagline"><Input value={tagline} onChange={(e) => setTagline(e.target.value)} required maxLength={400} /></Field><Field label="Category"><Input list="tutor-editor-category-options" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Pick an existing one or type a new one" required maxLength={40} /><datalist id="tutor-editor-category-options">{categoryOptions(state.courses).map((c) => <option key={c} value={c} />)}</datalist></Field><Field label="Level"><Select value={level} onChange={(e) => setLevel(e.target.value as Course["level"])}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></Select></Field><Field label="Tags (comma separated)"><Input value={tags} onChange={(e) => setTags(e.target.value)} /></Field><Field label="Base assessment"><Textarea value={assessment} onChange={(e) => setAssessment(e.target.value)} maxLength={5000} /></Field><label className="flex items-center gap-2 text-sm font-medium text-zinc-800 sm:col-span-2"><input type="checkbox" checked={published} onChange={(e) => setPublished(e.target.checked)} className="h-4 w-4 rounded border-zinc-300 accent-primary" />Published — visible to learners{!published && <span className="font-normal text-zinc-500">(currently a private draft)</span>}</label><div className="flex items-end gap-2"><Button type="submit" disabled={saving} className="min-h-11">{saving && <Loader2 className="h-4 w-4 animate-spin" />}Save course</Button>{course && onDeleteCourse && <Button type="button" variant="danger" disabled={saving} onClick={() => void onDeleteCourse()} aria-label={`Delete ${course.title}`}><Trash2 className="h-4 w-4" /></Button>}</div></form>
+    {course && onAddLesson && <section className="border-t pt-4"><h2 className="font-semibold text-zinc-900">Lessons</h2><ul className="mt-2 space-y-2">{course.lessons.map((lesson) => <li key={lesson.id} className="flex items-center justify-between rounded-xl border p-3 text-sm"><span>{lesson.title}</span><span className="flex gap-1">{lesson.format !== "reading" && !isPlaceholder(lesson.youtubeId) && <TutorNotifyButton courseSlug={course.slug} courseTitle={course.title} lesson={lesson} />}<Button size="sm" variant="ghost" disabled={saving} onClick={() => setEditing(lesson)} aria-label={`Edit ${lesson.title}`}><Pencil className="h-4 w-4" /></Button><Button size="sm" variant="ghost" disabled={saving} onClick={() => void onDeleteLesson?.(lesson)} aria-label={`Delete ${lesson.title}`}><Trash2 className="h-4 w-4 text-red-600" /></Button></span></li>)}</ul><LessonEditor key={editing?.id ?? "new"} courseSlug={course.slug} lesson={editing} saving={saving} onCancel={() => setEditing(null)} onSave={async (lesson) => { await onAddLesson(lesson); setEditing(null); }} /></section>}
   </Card>;
 }
 
@@ -268,7 +556,6 @@ function Field({ label, children }: { label: string; children: ReactNode }) { re
 function Select({ children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) { return <select {...props} className="focus-ring mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm">{children}</select>; }
 function LessonEditor({ courseSlug, lesson, saving, onCancel, onSave }: { courseSlug: string; lesson: Lesson | null; saving: boolean; onCancel: () => void; onSave: (lesson: Lesson) => Promise<void> }) {
   const [title, setTitle] = useState(lesson?.title ?? ""); const [description, setDescription] = useState(lesson?.description ?? ""); const [format, setFormat] = useState<"video" | "reading">(lesson?.format ?? "video"); const [youtubeId, setYoutubeId] = useState(lesson?.youtubeId === "REPLACE_ME" ? "" : lesson?.youtubeId ?? ""); const [duration, setDuration] = useState(String(lesson?.durationMin ?? 20)); const [section, setSection] = useState(lesson?.section ?? ""); const [assignment, setAssignment] = useState(lesson?.assignment ?? ""); const [takeaways, setTakeaways] = useState(lesson?.keyTakeaways.join("\n") ?? ""); const [resources, setResources] = useState(lesson?.resources.map((r) => `${r.label}|${r.url}|${r.type}`).join("\n") ?? ""); const [formError, setFormError] = useState<string | null>(null);
-  const detectedVideoId = format === "video" && youtubeId.trim() ? extractYouTubeId(youtubeId) : null;
-  const submit = (event: FormEvent) => { event.preventDefault(); try { const parsedResources = resources.split("\n").filter(Boolean).map((line) => { const [label, url, type] = line.split("|").map((part) => part.trim()); if (!label || !url || (type !== "link" && type !== "pdf") || (url !== "#" && !/^https:\/\//i.test(url))) throw new Error("Resources must be Label|https://url|link or pdf."); return { label, url, type: type as "link" | "pdf" }; }); if (format === "video" && youtubeId.trim() && !detectedVideoId) throw new Error("Paste a valid YouTube URL or 11-character video ID."); setFormError(null); void onSave({ id: lesson?.id ?? `${courseSlug}-${Date.now()}`, title: title.trim(), description: description.trim(), format, youtubeId: format === "reading" ? "" : detectedVideoId ?? PLACEHOLDER_VIDEO, durationMin: Math.min(1440, Math.max(1, Math.round(Number(duration) || 20))), section: section.trim() || undefined, assignment: assignment.trim() || undefined, keyTakeaways: takeaways.split("\n").map((item) => item.trim()).filter(Boolean), resources: parsedResources }); } catch (error) { setFormError(error instanceof Error ? error.message : "Check the lesson details."); } };
-  return <form onSubmit={submit} className="mt-3 grid gap-3 rounded-xl bg-zinc-50 p-3 sm:grid-cols-2"><Field label="Lesson title"><Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={200} /></Field><Field label="Format"><Select value={format} onChange={(e) => setFormat(e.target.value as "video" | "reading")}><option value="video">Video</option><option value="reading">Reading</option></Select></Field><Field label="Description"><Textarea value={description} onChange={(e) => setDescription(e.target.value)} required maxLength={2000} /></Field><Field label="Duration (minutes)"><Input type="number" min="1" max="1440" step="1" value={duration} onChange={(e) => setDuration(e.target.value)} required /></Field>{format === "video" && <Field label="YouTube URL or video ID"><Input value={youtubeId} onChange={(e) => { setYoutubeId(e.target.value); setFormError(null); }} placeholder="Paste youtube.com/watch, youtu.be, Shorts, Live, or an ID" maxLength={2048} aria-invalid={Boolean(youtubeId.trim() && !detectedVideoId)} />{youtubeId.trim() && !detectedVideoId && <span className="mt-1 block text-xs text-red-700">Enter a valid YouTube URL or 11-character video ID.</span>}{detectedVideoId && <span className="mt-2 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-800"><img src={youTubeThumb(detectedVideoId)} alt="" className="h-9 w-16 rounded object-cover" />Video detected and ready to embed.</span>}</Field>}<Field label="Section"><Input value={section} onChange={(e) => setSection(e.target.value)} maxLength={200} /></Field><Field label="Assignment"><Textarea value={assignment} onChange={(e) => setAssignment(e.target.value)} maxLength={5000} /></Field><Field label="Key takeaways (one per line)"><Textarea value={takeaways} onChange={(e) => setTakeaways(e.target.value)} /></Field><Field label="Resources (Label|https://url|link or pdf)"><Textarea value={resources} onChange={(e) => setResources(e.target.value)} /></Field>{formError && <p role="alert" className="text-sm text-red-700 sm:col-span-2">{formError}</p>}<div className="flex gap-2"><Button type="submit" disabled={saving || !title.trim() || !description.trim() || Boolean(youtubeId.trim() && !detectedVideoId)} className="min-h-11">{saving && <Loader2 className="h-4 w-4 animate-spin" />}{lesson ? "Save lesson" : "Add lesson"}</Button>{lesson && <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>}</div></form>;
+  const submit = (event: FormEvent) => { event.preventDefault(); try { const parsedResources = resources.split("\n").filter(Boolean).map((line) => { const [label, url, type] = line.split("|").map((part) => part.trim()); if (!label || !url || (type !== "link" && type !== "pdf") || (url !== "#" && !/^https:\/\//i.test(url))) throw new Error("Resources must be Label|https://url|link or pdf."); return { label, url, type: type as "link" | "pdf" }; }); setFormError(null); void onSave({ id: lesson?.id ?? `${courseSlug}-${Date.now()}`, title: title.trim(), description: description.trim(), format, youtubeId: format === "reading" ? "" : youtubeId.trim() || "REPLACE_ME", durationMin: Math.min(1440, Math.max(1, Math.round(Number(duration) || 20))), section: section.trim() || undefined, assignment: assignment.trim() || undefined, keyTakeaways: takeaways.split("\n").map((item) => item.trim()).filter(Boolean), resources: parsedResources }); } catch (error) { setFormError(error instanceof Error ? error.message : "Check the lesson details."); } };
+  return <form onSubmit={submit} className="mt-3 grid gap-3 rounded-xl bg-zinc-50 p-3 sm:grid-cols-2"><Field label="Lesson title"><Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={200} /></Field><Field label="Format"><Select value={format} onChange={(e) => setFormat(e.target.value as "video" | "reading")}><option value="video">Video</option><option value="reading">Reading</option></Select></Field><Field label="Description"><Textarea value={description} onChange={(e) => setDescription(e.target.value)} required maxLength={2000} /></Field><Field label="Duration (minutes)"><Input type="number" min="1" max="1440" step="1" value={duration} onChange={(e) => setDuration(e.target.value)} required /></Field>{format === "video" && <Field label="YouTube video ID"><Input value={youtubeId} onChange={(e) => setYoutubeId(e.target.value)} placeholder="e.g. dQw4w9WgXcQ" maxLength={120} /></Field>}<Field label="Section"><Input value={section} onChange={(e) => setSection(e.target.value)} maxLength={200} /></Field><Field label="Assignment"><Textarea value={assignment} onChange={(e) => setAssignment(e.target.value)} maxLength={5000} /></Field><Field label="Key takeaways (one per line)"><Textarea value={takeaways} onChange={(e) => setTakeaways(e.target.value)} /></Field><Field label="Resources (Label|https://url|link or pdf)"><Textarea value={resources} onChange={(e) => setResources(e.target.value)} /></Field>{formError && <p role="alert" className="text-sm text-red-700 sm:col-span-2">{formError}</p>}<div className="flex gap-2"><Button type="submit" disabled={saving || !title.trim() || !description.trim()} className="min-h-11">{saving && <Loader2 className="h-4 w-4 animate-spin" />}{lesson ? "Save lesson" : "Add lesson"}</Button>{lesson && <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>}</div></form>;
 }

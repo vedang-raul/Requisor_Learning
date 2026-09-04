@@ -10,7 +10,7 @@ import {
   Gauge, Sparkles, ScanText, Bug, AlertCircle, CheckCircle2, ChevronUp, Image, Loader2,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
-import { Course, Lesson, CategoryKey } from "@/lib/types";
+import { Course, Lesson } from "@/lib/types";
 import { cn, extractYouTubeId, formatMinutes, youTubeThumb, isPlaceholder, PLACEHOLDER_VIDEO } from "@/lib/utils";
 import { Card, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import { Tag } from "@/components/ui/badge";
 import { PageTransition } from "@/components/motion";
 import { ProgressBar } from "@/components/ui/progress";
 import { TeamInsights } from "@/components/team-insights";
+import { getCategoryCover, DEFAULT_CATEGORIES } from "@/components/category-icon";
 
 type TabKey = "analytics" | "content" | "users" | "reviews" | "bugs";
 
@@ -408,6 +409,7 @@ function ContentManager() {
                   <p className="truncate text-sm font-medium text-zinc-900">{c.title}</p>
                   <p className="text-[11px] text-zinc-500">{c.lessons.length} lessons</p>
                 </div>
+                {c.published === false && <Tag className="shrink-0 bg-amber-100 text-amber-700">Draft</Tag>}
               </motion.button>
             );
           })}
@@ -501,16 +503,20 @@ function ContentManager() {
   );
 }
 
+/** Categories already in use across the catalog, merged with the four
+ *  defaults every install ships with — offered as datalist suggestions so an
+ *  admin can reuse an existing category or type a brand-new one. */
+function categoryOptions(courses: Course[]): string[] {
+  const inUse = new Set<string>(DEFAULT_CATEGORIES);
+  for (const c of courses) if (c.category) inUse.add(c.category);
+  return [...inUse].sort();
+}
+
 function CourseForm({ onSave, onClose }: { onSave: (c: Course) => void | Promise<void>; onClose: () => void }) {
+  const { state } = useStore();
   const [title, setTitle] = useState("");
   const [tagline, setTagline] = useState("");
-  const [category, setCategory] = useState<CategoryKey>("product");
-  const covers: Record<CategoryKey, string> = {
-    product: "from-indigo-500 via-violet-500 to-fuchsia-500",
-    data: "from-cyan-500 via-sky-500 to-blue-600",
-    ai: "from-violet-500 via-purple-500 to-indigo-600",
-    security: "from-emerald-500 via-teal-500 to-cyan-600",
-  };
+  const [category, setCategory] = useState("product");
   return (
     <motion.div
       initial={{ opacity: 0, height: 0 }}
@@ -528,26 +534,37 @@ function CourseForm({ onSave, onClose }: { onSave: (c: Course) => void | Promise
         </div>
         <Input placeholder="Course title (e.g. System Design)" value={title} onChange={(e) => setTitle(e.target.value)} />
         <Input placeholder="One-line tagline" value={tagline} onChange={(e) => setTagline(e.target.value)} />
-        <select value={category} onChange={(e) => setCategory(e.target.value as CategoryKey)} className="focus-ring h-10 w-full rounded-xl border border-border bg-card px-3 text-sm text-zinc-800" aria-label="Category">
-          <option value="product">Product Management</option>
-          <option value="data">Data Analytics</option>
-          <option value="ai">Agentic AI</option>
-          <option value="security">Cyber Security</option>
-        </select>
+        <Input
+          list="admin-new-course-categories"
+          placeholder="Category — pick an existing one or type a new one"
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+          aria-label="Category"
+          maxLength={40}
+        />
+        <datalist id="admin-new-course-categories">
+          {categoryOptions(state.courses).map((c) => <option key={c} value={c} />)}
+        </datalist>
         <motion.div whileHover={{ scale: title.trim() ? 1.02 : 1 }} whileTap={{ scale: title.trim() ? 0.98 : 1 }}>
           <Button
-            disabled={!title.trim()}
+            disabled={!title.trim() || !category.trim()}
             onClick={() =>
               onSave({
                 slug: title.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || `course-${Date.now()}`,
                 title: title.trim(),
                 tagline: tagline.trim() || "New learning path.",
-                category,
+                category: category.trim(),
                 level: "Beginner",
                 tags: [title.trim()],
-                cover: covers[category],
+                cover: getCategoryCover(category.trim()),
                 addedAt: new Date().toISOString().slice(0, 10),
                 lessons: [],
+                // Unlike the tutor editor, admin's Content Manager has no
+                // course-level edit form after creation — so unlike a
+                // tutor-created course, this can't default to a draft with
+                // no way to ever publish it. Admin-created courses go live
+                // immediately, same as before drafts existed.
+                published: true,
               })
             }
           >
