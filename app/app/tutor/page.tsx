@@ -10,6 +10,7 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { Input, Textarea } from "@/components/ui/input";
 import { PageTransition } from "@/components/motion";
 import { extractYouTubeId, PLACEHOLDER_VIDEO, youTubeThumb } from "@/lib/utils";
+import { trackEvent } from "@/lib/analytics";
 
 type TutorCourse = { course: Course; averageRating: number; ratingCount: number; ratingDistribution: number[] | Record<string, number> };
 const covers: Record<CategoryKey, string> = {
@@ -56,7 +57,19 @@ export default function TutorPage() {
   if (!hydrated || !state.user || (state.user.role !== "tutor" && state.user.role !== "admin") || (state.user.role === "tutor" && workspaceMode !== "tutor")) return null;
   const saveCourse = async (course: Course) => {
     setSaving(true); setError(null);
-    try { const saved = await upsertCourse(course); setCreating(false); setSelected(saved); await load(); }
+    try {
+      const action = creating ? "create" : "edit";
+      const saved = await upsertCourse(course);
+      trackEvent("tutor_course_saved", {
+        action,
+        category: saved.category,
+        level: saved.level,
+        lesson_count: saved.lessons.length,
+      });
+      setCreating(false);
+      setSelected(saved);
+      await load();
+    }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Couldn't save the course."); }
     finally { setSaving(false); }
   };

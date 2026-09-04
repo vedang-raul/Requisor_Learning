@@ -9,6 +9,7 @@ import { useVoice } from "@/hooks/use-voice";
 import { useStore } from "@/lib/store";
 import { scoreCourses } from "@/lib/course-match";
 import { cn } from "@/lib/utils";
+import { trackEvent } from "@/lib/analytics";
 
 /**
  * A standalone, one-time (replayable) onboarding walkthrough — distinct from
@@ -148,6 +149,12 @@ export function OnboardingGuide({ hasDob, onComplete }: Props) {
           preferredLanguage: language || "",
         },
       }));
+      trackEvent("onboarding_completed", {
+        role: "learner",
+        persona: personaId,
+        language: language || "en",
+        had_existing_dob: hasDob,
+      });
       voice.stopSpeaking();
       onComplete();
     } catch {

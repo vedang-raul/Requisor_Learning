@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { CheckCircle2, Loader2, RotateCcw, X, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { trackEvent } from "@/lib/analytics";
 
 interface QuizQuestion {
   id: string;
@@ -61,6 +62,10 @@ export function LessonQuiz({
         throw new Error(data.error || "Failed to generate quiz.");
       }
       setState({ status: "ready", quizId: data.quizId as number, questions: data.questions });
+      trackEvent("quiz_generated", {
+        lesson_id: lessonId,
+        question_count: data.questions.length,
+      });
     } catch (error) {
       setState({
         status: "error",
@@ -134,6 +139,12 @@ export function LessonQuiz({
         score: data.score as number,
         total: data.total as number,
         results: data.results,
+      });
+      trackEvent("quiz_completed", {
+        lesson_id: lessonId,
+        score: data.score as number,
+        total: data.total as number,
+        percent: Math.round(((data.score as number) / Math.max(data.total as number, 1)) * 100),
       });
     } catch (error) {
       setState({

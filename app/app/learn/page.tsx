@@ -20,6 +20,7 @@ import { Confetti } from "@/components/confetti";
 import { PageTransition } from "@/components/motion";
 import { LessonQuiz } from "@/components/lesson-quiz";
 import { LessonAssignment } from "@/components/lesson-assignment";
+import { trackEvent } from "@/lib/analytics";
 
 const springHover = { type: "spring" as const, stiffness: 320, damping: 22 };
 const springTab = { type: "spring" as const, stiffness: 500, damping: 35 };
@@ -101,6 +102,7 @@ function LearnView() {
     if (courseSlug && lessonId) {
       recordView(courseSlug, lessonId);
       syncLessonView(lessonId, courseSlug);
+      trackEvent("lesson_viewed", { course_slug: courseSlug, lesson_id: lessonId });
       const t = setTimeout(() => setWatchPct(lessonId, 25), 15000);
       return () => clearTimeout(t);
     }
@@ -230,6 +232,13 @@ function LearnView() {
       setCelebrate(true);
       setCourseDone(courseCompleted);
     }
+    trackEvent("lesson_completion_changed", {
+      course_slug: course.slug,
+      lesson_id: lesson.id,
+      completed: nowCompleting,
+      source: "manual",
+      course_completed: courseCompleted,
+    });
     syncCompletion(lesson.id, course.slug, nowCompleting);
   };
 
@@ -239,6 +248,13 @@ function LearnView() {
       const { courseCompleted } = toggleComplete(course.slug, lesson.id);
       setCelebrate(true);
       if (courseCompleted) setCourseDone(true);
+      trackEvent("lesson_completion_changed", {
+        course_slug: course.slug,
+        lesson_id: lesson.id,
+        completed: true,
+        source: "video_end",
+        course_completed: courseCompleted,
+      });
       syncCompletion(lesson.id, course.slug, true);
     }
     if (next) setAutoAdvance(5);

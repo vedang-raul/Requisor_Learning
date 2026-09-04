@@ -10,6 +10,7 @@ import { renderMarkdownLite, endsInOpenTag } from "@/components/markdown-lite";
 import { useVoice } from "@/hooks/use-voice";
 import { PersonaAvatar } from "@/components/persona-avatar";
 import { AI_GUIDE_PREFERENCES_UPDATED, getPersona } from "@/lib/personas";
+import { trackEvent } from "@/lib/analytics";
 type ChatMessage = { role: "user" | "assistant"; content: string };
 const LEARNER_QUICK_PROMPTS = [
   { icon: Compass, label: "Recommend a course for my background" },
@@ -225,6 +226,8 @@ export function AiAssistant() {
   // Track whether we've already spoken / navigated for the current AI reply
   const didSpeakRef = useRef(false);
   const didNavigateRef = useRef(false);
+  const requestStartedAtRef = useRef(0);
+  const requestFailedRef = useRef(false);
   const quickPrompts = isTutorMode ? TUTOR_QUICK_PROMPTS : LEARNER_QUICK_PROMPTS;
   const initials = (state.user?.name ?? "U").slice(0, 1).toUpperCase();
   const voice = useVoice();
@@ -379,6 +382,12 @@ export function AiAssistant() {
         rafRef.current = null;
         setStreaming(false);
         const finalText = fullTextRef.current;
+        trackEvent("ai_response_completed", {
+          mode: isTutorMode ? "tutor" : "learner",
+          response_length: finalText.length,
+          duration_ms: Math.max(0, Math.round(performance.now() - requestStartedAtRef.current)),
+          success: !requestFailedRef.current,
+        });
         // Auto-speak the completed reply (unless muted)
         if (!didSpeakRef.current && !voiceMuted && voice.ttsSupported) {
           didSpeakRef.current = true;
@@ -413,6 +422,12 @@ export function AiAssistant() {
     pauseUntilRef.current = 0;
     didSpeakRef.current = false;
     didNavigateRef.current = false;
+    requestStartedAtRef.current = performance.now();
+    requestFailedRef.current = false;
+    trackEvent("ai_message_sent", {
+      mode: isTutorMode ? "tutor" : "learner",
+      message_length: trimmed.length,
+    });
     startRevealLoop();
     const requestController = new AbortController();
     requestAbortRef.current = requestController;
@@ -437,6 +452,7 @@ export function AiAssistant() {
       if (requestController.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) {
         return;
       }
+      requestFailedRef.current = true;
       fullTextRef.current += "Sorry, something went wrong reaching the AI assistant.";
       setRetryText(trimmed);
     } finally {

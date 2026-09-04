@@ -11,6 +11,7 @@ import { OnboardingGuide } from "@/components/onboarding-guide";
 import TutorSurvey from "@/components/onboarding-survey-tutor";
 import { InactivityGuard } from "@/components/inactivity-guard";
 import { REPLAY_TOUR_KEY } from "@/lib/utils";
+import { trackEvent } from "@/lib/analytics";
 
 interface MeData {
   onboardingDone: boolean;
@@ -78,6 +79,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       }),
     });
     if (!response.ok) throw new Error("Unable to save tutor profile.");
+    trackEvent("onboarding_completed", { role: "tutor" });
     setMeData((data) => data ? { ...data, onboardingDone: true } : data);
     dismissTour();
   }
