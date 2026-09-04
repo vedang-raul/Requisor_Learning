@@ -7,11 +7,12 @@ npm install --ignore-scripts
 # Fix bin permissions (common after zip imports / npm installs on this repl)
 chmod -R +x node_modules/.bin/ 2>/dev/null || true
 
-# Run any pending DB column additions / table creations idempotently
-node -e "
+# Run any pending DB column additions / table creations idempotently.
+# A literal heredoc avoids shell expansion of SQL quotes, backticks, and dollar blocks.
+node <<'NODE'
 const {Pool}=require('pg');
 const p=new Pool({connectionString:process.env.DATABASE_URL});
-p.query(\`
+p.query(`
   ALTER TABLE users
     ADD COLUMN IF NOT EXISTS employment_type TEXT,
     ADD COLUMN IF NOT EXISTS position VARCHAR(100),
@@ -39,7 +40,7 @@ p.query(\`
   -- safe to re-run.
   ALTER TABLE users ALTER COLUMN employment_type TYPE TEXT;
 
-  DO \$\$
+  DO $$
   BEGIN
     IF EXISTS (
       SELECT 1
@@ -51,7 +52,7 @@ p.query(\`
       RAISE EXCEPTION 'Cannot enforce unique Google identity bindings: duplicate Google subjects need manual resolution.';
     END IF;
   END
-  \$\$;
+  $$;
 
   CREATE UNIQUE INDEX IF NOT EXISTS users_google_id_unique
     ON users (google_id)
@@ -126,7 +127,7 @@ p.query(\`
   -- the catalog key, then make the type compatible with courses.slug. The app
   -- preserves valid reviews and installs the FK after one-time seed import.
   DELETE FROM course_reviews WHERE length(course_slug) > 80;
-  DO \$\$
+  DO $$
   BEGIN
     IF EXISTS (
       SELECT 1 FROM information_schema.columns
@@ -138,7 +139,7 @@ p.query(\`
       ALTER TABLE course_reviews
         ALTER COLUMN course_slug TYPE VARCHAR(80) USING course_slug::VARCHAR(80);
     END IF;
-  END \$\$;
+  END $$;
 
   CREATE TABLE IF NOT EXISTS course_lessons (
     id VARCHAR(120) PRIMARY KEY,
@@ -289,7 +290,7 @@ p.query(\`
   WHERE slug IN ('product-management', 'data-analytics', 'agentic-ai', 'cyber-security')
     AND owner_user_id IS NULL
     AND EXISTS (SELECT 1 FROM users WHERE name = 'Naveen Kankate' AND role = 'tutor');
-\`).then(()=>{console.log('DB schema up to date');process.exit(0)}).catch(e=>{console.error(e.message);process.exit(1)});
-"
+`).then(()=>{console.log('DB schema up to date');process.exit(0)}).catch(e=>{console.error(e.message);process.exit(1)});
+NODE
 
 echo "Post-merge setup complete."
