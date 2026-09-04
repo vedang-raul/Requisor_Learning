@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import { renderMarkdownLite, endsInOpenTag } from "@/components/markdown-lite";
 import { useVoice } from "@/hooks/use-voice";
 import { PersonaAvatar } from "@/components/persona-avatar";
-import { getPersona } from "@/lib/personas";
+import { AI_GUIDE_PREFERENCES_UPDATED, getPersona } from "@/lib/personas";
 type ChatMessage = { role: "user" | "assistant"; content: string };
 const LEARNER_QUICK_PROMPTS = [
   { icon: Compass, label: "Recommend a course for my background" },
@@ -230,19 +230,31 @@ export function AiAssistant() {
   const voice = useVoice();
   const waveBars = useMicWaveform(voice.isListening);
   const avatarState = voice.isSpeaking ? "speaking" : voice.isListening ? "listening" : "idle";
-  // Load the user's AI-guide appearance/language preference once per session.
-  // Student profile/progress context is loaded by the authenticated chat route.
+  // Load persisted preferences and also react immediately when Settings or
+  // onboarding changes them while this shared assistant remains mounted.
   useEffect(() => {
     if (!hydrated || !state.user) return;
+    function applyPreferences(data: {
+      assistantPersona?: string;
+      preferredLanguage?: string;
+    }) {
+      if (data.assistantPersona !== undefined) setAssistantPersona(data.assistantPersona);
+      if (data.preferredLanguage !== undefined) setPreferredLanguage(data.preferredLanguage);
+    }
+    function handlePreferenceUpdate(event: Event) {
+      applyPreferences((event as CustomEvent<{
+        assistantPersona?: string;
+        preferredLanguage?: string;
+      }>).detail ?? {});
+    }
+    window.addEventListener(AI_GUIDE_PREFERENCES_UPDATED, handlePreferenceUpdate);
     fetch("/api/profile")
       .then((r) => r.json())
-      .then((data: {
-        assistantPersona?: string; preferredLanguage?: string;
-      }) => {
-        setAssistantPersona(data.assistantPersona ?? "");
-        setPreferredLanguage(data.preferredLanguage ?? "");
-      })
+      .then(applyPreferences)
       .catch(() => {});
+    return () => {
+      window.removeEventListener(AI_GUIDE_PREFERENCES_UPDATED, handlePreferenceUpdate);
+    };
   }, [hydrated, state.user]);
   // Once voices and a language preference are both known, pick a matching
   // voice automatically — but only if the user hasn't manually chosen one.

@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/motion";
 import { cn, REPLAY_TOUR_KEY } from "@/lib/utils";
 import { PersonaAvatar } from "@/components/persona-avatar";
-import { PERSONAS, LANGUAGES, COUNTRIES } from "@/lib/personas";
+import { AI_GUIDE_PREFERENCES_UPDATED, PERSONAS, LANGUAGES, COUNTRIES } from "@/lib/personas";
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 interface ProfileData {
@@ -445,7 +445,13 @@ function AiGuideCard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ [field]: value }),
       });
-      if (!res.ok) setPrefs((p) => (p ? { ...p, [field]: previous } : p));
+      if (!res.ok) {
+        setPrefs((p) => (p ? { ...p, [field]: previous } : p));
+      } else {
+        window.dispatchEvent(new CustomEvent(AI_GUIDE_PREFERENCES_UPDATED, {
+          detail: { [field]: value },
+        }));
+      }
     } catch {
       setPrefs((p) => (p ? { ...p, [field]: previous } : p));
     } finally {

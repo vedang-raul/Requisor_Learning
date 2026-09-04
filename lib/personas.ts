@@ -48,6 +48,7 @@ export const PERSONAS: Persona[] = [
 ];
 
 export const DEFAULT_PERSONA_ID = PERSONAS[0].id;
+export const AI_GUIDE_PREFERENCES_UPDATED = "ai-guide-preferences-updated";
 
 export function getPersona(id: string | null | undefined): Persona {
   return PERSONAS.find((p) => p.id === id) ?? PERSONAS[0];

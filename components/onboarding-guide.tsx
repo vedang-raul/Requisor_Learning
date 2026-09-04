@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, ChevronRight, ChevronLeft, Check, Volume2, VolumeX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PersonaAvatar } from "@/components/persona-avatar";
-import { PERSONAS, LANGUAGES, DEFAULT_PERSONA_ID, getPersona } from "@/lib/personas";
+import { AI_GUIDE_PREFERENCES_UPDATED, PERSONAS, LANGUAGES, DEFAULT_PERSONA_ID, getPersona } from "@/lib/personas";
 import { useVoice } from "@/hooks/use-voice";
 import { useStore } from "@/lib/store";
 import { scoreCourses } from "@/lib/course-match";
@@ -142,6 +142,12 @@ export function OnboardingGuide({ hasDob, onComplete }: Props) {
         setSaving(false);
         return;
       }
+      window.dispatchEvent(new CustomEvent(AI_GUIDE_PREFERENCES_UPDATED, {
+        detail: {
+          assistantPersona: personaId,
+          preferredLanguage: language || "",
+        },
+      }));
       voice.stopSpeaking();
       onComplete();
     } catch {
