@@ -7,7 +7,6 @@ import {
   Bug, Upload, Clock, AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Image, Video, FileText,
   Play, FileVideo, ImagePlus, Bot, Languages, Globe2, RotateCcw,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useStore } from "@/lib/store";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -15,8 +14,7 @@ import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/motion";
 import { cn, REPLAY_TOUR_KEY } from "@/lib/utils";
 import { PersonaAvatar } from "@/components/persona-avatar";
-import { AI_GUIDE_PREFERENCES_UPDATED, PERSONAS, LANGUAGES, COUNTRIES } from "@/lib/personas";
-import { trackEvent } from "@/lib/analytics";
+import { PERSONAS, LANGUAGES, COUNTRIES } from "@/lib/personas";
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 interface ProfileData {
@@ -411,14 +409,20 @@ interface GuidePrefs {
 }
 
 function AiGuideCard() {
-  const router = useRouter();
   const [prefs, setPrefs] = useState<GuidePrefs | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingField, setSavingField] = useState<keyof GuidePrefs | null>(null);
 
+  // A hard navigation, not router.push: this must force the shared /app/*
+  // layout to mount completely fresh so its one-shot "should I show the
+  // walkthrough" check reads the flag reliably, with no dependency on
+  // Next.js's client-side layout-persistence timing across a sibling route
+  // change (a client-side push here works in principle but proved fragile
+  // in practice, per issue report — this button is not a hot path, so the
+  // cost of a full reload is worth the reliability).
   function replayTour() {
     sessionStorage.setItem(REPLAY_TOUR_KEY, "1");
-    router.push("/app/dashboard/");
+    window.location.href = "/app/dashboard/";
   }
 
   useEffect(() => {
@@ -446,16 +450,7 @@ function AiGuideCard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ [field]: value }),
       });
-      if (!res.ok) {
-        setPrefs((p) => (p ? { ...p, [field]: previous } : p));
-      } else {
-        window.dispatchEvent(new CustomEvent(AI_GUIDE_PREFERENCES_UPDATED, {
-          detail: { [field]: value },
-        }));
-        if (field === "assistantPersona") {
-          trackEvent("persona_selected", { persona: value, location: "settings" });
-        }
-      }
+      if (!res.ok) setPrefs((p) => (p ? { ...p, [field]: previous } : p));
     } catch {
       setPrefs((p) => (p ? { ...p, [field]: previous } : p));
     } finally {
@@ -501,7 +496,6 @@ function AiGuideCard() {
                     whileHover={{ y: -2 }}
                     whileTap={{ scale: 0.96 }}
                     onClick={() => save("assistantPersona", p.id)}
-                     aria-pressed={selected}
                     className={cn(
                       "flex flex-col items-center gap-1.5 rounded-xl border-2 p-2.5 text-center transition-colors",
                       selected ? "border-primary bg-primary/5" : "border-transparent bg-zinc-50 hover:border-zinc-200"
