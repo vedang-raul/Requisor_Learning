@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
 import { useStore } from "@/lib/store";
@@ -20,6 +20,7 @@ interface MeData {
 function Shell({ children }: { children: React.ReactNode }) {
   const { state, hydrated } = useStore();
   const router = useRouter();
+  const pathname = usePathname();
   const [meData, setMeData] = useState<MeData | null>(null);
   const [meLoaded, setMeLoaded] = useState(false);
   const [replayTour, setReplayTour] = useState(false);
@@ -37,11 +38,11 @@ function Shell({ children }: { children: React.ReactNode }) {
       .catch(() => setMeLoaded(true)); // fail open — don't block the app
   }, [hydrated, state.user]);
 
-  // Settings uses this session-only flag to replay the walkthrough without
-  // changing the persisted onboarding completion state.
+  // Re-check after sibling-route navigation because this layout remains mounted
+  // when Settings sets the session flag and sends the user to the dashboard.
   useEffect(() => {
     if (sessionStorage.getItem(REPLAY_TOUR_KEY) === "1") setReplayTour(true);
-  }, []);
+  }, [pathname]);
 
   // Plain white screen while session resolves or redirect is in-flight —
   // no skeleton structure means no layout shift (shake) during transitions.
@@ -78,6 +79,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     });
     if (!response.ok) throw new Error("Unable to save tutor profile.");
     setMeData((data) => data ? { ...data, onboardingDone: true } : data);
+    dismissTour();
   }
 
   return (

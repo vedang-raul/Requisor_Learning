@@ -13,7 +13,7 @@ const {Pool}=require('pg');
 const p=new Pool({connectionString:process.env.DATABASE_URL});
 p.query(\`
   ALTER TABLE users
-    ADD COLUMN IF NOT EXISTS employment_type VARCHAR(20),
+    ADD COLUMN IF NOT EXISTS employment_type TEXT,
     ADD COLUMN IF NOT EXISTS position VARCHAR(100),
     ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP,
     ADD COLUMN IF NOT EXISTS reset_requested_at TIMESTAMP,
@@ -29,6 +29,15 @@ p.query(\`
     ADD COLUMN IF NOT EXISTS assistant_persona VARCHAR(20),
     ADD COLUMN IF NOT EXISTS preferred_language VARCHAR(10),
     ADD COLUMN IF NOT EXISTS preferred_country VARCHAR(60);
+
+  -- employment_type started as VARCHAR(20) for the employee flow's short
+  -- enum values ("job"/"intern"), but the tutor onboarding survey also
+  -- writes a free-text "how much teaching experience do you have" answer
+  -- into this same column — routinely well over 20 characters, which made
+  -- every such save fail silently against the old constraint. Widening is
+  -- always safe (no data loss, existing short values are untouched) and
+  -- safe to re-run.
+  ALTER TABLE users ALTER COLUMN employment_type TYPE TEXT;
 
   DO \$\$
   BEGIN
@@ -91,6 +100,10 @@ p.query(\`
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
   );
   ALTER TABLE courses ADD COLUMN IF NOT EXISTS revision INT NOT NULL DEFAULT 1;
+  -- DEFAULT TRUE so every course that already exists stays visible; only
+  -- newly-created courses (app code now sends published:false explicitly)
+  -- start as drafts.
+  ALTER TABLE courses ADD COLUMN IF NOT EXISTS published BOOLEAN NOT NULL DEFAULT TRUE;
   CREATE TABLE IF NOT EXISTS course_catalog_metadata (
     key VARCHAR(80) PRIMARY KEY,
     seeded_at TIMESTAMP NOT NULL DEFAULT NOW()
