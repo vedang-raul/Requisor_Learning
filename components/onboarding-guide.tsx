@@ -124,14 +124,6 @@ export function OnboardingGuide({ hasDob, onComplete }: Props) {
     setSaving(true);
     setError("");
     try {
-      // Two calls: the profile PATCH's fast paths for assistant prefs and
-      // onboarding fields are mutually exclusive (see app/api/profile/route.ts).
-      await fetch("/api/profile", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assistantPersona: personaId, preferredLanguage: language || undefined }),
-      }).catch(() => {}); // non-critical — onboarding still completes if this fails
-
       const res = await fetch("/api/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -140,6 +132,8 @@ export function OnboardingGuide({ hasDob, onComplete }: Props) {
           learningGoal: learningGoal.trim(),
           dateOfBirth: !hasDob ? dob : undefined,
           onboardingDone: true,
+          assistantPersona: personaId,
+          preferredLanguage: language || undefined,
         }),
       });
       if (!res.ok) {
@@ -253,6 +247,7 @@ export function OnboardingGuide({ hasDob, onComplete }: Props) {
                               key={p.id}
                               type="button"
                               onClick={() => setPersonaId(p.id)}
+                             aria-pressed={personaId === p.id}
                               className={cn(
                                 "flex flex-col items-center gap-1 rounded-xl border-2 p-2 transition-colors",
                                 personaId === p.id ? "border-primary bg-primary/5" : "border-transparent bg-zinc-50 hover:border-zinc-200"

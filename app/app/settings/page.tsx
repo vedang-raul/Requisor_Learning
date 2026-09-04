@@ -491,6 +491,7 @@ function AiGuideCard() {
                     whileHover={{ y: -2 }}
                     whileTap={{ scale: 0.96 }}
                     onClick={() => save("assistantPersona", p.id)}
+                     aria-pressed={selected}
                     className={cn(
                       "flex flex-col items-center gap-1.5 rounded-xl border-2 p-2.5 text-center transition-colors",
                       selected ? "border-primary bg-primary/5" : "border-transparent bg-zinc-50 hover:border-zinc-200"

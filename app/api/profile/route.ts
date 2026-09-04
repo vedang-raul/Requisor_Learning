@@ -119,21 +119,37 @@ export async function PATCH(req: Request) {
   const defaultNotif = { courses: true, assignments: true, badges: true, announcements: true };
 
   if (isOnboardingOnly) {
-    // Onboarding-only: update qualification, learning_goal, date_of_birth, onboarding_done without touching name
+    const persona = body.assistantPersona !== undefined
+      ? (PERSONAS.some((p) => p.id === body.assistantPersona) ? body.assistantPersona : null)
+      : undefined;
+    const language = body.preferredLanguage !== undefined
+      ? (LANGUAGES.some((l) => l.code === body.preferredLanguage) ? body.preferredLanguage : null)
+      : undefined;
+    const country = body.preferredCountry !== undefined
+      ? (COUNTRIES.includes(body.preferredCountry ?? "") ? body.preferredCountry : null)
+      : undefined;
+
+    // Save onboarding answers and AI guide preferences atomically without touching the user's name.
     const { rows } = await db.query<DbUser>(
       `UPDATE users
        SET qualification = COALESCE($1, qualification),
            learning_goal = COALESCE($2, learning_goal),
            date_of_birth = COALESCE($3, date_of_birth),
            onboarding_done = TRUE,
-           notification_settings = COALESCE($4, notification_settings)
-       WHERE email = $5
-       RETURNING name, email, role, employment_type, position, date_of_birth, gender, qualification, learning_goal, onboarding_done, notification_settings`,
+           notification_settings = COALESCE($4, notification_settings),
+           assistant_persona = COALESCE($5, assistant_persona),
+           preferred_language = COALESCE($6, preferred_language),
+           preferred_country = COALESCE($7, preferred_country)
+       WHERE email = $8
+       RETURNING name, email, role, employment_type, position, date_of_birth, gender, qualification, learning_goal, onboarding_done, notification_settings, assistant_persona, preferred_language, preferred_country`,
       [
         body.qualification?.trim() || null,
         body.learningGoal?.trim() || null,
         body.dateOfBirth || null,
         body.notificationSettings ? JSON.stringify(body.notificationSettings) : null,
+        persona ?? null,
+        language ?? null,
+        country ?? null,
         session.user.email.toLowerCase(),
       ]
     );
@@ -151,6 +167,9 @@ export async function PATCH(req: Request) {
       learningGoal: r.learning_goal ?? "",
       onboardingDone: r.onboarding_done ?? false,
       notificationSettings: r.notification_settings ?? defaultNotif,
+      assistantPersona: r.assistant_persona ?? "",
+      preferredLanguage: r.preferred_language ?? "",
+      preferredCountry: r.preferred_country ?? "",
     });
   }
 
