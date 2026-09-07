@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { FileText, Loader2, RotateCcw, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
+import { AssignmentSubmission } from "@/components/assignment-submission";
 
 type AssignmentState =
   | { status: "idle" }
@@ -11,7 +12,7 @@ type AssignmentState =
   | { status: "ready"; assignment: string; cached: boolean }
   | { status: "error"; message: string };
 
-export function LessonAssignment({ lessonId }: { lessonId: string }) {
+export function LessonAssignment({ lessonId, allowSubmission = false }: { lessonId: string; allowSubmission?: boolean }) {
   const [state, setState] = useState<AssignmentState>({ status: "idle" });
 
   useEffect(() => {
@@ -126,11 +127,16 @@ export function LessonAssignment({ lessonId }: { lessonId: string }) {
       )}
 
       {state.status === "ready" && (
-        <div className="mt-4 rounded-xl border border-primary/15 bg-white p-4">
-          <p className="text-sm leading-relaxed text-zinc-800">{state.assignment}</p>
-          <p className="mt-3 text-xs text-zinc-500">
-            {state.cached ? "Your saved assignment for this lesson." : "Saved for your next visit to this lesson."}
-          </p>
+        <div className="mt-4 space-y-4">
+          <div className="rounded-xl border border-primary/15 bg-white p-4">
+            <p className="text-sm leading-relaxed text-zinc-800">{state.assignment}</p>
+            <p className="mt-3 text-xs text-zinc-500">
+              {state.cached ? "Your saved assignment for this lesson." : "Saved for your next visit to this lesson."}
+            </p>
+          </div>
+          {allowSubmission && (
+            <AssignmentSubmission lessonId={lessonId} assignmentBrief={state.assignment} />
+          )}
         </div>
       )}
     </Card>

@@ -9,8 +9,9 @@ import { notifyUser } from "@/lib/notifications";
 import { sendAssignmentSubmittedEmail } from "@/lib/email";
 import { getBaseUrl } from "@/lib/base-url";
 
-// A learner's upload for a lesson the tutor flagged as requiring a
-// submission. GET returns the learner's own submission metadata (never the
+// A learner's upload for a tutor-required assignment or a personalized
+// practice assignment already generated for that learner. GET returns the
+// learner's own submission metadata (never the
 // file bytes — see /api/assignment/submission/file for that). POST uploads
 // or resubmits; a resubmit overwrites the previous file and bumps
 // submitted_at, matching the "one current submission per lesson" schema.
@@ -29,6 +30,15 @@ const ALLOWED_MIME_TYPES = new Set([
 // not for hammering the DB with large blobs.
 const uploadLimiter = createRateLimiter(20, 10 * 60_000);
 
+async function canSubmitAssignment(userId: number, lessonId: string, requiresSubmission: boolean): Promise<boolean> {
+  if (requiresSubmission) return true;
+  const { rows } = await db.query(
+    "SELECT 1 FROM generated_assignments WHERE user_id = $1 AND lesson_id = $2",
+    [userId, lessonId]
+  );
+  return Boolean(rows[0]);
+}
+
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -36,7 +46,6 @@ export async function GET(req: Request) {
   const lessonId = new URL(req.url).searchParams.get("lessonId")?.trim();
   const location = await findLessonLocation(lessonId);
   if (!location) return Response.json({ error: "Lesson not found." }, { status: 404 });
-  if (!location.requiresSubmission) return Response.json({ error: "This lesson does not accept assignment submissions." }, { status: 409 });
 
   const { rows: userRows } = await db.query<{ id: number }>(
     "SELECT id FROM users WHERE email = $1",
@@ -44,6 +53,9 @@ export async function GET(req: Request) {
   );
   const user = userRows[0];
   if (!user) return Response.json({ error: "Profile not found." }, { status: 404 });
+  if (!await canSubmitAssignment(user.id, location.lessonId, location.requiresSubmission)) {
+    return Response.json({ error: "Generate or receive an assignment before submitting work." }, { status: 409 });
+  }
 
   const { rows } = await db.query<{ file_name: string; file_size: number; submitted_at: string }>(
     "SELECT file_name, file_size, submitted_at FROM assignment_submissions WHERE user_id = $1 AND lesson_id = $2",
@@ -108,7 +120,6 @@ export async function POST(req: Request) {
 
   const location = await findLessonLocation(lessonId);
   if (!location) return Response.json({ error: "Lesson not found." }, { status: 404 });
-  if (!location.requiresSubmission) return Response.json({ error: "This lesson does not accept assignment submissions." }, { status: 409 });
 
   const { rows: userRows } = await db.query<{ id: number; name: string | null }>(
     "SELECT id, name FROM users WHERE email = $1",
@@ -116,6 +127,9 @@ export async function POST(req: Request) {
   );
   const user = userRows[0];
   if (!user) return Response.json({ error: "Profile not found." }, { status: 404 });
+  if (!await canSubmitAssignment(user.id, location.lessonId, location.requiresSubmission)) {
+    return Response.json({ error: "Generate or receive an assignment before submitting work." }, { status: 409 });
+  }
 
   const { rows } = await db.query<{ id: number; submitted_at: string }>(
     `INSERT INTO assignment_submissions (user_id, lesson_id, course_slug, file_name, mime_type, file_size, content, submitted_at)

@@ -518,7 +518,7 @@ function LearnView() {
                       {lesson.requiresSubmission && (
                         <AssignmentSubmission lessonId={lesson.id} assignmentBrief={lesson.assignment} />
                       )}
-                      <LessonAssignment lessonId={lesson.id} />
+                      <LessonAssignment lessonId={lesson.id} allowSubmission={!lesson.requiresSubmission} />
                     </div>
                   )}
                   {tab === "resources" && (
