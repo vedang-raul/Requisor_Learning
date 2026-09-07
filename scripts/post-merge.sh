@@ -440,16 +440,6 @@ p.query(`
   );
   CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications (user_id, created_at DESC);
 
-  -- One-time bootstrap: the four seed courses ship with no owner_user_id.
-  -- If a tutor account named exactly 'Naveen Kankate' exists, assign the
-  -- still-unowned seed courses to them; a no-op until that account exists,
-  -- and never overwrites a course someone has already claimed/reassigned.
-  UPDATE courses SET owner_user_id = (
-    SELECT id FROM users WHERE name = 'Naveen Kankate' AND role = 'tutor' LIMIT 1
-  )
-  WHERE slug IN ('product-management', 'data-analytics', 'agentic-ai', 'cyber-security')
-    AND owner_user_id IS NULL
-    AND EXISTS (SELECT 1 FROM users WHERE name = 'Naveen Kankate' AND role = 'tutor');
 `).then(()=>{console.log('DB schema up to date');process.exit(0)}).catch(e=>{console.error(e.message);process.exit(1)});
 NODE
 
