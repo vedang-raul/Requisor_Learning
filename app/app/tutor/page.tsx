@@ -1,11 +1,12 @@
 "use client";
 
 import { FormEvent, ReactNode, SelectHTMLAttributes, useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Activity, BarChart3, BookPlus, Check, CheckCircle2, GraduationCap, LayoutGrid,
-  Loader2, Pencil, Plus, Send, Star, Trash2, TrendingUp, Users, X,
+  Activity, BarChart3, BookPlus, Check, CheckCircle2, Download, GraduationCap, Inbox, LayoutGrid,
+  ListChecks, Loader2, Pencil, Plus, Send, Star, Trash2, TrendingUp, Users, X,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { Course, Lesson } from "@/lib/types";
@@ -15,7 +16,6 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { Input, Textarea } from "@/components/ui/input";
 import { PageTransition } from "@/components/motion";
 import { getCategoryCover, DEFAULT_CATEGORIES } from "@/components/category-icon";
-import { trackEvent } from "@/lib/analytics";
 
 type TabKey = "analytics" | "courses" | "learners" | "ratings";
 type TutorCourse = { course: Course; averageRating: number; ratingCount: number; ratingDistribution: number[] | Record<string, number> };
@@ -36,7 +36,7 @@ function categoryOptions(courses: Course[]): string[] {
 }
 
 export default function TutorPage() {
-  const { state, hydrated, workspaceMode, upsertCourse, upsertLesson, deleteLesson, deleteCourse } = useStore();
+  const { state, hydrated, upsertCourse, upsertLesson, deleteLesson, deleteCourse } = useStore();
   const router = useRouter();
   const [tab, setTab] = useState<TabKey>("analytics");
   const [items, setItems] = useState<TutorCourse[]>([]);
@@ -65,23 +65,10 @@ export default function TutorPage() {
   }, [hydrated, router, state.user]);
   useEffect(() => { if (hydrated && state.user && (state.user.role === "tutor" || state.user.role === "admin")) void load(); }, [hydrated, state.user, load]);
 
-  if (!hydrated || !state.user || (state.user.role !== "tutor" && state.user.role !== "admin") || (state.user.role === "tutor" && workspaceMode !== "tutor")) return null;
+  if (!hydrated || !state.user || (state.user.role !== "tutor" && state.user.role !== "admin")) return null;
   const saveCourse = async (course: Course) => {
     setSaving(true); setError(null);
-    try {
-      const action = creating ? "create" : "edit";
-      const saved = await upsertCourse(course);
-      trackEvent("tutor_course_saved", {
-        action,
-        category: saved.category,
-        level: saved.level,
-        lesson_count: saved.lessons.length,
-        published: saved.published !== false,
-      });
-      setCreating(false);
-      setSelected(saved);
-      await load();
-    }
+    try { const saved = await upsertCourse(course); setCreating(false); setSelected(saved); await load(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Couldn't save the course."); }
     finally { setSaving(false); }
   };
@@ -543,19 +530,221 @@ function TutorNotifyButton({ courseSlug, courseTitle, lesson }: { courseSlug: st
   );
 }
 
+type SubmissionRow = { id: number; studentName: string; studentEmail: string; fileName: string; fileSize: number; submittedAt: string; marks: number | null; gradedAt: string | null };
+
+function TutorSubmissionsButton({ lesson }: { lesson: Lesson }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button size="sm" variant="ghost" onClick={() => setOpen(true)} aria-label={`View submissions for ${lesson.title}`} title="View submissions">
+        <Inbox className="h-4 w-4" />
+      </Button>
+      {open && <TutorSubmissionsPanel lesson={lesson} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+/* Roster of who has submitted a given lesson's assignment, with a link into
+   the markup/grading view for each. See /api/tutor/assignment-submissions
+   for why identity is shown here (grading is inherently 1:1) unlike the
+   rest of this tutor-facing panel. */
+function TutorSubmissionsPanel({ lesson, onClose }: { lesson: Lesson; onClose: () => void }) {
+  const [state, setState] = useState<
+    { status: "loading" } | { status: "ready"; submissions: SubmissionRow[] } | { status: "error"; message: string }
+  >({ status: "loading" });
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/tutor/assignment-submissions?lessonId=${encodeURIComponent(lesson.id)}`)
+      .then(async (response) => {
+        const data = (await response.json().catch(() => ({}))) as { submissions?: SubmissionRow[]; error?: string };
+        if (!response.ok) throw new Error(data.error ?? "Couldn't load submissions.");
+        if (!cancelled) setState({ status: "ready", submissions: data.submissions ?? [] });
+      })
+      .catch((error) => {
+        if (!cancelled) setState({ status: "error", message: error instanceof Error ? error.message : "Couldn't load submissions." });
+      });
+    return () => { cancelled = true; };
+  }, [lesson.id]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <Card className="max-h-[80vh] w-full max-w-lg space-y-3 overflow-y-auto" onClick={(event) => event.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <CardTitle>Submissions — {lesson.title}</CardTitle>
+          <Button size="sm" variant="ghost" onClick={onClose} aria-label="Close"><X className="h-4 w-4" /></Button>
+        </div>
+        {state.status === "loading" && (
+          <p className="flex items-center gap-2 text-sm text-zinc-500"><Loader2 className="h-4 w-4 animate-spin" />Loading…</p>
+        )}
+        {state.status === "error" && <p role="alert" className="text-sm text-red-700">{state.message}</p>}
+        {state.status === "ready" && state.submissions.length === 0 && (
+          <p className="text-sm text-zinc-500">No submissions yet.</p>
+        )}
+        {state.status === "ready" && state.submissions.length > 0 && (
+          <ul className="space-y-2">
+            {state.submissions.map((s) => (
+              <li key={s.id} className="flex items-center justify-between gap-2 rounded-xl border p-3 text-sm">
+                <div className="min-w-0">
+                  <p className="truncate font-medium text-zinc-900">
+                    {s.studentName}
+                    {s.marks !== null && (
+                      <span className="ml-2 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-700">{s.marks}%</span>
+                    )}
+                  </p>
+                  <p className="truncate text-xs text-zinc-500">
+                    {s.fileName} · submitted {new Date(s.submittedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+                  </p>
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  <Link href={`/app/tutor/assignment/?submissionId=${s.id}`}>
+                    <Button size="sm" variant={s.marks === null ? "primary" : "outline"} aria-label={`Open ${s.studentName}'s submission for grading`}>
+                      {s.marks === null ? "Grade" : "Review"}
+                    </Button>
+                  </Link>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => window.open(`/api/tutor/assignment-submissions/file?submissionId=${s.id}`, "_blank")}
+                    aria-label={`Download ${s.studentName}'s submission`}
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+    </div>
+  );
+}
+
 function CourseEditor({ course, saving, onCancel, onSave, onAddLesson, onDeleteLesson, onDeleteCourse }: { course?: Course | null; saving: boolean; onCancel: () => void; onSave: (course: Course) => Promise<void>; onAddLesson?: (lesson: Lesson) => Promise<void>; onDeleteLesson?: (lesson: Lesson) => Promise<void>; onDeleteCourse?: () => Promise<void> }) {
   const { state } = useStore();
   const [title, setTitle] = useState(course?.title ?? ""); const [tagline, setTagline] = useState(course?.tagline ?? ""); const [category, setCategory] = useState(course?.category ?? "product"); const [level, setLevel] = useState<Course["level"]>(course?.level ?? "Beginner"); const [tags, setTags] = useState(course?.tags.join(", ") ?? ""); const [assessment, setAssessment] = useState(course?.baseAssessment ?? ""); const [published, setPublished] = useState(course?.published ?? false); const [editing, setEditing] = useState<Lesson | null>(null);
   const submit = (event: FormEvent) => { event.preventDefault(); const cleanCategory = category.trim(); if (!title.trim() || !cleanCategory) return; void onSave(course ? { ...course, title: title.trim(), tagline: tagline.trim(), category: cleanCategory, level, tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean), baseAssessment: assessment.trim() || undefined, cover: getCategoryCover(cleanCategory), published } : { slug: title.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || `course-${Date.now()}`, title: title.trim(), tagline: tagline.trim() || "New learning path.", category: cleanCategory, level, tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean), cover: getCategoryCover(cleanCategory), addedAt: new Date().toISOString().slice(0, 10), lessons: [], baseAssessment: assessment.trim() || undefined, published }); };
   return <Card className="space-y-4"><div className="flex items-center justify-between"><CardTitle>{course ? `Edit ${course.title}` : "New course"}</CardTitle><Button size="sm" variant="ghost" onClick={onCancel}>Close</Button></div><form onSubmit={submit} className="grid gap-3 sm:grid-cols-2"><Field label="Course title"><Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={160} /></Field><Field label="Tagline"><Input value={tagline} onChange={(e) => setTagline(e.target.value)} required maxLength={400} /></Field><Field label="Category"><Input list="tutor-editor-category-options" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Pick an existing one or type a new one" required maxLength={40} /><datalist id="tutor-editor-category-options">{categoryOptions(state.courses).map((c) => <option key={c} value={c} />)}</datalist></Field><Field label="Level"><Select value={level} onChange={(e) => setLevel(e.target.value as Course["level"])}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></Select></Field><Field label="Tags (comma separated)"><Input value={tags} onChange={(e) => setTags(e.target.value)} /></Field><Field label="Base assessment"><Textarea value={assessment} onChange={(e) => setAssessment(e.target.value)} maxLength={5000} /></Field><label className="flex items-center gap-2 text-sm font-medium text-zinc-800 sm:col-span-2"><input type="checkbox" checked={published} onChange={(e) => setPublished(e.target.checked)} className="h-4 w-4 rounded border-zinc-300 accent-primary" />Published — visible to learners{!published && <span className="font-normal text-zinc-500">(currently a private draft)</span>}</label><div className="flex items-end gap-2"><Button type="submit" disabled={saving} className="min-h-11">{saving && <Loader2 className="h-4 w-4 animate-spin" />}Save course</Button>{course && onDeleteCourse && <Button type="button" variant="danger" disabled={saving} onClick={() => void onDeleteCourse()} aria-label={`Delete ${course.title}`}><Trash2 className="h-4 w-4" /></Button>}</div></form>
-    {course && onAddLesson && <section className="border-t pt-4"><h2 className="font-semibold text-zinc-900">Lessons</h2><ul className="mt-2 space-y-2">{course.lessons.map((lesson) => <li key={lesson.id} className="flex items-center justify-between rounded-xl border p-3 text-sm"><span>{lesson.title}</span><span className="flex gap-1">{lesson.format !== "reading" && !isPlaceholder(lesson.youtubeId) && <TutorNotifyButton courseSlug={course.slug} courseTitle={course.title} lesson={lesson} />}<Button size="sm" variant="ghost" disabled={saving} onClick={() => setEditing(lesson)} aria-label={`Edit ${lesson.title}`}><Pencil className="h-4 w-4" /></Button><Button size="sm" variant="ghost" disabled={saving} onClick={() => void onDeleteLesson?.(lesson)} aria-label={`Delete ${lesson.title}`}><Trash2 className="h-4 w-4 text-red-600" /></Button></span></li>)}</ul><LessonEditor key={editing?.id ?? "new"} courseSlug={course.slug} lesson={editing} saving={saving} onCancel={() => setEditing(null)} onSave={async (lesson) => { await onAddLesson(lesson); setEditing(null); }} /></section>}
+    {course && onAddLesson && <section className="border-t pt-4"><h2 className="font-semibold text-zinc-900">Lessons</h2><ul className="mt-2 space-y-2">{course.lessons.map((lesson) => <li key={lesson.id} className="flex items-center justify-between rounded-xl border p-3 text-sm"><span>{lesson.title}</span><span className="flex gap-1">{lesson.format !== "reading" && !isPlaceholder(lesson.youtubeId) && <TutorNotifyButton courseSlug={course.slug} courseTitle={course.title} lesson={lesson} />}{lesson.requiresSubmission && <TutorSubmissionsButton lesson={lesson} />}<Button size="sm" variant="ghost" disabled={saving} onClick={() => setEditing(lesson)} aria-label={`Edit ${lesson.title}`}><Pencil className="h-4 w-4" /></Button><Button size="sm" variant="ghost" disabled={saving} onClick={() => void onDeleteLesson?.(lesson)} aria-label={`Delete ${lesson.title}`}><Trash2 className="h-4 w-4 text-red-600" /></Button></span></li>)}</ul><LessonEditor key={editing?.id ?? "new"} courseSlug={course.slug} lesson={editing} saving={saving} onCancel={() => setEditing(null)} onSave={async (lesson) => { await onAddLesson(lesson); setEditing(null); }} /></section>}
   </Card>;
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="text-sm font-medium text-zinc-800">{label}{children}</label>; }
 function Select({ children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) { return <select {...props} className="focus-ring mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm">{children}</select>; }
 function LessonEditor({ courseSlug, lesson, saving, onCancel, onSave }: { courseSlug: string; lesson: Lesson | null; saving: boolean; onCancel: () => void; onSave: (lesson: Lesson) => Promise<void> }) {
-  const [title, setTitle] = useState(lesson?.title ?? ""); const [description, setDescription] = useState(lesson?.description ?? ""); const [format, setFormat] = useState<"video" | "reading">(lesson?.format ?? "video"); const [youtubeId, setYoutubeId] = useState(lesson?.youtubeId === "REPLACE_ME" ? "" : lesson?.youtubeId ?? ""); const [duration, setDuration] = useState(String(lesson?.durationMin ?? 20)); const [section, setSection] = useState(lesson?.section ?? ""); const [assignment, setAssignment] = useState(lesson?.assignment ?? ""); const [takeaways, setTakeaways] = useState(lesson?.keyTakeaways.join("\n") ?? ""); const [resources, setResources] = useState(lesson?.resources.map((r) => `${r.label}|${r.url}|${r.type}`).join("\n") ?? ""); const [formError, setFormError] = useState<string | null>(null);
-  const submit = (event: FormEvent) => { event.preventDefault(); try { const parsedResources = resources.split("\n").filter(Boolean).map((line) => { const [label, url, type] = line.split("|").map((part) => part.trim()); if (!label || !url || (type !== "link" && type !== "pdf") || (url !== "#" && !/^https:\/\//i.test(url))) throw new Error("Resources must be Label|https://url|link or pdf."); return { label, url, type: type as "link" | "pdf" }; }); setFormError(null); void onSave({ id: lesson?.id ?? `${courseSlug}-${Date.now()}`, title: title.trim(), description: description.trim(), format, youtubeId: format === "reading" ? "" : youtubeId.trim() || "REPLACE_ME", durationMin: Math.min(1440, Math.max(1, Math.round(Number(duration) || 20))), section: section.trim() || undefined, assignment: assignment.trim() || undefined, keyTakeaways: takeaways.split("\n").map((item) => item.trim()).filter(Boolean), resources: parsedResources }); } catch (error) { setFormError(error instanceof Error ? error.message : "Check the lesson details."); } };
-  return <form onSubmit={submit} className="mt-3 grid gap-3 rounded-xl bg-zinc-50 p-3 sm:grid-cols-2"><Field label="Lesson title"><Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={200} /></Field><Field label="Format"><Select value={format} onChange={(e) => setFormat(e.target.value as "video" | "reading")}><option value="video">Video</option><option value="reading">Reading</option></Select></Field><Field label="Description"><Textarea value={description} onChange={(e) => setDescription(e.target.value)} required maxLength={2000} /></Field><Field label="Duration (minutes)"><Input type="number" min="1" max="1440" step="1" value={duration} onChange={(e) => setDuration(e.target.value)} required /></Field>{format === "video" && <Field label="YouTube video ID"><Input value={youtubeId} onChange={(e) => setYoutubeId(e.target.value)} placeholder="e.g. dQw4w9WgXcQ" maxLength={120} /></Field>}<Field label="Section"><Input value={section} onChange={(e) => setSection(e.target.value)} maxLength={200} /></Field><Field label="Assignment"><Textarea value={assignment} onChange={(e) => setAssignment(e.target.value)} maxLength={5000} /></Field><Field label="Key takeaways (one per line)"><Textarea value={takeaways} onChange={(e) => setTakeaways(e.target.value)} /></Field><Field label="Resources (Label|https://url|link or pdf)"><Textarea value={resources} onChange={(e) => setResources(e.target.value)} /></Field>{formError && <p role="alert" className="text-sm text-red-700 sm:col-span-2">{formError}</p>}<div className="flex gap-2"><Button type="submit" disabled={saving || !title.trim() || !description.trim()} className="min-h-11">{saving && <Loader2 className="h-4 w-4 animate-spin" />}{lesson ? "Save lesson" : "Add lesson"}</Button>{lesson && <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>}</div></form>;
+  const [title, setTitle] = useState(lesson?.title ?? ""); const [description, setDescription] = useState(lesson?.description ?? ""); const [format, setFormat] = useState<"video" | "reading">(lesson?.format ?? "video"); const [youtubeId, setYoutubeId] = useState(lesson?.youtubeId === "REPLACE_ME" ? "" : lesson?.youtubeId ?? ""); const [duration, setDuration] = useState(String(lesson?.durationMin ?? 20)); const [section, setSection] = useState(lesson?.section ?? ""); const [assignment, setAssignment] = useState(lesson?.assignment ?? ""); const [requiresSubmission, setRequiresSubmission] = useState(lesson?.requiresSubmission ?? false); const [takeaways, setTakeaways] = useState(lesson?.keyTakeaways.join("\n") ?? ""); const [resources, setResources] = useState(lesson?.resources.map((r) => `${r.label}|${r.url}|${r.type}`).join("\n") ?? ""); const [formError, setFormError] = useState<string | null>(null); const [rubricOpen, setRubricOpen] = useState(false);
+  const submit = (event: FormEvent) => { event.preventDefault(); try { const parsedResources = resources.split("\n").filter(Boolean).map((line) => { const [label, url, type] = line.split("|").map((part) => part.trim()); if (!label || !url || (type !== "link" && type !== "pdf") || (url !== "#" && !/^https:\/\//i.test(url))) throw new Error("Resources must be Label|https://url|link or pdf."); return { label, url, type: type as "link" | "pdf" }; }); setFormError(null); void onSave({ id: lesson?.id ?? `${courseSlug}-${Date.now()}`, title: title.trim(), description: description.trim(), format, youtubeId: format === "reading" ? "" : youtubeId.trim() || "REPLACE_ME", durationMin: Math.min(1440, Math.max(1, Math.round(Number(duration) || 20))), section: section.trim() || undefined, assignment: assignment.trim() || undefined, requiresSubmission, keyTakeaways: takeaways.split("\n").map((item) => item.trim()).filter(Boolean), resources: parsedResources }); } catch (error) { setFormError(error instanceof Error ? error.message : "Check the lesson details."); } };
+  return <form onSubmit={submit} className="mt-3 grid gap-3 rounded-xl bg-zinc-50 p-3 sm:grid-cols-2"><Field label="Lesson title"><Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={200} /></Field><Field label="Format"><Select value={format} onChange={(e) => setFormat(e.target.value as "video" | "reading")}><option value="video">Video</option><option value="reading">Reading</option></Select></Field><Field label="Description"><Textarea value={description} onChange={(e) => setDescription(e.target.value)} required maxLength={2000} /></Field><Field label="Duration (minutes)"><Input type="number" min="1" max="1440" step="1" value={duration} onChange={(e) => setDuration(e.target.value)} required /></Field>{format === "video" && <Field label="YouTube video ID"><Input value={youtubeId} onChange={(e) => setYoutubeId(e.target.value)} placeholder="e.g. dQw4w9WgXcQ" maxLength={120} /></Field>}<Field label="Section"><Input value={section} onChange={(e) => setSection(e.target.value)} maxLength={200} /></Field><Field label="Assignment"><Textarea value={assignment} onChange={(e) => setAssignment(e.target.value)} maxLength={5000} /></Field><div className="sm:col-span-2 space-y-2"><label className="flex items-center gap-2 text-sm font-medium text-zinc-800"><input type="checkbox" checked={requiresSubmission} onChange={(e) => setRequiresSubmission(e.target.checked)} className="h-4 w-4 rounded border-zinc-300 accent-primary" />Require a submitted assignment from learners{requiresSubmission && <span className="font-normal text-zinc-500">(the text above shows as their assignment brief)</span>}</label>{requiresSubmission && lesson && <Button type="button" size="sm" variant="outline" onClick={() => setRubricOpen(true)}><ListChecks className="h-3.5 w-3.5" />Grading rubric</Button>}{requiresSubmission && !lesson && <p className="text-xs text-zinc-500">Save this lesson first to set up a grading rubric.</p>}</div><Field label="Key takeaways (one per line)"><Textarea value={takeaways} onChange={(e) => setTakeaways(e.target.value)} /></Field><Field label="Resources (Label|https://url|link or pdf)"><Textarea value={resources} onChange={(e) => setResources(e.target.value)} /></Field>{formError && <p role="alert" className="text-sm text-red-700 sm:col-span-2">{formError}</p>}<div className="flex gap-2"><Button type="submit" disabled={saving || !title.trim() || !description.trim()} className="min-h-11">{saving && <Loader2 className="h-4 w-4 animate-spin" />}{lesson ? "Save lesson" : "Add lesson"}</Button>{lesson && <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>}</div>
+    {rubricOpen && lesson && <RubricEditorPanel lesson={lesson} onClose={() => setRubricOpen(false)} />}
+  </form>;
+}
+
+type RubricCriterionDraft = { id?: number; title: string; description: string; maxPoints: string };
+
+/* A lesson's grading rubric — set up once, applied to every submission for
+   that lesson (see grading in app/app/tutor/assignment/page.tsx). Kept as
+   its own save action, independent of the lesson form's own save/revision
+   flow, since a rubric edit shouldn't be entangled with course optimistic
+   concurrency. */
+function RubricEditorPanel({ lesson, onClose }: { lesson: Lesson; onClose: () => void }) {
+  const [state, setState] = useState<{ status: "loading" } | { status: "ready" } | { status: "error"; message: string }>({ status: "loading" });
+  const [criteria, setCriteria] = useState<RubricCriterionDraft[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/tutor/assignment-submissions/rubric?lessonId=${encodeURIComponent(lesson.id)}`)
+      .then(async (response) => {
+        const data = (await response.json().catch(() => ({}))) as { criteria?: { id: number; title: string; description: string | null; maxPoints: number }[]; error?: string };
+        if (!response.ok) throw new Error(data.error ?? "Couldn't load the rubric.");
+        if (!cancelled) {
+          setCriteria((data.criteria ?? []).map((c) => ({ id: c.id, title: c.title, description: c.description ?? "", maxPoints: String(c.maxPoints) })));
+          setState({ status: "ready" });
+        }
+      })
+      .catch((error) => { if (!cancelled) setState({ status: "error", message: error instanceof Error ? error.message : "Couldn't load the rubric." }); });
+    return () => { cancelled = true; };
+  }, [lesson.id]);
+
+  const totalPoints = criteria.reduce((sum, c) => sum + (Number(c.maxPoints) || 0), 0);
+
+  function updateCriterion(index: number, patch: Partial<RubricCriterionDraft>) {
+    setCriteria((prev) => prev.map((c, i) => (i === index ? { ...c, ...patch } : c)));
+  }
+  function removeCriterion(index: number) {
+    setCriteria((prev) => prev.filter((_, i) => i !== index));
+  }
+  function addCriterion() {
+    setCriteria((prev) => [...prev, { title: "", description: "", maxPoints: "10" }]);
+  }
+
+  async function save() {
+    const cleaned = criteria.map((c) => ({ ...c, title: c.title.trim() }));
+    if (cleaned.some((c) => !c.title || !(Number(c.maxPoints) > 0))) {
+      setSaveError("Every criterion needs a title and a max points value greater than 0.");
+      return;
+    }
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const response = await fetch("/api/tutor/assignment-submissions/rubric", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lessonId: lesson.id,
+          criteria: cleaned.map((c) => ({ id: c.id, title: c.title, description: c.description.trim() || undefined, maxPoints: Number(c.maxPoints) })),
+        }),
+      });
+      const data = (await response.json().catch(() => ({}))) as { criteria?: { id: number; title: string; description: string | null; maxPoints: number }[]; error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Couldn't save the rubric.");
+      setCriteria((data.criteria ?? []).map((c) => ({ id: c.id, title: c.title, description: c.description ?? "", maxPoints: String(c.maxPoints) })));
+      onClose();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Couldn't save the rubric.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <Card className="max-h-[85vh] w-full max-w-xl space-y-3 overflow-y-auto" onClick={(event) => event.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <CardTitle>Grading rubric — {lesson.title}</CardTitle>
+          <Button size="sm" variant="ghost" onClick={onClose} aria-label="Close"><X className="h-4 w-4" /></Button>
+        </div>
+        <p className="text-xs text-zinc-500">
+          Leave this empty to grade the old way, with a single 0-100 mark. Add criteria to score each submission against a rubric instead — the total becomes the mark.
+        </p>
+        {state.status === "loading" && <p className="flex items-center gap-2 text-sm text-zinc-500"><Loader2 className="h-4 w-4 animate-spin" />Loading…</p>}
+        {state.status === "error" && <p role="alert" className="text-sm text-red-700">{state.message}</p>}
+        {state.status === "ready" && (
+          <>
+            <ul className="space-y-2">
+              {criteria.map((c, i) => (
+                <li key={c.id ?? `new-${i}`} className="space-y-2 rounded-xl border p-3">
+                  <div className="flex gap-2">
+                    <Input placeholder="Criterion (e.g. Structure)" value={c.title} onChange={(e) => updateCriterion(i, { title: e.target.value })} maxLength={200} className="flex-1" />
+                    <Input type="number" min={1} max={1000} placeholder="Points" value={c.maxPoints} onChange={(e) => updateCriterion(i, { maxPoints: e.target.value })} className="w-24" aria-label="Max points" />
+                    <Button type="button" size="sm" variant="ghost" onClick={() => removeCriterion(i)} aria-label={`Remove ${c.title || "criterion"}`}><Trash2 className="h-4 w-4 text-red-600" /></Button>
+                  </div>
+                  <Textarea placeholder="What earns full marks here? (optional)" value={c.description} onChange={(e) => updateCriterion(i, { description: e.target.value })} className="min-h-[50px] text-sm" maxLength={1000} />
+                </li>
+              ))}
+            </ul>
+            <div className="flex items-center justify-between">
+              <Button type="button" size="sm" variant="outline" onClick={addCriterion}><Plus className="h-3.5 w-3.5" />Add criterion</Button>
+              {criteria.length > 0 && <p className="text-sm text-zinc-600">Total: {totalPoints} points</p>}
+            </div>
+            {saveError && <p role="alert" className="text-sm text-red-700">{saveError}</p>}
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+              <Button type="button" onClick={() => void save()} disabled={saving}>{saving && <Loader2 className="h-4 w-4 animate-spin" />}Save rubric</Button>
+            </div>
+          </>
+        )}
+      </Card>
+    </div>
+  );
 }

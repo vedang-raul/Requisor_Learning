@@ -7,8 +7,8 @@ npm install --ignore-scripts
 # Fix bin permissions (common after zip imports / npm installs on this repl)
 chmod -R +x node_modules/.bin/ 2>/dev/null || true
 
-# Run schema migrations using a literal heredoc so shell quoting cannot alter
-# JavaScript template literals, SQL dollar blocks, or JSON defaults.
+# Run schema migrations through a literal heredoc so shell expansion cannot
+# corrupt JavaScript template literals, SQL dollar blocks, or JSON defaults.
 node <<'NODE'
 const {Pool}=require('pg');
 const p=new Pool({connectionString:process.env.DATABASE_URL});
@@ -178,8 +178,11 @@ p.query(`
     assignment TEXT,
     section VARCHAR(200),
     format VARCHAR(10) NOT NULL DEFAULT 'video' CHECK (format IN ('video','reading')),
-    position INT NOT NULL DEFAULT 0
+    position INT NOT NULL DEFAULT 0,
+    requires_submission BOOLEAN NOT NULL DEFAULT FALSE
   );
+  -- Existing installs created course_lessons before this column existed.
+  ALTER TABLE course_lessons ADD COLUMN IF NOT EXISTS requires_submission BOOLEAN NOT NULL DEFAULT FALSE;
   CREATE INDEX IF NOT EXISTS courses_owner_idx ON courses (owner_user_id, added_at DESC);
   CREATE INDEX IF NOT EXISTS course_lessons_course_position_idx ON course_lessons (course_slug, position, id);
   CREATE INDEX IF NOT EXISTS course_reviews_slug_rating_idx ON course_reviews (course_slug, rating);
@@ -304,6 +307,120 @@ p.query(`
 
   CREATE INDEX IF NOT EXISTS learner_mastery_weak_concepts_idx
     ON learner_mastery (user_id, mastery_score ASC, updated_at DESC);
+
+  -- A learner's uploaded assignment file for a lesson the tutor flagged as
+  -- requiring submission. One row per (user, lesson): resubmitting overwrites
+  -- the previous file and bumps submitted_at, rather than piling up history —
+  -- there's exactly one "current" submission for a tutor to grade later.
+  -- course_slug is captured at submission time so a tutor's ownership check
+  -- doesn't need to resolve it through course_lessons (which is replaced
+  -- wholesale on every course edit — see .agents/memory/tutor-insights-privacy.md
+  -- on why child rows shouldn't be assumed stable across catalog saves).
+  CREATE TABLE IF NOT EXISTS assignment_submissions (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    lesson_id TEXT NOT NULL,
+    course_slug VARCHAR(80) NOT NULL REFERENCES courses(slug) ON DELETE CASCADE,
+    file_name TEXT NOT NULL,
+    mime_type TEXT NOT NULL,
+    file_size INT NOT NULL,
+    content BYTEA NOT NULL,
+    submitted_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, lesson_id)
+  );
+  CREATE INDEX IF NOT EXISTS assignment_submissions_course_idx
+    ON assignment_submissions (course_slug, submitted_at DESC);
+
+  -- Markup a tutor leaves on one submission while reviewing it: a pinned
+  -- comment, a whole-paragraph highlight (docx), or a freehand stroke (pdf
+  -- page or docx canvas). "page" means a PDF page number for pdf files, or is
+  -- always 1 for docx (the client anchors docx markup to a paragraph index
+  -- instead, carried inside x/y — there's no real pagination once a docx is
+  -- flowed to HTML client-side). x/y/stroke_points are percentages of the
+  -- rendered surface, not pixels, so they survive different zoom levels.
+  CREATE TABLE IF NOT EXISTS assignment_annotations (
+    id SERIAL PRIMARY KEY,
+    submission_id INT NOT NULL REFERENCES assignment_submissions(id) ON DELETE CASCADE,
+    created_by INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK (kind IN ('comment','highlight','draw')),
+    page INT NOT NULL DEFAULT 1,
+    paragraph_index INT,
+    x REAL NOT NULL DEFAULT 0,
+    y REAL NOT NULL DEFAULT 0,
+    color TEXT NOT NULL DEFAULT '#facc15',
+    body TEXT,
+    stroke_points TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS assignment_annotations_submission_idx
+    ON assignment_annotations (submission_id, created_at);
+
+  -- A submission is "checked" once this row exists, regardless of the mark
+  -- value — that's what the lesson-level checked/total count in the tutor
+  -- grading header counts. marks is always a 0-100 percentage so lessons can
+  -- be averaged together in stats even though a rubric's own point total
+  -- (raw_max, below) varies per lesson. raw_score/raw_max are null when the
+  -- tutor entered a flat mark directly instead of grading against a rubric.
+  CREATE TABLE IF NOT EXISTS assignment_grades (
+    submission_id INT PRIMARY KEY REFERENCES assignment_submissions(id) ON DELETE CASCADE,
+    marks REAL NOT NULL CHECK (marks >= 0 AND marks <= 100),
+    raw_score REAL,
+    raw_max REAL,
+    graded_by INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    graded_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+  ALTER TABLE assignment_grades ADD COLUMN IF NOT EXISTS raw_score REAL;
+  ALTER TABLE assignment_grades ADD COLUMN IF NOT EXISTS raw_max REAL;
+
+  -- A lesson's grading rubric — set up once by its tutor, applied to every
+  -- learner's submission for that lesson. lesson_id is deliberately not a
+  -- foreign key into course_lessons: that table's rows are wholesale
+  -- deleted and re-inserted on every course save (see replaceCourse /
+  -- updateOwnedCourse), so a rubric keyed to the stable lesson_id string —
+  -- same pattern as assignment_submissions — survives ordinary course
+  -- edits instead of vanishing the next time the tutor saves the course.
+  CREATE TABLE IF NOT EXISTS assignment_rubric_criteria (
+    id SERIAL PRIMARY KEY,
+    lesson_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    max_points REAL NOT NULL CHECK (max_points > 0),
+    position INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS assignment_rubric_criteria_lesson_idx
+    ON assignment_rubric_criteria (lesson_id, position);
+
+  -- One score per (submission, criterion). Deleting a criterion (the tutor
+  -- explicitly removing it while editing the rubric) cascades its recorded
+  -- scores — editing a criterion's title/points in place does not touch
+  -- this table, since the rubric editor updates existing rows by id rather
+  -- than replacing them wholesale.
+  CREATE TABLE IF NOT EXISTS assignment_grade_scores (
+    submission_id INT NOT NULL REFERENCES assignment_submissions(id) ON DELETE CASCADE,
+    criterion_id INT NOT NULL REFERENCES assignment_rubric_criteria(id) ON DELETE CASCADE,
+    score REAL NOT NULL CHECK (score >= 0),
+    PRIMARY KEY (submission_id, criterion_id)
+  );
+
+  -- Server-side notifications (the notification bell was purely a local,
+  -- per-browser mock before this: seeded with two hardcoded welcome
+  -- messages, never written to by any server event — see lib/store.tsx).
+  -- This table backs real events, starting with "a learner submitted an
+  -- assignment"; the client keeps its local array too and merges the two
+  -- (see useStore's serverNotifications) rather than migrating every
+  -- existing local notification into this table.
+  CREATE TABLE IF NOT EXISTS notifications (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL DEFAULT 'announcement',
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    link TEXT,
+    read BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications (user_id, created_at DESC);
 
   -- One-time bootstrap: the four seed courses ship with no owner_user_id.
   -- If a tutor account named exactly 'Naveen Kankate' exists, assign the

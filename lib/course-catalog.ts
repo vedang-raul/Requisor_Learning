@@ -22,7 +22,7 @@ type CourseRow = {
 type LessonRow = {
   course_slug: string | null; id: string | null; lesson_title: string | null; lesson_description: string | null; youtube_id: string | null;
   duration_min: number | null; resources: Resource[] | null; key_takeaways: string[] | null; assignment: string | null;
-  section: string | null; format: "video" | "reading" | null;
+  section: string | null; format: "video" | "reading" | null; requires_submission: boolean | null;
 };
 
 let seedPromise: Promise<void> | undefined;
@@ -132,7 +132,7 @@ export async function getCourses(where = "", params: unknown[] = []): Promise<Co
              c.base_assessment, c.owner_user_id, c.revision, c.published, u.name AS tutor_name,
             l.id, l.course_slug, l.title AS lesson_title, l.description AS lesson_description,
             l.youtube_id, l.duration_min, l.resources, l.key_takeaways, l.assignment,
-            l.section, l.format
+            l.section, l.format, l.requires_submission
      FROM courses c
      LEFT JOIN course_lessons l ON l.course_slug = c.slug
      LEFT JOIN users u ON u.id = c.owner_user_id
@@ -154,7 +154,7 @@ export async function getCourses(where = "", params: unknown[] = []): Promise<Co
         : extractYouTubeId(row.youtube_id ?? "") ?? PLACEHOLDER_VIDEO,
       durationMin: row.duration_min!, resources: row.resources!, keyTakeaways: row.key_takeaways!,
       ...(row.assignment ? { assignment: row.assignment } : {}), ...(row.section ? { section: row.section } : {}),
-      format: row.format ?? "video",
+      format: row.format ?? "video", requiresSubmission: Boolean(row.requires_submission),
     });
   }
   return [...courses.values()];
@@ -196,7 +196,7 @@ export function validateCourse(value: unknown, expectedSlug?: string, requireRev
   for (const raw of c.lessons) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ok: false, error: "Invalid lesson." };
     const l = raw as Record<string, unknown>;
-    const lessonKeys = new Set(["id", "title", "description", "youtubeId", "durationMin", "resources", "keyTakeaways", "assignment", "section", "format"]);
+    const lessonKeys = new Set(["id", "title", "description", "youtubeId", "durationMin", "resources", "keyTakeaways", "assignment", "section", "format", "requiresSubmission"]);
     const format = l.format ?? "video";
     const rawYoutubeId = typeof l.youtubeId === "string" ? l.youtubeId.trim() : "";
     const youtubeId = format === "reading"
@@ -210,7 +210,9 @@ export function validateCourse(value: unknown, expectedSlug?: string, requireRev
       !Array.isArray(l.keyTakeaways) || l.keyTakeaways.length > 20 || !l.keyTakeaways.every((x) => string(x, 500)) ||
       !Array.isArray(l.resources) || l.resources.length > 20 ||
       (l.assignment !== undefined && !string(l.assignment, 5000)) || (l.section !== undefined && !string(l.section, 200)) ||
-      (l.format !== undefined && l.format !== "video" && l.format !== "reading") || !youtubeId || ids.has(l.id as string) ||
+      (l.format !== undefined && l.format !== "video" && l.format !== "reading") ||
+      (l.requiresSubmission !== undefined && typeof l.requiresSubmission !== "boolean") ||
+      !youtubeId || ids.has(l.id as string) ||
       !(l.id as string).startsWith(`${c.slug}-`)) return { ok: false, error: "Invalid lesson fields." };
     ids.add(l.id as string);
     for (const resource of l.resources) {
@@ -244,13 +246,13 @@ export async function replaceCourse(
        base_assessment=EXCLUDED.base_assessment,published=EXCLUDED.published,
        owner_user_id=CASE WHEN $12 THEN courses.owner_user_id ELSE EXCLUDED.owner_user_id END`,
       [course.slug, course.title, course.tagline, course.category, course.level, JSON.stringify(course.tags), course.cover,
-         course.addedAt, course.baseAssessment ?? null, ownerId, course.published !== false, ...(!createOnly ? [preserveOwner] : [])]);
+        course.addedAt, course.baseAssessment ?? null, ownerId, course.published ?? false, ...(!createOnly ? [preserveOwner] : [])]);
     await client.query("DELETE FROM course_lessons WHERE course_slug=$1", [course.slug]);
     for (let i = 0; i < course.lessons.length; i++) {
       const l = course.lessons[i];
-      await client.query(`INSERT INTO course_lessons (id,course_slug,title,description,youtube_id,duration_min,resources,key_takeaways,assignment,section,format,position)
-        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12)`,
-      [l.id, course.slug, l.title, l.description, l.youtubeId, l.durationMin, JSON.stringify(l.resources), JSON.stringify(l.keyTakeaways), l.assignment ?? null, l.section ?? null, l.format ?? "video", i]);
+      await client.query(`INSERT INTO course_lessons (id,course_slug,title,description,youtube_id,duration_min,resources,key_takeaways,assignment,section,format,position,requires_submission)
+        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13)`,
+      [l.id, course.slug, l.title, l.description, l.youtubeId, l.durationMin, JSON.stringify(l.resources), JSON.stringify(l.keyTakeaways), l.assignment ?? null, l.section ?? null, l.format ?? "video", i, l.requiresSubmission ?? false]);
     }
     await client.query("COMMIT");
   } catch (error) {
@@ -285,17 +287,20 @@ export async function updateOwnedCourse(course: Course, userId: number, isAdmin:
     if (lock.rows[0].revision !== course.revision) { await client.query("ROLLBACK"); return "stale"; }
     const next = lock.rows[0].revision + 1;
     await client.query(
+      // published uses COALESCE, not a bare value: an editor that doesn't
+      // send the field (anything other than the course editor's own publish
+      // toggle) must never silently unpublish a live course.
       `UPDATE courses SET title=$1,tagline=$2,category=$3,level=$4,tags=$5::jsonb,cover=$6,added_at=$7,
-       base_assessment=$8,published=$9,revision=$10,updated_at=NOW() WHERE slug=$11 AND revision=$12`,
+       base_assessment=$8,published=COALESCE($9,published),revision=$10,updated_at=NOW() WHERE slug=$11 AND revision=$12`,
       [course.title, course.tagline, course.category, course.level, JSON.stringify(course.tags), course.cover,
-        course.addedAt, course.baseAssessment ?? null, course.published !== false, next, course.slug, course.revision]
+        course.addedAt, course.baseAssessment ?? null, course.published ?? null, next, course.slug, course.revision]
     );
     await client.query("DELETE FROM course_lessons WHERE course_slug=$1", [course.slug]);
     for (let i = 0; i < course.lessons.length; i++) {
       const l = course.lessons[i];
-      await client.query(`INSERT INTO course_lessons (id,course_slug,title,description,youtube_id,duration_min,resources,key_takeaways,assignment,section,format,position)
-        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12)`,
-      [l.id, course.slug, l.title, l.description, l.youtubeId, l.durationMin, JSON.stringify(l.resources), JSON.stringify(l.keyTakeaways), l.assignment ?? null, l.section ?? null, l.format ?? "video", i]);
+      await client.query(`INSERT INTO course_lessons (id,course_slug,title,description,youtube_id,duration_min,resources,key_takeaways,assignment,section,format,position,requires_submission)
+        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13)`,
+      [l.id, course.slug, l.title, l.description, l.youtubeId, l.durationMin, JSON.stringify(l.resources), JSON.stringify(l.keyTakeaways), l.assignment ?? null, l.section ?? null, l.format ?? "video", i, l.requiresSubmission ?? false]);
     }
     await client.query("COMMIT");
     course.revision = next;
@@ -324,4 +329,43 @@ export async function deleteOwnedCourse(slug: string, userId: number, isAdmin: b
     await client.query("ROLLBACK").catch(() => undefined);
     throw error;
   } finally { client.release(); }
+}
+
+export type LessonLocation = {
+  lessonId: string;
+  lessonTitle: string;
+  requiresSubmission: boolean;
+  courseSlug: string;
+  courseTitle: string;
+  ownerUserId: number | null;
+};
+
+const lessonIdPattern = /^[a-z0-9-]{3,120}$/i;
+
+/**
+ * Resolves a lesson against the live, DB-backed catalog — unlike
+ * lib/personalized-learning.ts's findTrustedLesson (which only searches the
+ * static launch-time seed array), this also finds lessons in courses a
+ * tutor created after launch. Callers that need lesson content as untrusted
+ * AI prompt input should keep using findTrustedLesson; this is for
+ * ownership/ID resolution, where every course must work, not just the four
+ * seed ones.
+ */
+export async function findLessonLocation(lessonId: unknown): Promise<LessonLocation | null> {
+  if (typeof lessonId !== "string" || !lessonIdPattern.test(lessonId)) return null;
+  const { rows } = await db.query<{
+    id: string; title: string; requires_submission: boolean;
+    course_slug: string; course_title: string; owner_user_id: number | null;
+  }>(
+    `SELECT l.id, l.title, l.requires_submission, c.slug AS course_slug, c.title AS course_title, c.owner_user_id
+     FROM course_lessons l JOIN courses c ON c.slug = l.course_slug
+     WHERE l.id = $1`,
+    [lessonId]
+  );
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    lessonId: row.id, lessonTitle: row.title, requiresSubmission: row.requires_submission,
+    courseSlug: row.course_slug, courseTitle: row.course_title, ownerUserId: row.owner_user_id,
+  };
 }

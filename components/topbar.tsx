@@ -56,7 +56,11 @@ export function Topbar() {
     return out.slice(0, 8);
   }, [query, state.courses]);
 
-  const unread = state.notifications.filter((n) => !n.read).length;
+  const allNotifications = useMemo(
+    () => [...state.serverNotifications, ...state.notifications].sort((a, b) => (a.at < b.at ? 1 : -1)),
+    [state.serverNotifications, state.notifications]
+  );
+  const unread = allNotifications.filter((n) => !n.read).length;
   const crumbs = (pathname ?? "").split("/").filter(Boolean);
 
   return (
@@ -153,7 +157,7 @@ export function Topbar() {
                 <Bell className="h-3.5 w-3.5 text-primary" />Notifications
               </div>
               <div className="max-h-80 overflow-y-auto">
-                {state.notifications.length === 0 && (
+                {allNotifications.length === 0 && (
                   <div className="flex flex-col items-center gap-2 p-6 text-center">
                     <motion.span animate={{ scale: [1, 1.1, 1] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}>
                       <Sparkles className="h-5 w-5 text-primary/50" />
@@ -161,18 +165,25 @@ export function Topbar() {
                     <p className="text-sm text-zinc-500">You&apos;re all caught up.</p>
                   </div>
                 )}
-                {state.notifications.slice(0, 10).map((n, i) => (
-                  <motion.div
-                    key={n.id}
-                    initial={{ opacity: 0, x: -6 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.04 }}
-                    className="border-b border-zinc-100 px-4 py-3 transition-colors last:border-0 hover:bg-zinc-50"
-                  >
-                    <p className="text-sm font-medium text-zinc-900">{n.title}</p>
-                    <p className="mt-0.5 text-xs leading-relaxed text-zinc-600">{n.body}</p>
-                  </motion.div>
-                ))}
+                {allNotifications.slice(0, 10).map((n, i) => {
+                  const Wrapper = n.link ? motion.button : motion.div;
+                  return (
+                    <Wrapper
+                      key={n.id}
+                      initial={{ opacity: 0, x: -6 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.04 }}
+                      onClick={n.link ? () => { setNotifOpen(false); router.push(n.link!); } : undefined}
+                      className={cn(
+                        "block w-full border-b border-zinc-100 px-4 py-3 text-left transition-colors last:border-0 hover:bg-zinc-50",
+                        n.link && "cursor-pointer"
+                      )}
+                    >
+                      <p className="text-sm font-medium text-zinc-900">{n.title}</p>
+                      <p className="mt-0.5 text-xs leading-relaxed text-zinc-600">{n.body}</p>
+                    </Wrapper>
+                  );
+                })}
               </div>
             </motion.div>
           )}

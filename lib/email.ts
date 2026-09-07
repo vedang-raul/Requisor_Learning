@@ -101,3 +101,15 @@ export async function sendNewVideoEmail(to: string, name: string, opts: { course
     )
   );
 }
+
+export async function sendAssignmentSubmittedEmail(to: string, name: string, opts: { studentName: string; lessonTitle: string; courseTitle: string; link: string }) {
+  await sendEmail(
+    to,
+    `New submission: ${opts.lessonTitle}`,
+    shell(
+      "A learner submitted an assignment 📄",
+      `Hi ${name || "there"},<br/><br/><b>${opts.studentName}</b> just submitted their assignment for <b>${opts.lessonTitle}</b> in <b>${opts.courseTitle}</b>.`,
+      { label: "Review submission", href: opts.link }
+    )
+  );
+}

@@ -638,6 +638,7 @@ function LessonForm({ courseSlug, lesson, nextIndex, onSave, onClose }: { course
                 resources: lesson?.resources ?? [],
                 keyTakeaways: lesson?.keyTakeaways ?? [],
                 assignment: lesson?.assignment,
+                requiresSubmission: lesson?.requiresSubmission,
                 format: lesson?.format,
               })
             }

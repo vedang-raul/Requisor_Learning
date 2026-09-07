@@ -42,6 +42,7 @@ describe("buildProgressContext", () => {
       notes: {},
       xp: 150,
       notifications: [],
+      serverNotifications: [],
       sidebarCollapsed: false,
       assessmentCompletions: [],
     };

@@ -27,6 +27,7 @@ const initialState: AppState = {
     { id: "n1", kind: "announcement", title: "Welcome to Requisor Learning", body: "Your curated learning paths are ready. Start anywhere — progress is saved automatically.", at: new Date().toISOString(), read: false },
     { id: "n2", kind: "course", title: "New path: Agentic AI", body: "18 lessons on LLMs, agents, RAG and MCP are now available.", at: new Date().toISOString(), read: false },
   ],
+  serverNotifications: [],
   sidebarCollapsed: false,
   assessmentCompletions: [],
 };
@@ -138,7 +139,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (lsTimer.current) clearTimeout(lsTimer.current);
     lsTimer.current = setTimeout(() => {
       try {
-         const { courses: _courses, ...learningState } = state;
+         const { courses: _courses, serverNotifications: _serverNotifications, ...learningState } = state;
          localStorage.setItem(storageKeyFor(email), JSON.stringify({ ...learningState, user: null }));
       } catch {
         // storage full or unavailable — non-fatal
@@ -270,6 +271,21 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true; };
   }, [hydrated, email]);
 
+  // Real, server-generated notifications (e.g. a tutor's "learner submitted
+  // an assignment" alert) — fetched fresh every session rather than
+  // persisted locally; see AppState.serverNotifications.
+  useEffect(() => {
+    if (!hydrated || !email) return;
+    let cancelled = false;
+    fetch("/api/notifications")
+      .then((response) => response.json() as Promise<{ notifications?: Notification[] }>)
+      .then((data) => {
+        if (!cancelled) setState((current) => ({ ...current, serverNotifications: data.notifications ?? [] }));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [hydrated, email]);
+
   // Sync XP to DB whenever it changes (after the initial DB load).
   useEffect(() => {
     if (!hydrated || !email || !dbSynced.current) return;
@@ -385,7 +401,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const markNotificationsRead = useCallback(() => {
-    setState((s) => ({ ...s, notifications: s.notifications.map((n) => ({ ...n, read: true })) }));
+    setState((s) => {
+      const hadUnreadServer = s.serverNotifications.some((n) => !n.read);
+      if (hadUnreadServer) void fetch("/api/notifications", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: "{}" }).catch(() => {});
+      return {
+        ...s,
+        notifications: s.notifications.map((n) => ({ ...n, read: true })),
+        serverNotifications: s.serverNotifications.map((n) => ({ ...n, read: true })),
+      };
+    });
   }, []);
 
   const toggleAssessmentComplete = useCallback((courseSlug: string) => {

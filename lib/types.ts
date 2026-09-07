@@ -14,6 +14,9 @@ export interface Lesson {
   resources: Resource[];
   keyTakeaways: string[];
   assignment?: string;
+  /** When true, the assignment isn't just an AI practice prompt — the lesson
+   *  page shows an upload widget and learners must submit a file for it. */
+  requiresSubmission?: boolean;
   /** Optional sub-part / module name used to group lessons on the course page. */
   section?: string;
   /** "reading" lessons are article/tool links with no video by design — not a video pending upload. Defaults to "video". */
@@ -71,6 +74,9 @@ export interface Notification {
   at: string;
   read: boolean;
   kind: "course" | "assignment" | "badge" | "announcement";
+  /** Where clicking the notification should navigate — only set on
+   *  server-sourced notifications (see AppState.serverNotifications). */
+  link?: string | null;
 }
 
 export interface EarnedBadge {
@@ -107,6 +113,11 @@ export interface AppState {
   notes: Record<string, string>; // lessonId -> note text
   xp: number;
   notifications: Notification[];
+  /** Real, DB-backed notifications (e.g. "a learner submitted an
+   *  assignment") — fetched fresh every session, deliberately excluded
+   *  from the localStorage snapshot that `notifications` round-trips
+   *  through so it never goes stale or duplicates across hydrations. */
+  serverNotifications: Notification[];
   sidebarCollapsed: boolean;
   /** Course slugs whose capstone assessment the learner has marked complete. */
   assessmentCompletions: string[];

@@ -20,6 +20,7 @@ import { Confetti } from "@/components/confetti";
 import { PageTransition } from "@/components/motion";
 import { LessonQuiz } from "@/components/lesson-quiz";
 import { LessonAssignment } from "@/components/lesson-assignment";
+import { AssignmentSubmission } from "@/components/assignment-submission";
 import { trackEvent } from "@/lib/analytics";
 
 const springHover = { type: "spring" as const, stiffness: 320, damping: 22 };
@@ -512,6 +513,9 @@ function LearnView() {
                           ))}
                         </ul>
                       </div>
+                      {lesson.requiresSubmission && (
+                        <AssignmentSubmission lessonId={lesson.id} assignmentBrief={lesson.assignment} />
+                      )}
                       <LessonAssignment lessonId={lesson.id} />
                     </div>
                   )}
