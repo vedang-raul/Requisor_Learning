@@ -263,6 +263,7 @@ export function DocumentMarkupViewer({ submissionId, mimeType }: { submissionId:
 
   const [docxParagraphs, setDocxParagraphs] = useState<DocxParagraph[] | null>(null);
   const [docxError, setDocxError] = useState<string | null>(null);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
 
   const isPdf = mimeType === "application/pdf";
   const isDocx = mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -280,6 +281,32 @@ export function DocumentMarkupViewer({ submissionId, mimeType }: { submissionId:
       .catch((e) => { if (!cancelled) setLoadError(e instanceof Error ? e.message : "Couldn't load existing markup."); });
     return () => { cancelled = true; };
   }, [submissionId]);
+
+  useEffect(() => {
+    if (!isPdf) return;
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    setPdfBlobUrl(null);
+    fetch(fileUrl)
+      .then((r) => {
+        if (!r.ok) throw new Error("Couldn't download this PDF.");
+        return r.blob();
+      })
+      .then((blob) => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setPdfBlobUrl(objectUrl);
+      })
+      .catch((e) => {
+        if (!cancelled) setLoadError(e instanceof Error ? e.message : "Couldn't render this PDF.");
+      });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+    // fileUrl is derived solely from submissionId.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPdf, submissionId]);
 
   useEffect(() => {
     if (!isDocx) return;
@@ -441,7 +468,14 @@ export function DocumentMarkupViewer({ submissionId, mimeType }: { submissionId:
             }
           >
             <div className="relative bg-white shadow-sm" style={{ width: PAGE_WIDTH, height: PDF_PAGE_HEIGHT }}>
-              <iframe src={`${fileUrl}#page=${page}&toolbar=0&navpanes=0`} title="Submission PDF" className="absolute inset-0 h-full w-full border-0" />
+              {pdfBlobUrl ? (
+                <iframe src={`${pdfBlobUrl}#page=${page}&toolbar=0&navpanes=0`} title="Submission PDF" className="absolute inset-0 h-full w-full border-0" />
+              ) : (
+                <div role="status" className="flex h-full items-center justify-center gap-2 text-sm text-zinc-500">
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  Loading submission…
+                </div>
+              )}
               <AnnotationOverlay
                 interactive={tool !== "none"}
                 tool={tool}

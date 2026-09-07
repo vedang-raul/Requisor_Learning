@@ -48,7 +48,7 @@ export async function middleware(req: NextRequest) {
     "font-src 'self' data: https://fonts.gstatic.com",
     // challenges.cloudflare.com: Turnstile renders its challenge UI inside a
     // sandboxed iframe served from Cloudflare.
-    "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://challenges.cloudflare.com",
+    "frame-src 'self' blob: https://www.youtube.com https://www.youtube-nocookie.com https://challenges.cloudflare.com",
     isEmbeddableFileRoute ? "frame-ancestors 'self'" : "frame-ancestors 'none'",
     "object-src 'none'",
     "base-uri 'self'",
