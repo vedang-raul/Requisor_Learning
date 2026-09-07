@@ -22,7 +22,7 @@ const nextConfig = {
     // a request-scoped nonce.
     return [
       {
-        source: "/:path((?!api/resources(?:/|$)).*)",
+        source: "/:path((?!api/resources(?:/|$)|api/tutor/assignment-submissions/file(?:/|$)).*)",
         headers: [
           // Clickjacking protection — prevent this site from being embedded in
           // an attacker-controlled iframe.
@@ -54,6 +54,17 @@ const nextConfig = {
         // Same defence-in-depth headers, minus X-Frame-Options — this route's
         // own CSP frame-ancestors ('self') is the intended framing control.
         source: "/api/resources/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=()" },
+        ],
+      },
+      {
+        // Authenticated tutor submission files are rendered in the same-origin
+        // grading iframe. Their route-level CSP still limits framing to self.
+        source: "/api/tutor/assignment-submissions/file",
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },

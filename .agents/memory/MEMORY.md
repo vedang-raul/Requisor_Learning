@@ -12,3 +12,4 @@
 - [Tutor-owned catalogs](tutor-owned-catalogs.md) — ownership checks are transactional, edits are revisioned, tutor ratings are aggregate-only, and seed import must never resurrect deletions.
 - [Role-aware AI assistant](role-aware-ai-assistant.md) — tutor AI is a server-selected, draft-only course copilot; learner progress must never enter tutor prompts.
 - [Tutor insights privacy](tutor-insights-privacy.md) — suppress every small metric cohort, and retain logical lesson activity across catalog row replacement.
+- [Protected file previews](protected-file-previews.md) — same-origin PDF iframe routes need aligned CSP/X-Frame exceptions, including Next.js trailing-slash paths.
