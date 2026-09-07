@@ -4,7 +4,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Library,
-  MonitorPlay, Trophy, Settings, ShieldCheck, ChevronsLeft, LogOut, ChevronDown, GraduationCap,
+  MonitorPlay, Trophy, Settings, ShieldCheck, ChevronsLeft, LogOut, ChevronDown, GraduationCap, ClipboardCheck,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -18,6 +18,7 @@ export const navItems = [
   { href: "/app/my-learning/",label: "My Learning", icon: MonitorPlay, learnerOnly: true },
   { href: "/app/badges/",     label: "Badges",      icon: Trophy, learnerOnly: true },
   { href: "/app/tutor/",      label: "Tutor Workspace", icon: GraduationCap, tutorOnly: true },
+  { href: "/app/tutor/assignment/", label: "Check Assignments", icon: ClipboardCheck, tutorOnly: true },
   { href: "/app/admin/",      label: "Admin Panel", icon: ShieldCheck, adminOnly: true },
   { href: "/app/settings/",   label: "Settings",    icon: Settings },
 ];
@@ -77,7 +78,7 @@ export function Sidebar() {
     const active =
       pathname === item.href ||
       pathname === item.href.replace(/\/$/, "") ||
-      (pathname?.startsWith(item.href) && item.href.length > 1);
+      (item.href !== "/app/tutor/" && pathname?.startsWith(item.href) && item.href.length > 1);
     const isHovered = hoveredItem === item.href;
 
     return (

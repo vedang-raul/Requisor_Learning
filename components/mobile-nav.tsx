@@ -178,7 +178,7 @@ export function MobileNav() {
                   const active =
                     pathname === item.href ||
                     pathname === item.href.replace(/\/$/, "") ||
-                    (pathname?.startsWith(item.href) && item.href.length > 1);
+                    (item.href !== "/app/tutor/" && pathname?.startsWith(item.href) && item.href.length > 1);
                   return (
                     <Link
                       key={item.label}
