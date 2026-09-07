@@ -29,8 +29,49 @@ export async function GET(req: Request) {
   const isAdmin = session.user.role === "admin";
 
   const lessonId = new URL(req.url).searchParams.get("lessonId")?.trim();
-  if (!lessonId || !LESSON_ID_PATTERN.test(lessonId)) {
+  if (lessonId && !LESSON_ID_PATTERN.test(lessonId)) {
     return Response.json({ error: "A valid lessonId is required." }, { status: 400 });
+  }
+
+  if (!lessonId) {
+    const { rows: submissions } = await db.query<{
+      id: number; student_name: string | null; student_email: string;
+      file_name: string; file_size: number; submitted_at: string;
+      marks: number | null; graded_at: string | null;
+      lesson_title: string | null; course_title: string;
+    }>(
+      `SELECT s.id, u.name AS student_name, u.email AS student_email,
+              s.file_name, s.file_size, s.submitted_at, g.marks, g.graded_at,
+              l.title AS lesson_title, c.title AS course_title
+       FROM assignment_submissions s
+       JOIN users u ON u.id = s.user_id
+       JOIN courses c ON c.slug = s.course_slug
+       LEFT JOIN course_lessons l ON l.id = s.lesson_id
+       LEFT JOIN assignment_grades g ON g.submission_id = s.id
+       WHERE ($1::boolean OR c.owner_user_id = $2)
+       ORDER BY s.submitted_at DESC
+       LIMIT 200`,
+      [isAdmin, userId]
+    );
+    const graded = submissions.filter((submission) => submission.marks !== null);
+    const averageMarks = graded.length
+      ? Math.round((graded.reduce((sum, submission) => sum + (submission.marks as number), 0) / graded.length) * 10) / 10
+      : null;
+    return Response.json({
+      submissions: submissions.map((submission) => ({
+        id: submission.id,
+        studentName: submission.student_name ?? submission.student_email.split("@")[0],
+        studentEmail: submission.student_email,
+        fileName: submission.file_name,
+        fileSize: submission.file_size,
+        submittedAt: submission.submitted_at,
+        marks: submission.marks,
+        gradedAt: submission.graded_at,
+        lessonTitle: submission.lesson_title ?? "Untitled lesson",
+        courseTitle: submission.course_title,
+      })),
+      stats: { total: submissions.length, checked: graded.length, averageMarks },
+    });
   }
 
   const { rows: lessonRows } = await db.query<{ id: string; course_slug: string }>(

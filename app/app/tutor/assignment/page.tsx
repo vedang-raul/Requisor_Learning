@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, CheckCircle2, Loader2, Save } from "lucide-react";
+import { ArrowLeft, CheckCircle2, FileText, Loader2, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -48,8 +48,82 @@ function applyGradeResult(prev: Detail, marks: number, rawScore: number | null, 
   };
 }
 
+interface SubmissionSummary {
+  id: number;
+  studentName: string;
+  fileName: string;
+  submittedAt: string;
+  marks: number | null;
+  lessonTitle: string;
+  courseTitle: string;
+}
+
+function SubmissionInbox() {
+  const [submissions, setSubmissions] = useState<SubmissionSummary[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const aborter = new AbortController();
+    fetch("/api/tutor/assignment-submissions", { signal: aborter.signal })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({})) as { submissions?: SubmissionSummary[]; error?: string };
+        if (!response.ok) throw new Error(data.error || "Couldn't load assignment submissions.");
+        setSubmissions(data.submissions ?? []);
+      })
+      .catch((cause) => {
+        if (!aborter.signal.aborted) setError(cause instanceof Error ? cause.message : "Couldn't load assignment submissions.");
+      });
+    return () => aborter.abort();
+  }, []);
+
+  return (
+    <PageTransition>
+      <div className="space-y-4">
+        <div>
+          <Link href="/app/tutor/" className="inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-800">
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Back to tutor panel
+          </Link>
+          <h1 className="mt-2 text-xl font-semibold text-zinc-900">Assignment submissions</h1>
+          <p className="mt-1 text-sm text-zinc-500">Open a learner submission to review, annotate, and grade it.</p>
+        </div>
+        {error && <Card className="p-5"><p role="alert" className="text-sm text-red-700">{error}</p></Card>}
+        {!error && submissions === null && (
+          <div className="flex items-center gap-2 p-6 text-sm text-zinc-500"><Loader2 className="h-4 w-4 animate-spin" />Loading submissions…</div>
+        )}
+        {submissions?.length === 0 && (
+          <Card className="p-8 text-center">
+            <FileText className="mx-auto h-8 w-8 text-zinc-400" />
+            <p className="mt-3 font-medium text-zinc-900">No submissions yet</p>
+            <p className="mt-1 text-sm text-zinc-500">Learner uploads will appear here.</p>
+          </Card>
+        )}
+        {submissions && submissions.length > 0 && (
+          <div className="space-y-2">
+            {submissions.map((submission) => (
+              <Link key={submission.id} href={`/app/tutor/assignment/?submissionId=${submission.id}`} className="block">
+                <Card className="flex flex-col gap-3 p-4 transition-colors hover:border-primary/40 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="font-medium text-zinc-900">{submission.studentName}</p>
+                    <p className="truncate text-sm text-zinc-600">{submission.lessonTitle} · {submission.courseTitle}</p>
+                    <p className="mt-1 text-xs text-zinc-500">{submission.fileName} · {new Date(submission.submittedAt).toLocaleString()}</p>
+                  </div>
+                  <span className={submission.marks === null ? "text-sm font-medium text-primary" : "text-sm font-medium text-emerald-700"}>
+                    {submission.marks === null ? "Check submission" : `${submission.marks}% · Checked`}
+                  </span>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+    </PageTransition>
+  );
+}
+
 function GradeView() {
-  const submissionId = Number(useSearchParams().get("submissionId"));
+  const submissionIdParam = useSearchParams().get("submissionId");
+  const submissionId = Number(submissionIdParam);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [marksInput, setMarksInput] = useState("");
@@ -58,6 +132,7 @@ function GradeView() {
   const [savedFlash, setSavedFlash] = useState(false);
 
   useEffect(() => {
+    if (!submissionIdParam) return;
     if (!Number.isSafeInteger(submissionId) || submissionId < 1) {
       setError("Invalid submission.");
       return;
@@ -75,7 +150,9 @@ function GradeView() {
       })
       .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : "Couldn't load this submission."); });
     return () => { cancelled = true; };
-  }, [submissionId]);
+  }, [submissionId, submissionIdParam]);
+
+  if (!submissionIdParam) return <SubmissionInbox />;
 
   async function saveFlatMarks() {
     if (!detail) return;
