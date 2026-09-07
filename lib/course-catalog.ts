@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { seedCourses } from "@/lib/data";
 import type { Course, Lesson, Resource } from "@/lib/types";
 import { extractYouTubeId, PLACEHOLDER_VIDEO } from "@/lib/utils";
+import { isResourceFileUrl } from "@/lib/resource-files";
 
 type CourseRow = {
   slug: string;
@@ -22,7 +23,7 @@ type CourseRow = {
 type LessonRow = {
   course_slug: string | null; id: string | null; lesson_title: string | null; lesson_description: string | null; youtube_id: string | null;
   duration_min: number | null; resources: Resource[] | null; key_takeaways: string[] | null; assignment: string | null;
-  section: string | null; format: "video" | "reading" | null; requires_submission: boolean | null;
+  section: string | null; format: "video" | "reading" | null; requires_submission: boolean | null; body: string | null; body_file_url: string | null;
 };
 
 let seedPromise: Promise<void> | undefined;
@@ -43,6 +44,14 @@ export async function initializeCourseCatalog(client: CatalogClient): Promise<vo
   await client.query("BEGIN");
   try {
     await client.query("SELECT pg_advisory_xact_lock($1)", [72619431]);
+    // Catalog initialization also runs against legacy databases and isolated
+    // migration-test schemas. Upgrade additive lesson fields before seeding.
+    await client.query(`
+      ALTER TABLE course_lessons
+        ADD COLUMN IF NOT EXISTS body TEXT,
+        ADD COLUMN IF NOT EXISTS body_file_url TEXT,
+        ADD COLUMN IF NOT EXISTS requires_submission BOOLEAN NOT NULL DEFAULT FALSE
+    `);
     const marker = await client.query("SELECT 1 FROM course_catalog_metadata WHERE key=$1", ["seed-v1"]);
     if (!marker.rows[0]) {
       for (const course of seedCourses) {
@@ -56,12 +65,12 @@ export async function initializeCourseCatalog(client: CatalogClient): Promise<vo
         for (const lesson of course.lessons) {
           await client.query(
             `INSERT INTO course_lessons
-             (id, course_slug, title, description, youtube_id, duration_min, resources, key_takeaways, assignment, section, format)
-             VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11)
+            (id, course_slug, title, description, youtube_id, duration_min, resources, key_takeaways, assignment, section, format, body, body_file_url)
+             VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13)
              ON CONFLICT (id) DO NOTHING`,
             [lesson.id, course.slug, lesson.title, lesson.description, lesson.youtubeId, lesson.durationMin,
               JSON.stringify(lesson.resources), JSON.stringify(lesson.keyTakeaways), lesson.assignment ?? null,
-              lesson.section ?? null, lesson.format ?? "video"]
+              lesson.section ?? null, lesson.format ?? "video" , lesson.body ?? null, lesson.bodyFileUrl ?? null]
           );
         }
       }
@@ -132,7 +141,7 @@ export async function getCourses(where = "", params: unknown[] = []): Promise<Co
              c.base_assessment, c.owner_user_id, c.revision, c.published, u.name AS tutor_name,
             l.id, l.course_slug, l.title AS lesson_title, l.description AS lesson_description,
             l.youtube_id, l.duration_min, l.resources, l.key_takeaways, l.assignment,
-            l.section, l.format, l.requires_submission
+             l.section, l.format, l.body, l.body_file_url, l.requires_submission
      FROM courses c
      LEFT JOIN course_lessons l ON l.course_slug = c.slug
      LEFT JOIN users u ON u.id = c.owner_user_id
@@ -154,6 +163,8 @@ export async function getCourses(where = "", params: unknown[] = []): Promise<Co
         : extractYouTubeId(row.youtube_id ?? "") ?? PLACEHOLDER_VIDEO,
       durationMin: row.duration_min!, resources: row.resources!, keyTakeaways: row.key_takeaways!,
       ...(row.assignment ? { assignment: row.assignment } : {}), ...(row.section ? { section: row.section } : {}),
+      ...(row.body ? { body: row.body } : {}),
+      ...(row.body_file_url ? { bodyFileUrl: row.body_file_url } : {}),
       format: row.format ?? "video", requiresSubmission: Boolean(row.requires_submission),
     });
   }
@@ -162,9 +173,25 @@ export async function getCourses(where = "", params: unknown[] = []): Promise<Co
 
 const levels = new Set(["Beginner", "Intermediate", "Advanced"]);
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const safeUrl = (value: string) => value === "#" || /^https:\/\//i.test(value);
+const safeUrl = (value: string) => value === "#" || /^https:\/\//i.test(value) || isResourceFileUrl(value);
 const string = (value: unknown, max: number, min = 1) =>
   typeof value === "string" && value.trim().length >= min && value.trim().length <= max;
+
+/** Prevent a course editor from publishing another tutor's guessed file URL. */
+async function assertResourceFileOwnership(client: CatalogClient, course: Course, userId: number, isAdmin = false): Promise<void> {
+  if (isAdmin) return;
+  const urls = course.lessons.flatMap((lesson) => [
+    ...(lesson.bodyFileUrl ? [lesson.bodyFileUrl] : []),
+    ...lesson.resources.map((resource) => resource.url),
+  ]).filter(isResourceFileUrl);
+  const ids = [...new Set(urls.map((url) => url.slice("/api/resources/".length)))];
+  if (!ids.length) return;
+  const { rows } = await client.query<{ id: string }>(
+    "SELECT id FROM resource_files WHERE owner_user_id=$1 AND id = ANY($2::text[])",
+    [userId, ids]
+  );
+  if (rows.length !== ids.length) throw new Error("Course references a resource file you do not own.");
+}
 
 export function validateCourse(value: unknown, expectedSlug?: string, requireRevision = false): { ok: true; course: Course } | { ok: false; error: string } {
   if (!value || typeof value !== "object" || Array.isArray(value)) return { ok: false, error: "Course must be an object." };
@@ -196,7 +223,7 @@ export function validateCourse(value: unknown, expectedSlug?: string, requireRev
   for (const raw of c.lessons) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ok: false, error: "Invalid lesson." };
     const l = raw as Record<string, unknown>;
-    const lessonKeys = new Set(["id", "title", "description", "youtubeId", "durationMin", "resources", "keyTakeaways", "assignment", "section", "format", "requiresSubmission"]);
+    const lessonKeys = new Set(["id", "title", "description", "youtubeId", "durationMin", "resources", "keyTakeaways", "assignment", "section", "format", "body", "bodyFileUrl", "requiresSubmission"]);
     const format = l.format ?? "video";
     const rawYoutubeId = typeof l.youtubeId === "string" ? l.youtubeId.trim() : "";
     const youtubeId = format === "reading"
@@ -209,17 +236,21 @@ export function validateCourse(value: unknown, expectedSlug?: string, requireRev
       !Number.isInteger(l.durationMin) || (l.durationMin as number) < 1 || (l.durationMin as number) > 1440 ||
       !Array.isArray(l.keyTakeaways) || l.keyTakeaways.length > 20 || !l.keyTakeaways.every((x) => string(x, 500)) ||
       !Array.isArray(l.resources) || l.resources.length > 20 ||
-      (l.assignment !== undefined && !string(l.assignment, 5000)) || (l.section !== undefined && !string(l.section, 200)) ||
+      (l.assignment !== undefined && !string(l.assignment, 5000)) ||
+      (l.section !== undefined && !string(l.section, 200)) ||
       (l.format !== undefined && l.format !== "video" && l.format !== "reading") ||
+      (format !== "reading" && !youtubeId) ||
+      (l.body !== undefined && (format !== "reading" || !string(l.body, 20000))) ||
+      (l.bodyFileUrl !== undefined && (format !== "reading" || !string(l.bodyFileUrl, 200) || !isResourceFileUrl(l.bodyFileUrl as string))) ||
+      (l.body !== undefined && l.bodyFileUrl !== undefined) ||
       (l.requiresSubmission !== undefined && typeof l.requiresSubmission !== "boolean") ||
-      !youtubeId || ids.has(l.id as string) ||
+      ids.has(l.id as string) ||
       !(l.id as string).startsWith(`${c.slug}-`)) return { ok: false, error: "Invalid lesson fields." };
     ids.add(l.id as string);
     for (const resource of l.resources) {
       if (!resource || typeof resource !== "object" || Array.isArray(resource)) return { ok: false, error: "Invalid lesson resource." };
       const r = resource as Record<string, unknown>;
-      if (Object.keys(r).some((key) => !["label", "url", "type"].includes(key)) || !string(r.label, 200) ||
-        !string(r.url, 2048) || !safeUrl(r.url as string) || (r.type !== "pdf" && r.type !== "link")) return { ok: false, error: "Invalid lesson resource." };
+      if (Object.keys(r).some((key) => !["label", "url", "type"].includes(key)) || !string(r.label, 200) ||  !string(r.url, 2048) || !safeUrl(r.url as string) || (r.type !== "pdf" && r.type !== "link" && r.type !== "file")) return { ok: false, error: "Invalid lesson resource." };
     }
     normalizedLessons.push({ ...l, youtubeId, format } as unknown as Lesson);
   }
@@ -247,12 +278,14 @@ export async function replaceCourse(
        owner_user_id=CASE WHEN $12 THEN courses.owner_user_id ELSE EXCLUDED.owner_user_id END`,
       [course.slug, course.title, course.tagline, course.category, course.level, JSON.stringify(course.tags), course.cover,
         course.addedAt, course.baseAssessment ?? null, ownerId, course.published ?? false, ...(!createOnly ? [preserveOwner] : [])]);
+    if (ownerId !== null) await assertResourceFileOwnership(client, course, ownerId);
     await client.query("DELETE FROM course_lessons WHERE course_slug=$1", [course.slug]);
     for (let i = 0; i < course.lessons.length; i++) {
       const l = course.lessons[i];
-      await client.query(`INSERT INTO course_lessons (id,course_slug,title,description,youtube_id,duration_min,resources,key_takeaways,assignment,section,format,position,requires_submission)
-        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13)`,
-      [l.id, course.slug, l.title, l.description, l.youtubeId, l.durationMin, JSON.stringify(l.resources), JSON.stringify(l.keyTakeaways), l.assignment ?? null, l.section ?? null, l.format ?? "video", i, l.requiresSubmission ?? false]);
+      await client.query(`INSERT INTO course_lessons (id,course_slug,title,description,youtube_id,duration_min,resources,key_takeaways,assignment,section,format,position,requires_submission,body,body_file_url)
+        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13,$14,$15)`,
+      [l.id, course.slug, l.title, l.description, l.youtubeId, l.durationMin, JSON.stringify(l.resources), JSON.stringify(l.keyTakeaways), l.assignment ?? null, l.section ?? null, l.format ?? "video", i, l.requiresSubmission ?? false, l.body ?? null, l.bodyFileUrl ?? null]);
+
     }
     await client.query("COMMIT");
   } catch (error) {
@@ -285,6 +318,7 @@ export async function updateOwnedCourse(course: Course, userId: number, isAdmin:
     );
     if (!lock.rows[0]) { await client.query("ROLLBACK"); return "not-found-or-forbidden"; }
     if (lock.rows[0].revision !== course.revision) { await client.query("ROLLBACK"); return "stale"; }
+    await assertResourceFileOwnership(client, course, userId, isAdmin);
     const next = lock.rows[0].revision + 1;
     await client.query(
       // published uses COALESCE, not a bare value: an editor that doesn't
@@ -298,9 +332,9 @@ export async function updateOwnedCourse(course: Course, userId: number, isAdmin:
     await client.query("DELETE FROM course_lessons WHERE course_slug=$1", [course.slug]);
     for (let i = 0; i < course.lessons.length; i++) {
       const l = course.lessons[i];
-      await client.query(`INSERT INTO course_lessons (id,course_slug,title,description,youtube_id,duration_min,resources,key_takeaways,assignment,section,format,position,requires_submission)
-        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13)`,
-      [l.id, course.slug, l.title, l.description, l.youtubeId, l.durationMin, JSON.stringify(l.resources), JSON.stringify(l.keyTakeaways), l.assignment ?? null, l.section ?? null, l.format ?? "video", i, l.requiresSubmission ?? false]);
+      await client.query(`INSERT INTO course_lessons (id,course_slug,title,description,youtube_id,duration_min,resources,key_takeaways,assignment,section,format,position,requires_submission,body,body_file_url)
+        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13,$14,$15)`,
+      [l.id, course.slug, l.title, l.description, l.youtubeId, l.durationMin, JSON.stringify(l.resources), JSON.stringify(l.keyTakeaways), l.assignment ?? null, l.section ?? null, l.format ?? "video", i, l.requiresSubmission ?? false, l.body ?? null, l.bodyFileUrl ?? null]);
     }
     await client.query("COMMIT");
     course.revision = next;

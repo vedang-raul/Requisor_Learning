@@ -1,7 +1,7 @@
 export interface Resource {
   label: string;
   url: string;
-  type: "pdf" | "link";
+  type: "pdf" | "link" | "file";
 }
 
 export interface Lesson {
@@ -21,6 +21,8 @@ export interface Lesson {
   section?: string;
   /** "reading" lessons are article/tool links with no video by design — not a video pending upload. Defaults to "video". */
   format?: "video" | "reading";
+  body?:string;
+  bodyFileUrl?:string;
 }
 
 /**

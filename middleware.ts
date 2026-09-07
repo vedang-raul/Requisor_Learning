@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
+import { isResourceFileUrl } from "./lib/resource-files";
 
 export async function middleware(req: NextRequest) {
   // ── Per-request nonce ───────────────────────────────────────────────────
@@ -9,7 +10,7 @@ export async function middleware(req: NextRequest) {
   // the regex Next.js uses when extracting the nonce from the CSP header:
   //   /^'nonce-([A-Za-z0-9+/_-]+={0,2})'$/
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
-
+  const isResourceFileRoute = req.nextUrl.pathname.startsWith("/api/resources/");
   // ── Content-Security-Policy ─────────────────────────────────────────────
   // Built per-request so the nonce can be embedded.  Kept in middleware
   // (not next.config.mjs headers()) because next.config.mjs runs once at
@@ -46,7 +47,7 @@ export async function middleware(req: NextRequest) {
     // challenges.cloudflare.com: Turnstile renders its challenge UI inside a
     // sandboxed iframe served from Cloudflare.
     "frame-src https://www.youtube.com https://www.youtube-nocookie.com https://challenges.cloudflare.com",
-    "frame-ancestors 'none'",
+    isResourceFileRoute ? "frame-ancestors 'self'" :   "frame-ancestors 'none'",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self' https://accounts.google.com",

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { extractYouTubeId, isPlaceholder } from "@/lib/utils";
 import { ExternalLink, FileText, Loader2, MonitorPlay } from "lucide-react";
-
+import { renderMarkdownLite } from "@/components/markdown-lite";
 /* ── YouTube IFrame API globals ─────────────────────────────────────── */
 declare global {
   interface Window {
@@ -53,6 +53,8 @@ export function VideoEmbed({
   youtubeId,
   title,
   format = "video",
+  body,
+  bodyFileUrl,
   resourceUrl,
   onEnded,
 }: {
@@ -60,6 +62,8 @@ export function VideoEmbed({
   title: string;
   format?: "video" | "reading";
   resourceUrl?: string;
+  body?: string;
+  bodyFileUrl?: string;
   /** Called when the YouTube video reaches the end. */
   onEnded?: () => void;
 }) {
@@ -117,6 +121,33 @@ export function VideoEmbed({
       playerRef.current = null;
     };
   }, [normalizedVideoId, format]);
+
+  if (format === "reading" && body?.trim()) {
+    return (
+      <div className="glass w-full rounded-2xl p-6">
+        <div className="prose prose-sm max-w-none text-sm leading-relaxed text-zinc-800">
+          {renderMarkdownLite(body)}
+        </div>
+      </div>
+    );
+  }
+
+  /* Reading lesson — viewable attached PDF/TXT, rendered inline */
+  if (format === "reading" && bodyFileUrl) {
+    return (
+      <div className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-soft">
+        <iframe src={bodyFileUrl} title={title} className="h-[70vh] w-full" />
+        <a
+          href={bodyFileUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="focus-ring flex items-center justify-center gap-1.5 border-t border-zinc-100 bg-zinc-50 px-4 py-2.5 text-xs font-medium text-zinc-700 transition hover:bg-zinc-100"
+        >
+          Open in a new tab <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+        </a>
+      </div>
+    );
+  }
 
   /* Reading lesson */
   if (format === "reading") {

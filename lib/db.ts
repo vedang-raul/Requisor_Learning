@@ -8,12 +8,9 @@ declare global {
 function makePool(): Pool {
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    // Raised from 5 → 20 to support thousands of concurrent users.
-    // Replit Postgres comfortably handles this; raise further only after
-    // profiling real connection saturation. Redis-backed pgBouncer is the
-    // next upgrade path for multi-instance deployments.
-    max: 20,
     // Evict idle connections after 30 s to avoid exhausting the server-side
+    // limit when traffic temporarily subsides.
+    max: Number(process.env.PG_POOL_MAX) || 20,
     // limit when traffic temporarily subsides.
     idleTimeoutMillis: 30_000,
     // Fail fast if every slot is busy rather than queuing indefinitely —

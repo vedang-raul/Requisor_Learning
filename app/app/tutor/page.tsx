@@ -1,21 +1,22 @@
 "use client";
 
-import { FormEvent, ReactNode, SelectHTMLAttributes, useCallback, useEffect, useState } from "react";
+import { FormEvent, ReactNode, SelectHTMLAttributes, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Activity, BarChart3, BookPlus, Check, CheckCircle2, Download, GraduationCap, Inbox, LayoutGrid,
+  Activity, BarChart3, BookPlus, Check, CheckCircle2, Download, FileText, GraduationCap, Inbox, LayoutGrid, Paperclip, Upload,
   ListChecks, Loader2, Pencil, Plus, Send, Star, Trash2, TrendingUp, Users, X,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
-import { Course, Lesson } from "@/lib/types";
-import { cn, isPlaceholder } from "@/lib/utils";
+import { Course, Lesson, Resource } from "@/lib/types";
+import { cn, extractYouTubeId, isPlaceholder, PLACEHOLDER_VIDEO, youTubeThumb } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Input, Textarea } from "@/components/ui/input";
 import { PageTransition } from "@/components/motion";
 import { getCategoryCover, DEFAULT_CATEGORIES } from "@/components/category-icon";
+import { MAX_RESOURCE_FILE_BYTES, RESOURCE_FILE_ACCEPT } from "@/lib/resource-files";
 
 type TabKey = "analytics" | "courses" | "learners" | "ratings";
 type TutorCourse = { course: Course; averageRating: number; ratingCount: number; ratingDistribution: number[] | Record<string, number> };
@@ -632,11 +633,146 @@ function CourseEditor({ course, saving, onCancel, onSave, onAddLesson, onDeleteL
 function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="text-sm font-medium text-zinc-800">{label}{children}</label>; }
 function Select({ children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) { return <select {...props} className="focus-ring mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm">{children}</select>; }
 function LessonEditor({ courseSlug, lesson, saving, onCancel, onSave }: { courseSlug: string; lesson: Lesson | null; saving: boolean; onCancel: () => void; onSave: (lesson: Lesson) => Promise<void> }) {
-  const [title, setTitle] = useState(lesson?.title ?? ""); const [description, setDescription] = useState(lesson?.description ?? ""); const [format, setFormat] = useState<"video" | "reading">(lesson?.format ?? "video"); const [youtubeId, setYoutubeId] = useState(lesson?.youtubeId === "REPLACE_ME" ? "" : lesson?.youtubeId ?? ""); const [duration, setDuration] = useState(String(lesson?.durationMin ?? 20)); const [section, setSection] = useState(lesson?.section ?? ""); const [assignment, setAssignment] = useState(lesson?.assignment ?? ""); const [requiresSubmission, setRequiresSubmission] = useState(lesson?.requiresSubmission ?? false); const [takeaways, setTakeaways] = useState(lesson?.keyTakeaways.join("\n") ?? ""); const [resources, setResources] = useState(lesson?.resources.map((r) => `${r.label}|${r.url}|${r.type}`).join("\n") ?? ""); const [formError, setFormError] = useState<string | null>(null); const [rubricOpen, setRubricOpen] = useState(false);
-  const submit = (event: FormEvent) => { event.preventDefault(); try { const parsedResources = resources.split("\n").filter(Boolean).map((line) => { const [label, url, type] = line.split("|").map((part) => part.trim()); if (!label || !url || (type !== "link" && type !== "pdf") || (url !== "#" && !/^https:\/\//i.test(url))) throw new Error("Resources must be Label|https://url|link or pdf."); return { label, url, type: type as "link" | "pdf" }; }); setFormError(null); void onSave({ id: lesson?.id ?? `${courseSlug}-${Date.now()}`, title: title.trim(), description: description.trim(), format, youtubeId: format === "reading" ? "" : youtubeId.trim() || "REPLACE_ME", durationMin: Math.min(1440, Math.max(1, Math.round(Number(duration) || 20))), section: section.trim() || undefined, assignment: assignment.trim() || undefined, requiresSubmission, keyTakeaways: takeaways.split("\n").map((item) => item.trim()).filter(Boolean), resources: parsedResources }); } catch (error) { setFormError(error instanceof Error ? error.message : "Check the lesson details."); } };
-  return <form onSubmit={submit} className="mt-3 grid gap-3 rounded-xl bg-zinc-50 p-3 sm:grid-cols-2"><Field label="Lesson title"><Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={200} /></Field><Field label="Format"><Select value={format} onChange={(e) => setFormat(e.target.value as "video" | "reading")}><option value="video">Video</option><option value="reading">Reading</option></Select></Field><Field label="Description"><Textarea value={description} onChange={(e) => setDescription(e.target.value)} required maxLength={2000} /></Field><Field label="Duration (minutes)"><Input type="number" min="1" max="1440" step="1" value={duration} onChange={(e) => setDuration(e.target.value)} required /></Field>{format === "video" && <Field label="YouTube video ID"><Input value={youtubeId} onChange={(e) => setYoutubeId(e.target.value)} placeholder="e.g. dQw4w9WgXcQ" maxLength={120} /></Field>}<Field label="Section"><Input value={section} onChange={(e) => setSection(e.target.value)} maxLength={200} /></Field><Field label="Assignment"><Textarea value={assignment} onChange={(e) => setAssignment(e.target.value)} maxLength={5000} /></Field><div className="sm:col-span-2 space-y-2"><label className="flex items-center gap-2 text-sm font-medium text-zinc-800"><input type="checkbox" checked={requiresSubmission} onChange={(e) => setRequiresSubmission(e.target.checked)} className="h-4 w-4 rounded border-zinc-300 accent-primary" />Require a submitted assignment from learners{requiresSubmission && <span className="font-normal text-zinc-500">(the text above shows as their assignment brief)</span>}</label>{requiresSubmission && lesson && <Button type="button" size="sm" variant="outline" onClick={() => setRubricOpen(true)}><ListChecks className="h-3.5 w-3.5" />Grading rubric</Button>}{requiresSubmission && !lesson && <p className="text-xs text-zinc-500">Save this lesson first to set up a grading rubric.</p>}</div><Field label="Key takeaways (one per line)"><Textarea value={takeaways} onChange={(e) => setTakeaways(e.target.value)} /></Field><Field label="Resources (Label|https://url|link or pdf)"><Textarea value={resources} onChange={(e) => setResources(e.target.value)} /></Field>{formError && <p role="alert" className="text-sm text-red-700 sm:col-span-2">{formError}</p>}<div className="flex gap-2"><Button type="submit" disabled={saving || !title.trim() || !description.trim()} className="min-h-11">{saving && <Loader2 className="h-4 w-4 animate-spin" />}{lesson ? "Save lesson" : "Add lesson"}</Button>{lesson && <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>}</div>
+  const [title, setTitle] = useState(lesson?.title ?? "");
+  const [description, setDescription] = useState(lesson?.description ?? "");
+  const [format, setFormat] = useState<"video" | "reading">(lesson?.format ?? "video");
+  const [youtubeId, setYoutubeId] = useState(lesson?.youtubeId === "REPLACE_ME" ? "" : lesson?.youtubeId ?? "");
+  const [duration, setDuration] = useState(String(lesson?.durationMin ?? 20));
+  const [section, setSection] = useState(lesson?.section ?? "");
+  const [assignment, setAssignment] = useState(lesson?.assignment ?? "");
+  const [requiresSubmission, setRequiresSubmission] = useState(lesson?.requiresSubmission ?? false);
+  const [takeaways, setTakeaways] = useState(lesson?.keyTakeaways.join("\n") ?? "");
+  const [resources, setResources] = useState<Resource[]>(lesson?.resources ?? []);
+  const [body, setBody] = useState(lesson?.body ?? "");
+  const [bodyFileUrl, setBodyFileUrl] = useState(lesson?.bodyFileUrl);
+  const [uploading, setUploading] = useState(false);
+  const [resourceError, setResourceError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [rubricOpen, setRubricOpen] = useState(false);
+  const detectedVideoId = format === "video" && youtubeId.trim() ? extractYouTubeId(youtubeId) : null;
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    try {
+      const finalResources = resources.map((resource) => {
+        const label = resource.label.trim();
+        if (!label) throw new Error("Each resource needs a label.");
+        if (resource.type === "file") return { ...resource, label };
+        const url = resource.url.trim();
+        if (!url || (url !== "#" && !/^https:\/\//i.test(url))) throw new Error("Each link resource needs an https:// URL.");
+        return { ...resource, label, url };
+      });
+      if (format === "video" && youtubeId.trim() && !detectedVideoId) throw new Error("Paste a valid YouTube URL or 11-character video ID.");
+      setFormError(null);
+      void onSave({
+        id: lesson?.id ?? `${courseSlug}-${Date.now()}`,
+        title: title.trim(), description: description.trim(), format,
+        youtubeId: format === "reading" ? "" : detectedVideoId ?? PLACEHOLDER_VIDEO,
+        durationMin: Math.min(1440, Math.max(1, Math.round(Number(duration) || 20))),
+        section: section.trim() || undefined, assignment: assignment.trim() || undefined, requiresSubmission,
+        keyTakeaways: takeaways.split("\n").map((item) => item.trim()).filter(Boolean),
+        resources: finalResources,
+        body: format === "reading" && body.trim() ? body.trim() : undefined,
+        bodyFileUrl: format === "reading" && !body.trim() ? bodyFileUrl : undefined,
+      });
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "Check the lesson details.");
+    }
+  }
+
+  return <form onSubmit={submit} className="mt-3 grid gap-3 rounded-xl bg-zinc-50 p-3 sm:grid-cols-2">
+    <Field label="Lesson title"><Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={200} /></Field>
+    <Field label="Format"><Select value={format} onChange={(e) => setFormat(e.target.value as "video" | "reading")}><option value="video">Video</option><option value="reading">Reading</option></Select></Field>
+    <Field label="Description"><Textarea value={description} onChange={(e) => setDescription(e.target.value)} required maxLength={2000} /></Field>
+    <Field label="Duration (minutes)"><Input type="number" min="1" max="1440" step="1" value={duration} onChange={(e) => setDuration(e.target.value)} required /></Field>
+    {format === "video" && <Field label="YouTube URL or video ID"><Input value={youtubeId} onChange={(e) => { setYoutubeId(e.target.value); setFormError(null); }} placeholder="Paste a YouTube URL or video ID" maxLength={2048} aria-invalid={Boolean(youtubeId.trim() && !detectedVideoId)} />{youtubeId.trim() && !detectedVideoId && <span className="mt-1 block text-xs text-red-700">Enter a valid YouTube URL or 11-character video ID.</span>}{detectedVideoId && <span className="mt-2 flex items-center gap-2 text-xs text-emerald-800"><img src={youTubeThumb(detectedVideoId)} alt="" className="h-9 w-16 rounded object-cover" />Video detected and ready to embed.</span>}</Field>}
+    <Field label="Section"><Input value={section} onChange={(e) => setSection(e.target.value)} maxLength={200} /></Field>
+    <Field label="Assignment"><Textarea value={assignment} onChange={(e) => setAssignment(e.target.value)} maxLength={5000} /></Field>
+    {format === "reading" && <div className="sm:col-span-2"><LessonContentField body={body} bodyFileUrl={bodyFileUrl} uploading={uploading} setUploading={setUploading} onChange={({ body: nextBody, bodyFileUrl: nextUrl }) => { setBody(nextBody); setBodyFileUrl(nextUrl); }} /></div>}
+    <div className="sm:col-span-2 space-y-2"><label className="flex items-center gap-2 text-sm font-medium text-zinc-800"><input type="checkbox" checked={requiresSubmission} onChange={(e) => setRequiresSubmission(e.target.checked)} className="h-4 w-4 rounded border-zinc-300 accent-primary" />Require a submitted assignment from learners{requiresSubmission && <span className="font-normal text-zinc-500">(the text above shows as their assignment brief)</span>}</label>{requiresSubmission && lesson && <Button type="button" size="sm" variant="outline" onClick={() => setRubricOpen(true)}><ListChecks className="h-3.5 w-3.5" />Grading rubric</Button>}{requiresSubmission && !lesson && <p className="text-xs text-zinc-500">Save this lesson first to set up a grading rubric.</p>}</div>
+    <Field label="Key takeaways (one per line)"><Textarea value={takeaways} onChange={(e) => setTakeaways(e.target.value)} /></Field>
+    <div className="sm:col-span-2"><ResourcesField resources={resources} onChange={setResources} uploading={uploading} setUploading={setUploading} error={resourceError} setError={setResourceError} /></div>
+    {formError && <p role="alert" className="text-sm text-red-700 sm:col-span-2">{formError}</p>}
+    <div className="flex gap-2"><Button type="submit" disabled={saving || uploading || !title.trim() || !description.trim() || Boolean(youtubeId.trim() && !detectedVideoId)} className="min-h-11">{(saving || uploading) && <Loader2 className="h-4 w-4 animate-spin" />}{lesson ? "Save lesson" : "Add lesson"}</Button>{lesson && <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>}</div>
     {rubricOpen && lesson && <RubricEditorPanel lesson={lesson} onClose={() => setRubricOpen(false)} />}
   </form>;
+}
+
+function LessonContentField({ body, bodyFileUrl, uploading, setUploading, onChange }: {
+  body: string; bodyFileUrl?: string; uploading: boolean; setUploading: (value: boolean) => void;
+  onChange: (value: { body: string; bodyFileUrl?: string }) => void;
+}) {
+  const [mode, setMode] = useState<"write" | "document">(bodyFileUrl ? "document" : "write");
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function upload(file?: File) {
+    if (!file) return;
+    const extension = `.${file.name.split(".").pop()?.toLowerCase() ?? ""}`;
+    if (![".pdf", ".txt"].includes(extension)) { setError("Only PDF or TXT files can be viewed inline."); return; }
+    if (file.size > MAX_RESOURCE_FILE_BYTES) { setError("File is larger than 10 MB."); return; }
+    setUploading(true); setError(null);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error("Could not read file."));
+        reader.readAsDataURL(file);
+      });
+      const response = await fetch("/api/tutor/resources-files", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ filename: file.name, dataUrl }) });
+      const data = await response.json().catch(() => ({})) as { url?: string; error?: string };
+      if (!response.ok || !data.url) throw new Error(data.error ?? "Couldn't upload the file.");
+      onChange({ body: "", bodyFileUrl: data.url });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Couldn't upload the file.");
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  }
+
+  return <div className="space-y-2">
+    <span className="text-sm font-medium text-zinc-800">Lesson content</span>
+    <div className="flex w-fit gap-1 rounded-xl bg-zinc-100 p-1 text-xs font-medium">
+      <button type="button" onClick={() => { setMode("write"); onChange({ body, bodyFileUrl: undefined }); }} className={cn("rounded-lg px-3 py-1.5", mode === "write" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}>Write content</button>
+      <button type="button" onClick={() => { setMode("document"); onChange({ body: "", bodyFileUrl }); }} className={cn("rounded-lg px-3 py-1.5", mode === "document" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}>Attach document</button>
+    </div>
+    {mode === "write" ? <Textarea value={body} onChange={(e) => onChange({ body: e.target.value, bodyFileUrl: undefined })} placeholder="Write the lesson content here…" className="min-h-[160px]" maxLength={20000} /> :
+      <div className="flex items-center gap-2">{bodyFileUrl ? <><FileText className="h-4 w-4 text-primary" /><a href={bodyFileUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline">View attached document</a><Button type="button" size="icon" variant="ghost" onClick={() => onChange({ body: "", bodyFileUrl: undefined })} aria-label="Remove document"><X className="h-4 w-4" /></Button></> : <Button type="button" size="sm" variant="outline" onClick={() => inputRef.current?.click()} disabled={uploading}>{uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}Attach PDF or TXT</Button>}<input ref={inputRef} type="file" accept=".pdf,.txt" className="hidden" onChange={(e) => void upload(e.target.files?.[0])} /></div>}
+    {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
+  </div>;
+}
+
+function ResourcesField({ resources, onChange, uploading, setUploading, error, setError }: {
+  resources: Resource[]; onChange: (resources: Resource[]) => void; uploading: boolean; setUploading: (value: boolean) => void; error: string | null; setError: (value: string | null) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const atLimit = resources.length >= 20;
+  function update(index: number, patch: Partial<Resource>) { onChange(resources.map((resource, i) => i === index ? { ...resource, ...patch } : resource)); }
+  async function upload(files: FileList | null) {
+    if (!files?.length) return;
+    setError(null); setUploading(true);
+    try {
+      let next = resources;
+      for (const file of Array.from(files).slice(0, 20 - resources.length)) {
+        const extension = `.${file.name.split(".").pop()?.toLowerCase() ?? ""}`;
+        if (!RESOURCE_FILE_ACCEPT.split(",").includes(extension)) throw new Error(`"${file.name}" isn't a supported file type.`);
+        if (file.size > MAX_RESOURCE_FILE_BYTES) throw new Error(`"${file.name}" is larger than 10 MB.`);
+        const dataUrl = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(new Error("Could not read file.")); reader.readAsDataURL(file); });
+        const response = await fetch("/api/tutor/resources-files", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ filename: file.name, dataUrl }) });
+        const data = await response.json().catch(() => ({})) as { url?: string; error?: string };
+        if (!response.ok || !data.url) throw new Error(data.error ?? `Couldn't upload "${file.name}".`);
+        next = [...next, { label: file.name, url: data.url, type: "file" }];
+        onChange(next);
+      }
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Couldn't upload the file."); }
+    finally { setUploading(false); if (inputRef.current) inputRef.current.value = ""; }
+  }
+  return <div className="space-y-2"><span className="text-sm font-medium text-zinc-800">Resources</span>
+    {resources.map((resource, index) => <div key={index} className="flex items-center gap-2 rounded-xl border border-border bg-white p-2">{resource.type === "file" ? <><Paperclip className="h-4 w-4 shrink-0 text-primary" /><Input value={resource.label} onChange={(e) => update(index, { label: e.target.value })} maxLength={200} className="h-8 flex-1" /></> : <><Input value={resource.label} onChange={(e) => update(index, { label: e.target.value })} placeholder="Label" maxLength={200} className="h-8 sm:w-32" /><Input value={resource.url} onChange={(e) => update(index, { url: e.target.value })} placeholder="https://…" maxLength={2048} className="h-8 flex-1" /><select value={resource.type} onChange={(e) => update(index, { type: e.target.value as "link" | "pdf" })} className="focus-ring h-8 rounded-lg border border-border bg-white px-2 text-xs"><option value="link">Link</option><option value="pdf">PDF</option></select></>}<Button type="button" size="icon" variant="ghost" onClick={() => onChange(resources.filter((_, i) => i !== index))} aria-label={`Remove ${resource.label || "resource"}`}><X className="h-4 w-4" /></Button></div>)}
+    <div className="flex flex-wrap items-center gap-2"><Button type="button" size="sm" variant="outline" onClick={() => !atLimit && onChange([...resources, { label: "", url: "", type: "link" }])} disabled={atLimit}><Plus className="h-3.5 w-3.5" />Add link</Button><Button type="button" size="sm" variant="outline" onClick={() => inputRef.current?.click()} disabled={atLimit || uploading}>{uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}Attach file</Button><input ref={inputRef} type="file" multiple accept={RESOURCE_FILE_ACCEPT} className="hidden" onChange={(e) => void upload(e.target.files)} /><span className="text-xs text-zinc-500">PDF, TXT, Word, PowerPoint, Excel, or images · up to 10 MB · {resources.length}/20</span></div>
+    {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
+  </div>;
 }
 
 type RubricCriterionDraft = { id?: number; title: string; description: string; maxPoints: string };

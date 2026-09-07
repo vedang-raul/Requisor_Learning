@@ -367,6 +367,8 @@ function LearnView() {
             title={lesson.title}
             format={lesson.format}
             resourceUrl={lesson.format === "reading" ? lesson.resources[0]?.url : undefined}
+            body={lesson.format === "reading" ? lesson.body : undefined}
+            bodyFileUrl={lesson.format === "reading" ? lesson.bodyFileUrl : undefined}
             onEnded={onVideoEnded}
           />
 
@@ -532,13 +534,14 @@ function LearnView() {
                           className="focus-ring group flex items-center gap-3 rounded-xl border border-zinc-100 bg-white/[0.03] p-3.5 transition-colors hover:border-primary/40 hover:shadow-sm"
                         >
                           <motion.div whileHover={{ scale: 1.1, rotate: -4 }} transition={springHover} className="rounded-lg bg-primary/10 p-2">
-                            {r.type === "pdf" ? <FileDown className="h-4 w-4 text-primary" /> : <Link2 className="h-4 w-4 text-cyan-400" />}
+                            {r.type === "file" ? <FileText className="h-4 w-4 text-primary" /> : r.type === "pdf" ? <FileDown className="h-4 w-4 text-primary" /> : <Link2 className="h-4 w-4 text-cyan-400" />}
                           </motion.div>
                           <span className="flex-1 text-sm text-zinc-800 group-hover:text-zinc-900">{r.label}</span>
                           <Tag tone={r.type === "pdf" ? "primary" : "accent"}>{r.type.toUpperCase()}</Tag>
                         </motion.a>
                       ))}
-                      <p className="pt-1 text-[11px] text-zinc-600">Resource links are placeholders — admins can point them at real PDFs and docs.</p>
+                      {lesson.resources.length === 0 && <p className="text-sm text-zinc-500">No resources for this lesson yet.</p>}
+                      <p className="pt-1 text-[11px] text-zinc-600">Attachments and links are provided by your course tutor.</p>
                     </div>
                   )}
                   {tab === "notes" && (

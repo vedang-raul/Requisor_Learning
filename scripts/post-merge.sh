@@ -179,13 +179,31 @@ p.query(`
     section VARCHAR(200),
     format VARCHAR(10) NOT NULL DEFAULT 'video' CHECK (format IN ('video','reading')),
     position INT NOT NULL DEFAULT 0,
-    requires_submission BOOLEAN NOT NULL DEFAULT FALSE
+    requires_submission BOOLEAN NOT NULL DEFAULT FALSE,
+    body TEXT,
+    body_file_url VARCHAR(200)
   );
   -- Existing installs created course_lessons before this column existed.
   ALTER TABLE course_lessons ADD COLUMN IF NOT EXISTS requires_submission BOOLEAN NOT NULL DEFAULT FALSE;
+  ALTER TABLE course_lessons ADD COLUMN IF NOT EXISTS body TEXT;
+  ALTER TABLE course_lessons ADD COLUMN IF NOT EXISTS body_file_url VARCHAR(200);
   CREATE INDEX IF NOT EXISTS courses_owner_idx ON courses (owner_user_id, added_at DESC);
   CREATE INDEX IF NOT EXISTS course_lessons_course_position_idx ON course_lessons (course_slug, position, id);
   CREATE INDEX IF NOT EXISTS course_reviews_slug_rating_idx ON course_reviews (course_slug, rating);
+
+  -- Tutor-uploaded learning resources. Files have no public capability URL:
+  -- the download route authorizes the current user against published course
+  -- references, course ownership, or the admin role.
+  CREATE TABLE IF NOT EXISTS resource_files (
+    id CHAR(32) PRIMARY KEY CHECK (id ~ '^[a-f0-9]{32}$'),
+    owner_user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    filename VARCHAR(200) NOT NULL,
+    mime_type VARCHAR(150) NOT NULL,
+    size_bytes INT NOT NULL CHECK (size_bytes > 0 AND size_bytes <= 10485760),
+    data BYTEA NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS resource_files_owner_idx ON resource_files (owner_user_id, created_at DESC);
 
   -- Privacy-safe learning activity used for aggregate tutor insights.
   -- These tables come after the catalog tables they reference so fresh
