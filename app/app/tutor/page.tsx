@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Activity, BarChart3, BookPlus, Check, CheckCircle2, Download, FileText, GraduationCap, Inbox, LayoutGrid, Paperclip, Upload,
-  ListChecks, Loader2, Pencil, Plus, Send, Star, Trash2, TrendingUp, Users, X,
+  ListChecks, Loader2, Pencil, Plus, Send, Star, Trash2, TrendingUp, Users, X,BookOpen, ChevronDown, Clock, Layers, Sparkles, Video
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { Course, Lesson, Resource } from "@/lib/types";
@@ -621,15 +621,137 @@ function TutorSubmissionsPanel({ lesson, onClose }: { lesson: Lesson; onClose: (
   );
 }
 
+const DURATION_PRESETS = [5, 10, 15, 20, 30, 45, 60];
+
 function CourseEditor({ course, saving, onCancel, onSave, onAddLesson, onDeleteLesson, onDeleteCourse }: { course?: Course | null; saving: boolean; onCancel: () => void; onSave: (course: Course) => Promise<void>; onAddLesson?: (lesson: Lesson) => Promise<void>; onDeleteLesson?: (lesson: Lesson) => Promise<void>; onDeleteCourse?: () => Promise<void> }) {
   const { state } = useStore();
-  const [title, setTitle] = useState(course?.title ?? ""); const [tagline, setTagline] = useState(course?.tagline ?? ""); const [category, setCategory] = useState(course?.category ?? "product"); const [level, setLevel] = useState<Course["level"]>(course?.level ?? "Beginner"); const [tags, setTags] = useState(course?.tags.join(", ") ?? ""); const [assessment, setAssessment] = useState(course?.baseAssessment ?? ""); const [published, setPublished] = useState(course?.published ?? false); const [editing, setEditing] = useState<Lesson | null>(null);
-  const [lessonFormVersion, setLessonFormVersion] = useState(0);
-  const [createdLesson, setCreatedLesson] = useState<{ id: string; title: string } | null>(null);
+  const [title, setTitle] = useState(course?.title ?? ""); const [tagline, setTagline] = useState(course?.tagline ?? ""); const [category, setCategory] = useState(course?.category ?? "product"); const [level, setLevel] = useState<Course["level"]>(course?.level ?? "Beginner"); const [tags, setTags] = useState(course?.tags.join(", ") ?? ""); const [assessment, setAssessment] = useState(course?.baseAssessment ?? ""); const [published, setPublished] = useState(course?.published ?? false);
   const submit = (event: FormEvent) => { event.preventDefault(); const cleanCategory = category.trim(); if (!title.trim() || !cleanCategory) return; void onSave(course ? { ...course, title: title.trim(), tagline: tagline.trim(), category: cleanCategory, level, tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean), baseAssessment: assessment.trim() || undefined, cover: getCategoryCover(cleanCategory), published } : { slug: title.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || `course-${Date.now()}`, title: title.trim(), tagline: tagline.trim() || "New learning path.", category: cleanCategory, level, tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean), cover: getCategoryCover(cleanCategory), addedAt: new Date().toISOString().slice(0, 10), lessons: [], baseAssessment: assessment.trim() || undefined, published }); };
   return <Card className="space-y-4"><div className="flex items-center justify-between"><CardTitle>{course ? `Edit ${course.title}` : "New course"}</CardTitle><Button size="sm" variant="ghost" onClick={onCancel}>Close</Button></div><form onSubmit={submit} className="grid gap-3 sm:grid-cols-2"><Field label="Course title"><Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={160} /></Field><Field label="Tagline"><Input value={tagline} onChange={(e) => setTagline(e.target.value)} required maxLength={400} /></Field><Field label="Category"><Input list="tutor-editor-category-options" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Pick an existing one or type a new one" required maxLength={40} /><datalist id="tutor-editor-category-options">{categoryOptions(state.courses).map((c) => <option key={c} value={c} />)}</datalist></Field><Field label="Level"><Select value={level} onChange={(e) => setLevel(e.target.value as Course["level"])}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></Select></Field><Field label="Tags (comma separated)"><Input value={tags} onChange={(e) => setTags(e.target.value)} /></Field><Field label="Base assessment"><Textarea value={assessment} onChange={(e) => setAssessment(e.target.value)} maxLength={5000} /></Field><label className="flex items-center gap-2 text-sm font-medium text-zinc-800 sm:col-span-2"><input type="checkbox" checked={published} onChange={(e) => setPublished(e.target.checked)} className="h-4 w-4 rounded border-zinc-300 accent-primary" />Published — visible to learners{!published && <span className="font-normal text-zinc-500">(currently a private draft)</span>}</label><div className="flex items-end gap-2"><Button type="submit" disabled={saving} className="min-h-11">{saving && <Loader2 className="h-4 w-4 animate-spin" />}Save course</Button>{course && onDeleteCourse && <Button type="button" variant="danger" disabled={saving} onClick={() => void onDeleteCourse()} aria-label={`Delete ${course.title}`}><Trash2 className="h-4 w-4" /></Button>}</div></form>
-    {course && onAddLesson && <section className="border-t pt-4"><h2 className="font-semibold text-zinc-900">Lessons</h2><AnimatePresence>{createdLesson && <motion.div role="status" aria-live="polite" initial={{ opacity: 0, y: -8, scale: .98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -6 }} className="mt-3 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800"><motion.span initial={{ scale: 0, rotate: -45 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: "spring", stiffness: 500, damping: 24 }} className="inline-flex rounded-full bg-emerald-600 p-1 text-white"><Check className="h-3.5 w-3.5" aria-hidden="true" /></motion.span>“{createdLesson.title}” was added. The lesson list and form are refreshed.</motion.div>}</AnimatePresence><ul className="mt-2 space-y-2">{course.lessons.map((lesson) => <motion.li key={lesson.id} initial={lesson.id === createdLesson?.id ? { opacity: 0, y: 12, backgroundColor: "rgb(209 250 229)" } : false} animate={{ opacity: 1, y: 0, backgroundColor: "rgb(255 255 255)" }} transition={{ duration: .45 }} className="flex items-center justify-between rounded-xl border p-3 text-sm"><span>{lesson.title}</span><span className="flex gap-1">{lesson.format !== "reading" && !isPlaceholder(lesson.youtubeId) && <TutorNotifyButton courseSlug={course.slug} courseTitle={course.title} lesson={lesson} />}{lesson.requiresSubmission && <TutorSubmissionsButton lesson={lesson} />}<Button size="sm" variant="ghost" disabled={saving} onClick={() => { setCreatedLesson(null); setEditing(lesson); }} aria-label={`Edit ${lesson.title}`}><Pencil className="h-4 w-4" /></Button><Button size="sm" variant="ghost" disabled={saving} onClick={() => void onDeleteLesson?.(lesson)} aria-label={`Delete ${lesson.title}`}><Trash2 className="h-4 w-4 text-red-600" /></Button></span></motion.li>)}</ul><LessonEditor key={`${editing?.id ?? "new"}-${lessonFormVersion}`} courseSlug={course.slug} lesson={editing} saving={saving} onCancel={() => setEditing(null)} onSave={async (lesson) => { const isNew = !editing; setCreatedLesson(null); await onAddLesson(lesson); if (isNew) { setCreatedLesson({ id: lesson.id, title: lesson.title }); setLessonFormVersion((version) => version + 1); } setEditing(null); }} /></section>}
+    {course && onAddLesson && <LessonsSection course={course} saving={saving} onAddLesson={onAddLesson} onDeleteLesson={onDeleteLesson} />}
   </Card>;
+}
+
+/* ---------------- Lessons list + create/edit flow ---------------- */
+function LessonsSection({ course, saving, onAddLesson, onDeleteLesson }: { course: Course; saving: boolean; onAddLesson: (lesson: Lesson) => Promise<void>; onDeleteLesson?: (lesson: Lesson) => Promise<void> }) {
+  const [editing, setEditing] = useState<Lesson | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [lessonFormVersion, setLessonFormVersion] = useState(0);
+  const [createdLesson, setCreatedLesson] = useState<{ id: string; title: string } | null>(null);
+  const formRef = useRef<HTMLDivElement>(null);
+  const formOpen = adding || editing !== null;
+  const totalMinutes = course.lessons.reduce((sum, l) => sum + (l.durationMin || 0), 0);
+  const videoCount = course.lessons.filter((l) => l.format !== "reading").length;
+
+  function openNew() { setCreatedLesson(null); setEditing(null); setAdding(true); queueMicrotask(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })); }
+  function openEdit(lesson: Lesson) { setCreatedLesson(null); setAdding(false); setEditing(lesson); queueMicrotask(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })); }
+  function closeForm() { setAdding(false); setEditing(null); }
+
+  return (
+    <section className="border-t pt-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="flex items-center gap-2 font-semibold text-zinc-900"><Layers className="h-4 w-4 text-primary" aria-hidden="true" />Lessons</h2>
+          <p className="mt-0.5 text-xs text-zinc-500">
+            {course.lessons.length === 0 ? "Nothing here yet — add the first lesson to start building the path." : `${course.lessons.length} lesson${course.lessons.length === 1 ? "" : "s"} · ${videoCount} video · ${course.lessons.length - videoCount} reading · ~${totalMinutes} min total`}
+          </p>
+        </div>
+        <motion.div whileTap={{ scale: 0.97 }}>
+          <Button size="sm" onClick={openNew} disabled={saving || adding} className="shadow-sm"><Plus className="h-4 w-4" />Add lesson</Button>
+        </motion.div>
+      </div>
+
+      <AnimatePresence>
+        {createdLesson && (
+          <motion.div role="status" aria-live="polite" initial={{ opacity: 0, y: -8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -6 }} className="mt-3 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">
+            <motion.span initial={{ scale: 0, rotate: -45 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: "spring", stiffness: 500, damping: 24 }} className="inline-flex rounded-full bg-emerald-600 p-1 text-white"><Check className="h-3.5 w-3.5" aria-hidden="true" /></motion.span>
+            “{createdLesson.title}” was added to the course.
+            <button type="button" onClick={openNew} className="ml-auto text-xs font-semibold text-emerald-700 underline-offset-2 hover:underline">Add another</button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {course.lessons.length === 0 && !formOpen ? (
+        <motion.button type="button" onClick={openNew} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="focus-ring mt-3 flex w-full flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50/60 px-4 py-8 text-center transition-colors hover:border-primary/40 hover:bg-primary/5">
+          <motion.span animate={{ y: [0, -3, 0] }} transition={{ repeat: Infinity, duration: 2.2, ease: "easeInOut" }} className="rounded-xl bg-primary/10 p-2.5"><Sparkles className="h-5 w-5 text-primary" aria-hidden="true" /></motion.span>
+          <span className="text-sm font-medium text-zinc-800">Create your first lesson</span>
+          <span className="text-xs text-zinc-500">A video with a YouTube link, or a reading with written content or an attached PDF.</span>
+        </motion.button>
+      ) : (
+        <motion.ol layout className="mt-3 space-y-2">
+          <AnimatePresence initial={false}>
+            {course.lessons.map((lesson, index) => {
+              const isVideo = lesson.format !== "reading";
+              const missingVideo = isVideo && isPlaceholder(lesson.youtubeId);
+              const isEditing = editing?.id === lesson.id;
+              return (
+                <motion.li
+                  key={lesson.id}
+                  layout
+                  initial={lesson.id === createdLesson?.id ? { opacity: 0, y: 12, backgroundColor: "rgb(209 250 229)" } : { opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0, backgroundColor: "rgb(255 255 255)" }}
+                  exit={{ opacity: 0, x: -12, height: 0, marginTop: 0, overflow: "hidden" }}
+                  transition={{ duration: 0.3, delay: lesson.id === createdLesson?.id ? 0 : Math.min(index * 0.03, 0.2) }}
+                  className={cn("group flex items-center gap-3 rounded-xl border p-3 text-sm transition-colors", isEditing ? "border-primary/50 ring-2 ring-primary/15" : "hover:border-zinc-300")}
+                >
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-xs font-bold text-primary">{index + 1}</span>
+                  <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", isVideo ? "bg-rose-50 text-rose-600" : "bg-sky-50 text-sky-600")} title={isVideo ? "Video lesson" : "Reading lesson"}>
+                    {isVideo ? <Video className="h-4 w-4" aria-hidden="true" /> : <BookOpen className="h-4 w-4" aria-hidden="true" />}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium text-zinc-900">{lesson.title}</p>
+                    <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-zinc-500">
+                      <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" aria-hidden="true" />{lesson.durationMin} min</span>
+                      {lesson.section && <><span>·</span><span className="truncate">{lesson.section}</span></>}
+                      {lesson.requiresSubmission && <span className="rounded-full bg-violet-50 px-1.5 py-0.5 text-[11px] font-medium text-violet-700">Submission</span>}
+                      {missingVideo && <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700">No video yet</span>}
+                    </p>
+                  </div>
+                  <span className="flex shrink-0 gap-0.5 opacity-70 transition-opacity group-hover:opacity-100">
+                    {isVideo && !missingVideo && <TutorNotifyButton courseSlug={course.slug} courseTitle={course.title} lesson={lesson} />}
+                    {lesson.requiresSubmission && <TutorSubmissionsButton lesson={lesson} />}
+                    <Button size="sm" variant="ghost" disabled={saving} onClick={() => openEdit(lesson)} aria-label={`Edit ${lesson.title}`}><Pencil className="h-4 w-4" /></Button>
+                    <Button size="sm" variant="ghost" disabled={saving} onClick={() => void onDeleteLesson?.(lesson)} aria-label={`Delete ${lesson.title}`}><Trash2 className="h-4 w-4 text-red-600" /></Button>
+                  </span>
+                </motion.li>
+              );
+            })}
+          </AnimatePresence>
+        </motion.ol>
+      )}
+
+      <AnimatePresence>
+        {formOpen && (
+          <motion.div
+            ref={formRef}
+            initial={{ opacity: 0, height: 0, y: -8 }}
+            animate={{ opacity: 1, height: "auto", y: 0 }}
+            exit={{ opacity: 0, height: 0, y: -8 }}
+            transition={{ duration: 0.25 }}
+            className="overflow-hidden"
+          >
+            <LessonEditor
+              key={`${editing?.id ?? "new"}-${lessonFormVersion}`}
+              courseSlug={course.slug}
+              lesson={editing}
+              saving={saving}
+              onCancel={closeForm}
+              onSave={async (lesson) => {
+                const isNew = editing === null;
+                setCreatedLesson(null);
+                await onAddLesson(lesson);
+                if (isNew) {
+                  setCreatedLesson({ id: lesson.id, title: lesson.title });
+                  setLessonFormVersion((version) => version + 1);
+                }
+                closeForm();
+              }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </section>
+  );
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="text-sm font-medium text-zinc-800">{label}{children}</label>; }
