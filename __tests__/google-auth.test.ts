@@ -184,7 +184,7 @@ describe("Google sign-in account protection", () => {
     expect(mockedWelcomeEmail).not.toHaveBeenCalled();
   });
 
-  it("assigns tutor only to a new account with a valid server-signed intent", async () => {
+  it("ignores a forged legacy tutor-role intent when creating an account", async () => {
     const crypto = await import("crypto");
     const timestamp = Date.now().toString();
     const secret =
@@ -206,7 +206,7 @@ describe("Google sign-in account protection", () => {
       "learner@example.com",
       "Learner",
       "google-subject-1",
-      "tutor",
+      "employee",
     ]);
   });
 

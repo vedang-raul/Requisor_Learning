@@ -124,8 +124,9 @@ export async function POST(req: Request) {
     const validTypes = ["intern", "job", "student", "faculty"];
     const cleanType = typeof employmentType === "string" && validTypes.includes(employmentType.toLowerCase()) ? employmentType.toLowerCase() : "";
     const cleanPosition = typeof position === "string" ? position.trim() : "";
-    // Account type is server-validated; callers can never request admin.
-    // Omission remains the learner/employee flow for backwards compatibility.
+    // Public registration never grants a privileged role. Keep accepting the
+    // legacy accountType field so older clients continue to register, but
+    // treat it only as presentation metadata and never as authorization.
     const requestedAccountType =
       accountType === undefined ? "employee" : typeof accountType === "string" ? accountType.toLowerCase() : "";
     if (requestedAccountType !== "employee" && requestedAccountType !== "tutor") {
@@ -181,7 +182,7 @@ export async function POST(req: Request) {
           cleanEmail,
           cleanName,
           hash,
-          roleForEmail(cleanEmail) === "admin" ? "admin" : requestedAccountType,
+          roleForEmail(cleanEmail) === "admin" ? "admin" : "employee",
           cleanType,
           cleanPosition,
           sha256(token),

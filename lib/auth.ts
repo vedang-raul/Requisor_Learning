@@ -5,12 +5,8 @@ import GoogleProvider from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
 import { db, roleForEmail, ADMIN_EMAIL, type DbUser } from "./db";
 import { sendWelcomeEmail } from "./email";
-import crypto from "crypto";
-import { cookies } from "next/headers";
 
 const GOOGLE_SIGNIN_FAILED_ERROR = "/?error=GoogleSignInFailed";
-const ROLE_INTENT_COOKIE_NAME = "google-role-intent";
-const ROLE_INTENT_TTL_MS = 2 * 60_000;
 
 type GoogleProfile = {
   email?: unknown;
@@ -21,33 +17,6 @@ function normalizedEmail(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const email = value.trim().toLowerCase();
   return email ? email : null;
-}
-
-function hasTutorRoleIntent(value: string | undefined): boolean {
-  if (!value) return false;
-  const dot = value.indexOf(".");
-  if (dot === -1) return false;
-  const timestamp = value.slice(0, dot);
-  const signature = value.slice(dot + 1);
-  const issuedAt = Number(timestamp);
-  if (!Number.isSafeInteger(issuedAt) || issuedAt > Date.now() || Date.now() - issuedAt > ROLE_INTENT_TTL_MS ||
-      !/^[0-9a-f]{64}$/.test(signature)) return false;
-  const secret = process.env.SESSION_SECRET ?? process.env.NEXTAUTH_SECRET ??
-    (process.env.NODE_ENV !== "production" ? "dev-role-intent-secret-not-for-production" : "");
-  if (!secret) return false;
-  const expected = crypto.createHmac("sha256", secret).update(`tutor-role-intent:${timestamp}`).digest("hex");
-  return crypto.timingSafeEqual(Buffer.from(signature, "hex"), Buffer.from(expected, "hex"));
-}
-
-async function requestedGoogleRole(): Promise<"employee" | "tutor"> {
-  try {
-    const cookieStore = await cookies();
-    return hasTutorRoleIntent(cookieStore.get(ROLE_INTENT_COOKIE_NAME)?.value) ? "tutor" : "employee";
-  } catch {
-    // There is no request cookie context in isolated callback tests. Fail
-    // closed rather than granting a role from any client-controlled value.
-    return "employee";
-  }
 }
 
 // ─── Session / cookie constants ─────────────────────────────────────────────
@@ -222,11 +191,9 @@ export const authOptions: NextAuthOptions = {
 
       // INSERT ... DO NOTHING turns a concurrent registration into a safe
       // retry rather than overwriting whichever account won the race.
-      // The role intent is a signed, HttpOnly, short-lived cookie issued by
-      // google-initiate. It is consulted only for a newly-created non-admin
-      // account; established roles and Google subject bindings are immutable.
-      const requestedRole = await requestedGoogleRole();
-      const createdRole = roleForEmail(profileEmail) === "admin" ? "admin" : requestedRole;
+      // Public Google sign-in never grants a privileged role. Existing roles
+      // are handled above; only the canonical admin address is elevated here.
+      const createdRole = roleForEmail(profileEmail) === "admin" ? "admin" : "employee";
       const { rows: createdRows } = await db.query<Pick<DbUser, "id">>(
         `INSERT INTO users (email, name, google_id, email_verified, role)
          VALUES ($1, $2, $3, TRUE, $4)

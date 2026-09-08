@@ -205,6 +205,30 @@ describe("POST /api/signup — CAPTCHA enforcement", () => {
     await signupPost(makeSignupRequest());
     expect(mockVerifyTurnstile).toHaveBeenCalledWith(null);
   });
+
+  it("creates a public tutor signup as an employee", async () => {
+    const { db } = jest.requireMock("@/lib/db") as { db: { query: jest.Mock } };
+    const req = new Request("http://localhost/api/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Unapproved Tutor",
+        email: "unapproved@example.com",
+        password: "securepassword",
+        employmentType: "faculty",
+        accountType: "tutor",
+        turnstileToken: "good-token",
+      }),
+    });
+
+    const res = await signupPost(req);
+    const insertCall = db.query.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO users")
+    );
+
+    expect(res.status).toBe(200);
+    expect(insertCall?.[1]?.[3]).toBe("employee");
+  });
 });
 
 // ── POST /api/forgot ──────────────────────────────────────────────────────────
@@ -353,6 +377,21 @@ describe("POST /api/auth/google-initiate — CAPTCHA gate", () => {
     expect(setCookie).toMatch(/Path=\//i);
     expect(setCookie).toMatch(/HttpOnly/i);
     expect(setCookie).toMatch(/SameSite=Lax/i);
+  });
+
+  it("does not issue a tutor role intent when a public caller requests tutor access", async () => {
+    const req = new Request("http://localhost/api/auth/google-initiate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: "good-token", accountType: "tutor" }),
+    });
+
+    const res = await googleInitiatePost(req);
+    const setCookie = res.headers.get("set-cookie") ?? "";
+
+    expect(res.status).toBe(200);
+    expect(setCookie).toMatch(/google-role-intent=;.*Max-Age=0/i);
+    expect(setCookie).not.toMatch(/google-role-intent=[^;,]/i);
   });
 
   it("returns 403 when CAPTCHA fails", async () => {

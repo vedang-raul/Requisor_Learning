@@ -7,22 +7,11 @@ import {
   readJsonBody,
   RequestBodyTooLargeError,
 } from "@/lib/request-body";
-import crypto from "crypto";
 
 const ROLE_INTENT_COOKIE_NAME = "google-role-intent";
-const ROLE_INTENT_MAX_AGE = 2 * 60;
 const GOOGLE_INITIATE_BODY_MAX_BYTES = 8 * 1024;
 const MAX_TURNSTILE_TOKEN_LENGTH = 4096;
 const MAX_ACCOUNT_TYPE_LENGTH = 16;
-
-function roleIntent(): string {
-  const timestamp = Date.now().toString();
-  const secret = process.env.SESSION_SECRET ?? process.env.NEXTAUTH_SECRET ??
-    (process.env.NODE_ENV !== "production" ? "dev-role-intent-secret-not-for-production" : "");
-  if (!secret) throw new Error("Role intent signing secret is not configured.");
-  const signature = crypto.createHmac("sha256", secret).update(`tutor-role-intent:${timestamp}`).digest("hex");
-  return `${timestamp}.${signature}`;
-}
 
 /**
  * POST /api/auth/google-initiate
@@ -137,29 +126,17 @@ export async function POST(req: Request) {
       secure: isSecure,
     });
   }
-  if (accountType === "tutor") {
-    res.cookies.set({
-      name: ROLE_INTENT_COOKIE_NAME,
-      value: roleIntent(),
-      httpOnly: true,
-      sameSite: "lax",
-      maxAge: ROLE_INTENT_MAX_AGE,
-      path: "/",
-      secure: isSecure,
-    });
-  } else {
-    // A learner flow deliberately has no role intent. Clear a previous tutor
-    // initiation in the same browser so its short-lived cookie cannot affect
-    // this new OAuth attempt.
-    res.cookies.set({
-      name: ROLE_INTENT_COOKIE_NAME,
-      value: "",
-      httpOnly: true,
-      sameSite: "lax",
-      maxAge: 0,
-      path: "/",
-      secure: isSecure,
-    });
-  }
+  // Public OAuth initiation is proof of user presence, not authorization to
+  // choose a privileged role. Always remove the obsolete role-intent cookie;
+  // existing tutor accounts retain their database role when they sign in.
+  res.cookies.set({
+    name: ROLE_INTENT_COOKIE_NAME,
+    value: "",
+    httpOnly: true,
+    sameSite: "lax",
+    maxAge: 0,
+    path: "/",
+    secure: isSecure,
+  });
   return res;
 }

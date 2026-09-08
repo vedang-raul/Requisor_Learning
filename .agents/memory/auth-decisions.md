@@ -10,3 +10,7 @@ description: Non-obvious decisions in the real auth system to stay consistent wi
 - `NEXTAUTH_URL` is derived at runtime in `lib/base-url.ts` from REPLIT_DEV_DOMAIN / REPLIT_DOMAINS — don't hardcode domains.
 - Emails send via the Replit Gmail connector proxy (`POST /gmail/v1/users/me/messages/send` with base64url MIME); the connected account must remain support@requisor.io.
 - Google OAuth accepts any account with an explicitly verified Google email, but binds it permanently to the provider subject; never auto-link by email. **Why:** prevent takeover and account enumeration. **How to apply:** add linking only through an authenticated, explicit consent flow.
+
+- Public registration must assign every non-canonical-admin account the employee role, regardless of client-selected account type or signed cookies.
+  **Why:** CAPTCHA, email verification, and an application-issued intent cookie prove identity or user presence, not organizational approval for privileged tutor access.
+  **How to apply:** preserve established tutor roles from the database at sign-in, but require any future tutor promotion path to be separately authenticated and authorized as an administrative action.
