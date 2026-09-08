@@ -320,7 +320,7 @@ export function AiAssistant() {
   );
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, streaming]);
+  }, [messages, streaming, draftLoading, courseDraft, draftError]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") closePanel();
@@ -797,22 +797,13 @@ export function AiAssistant() {
                   <p>After the final answer, I’ll create an unpublished draft for you to review. Nothing is saved automatically.</p>
                   {state.user?.role === "tutor" && (
                     <button type="button" onClick={startCourseInterview} disabled={draftLoading || streaming} className="focus-ring flex w-full items-center justify-center gap-1.5 rounded-lg bg-amber-900 px-3 py-2 font-semibold text-white disabled:opacity-60">
-                      {draftLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BookPlus className="h-3.5 w-3.5" />}
-                      {draftLoading ? "Building course draft…" : courseInterviewStep === null ? "Start course interview" : "Restart course interview"}
+                      <BookPlus className="h-3.5 w-3.5" />
+                      {courseInterviewStep === null ? "Start course interview" : "Restart course interview"}
                     </button>
                   )}
                 </div>
               )}
               {draftError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{draftError}</div>}
-              {courseDraft && (
-                <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm">
-                  <p className="font-semibold text-zinc-900">{courseDraft.title}</p>
-                  <p className="mt-1 text-xs text-zinc-600">{courseDraft.lessons.length} lessons · {courseDraft.level} · Unpublished draft</p>
-                  <button type="button" onClick={openCourseDraft} className="focus-ring mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white">
-                    <BookPlus className="h-3.5 w-3.5" />Review in course editor
-                  </button>
-                </div>
-              )}
               {messages.length === 0 && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }} className="space-y-4">
                   <p className="text-sm font-light text-zinc-600">
@@ -903,6 +894,31 @@ export function AiAssistant() {
                   >
                     <RotateCcw className="h-3 w-3" />
                     Retry
+                  </button>
+                </motion.div>
+              )}
+              {draftLoading && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  role="status"
+                  aria-live="polite"
+                  className="flex items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs font-semibold text-amber-900"
+                >
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Building course draft…
+                </motion.div>
+              )}
+              {courseDraft && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm"
+                >
+                  <p className="font-semibold text-zinc-900">{courseDraft.title}</p>
+                  <p className="mt-1 text-xs text-zinc-600">{courseDraft.lessons.length} lessons · {courseDraft.level} · Unpublished draft</p>
+                  <button type="button" onClick={openCourseDraft} className="focus-ring mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white">
+                    <BookPlus className="h-3.5 w-3.5" />Review in course editor
                   </button>
                 </motion.div>
               )}
