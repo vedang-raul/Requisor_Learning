@@ -390,7 +390,7 @@ export function DocumentMarkupViewer({ submissionId, mimeType }: { submissionId:
           ))}
         </div>
 
-        {(tool === "highlight" || tool === "draw" || tool === "comment") && (
+        {(tool === "highlight" || tool === "draw") && (
           <div className="flex gap-1">
             {COLORS.map((c) => (
               <button
