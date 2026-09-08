@@ -205,13 +205,38 @@ function SubmissionInbox() {
               <p className="mt-1 text-sm text-zinc-500">Open a learner submission to review, annotate, and grade it.</p>
             </div>
             {submissions && submissions.length > 0 && (
-              <div className="flex gap-2">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm ring-1 ring-zinc-200">
-                  <Clock className="h-3.5 w-3.5 text-primary" /> {pending} pending
-                </span>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm ring-1 ring-zinc-200">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> {checked} of {submissions.length} checked
-                </span>
+              <div
+                className="w-full overflow-hidden rounded-xl border border-primary/15 bg-white/80 shadow-sm ring-1 ring-primary/5 sm:w-auto"
+                aria-label={`Assignment review progress: ${pending} pending, ${checked} of ${submissions.length} checked`}
+              >
+                <div className="flex items-stretch">
+                  <div className="flex min-w-0 items-center gap-2.5 border-l-4 border-amber-400 px-3 py-2.5 sm:px-3.5">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700" aria-hidden>
+                      <Clock className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">To review</p>
+                      <p className="mt-0.5 whitespace-nowrap text-sm font-semibold tabular-nums text-zinc-900">
+                        {pending} pending
+                      </p>
+                    </div>
+                  </div>
+                  <div className="my-2.5 w-px bg-primary/10" aria-hidden />
+                  <div className="flex min-w-0 items-center gap-2.5 border-l-4 border-primary px-3 py-2.5 sm:px-3.5">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary" aria-hidden>
+                      <CheckCircle2 className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">Progress</p>
+                      <p className="mt-0.5 whitespace-nowrap text-sm font-semibold tabular-nums text-zinc-900">
+                        {checked} of {submissions.length} checked
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="h-1 bg-primary/10" role="progressbar" aria-label="Submissions checked" aria-valuemin={0} aria-valuemax={submissions.length} aria-valuenow={checked}>
+                  <div className="h-full bg-primary transition-[width] duration-500 motion-reduce:transition-none" style={{ width: `${(checked / submissions.length) * 100}%` }} />
+                </div>
               </div>
             )}
           </div>
