@@ -20,6 +20,8 @@ import { MAX_RESOURCE_FILE_BYTES, RESOURCE_FILE_ACCEPT } from "@/lib/resource-fi
 
 type TabKey = "analytics" | "courses" | "learners" | "ratings";
 type TutorCourse = { course: Course; averageRating: number; ratingCount: number; ratingDistribution: number[] | Record<string, number> };
+const AI_COURSE_DRAFT_KEY = "requisor-ai-course-draft";
+const AI_COURSE_DRAFT_EVENT = "requisor:open-ai-course-draft";
 
 const springTab = { type: "spring" as const, stiffness: 500, damping: 35 };
 
@@ -45,6 +47,8 @@ export default function TutorPage() {
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Course | null>(null);
   const [creating, setCreating] = useState(false);
+  const [aiDraft, setAiDraft] = useState(false);
+  const [aiDraftVersion, setAiDraftVersion] = useState(0);
   const [saving, setSaving] = useState(false);
   const [analyticsSlug, setAnalyticsSlug] = useState<string | null>(null);
 
@@ -65,11 +69,38 @@ export default function TutorPage() {
     if (hydrated && state.user && state.user.role !== "tutor" && state.user.role !== "admin") router.replace("/app/dashboard/");
   }, [hydrated, router, state.user]);
   useEffect(() => { if (hydrated && state.user && (state.user.role === "tutor" || state.user.role === "admin")) void load(); }, [hydrated, state.user, load]);
+  useEffect(() => {
+    if (!hydrated || state.user?.role !== "tutor") return;
+    const openDraft = (value: unknown) => {
+      try {
+      const course = value as Course;
+      if (!course || typeof course !== "object" || !course.slug || !Array.isArray(course.lessons)) throw new Error("invalid");
+      setTab("courses");
+      setCreating(false);
+      setAiDraft(true);
+      setAiDraftVersion((version) => version + 1);
+      setSelected({ ...course, published: false });
+      sessionStorage.removeItem(AI_COURSE_DRAFT_KEY);
+    } catch {
+      setError("The AI course draft could not be opened. Please generate it again.");
+    }
+    };
+    const onDraft = (event: Event) => openDraft((event as CustomEvent<unknown>).detail);
+    window.addEventListener(AI_COURSE_DRAFT_EVENT, onDraft);
+    try {
+      const stored = sessionStorage.getItem(AI_COURSE_DRAFT_KEY);
+      if (stored) openDraft(JSON.parse(stored));
+    } catch {
+      sessionStorage.removeItem(AI_COURSE_DRAFT_KEY);
+      setError("The AI course draft could not be opened. Please generate it again.");
+    }
+    return () => window.removeEventListener(AI_COURSE_DRAFT_EVENT, onDraft);
+  }, [hydrated, state.user?.role]);
 
   if (!hydrated || !state.user || (state.user.role !== "tutor" && state.user.role !== "admin")) return null;
   const saveCourse = async (course: Course) => {
     setSaving(true); setError(null);
-    try { const saved = await upsertCourse(course); setCreating(false); setSelected(saved); await load(); }
+    try { const saved = await upsertCourse(course); setCreating(false); setAiDraft(false); setSelected(saved); await load(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Couldn't save the course."); }
     finally { setSaving(false); }
   };
@@ -165,13 +196,26 @@ export default function TutorPage() {
           {tab === "courses" && (
             <div className="space-y-4">
               <div className="flex justify-end">
-                <Button className="min-h-11" onClick={() => { setSelected(null); setCreating(true); }}><Plus className="h-4 w-4" /> Create course</Button>
+                <Button className="min-h-11" onClick={() => { setSelected(null); setAiDraft(false); setCreating(true); }}><Plus className="h-4 w-4" /> Create course</Button>
               </div>
               {creating && <CourseForm saving={saving} onCancel={() => setCreating(false)} onSave={saveCourse} />}
               {loading ? <Card className="flex items-center gap-2 py-10 text-sm text-zinc-600"><Loader2 className="h-5 w-5 animate-spin" /> Loading your courses…</Card> :
                 items.length === 0 ? <EmptyCoursesState /> :
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{items.map((item) => <button key={item.course.slug} onClick={() => { setCreating(false); setSelected(item.course); }} className="focus-ring group min-h-32 rounded-2xl text-left"><Card className="relative h-full transition hover:border-primary/40">{item.course.published === false && <span className="absolute left-3 top-3 rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700">Draft</span>}<span className="absolute right-3 top-3 flex items-center gap-1 rounded-full border border-transparent px-2 py-1 text-[11px] font-medium text-zinc-400 opacity-0 transition group-hover:border-primary/30 group-hover:bg-primary/10 group-hover:text-primary group-hover:opacity-100"><Pencil className="h-3 w-3" aria-hidden="true" />Edit</span><div className={`mb-3 h-2 rounded-full bg-gradient-to-r ${item.course.cover}`} /><CardTitle>{item.course.title}</CardTitle><p className="mt-1 text-xs text-zinc-600">{item.course.lessons.length} lessons · <span className="inline-flex items-center gap-1"><Star className="h-3 w-3 fill-amber-400 text-amber-400" aria-hidden="true" />{item.averageRating.toFixed(1)} ({item.ratingCount})</span></p><div className="mt-3 flex gap-1" aria-hidden="true">{[5,4,3,2,1].map((rating) => <span key={rating} title={`${rating} stars: ${distributionCount(item.ratingDistribution, rating)}`} className="h-1 flex-1 rounded bg-primary/20" style={{ opacity: item.ratingCount ? Math.max(.2, distributionCount(item.ratingDistribution, rating) / item.ratingCount) : .2 }} />)}</div><span className="sr-only">{[5,4,3,2,1].map((rating) => `${rating} stars: ${distributionCount(item.ratingDistribution, rating)}`).join(", ")}</span></Card></button>)}</div>}
-              {selected && <CourseEditor course={selected} saving={saving} onCancel={() => setSelected(null)} onSave={saveCourse} onAddLesson={updateLessons} onDeleteLesson={(lesson) => updateLessons(lesson, true)} onDeleteCourse={async () => { if (!confirm(`Delete "${selected.title}"?`)) return; setSaving(true); try { await deleteCourse(selected.slug); setSelected(null); await load(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Couldn't delete the course."); } finally { setSaving(false); } }} />}
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{items.map((item) => <button key={item.course.slug} onClick={() => { setCreating(false); setAiDraft(false); setSelected(item.course); }} className="focus-ring group min-h-32 rounded-2xl text-left"><Card className="relative h-full transition hover:border-primary/40">{item.course.published === false && <span className="absolute left-3 top-3 rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700">Draft</span>}<span className="absolute right-3 top-3 flex items-center gap-1 rounded-full border border-transparent px-2 py-1 text-[11px] font-medium text-zinc-400 opacity-0 transition group-hover:border-primary/30 group-hover:bg-primary/10 group-hover:text-primary group-hover:opacity-100"><Pencil className="h-3 w-3" aria-hidden="true" />Edit</span><div className={`mb-3 h-2 rounded-full bg-gradient-to-r ${item.course.cover}`} /><CardTitle>{item.course.title}</CardTitle><p className="mt-1 text-xs text-zinc-600">{item.course.lessons.length} lessons · <span className="inline-flex items-center gap-1"><Star className="h-3 w-3 fill-amber-400 text-amber-400" aria-hidden="true" />{item.averageRating.toFixed(1)} ({item.ratingCount})</span></p><div className="mt-3 flex gap-1" aria-hidden="true">{[5,4,3,2,1].map((rating) => <span key={rating} title={`${rating} stars: ${distributionCount(item.ratingDistribution, rating)}`} className="h-1 flex-1 rounded bg-primary/20" style={{ opacity: item.ratingCount ? Math.max(.2, distributionCount(item.ratingDistribution, rating) / item.ratingCount) : .2 }} />)}</div><span className="sr-only">{[5,4,3,2,1].map((rating) => `${rating} stars: ${distributionCount(item.ratingDistribution, rating)}`).join(", ")}</span></Card></button>)}</div>}
+              {selected && <>
+                {aiDraft && <div role="status" className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-sm text-violet-900"><strong>AI-generated draft:</strong> Review every field and lesson below. It is unpublished and has not been saved yet.</div>}
+                <CourseEditor
+                  key={`${selected.slug}-${aiDraft ? `ai-${aiDraftVersion}` : "saved"}`}
+                  course={selected}
+                  saving={saving}
+                  onCancel={() => { setSelected(null); setAiDraft(false); }}
+                  onSave={saveCourse}
+                  allowUploads={!aiDraft}
+                  onAddLesson={aiDraft ? async (lesson) => setSelected((current) => current ? { ...current, lessons: [...current.lessons.filter((item) => item.id !== lesson.id), lesson] } : current) : updateLessons}
+                  onDeleteLesson={aiDraft ? async (lesson) => setSelected((current) => current ? { ...current, lessons: current.lessons.filter((item) => item.id !== lesson.id) } : current) : (lesson) => updateLessons(lesson, true)}
+                  onDeleteCourse={aiDraft ? undefined : async () => { if (!confirm(`Delete "${selected.title}"?`)) return; setSaving(true); try { await deleteCourse(selected.slug); setSelected(null); await load(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Couldn't delete the course."); } finally { setSaving(false); } }}
+                />
+              </>}
             </div>
           )}
           {tab === "learners" && <LearnersPanel />}
@@ -623,17 +667,17 @@ function TutorSubmissionsPanel({ lesson, onClose }: { lesson: Lesson; onClose: (
 
 const DURATION_PRESETS = [5, 10, 15, 20, 30, 45, 60];
 
-function CourseEditor({ course, saving, onCancel, onSave, onAddLesson, onDeleteLesson, onDeleteCourse }: { course?: Course | null; saving: boolean; onCancel: () => void; onSave: (course: Course) => Promise<void>; onAddLesson?: (lesson: Lesson) => Promise<void>; onDeleteLesson?: (lesson: Lesson) => Promise<void>; onDeleteCourse?: () => Promise<void> }) {
+function CourseEditor({ course, saving, onCancel, onSave, onAddLesson, onDeleteLesson, onDeleteCourse, allowUploads = true }: { course?: Course | null; saving: boolean; onCancel: () => void; onSave: (course: Course) => Promise<void>; onAddLesson?: (lesson: Lesson) => Promise<void>; onDeleteLesson?: (lesson: Lesson) => Promise<void>; onDeleteCourse?: () => Promise<void>; allowUploads?: boolean }) {
   const { state } = useStore();
   const [title, setTitle] = useState(course?.title ?? ""); const [tagline, setTagline] = useState(course?.tagline ?? ""); const [category, setCategory] = useState(course?.category ?? "product"); const [level, setLevel] = useState<Course["level"]>(course?.level ?? "Beginner"); const [tags, setTags] = useState(course?.tags.join(", ") ?? ""); const [assessment, setAssessment] = useState(course?.baseAssessment ?? ""); const [published, setPublished] = useState(course?.published ?? false);
   const submit = (event: FormEvent) => { event.preventDefault(); const cleanCategory = category.trim(); if (!title.trim() || !cleanCategory) return; void onSave(course ? { ...course, title: title.trim(), tagline: tagline.trim(), category: cleanCategory, level, tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean), baseAssessment: assessment.trim() || undefined, cover: getCategoryCover(cleanCategory), published } : { slug: title.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || `course-${Date.now()}`, title: title.trim(), tagline: tagline.trim() || "New learning path.", category: cleanCategory, level, tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean), cover: getCategoryCover(cleanCategory), addedAt: new Date().toISOString().slice(0, 10), lessons: [], baseAssessment: assessment.trim() || undefined, published }); };
   return <Card className="space-y-4"><div className="flex items-center justify-between"><CardTitle>{course ? `Edit ${course.title}` : "New course"}</CardTitle><Button size="sm" variant="ghost" onClick={onCancel}>Close</Button></div><form onSubmit={submit} className="grid gap-3 sm:grid-cols-2"><Field label="Course title"><Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={160} /></Field><Field label="Tagline"><Input value={tagline} onChange={(e) => setTagline(e.target.value)} required maxLength={400} /></Field><Field label="Category"><Input list="tutor-editor-category-options" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Pick an existing one or type a new one" required maxLength={40} /><datalist id="tutor-editor-category-options">{categoryOptions(state.courses).map((c) => <option key={c} value={c} />)}</datalist></Field><Field label="Level"><Select value={level} onChange={(e) => setLevel(e.target.value as Course["level"])}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></Select></Field><Field label="Tags (comma separated)"><Input value={tags} onChange={(e) => setTags(e.target.value)} /></Field><Field label="Base assessment"><Textarea value={assessment} onChange={(e) => setAssessment(e.target.value)} maxLength={5000} /></Field><label className="flex items-center gap-2 text-sm font-medium text-zinc-800 sm:col-span-2"><input type="checkbox" checked={published} onChange={(e) => setPublished(e.target.checked)} className="h-4 w-4 rounded border-zinc-300 accent-primary" />Published — visible to learners{!published && <span className="font-normal text-zinc-500">(currently a private draft)</span>}</label><div className="flex items-end gap-2"><Button type="submit" disabled={saving} className="min-h-11">{saving && <Loader2 className="h-4 w-4 animate-spin" />}Save course</Button>{course && onDeleteCourse && <Button type="button" variant="danger" disabled={saving} onClick={() => void onDeleteCourse()} aria-label={`Delete ${course.title}`}><Trash2 className="h-4 w-4" /></Button>}</div></form>
-    {course && onAddLesson && <LessonsSection course={course} saving={saving} onAddLesson={onAddLesson} onDeleteLesson={onDeleteLesson} />}
+    {course && onAddLesson && <LessonsSection course={course} saving={saving} onAddLesson={onAddLesson} onDeleteLesson={onDeleteLesson} allowUploads={allowUploads} />}
   </Card>;
 }
 
 /* ---------------- Lessons list + create/edit flow ---------------- */
-function LessonsSection({ course, saving, onAddLesson, onDeleteLesson }: { course: Course; saving: boolean; onAddLesson: (lesson: Lesson) => Promise<void>; onDeleteLesson?: (lesson: Lesson) => Promise<void> }) {
+function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, allowUploads }: { course: Course; saving: boolean; onAddLesson: (lesson: Lesson) => Promise<void>; onDeleteLesson?: (lesson: Lesson) => Promise<void>; allowUploads: boolean }) {
   const [editing, setEditing] = useState<Lesson | null>(null);
   const [adding, setAdding] = useState(false);
   const [lessonFormVersion, setLessonFormVersion] = useState(0);
@@ -735,6 +779,7 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson }: { cours
               courseSlug={course.slug}
               lesson={editing}
               saving={saving}
+              allowUploads={allowUploads}
               onCancel={closeForm}
               onSave={async (lesson) => {
                 const isNew = editing === null;
@@ -756,7 +801,7 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson }: { cours
 
 function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="text-sm font-medium text-zinc-800">{label}{children}</label>; }
 function Select({ children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) { return <select {...props} className="focus-ring mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm">{children}</select>; }
-function LessonEditor({ courseSlug, lesson, saving, onCancel, onSave }: { courseSlug: string; lesson: Lesson | null; saving: boolean; onCancel: () => void; onSave: (lesson: Lesson) => Promise<void> }) {
+function LessonEditor({ courseSlug, lesson, saving, onCancel, onSave, allowUploads }: { courseSlug: string; lesson: Lesson | null; saving: boolean; onCancel: () => void; onSave: (lesson: Lesson) => Promise<void>; allowUploads: boolean }) {
   const [title, setTitle] = useState(lesson?.title ?? "");
   const [description, setDescription] = useState(lesson?.description ?? "");
   const [format, setFormat] = useState<"video" | "reading">(lesson?.format ?? "video");
@@ -812,19 +857,19 @@ function LessonEditor({ courseSlug, lesson, saving, onCancel, onSave }: { course
     {format === "video" && <Field label="YouTube URL or video ID"><Input value={youtubeId} onChange={(e) => { setYoutubeId(e.target.value); setFormError(null); }} placeholder="Paste a YouTube URL or video ID" maxLength={2048} aria-invalid={Boolean(youtubeId.trim() && !detectedVideoId)} />{youtubeId.trim() && !detectedVideoId && <span className="mt-1 block text-xs text-red-700">Enter a valid YouTube URL or 11-character video ID.</span>}{detectedVideoId && <span className="mt-2 flex items-center gap-2 text-xs text-emerald-800"><img src={youTubeThumb(detectedVideoId)} alt="" className="h-9 w-16 rounded object-cover" />Video detected and ready to embed.</span>}</Field>}
     <Field label="Section"><Input value={section} onChange={(e) => setSection(e.target.value)} maxLength={200} /></Field>
     <Field label="Assignment"><Textarea value={assignment} onChange={(e) => setAssignment(e.target.value)} maxLength={5000} /></Field>
-    {format === "reading" && <div className="sm:col-span-2"><LessonContentField body={body} bodyFileUrl={bodyFileUrl} uploading={uploading} setUploading={setUploading} onChange={({ body: nextBody, bodyFileUrl: nextUrl }) => { setBody(nextBody); setBodyFileUrl(nextUrl); }} /></div>}
+    {format === "reading" && <div className="sm:col-span-2"><LessonContentField body={body} bodyFileUrl={bodyFileUrl} uploading={uploading} setUploading={setUploading} allowUploads={allowUploads} onChange={({ body: nextBody, bodyFileUrl: nextUrl }) => { setBody(nextBody); setBodyFileUrl(nextUrl); }} /></div>}
     <div className="sm:col-span-2 space-y-2"><label className="flex items-center gap-2 text-sm font-medium text-zinc-800"><input type="checkbox" checked={requiresSubmission} onChange={(e) => setRequiresSubmission(e.target.checked)} className="h-4 w-4 rounded border-zinc-300 accent-primary" />Require a submitted assignment from learners{requiresSubmission && <span className="font-normal text-zinc-500">(the text above shows as their assignment brief)</span>}</label>{requiresSubmission && lesson && <Button type="button" size="sm" variant="outline" onClick={() => setRubricOpen(true)}><ListChecks className="h-3.5 w-3.5" />Grading rubric</Button>}{requiresSubmission && !lesson && <p className="text-xs text-zinc-500">Save this lesson first to set up a grading rubric.</p>}</div>
     <Field label="Key takeaways (one per line)"><Textarea value={takeaways} onChange={(e) => setTakeaways(e.target.value)} /></Field>
-    <div className="sm:col-span-2"><ResourcesField resources={resources} onChange={setResources} uploading={uploading} setUploading={setUploading} error={resourceError} setError={setResourceError} /></div>
+    <div className="sm:col-span-2"><ResourcesField resources={resources} onChange={setResources} uploading={uploading} setUploading={setUploading} error={resourceError} setError={setResourceError} allowUploads={allowUploads} /></div>
     {formError && <p role="alert" className="text-sm text-red-700 sm:col-span-2">{formError}</p>}
     <div className="flex gap-2"><Button type="submit" disabled={saving || uploading || !title.trim() || !description.trim() || Boolean(youtubeId.trim() && !detectedVideoId)} className="min-h-11">{(saving || uploading) && <Loader2 className="h-4 w-4 animate-spin" />}{lesson ? "Save lesson" : "Add lesson"}</Button>{lesson && <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>}</div>
     {rubricOpen && lesson && <RubricEditorPanel lesson={lesson} onClose={() => setRubricOpen(false)} />}
   </form>;
 }
 
-function LessonContentField({ body, bodyFileUrl, uploading, setUploading, onChange }: {
+function LessonContentField({ body, bodyFileUrl, uploading, setUploading, onChange, allowUploads }: {
   body: string; bodyFileUrl?: string; uploading: boolean; setUploading: (value: boolean) => void;
-  onChange: (value: { body: string; bodyFileUrl?: string }) => void;
+  onChange: (value: { body: string; bodyFileUrl?: string }) => void; allowUploads: boolean;
 }) {
   const [mode, setMode] = useState<"write" | "document">(bodyFileUrl ? "document" : "write");
   const [error, setError] = useState<string | null>(null);
@@ -859,7 +904,7 @@ function LessonContentField({ body, bodyFileUrl, uploading, setUploading, onChan
     <span className="text-sm font-medium text-zinc-800">Lesson content</span>
     <div className="flex w-fit gap-1 rounded-xl bg-zinc-100 p-1 text-xs font-medium">
       <button type="button" onClick={() => { setMode("write"); onChange({ body, bodyFileUrl: undefined }); }} className={cn("rounded-lg px-3 py-1.5", mode === "write" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}>Write content</button>
-      <button type="button" onClick={() => { setMode("document"); onChange({ body: "", bodyFileUrl }); }} className={cn("rounded-lg px-3 py-1.5", mode === "document" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}>Attach document</button>
+      <button type="button" disabled={!allowUploads} title={!allowUploads ? "Save the course draft before attaching files" : undefined} onClick={() => { setMode("document"); onChange({ body: "", bodyFileUrl }); }} className={cn("rounded-lg px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-50", mode === "document" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}>Attach document</button>
     </div>
     {mode === "write" ? <Textarea value={body} onChange={(e) => onChange({ body: e.target.value, bodyFileUrl: undefined })} placeholder="Write the lesson content here…" className="min-h-[160px]" maxLength={20000} /> :
       <div className="flex items-center gap-2">{bodyFileUrl ? <><FileText className="h-4 w-4 text-primary" /><a href={bodyFileUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline">View attached document</a><Button type="button" size="icon" variant="ghost" onClick={() => onChange({ body: "", bodyFileUrl: undefined })} aria-label="Remove document"><X className="h-4 w-4" /></Button></> : <Button type="button" size="sm" variant="outline" onClick={() => inputRef.current?.click()} disabled={uploading}>{uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}Attach PDF or TXT</Button>}<input ref={inputRef} type="file" accept=".pdf,.txt" className="hidden" onChange={(e) => void upload(e.target.files?.[0])} /></div>}
@@ -867,8 +912,9 @@ function LessonContentField({ body, bodyFileUrl, uploading, setUploading, onChan
   </div>;
 }
 
-function ResourcesField({ resources, onChange, uploading, setUploading, error, setError }: {
+function ResourcesField({ resources, onChange, uploading, setUploading, error, setError, allowUploads }: {
   resources: Resource[]; onChange: (resources: Resource[]) => void; uploading: boolean; setUploading: (value: boolean) => void; error: string | null; setError: (value: string | null) => void;
+  allowUploads: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const atLimit = resources.length >= 20;
@@ -894,7 +940,7 @@ function ResourcesField({ resources, onChange, uploading, setUploading, error, s
   }
   return <div className="space-y-2"><span className="text-sm font-medium text-zinc-800">Resources</span>
     {resources.map((resource, index) => <div key={index} className="flex items-center gap-2 rounded-xl border border-border bg-white p-2">{resource.type === "file" ? <><Paperclip className="h-4 w-4 shrink-0 text-primary" /><Input value={resource.label} onChange={(e) => update(index, { label: e.target.value })} maxLength={200} className="h-8 flex-1" /></> : <><Input value={resource.label} onChange={(e) => update(index, { label: e.target.value })} placeholder="Label" maxLength={200} className="h-8 sm:w-32" /><Input value={resource.url} onChange={(e) => update(index, { url: e.target.value })} placeholder="https://…" maxLength={2048} className="h-8 flex-1" /><select value={resource.type} onChange={(e) => update(index, { type: e.target.value as "link" | "pdf" })} className="focus-ring h-8 rounded-lg border border-border bg-white px-2 text-xs"><option value="link">Link</option><option value="pdf">PDF</option></select></>}<Button type="button" size="icon" variant="ghost" onClick={() => onChange(resources.filter((_, i) => i !== index))} aria-label={`Remove ${resource.label || "resource"}`}><X className="h-4 w-4" /></Button></div>)}
-    <div className="flex flex-wrap items-center gap-2"><Button type="button" size="sm" variant="outline" onClick={() => !atLimit && onChange([...resources, { label: "", url: "", type: "link" }])} disabled={atLimit}><Plus className="h-3.5 w-3.5" />Add link</Button><Button type="button" size="sm" variant="outline" onClick={() => inputRef.current?.click()} disabled={atLimit || uploading}>{uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}Attach file</Button><input ref={inputRef} type="file" multiple accept={RESOURCE_FILE_ACCEPT} className="hidden" onChange={(e) => void upload(e.target.files)} /><span className="text-xs text-zinc-500">PDF, TXT, Word, PowerPoint, Excel, or images · up to 10 MB · {resources.length}/20</span></div>
+    <div className="flex flex-wrap items-center gap-2"><Button type="button" size="sm" variant="outline" onClick={() => !atLimit && onChange([...resources, { label: "", url: "", type: "link" }])} disabled={atLimit}><Plus className="h-3.5 w-3.5" />Add link</Button><Button type="button" size="sm" variant="outline" title={!allowUploads ? "Save the course draft before attaching files" : undefined} onClick={() => inputRef.current?.click()} disabled={atLimit || uploading || !allowUploads}>{uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}Attach file</Button><input ref={inputRef} type="file" multiple accept={RESOURCE_FILE_ACCEPT} className="hidden" onChange={(e) => void upload(e.target.files)} /><span className="text-xs text-zinc-500">{allowUploads ? `PDF, TXT, Word, PowerPoint, Excel, or images · up to 10 MB · ${resources.length}/20` : "Save this course draft before attaching files."}</span></div>
     {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
   </div>;
 }

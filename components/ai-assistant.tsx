@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, Compass, ListChecks, Loader2, RotateCcw, Send, Sparkles, TrendingUp, Volume2, VolumeX, X, ChevronDown } from "lucide-react";
+import { BookPlus, Check, Compass, ListChecks, Loader2, RotateCcw, Send, Sparkles, TrendingUp, Volume2, VolumeX, X, ChevronDown } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { getNudge, markNudgeSeen, type Nudge } from "@/lib/nudges";
@@ -11,6 +11,7 @@ import { useVoice } from "@/hooks/use-voice";
 import { PersonaAvatar } from "@/components/persona-avatar";
 import { AI_GUIDE_PREFERENCES_UPDATED, getPersona } from "@/lib/personas";
 import { trackEvent } from "@/lib/analytics";
+import type { Course } from "@/lib/types";
 type ChatMessage = { role: "user" | "assistant"; content: string };
 const LEARNER_QUICK_PROMPTS = [
   { icon: Compass, label: "Recommend a course for my background" },
@@ -194,6 +195,8 @@ function extractFirstNavUrl(
   return null;
 }
 const MUTE_KEY = "ai-assistant-muted";
+const COURSE_DRAFT_KEY = "requisor-ai-course-draft";
+const COURSE_DRAFT_EVENT = "requisor:open-ai-course-draft";
 export function AiAssistant() {
   const { state, hydrated } = useStore();
   const router = useRouter();
@@ -203,6 +206,9 @@ export function AiAssistant() {
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [retryText, setRetryText] = useState<string | null>(null);
+  const [courseDraft, setCourseDraft] = useState<Course | null>(null);
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
   const [nudge, setNudge] = useState<Nudge | null>(null);
   const [assistantPersona, setAssistantPersona] = useState<string>("");
   const [preferredLanguage, setPreferredLanguage] = useState<string>("");
@@ -476,6 +482,46 @@ export function AiAssistant() {
     voice.stopSpeaking();
     setMessages([]);
     setRetryText(null);
+    setCourseDraft(null);
+    setDraftError(null);
+  }
+  async function generateCourseDraft() {
+    if (state.user?.role !== "tutor" || draftLoading || streaming) return;
+    if (!messages.some((message) => message.role === "user")) {
+      setInput("Create a course for [audience] about [topic], at [level], with [number] lessons and these outcomes: …");
+      textareaRef.current?.focus();
+      setDraftError("Describe the topic, audience, level, outcomes, and preferred lesson count first.");
+      return;
+    }
+    setDraftLoading(true);
+    setDraftError(null);
+    try {
+      const response = await fetch("/api/tutor/course-draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages }),
+      });
+      const data = await response.json().catch(() => ({})) as { course?: Course; error?: string };
+      if (!response.ok || !data.course) throw new Error(data.error ?? "Unable to generate a course draft.");
+      setCourseDraft(data.course);
+      trackEvent("ai_course_draft_generated", { lesson_count: data.course.lessons.length });
+    } catch (error) {
+      setDraftError(error instanceof Error ? error.message : "Unable to generate a course draft.");
+    } finally {
+      setDraftLoading(false);
+    }
+  }
+  function openCourseDraft() {
+    if (!courseDraft) return;
+    try {
+      sessionStorage.setItem(COURSE_DRAFT_KEY, JSON.stringify(courseDraft));
+    } catch {
+      setDraftError("Your browser could not transfer the draft. Keep this chat open and try again.");
+      return;
+    }
+    window.dispatchEvent(new CustomEvent(COURSE_DRAFT_EVENT, { detail: courseDraft }));
+    closePanel();
+    router.push("/app/tutor/?aiCourseDraft=1");
   }
   function handleMicClick() {
     if (voice.isListening) {
@@ -643,8 +689,24 @@ export function AiAssistant() {
             {/* Messages */}
             <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
               {isTutorMode && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+                <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
                   <strong>AI draft:</strong> Review and edit suggestions before adding them to your course. Nothing is saved automatically.
+                  {state.user?.role === "tutor" && (
+                    <button type="button" onClick={() => void generateCourseDraft()} disabled={draftLoading || streaming} className="focus-ring flex w-full items-center justify-center gap-1.5 rounded-lg bg-amber-900 px-3 py-2 font-semibold text-white disabled:opacity-60">
+                      {draftLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BookPlus className="h-3.5 w-3.5" />}
+                      {draftLoading ? "Building course draft…" : "Create course from this chat"}
+                    </button>
+                  )}
+                </div>
+              )}
+              {draftError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{draftError}</div>}
+              {courseDraft && (
+                <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm">
+                  <p className="font-semibold text-zinc-900">{courseDraft.title}</p>
+                  <p className="mt-1 text-xs text-zinc-600">{courseDraft.lessons.length} lessons · {courseDraft.level} · Unpublished draft</p>
+                  <button type="button" onClick={openCourseDraft} className="focus-ring mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white">
+                    <BookPlus className="h-3.5 w-3.5" />Review in course editor
+                  </button>
                 </div>
               )}
               {messages.length === 0 && (
