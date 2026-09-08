@@ -3,16 +3,17 @@ export const runtime = "nodejs";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { findLessonLocation } from "@/lib/course-catalog";
-
-/** Streams back the signed-in learner's own submitted file for a lesson. */
+/** Streams back one of the signed-in learner's own submitted files. */
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const lessonId = new URL(req.url).searchParams.get("lessonId")?.trim();
-  const location = await findLessonLocation(lessonId);
-  if (!location) return Response.json({ error: "Lesson not found." }, { status: 404 });
+  const params = new URL(req.url).searchParams;
+  const submissionId = Number(params.get("submissionId"));
+  const lessonId = params.get("lessonId")?.trim();
+  if ((!Number.isSafeInteger(submissionId) || submissionId < 1) && !lessonId) {
+    return Response.json({ error: "A valid submissionId or lessonId is required." }, { status: 400 });
+  }
 
   const { rows: userRows } = await db.query<{ id: number }>(
     "SELECT id FROM users WHERE email = $1",
@@ -21,9 +22,12 @@ export async function GET(req: Request) {
   const user = userRows[0];
   if (!user) return Response.json({ error: "Profile not found." }, { status: 404 });
 
+  const bySubmissionId = Number.isSafeInteger(submissionId) && submissionId > 0;
   const { rows } = await db.query<{ file_name: string; mime_type: string; content: Buffer }>(
-    "SELECT file_name, mime_type, content FROM assignment_submissions WHERE user_id = $1 AND lesson_id = $2",
-    [user.id, location.lessonId]
+    `SELECT file_name, mime_type, content
+     FROM assignment_submissions
+     WHERE user_id = $1 AND ${bySubmissionId ? "id = $2" : "lesson_id = $2"}`,
+    [user.id, bySubmissionId ? submissionId : lessonId]
   );
   const submission = rows[0];
   if (!submission) return Response.json({ error: "No submission yet." }, { status: 404 });

@@ -38,7 +38,8 @@ export function MobileNav() {
     (item) =>
       (!("adminOnly" in item && item.adminOnly) || state.user?.role === "admin") &&
       (!("learnerOnly" in item && item.learnerOnly) || state.user?.role !== "tutor" || workspaceMode === "student") &&
-      (!("tutorOnly" in item && item.tutorOnly) || state.user?.role === "admin" || (state.user?.role === "tutor" && workspaceMode === "tutor"))
+      (!("tutorOnly" in item && item.tutorOnly) || state.user?.role === "admin" || (state.user?.role === "tutor" && workspaceMode === "tutor")) &&
+      (!("employeeOnly" in item && item.employeeOnly) || state.user?.role === "employee")
   );
   const showLearnerNavigation = state.user?.role !== "tutor" || workspaceMode === "student";
 

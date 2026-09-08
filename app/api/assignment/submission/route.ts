@@ -132,13 +132,25 @@ export async function POST(req: Request) {
   }
 
   const { rows } = await db.query<{ id: number; submitted_at: string }>(
-    `INSERT INTO assignment_submissions (user_id, lesson_id, course_slug, file_name, mime_type, file_size, content, submitted_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-     ON CONFLICT (user_id, lesson_id) DO UPDATE SET
-       course_slug = EXCLUDED.course_slug, file_name = EXCLUDED.file_name,
-       mime_type = EXCLUDED.mime_type, file_size = EXCLUDED.file_size,
-       content = EXCLUDED.content, submitted_at = NOW()
-     RETURNING id, submitted_at`,
+    `WITH saved AS (
+       INSERT INTO assignment_submissions (user_id, lesson_id, course_slug, file_name, mime_type, file_size, content, submitted_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+       ON CONFLICT (user_id, lesson_id) DO UPDATE SET
+         course_slug = EXCLUDED.course_slug, file_name = EXCLUDED.file_name,
+         mime_type = EXCLUDED.mime_type, file_size = EXCLUDED.file_size,
+         content = EXCLUDED.content, submitted_at = NOW()
+       RETURNING id, submitted_at
+     ),
+     cleared_scores AS (
+       DELETE FROM assignment_grade_scores WHERE submission_id IN (SELECT id FROM saved)
+     ),
+     cleared_annotations AS (
+       DELETE FROM assignment_annotations WHERE submission_id IN (SELECT id FROM saved)
+     ),
+     cleared_grade AS (
+       DELETE FROM assignment_grades WHERE submission_id IN (SELECT id FROM saved)
+     )
+     SELECT id, submitted_at FROM saved`,
     [user.id, location.lessonId, location.courseSlug, fileName, file.type, bytes.byteLength, bytes]
   );
   const submission = rows[0];

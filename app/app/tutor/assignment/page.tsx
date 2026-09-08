@@ -210,7 +210,7 @@ function SubmissionInbox() {
                   <Clock className="h-3.5 w-3.5 text-primary" /> {pending} pending
                 </span>
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm ring-1 ring-zinc-200">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> {checked} checked
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> {checked} of {submissions.length} checked
                 </span>
               </div>
             )}

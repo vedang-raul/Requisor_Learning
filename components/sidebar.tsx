@@ -4,7 +4,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Library,
-  MonitorPlay, Trophy, Settings, ShieldCheck, ChevronsLeft, LogOut, ChevronDown, GraduationCap, ClipboardCheck, CircleUserRound,
+  MonitorPlay, Trophy,FileCheck2 , ShieldCheck, ChevronsLeft, LogOut, ChevronDown, GraduationCap, ClipboardCheck, CircleUserRound,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -17,6 +17,7 @@ export const navItems = [
   { href: "/app/dashboard/",  label: "Dashboard",   icon: LayoutDashboard },
   { href: "/app/my-learning/",label: "My Learning", icon: MonitorPlay, learnerOnly: true },
   { href: "/app/badges/",     label: "Badges",      icon: Trophy, learnerOnly: true },
+  { href: "/app/submissions/",label: "Submissions", icon: FileCheck2, learnerOnly: true },
   { href: "/app/tutor/",      label: "Tutor Workspace", icon: GraduationCap, tutorOnly: true },
   { href: "/app/tutor/assignment/", label: "Check Assignments", icon: ClipboardCheck, tutorOnly: true },
   { href: "/app/admin/",      label: "Admin Panel", icon: ShieldCheck, adminOnly: true },
@@ -63,7 +64,8 @@ export function Sidebar() {
     (item) => item.href !== "/app/dashboard/" &&
       (!("adminOnly" in item && item.adminOnly) || state.user?.role === "admin") &&
       (!("learnerOnly" in item && item.learnerOnly) || state.user?.role !== "tutor" || workspaceMode === "student") &&
-      (!("tutorOnly" in item && item.tutorOnly) || state.user?.role === "admin" || (state.user?.role === "tutor" && workspaceMode === "tutor"))
+      (!("tutorOnly" in item && item.tutorOnly) || state.user?.role === "admin" || (state.user?.role === "tutor" && workspaceMode === "tutor")) &&
+      (!("employeeOnly" in item && item.employeeOnly) || state.user?.role === "employee")
   );
   const showLearnerNavigation = state.user?.role !== "tutor" || workspaceMode === "student";
 
