@@ -4,7 +4,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Library,
-  MonitorPlay, Trophy, Settings, ShieldCheck, ChevronsLeft, LogOut, ChevronDown, GraduationCap, ClipboardCheck,
+  MonitorPlay, Trophy, Settings, ShieldCheck, ChevronsLeft, LogOut, ChevronDown, GraduationCap, ClipboardCheck, CircleUserRound,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
@@ -20,7 +20,7 @@ export const navItems = [
   { href: "/app/tutor/",      label: "Tutor Workspace", icon: GraduationCap, tutorOnly: true },
   { href: "/app/tutor/assignment/", label: "Check Assignments", icon: ClipboardCheck, tutorOnly: true },
   { href: "/app/admin/",      label: "Admin Panel", icon: ShieldCheck, adminOnly: true },
-  { href: "/app/settings/",   label: "Settings",    icon: Settings },
+  { href: "/app/settings/",   label: "Profile",    icon: CircleUserRound },
 ];
 
 const springTransition = { type: "spring" as const, stiffness: 500, damping: 35 };
