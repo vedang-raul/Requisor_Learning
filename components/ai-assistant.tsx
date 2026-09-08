@@ -434,7 +434,7 @@ export function AiAssistant() {
       interviewSubmittingRef.current = true;
       if (courseInterviewStep === COURSE_INTERVIEW_QUESTIONS.length - 1) {
         const lessonCount = Number(trimmed.match(/\d+/)?.[0]);
-        if (!Number.isInteger(lessonCount) || lessonCount < 3 || lessonCount > 12) {
+        if (!Number.isInteger(lessonCount) || lessonCount < 0 ) {
           setMessages((prev) => [
             ...prev,
             { role: "user", content: trimmed },
