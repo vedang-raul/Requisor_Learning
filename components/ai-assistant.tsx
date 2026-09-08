@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { getNudge, markNudgeSeen, type Nudge } from "@/lib/nudges";
 import { cn } from "@/lib/utils";
+import { parseCourseLessonCount } from "@/lib/course-interview";
 import { renderMarkdownLite, endsInOpenTag } from "@/components/markdown-lite";
 import { useVoice } from "@/hooks/use-voice";
 import { PersonaAvatar } from "@/components/persona-avatar";
@@ -433,8 +434,8 @@ export function AiAssistant() {
     if (courseInterviewStep !== null && courseInterviewStep < COURSE_INTERVIEW_QUESTIONS.length) {
       interviewSubmittingRef.current = true;
       if (courseInterviewStep === COURSE_INTERVIEW_QUESTIONS.length - 1) {
-        const lessonCount = Number(trimmed.match(/\d+/)?.[0]);
-        if (!Number.isInteger(lessonCount) || lessonCount < 0 ) {
+        const lessonCount = parseCourseLessonCount(trimmed);
+        if (lessonCount === null) {
           setMessages((prev) => [
             ...prev,
             { role: "user", content: trimmed },

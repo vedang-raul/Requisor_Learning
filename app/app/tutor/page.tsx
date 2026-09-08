@@ -17,9 +17,10 @@ import { Input, Textarea } from "@/components/ui/input";
 import { PageTransition } from "@/components/motion";
 import { getCategoryCover, DEFAULT_CATEGORIES } from "@/components/category-icon";
 import { MAX_RESOURCE_FILE_BYTES, RESOURCE_FILE_ACCEPT } from "@/lib/resource-files";
+import { mergeSavedTutorCourse, reconcileTutorCourses, type TutorCourseSummary } from "@/lib/tutor-course-sync";
 
 type TabKey = "analytics" | "courses" | "learners" | "ratings";
-type TutorCourse = { course: Course; averageRating: number; ratingCount: number; ratingDistribution: number[] | Record<string, number> };
+type TutorCourse = TutorCourseSummary;
 const AI_COURSE_DRAFT_KEY = "requisor-ai-course-draft";
 const AI_COURSE_DRAFT_EVENT = "requisor:open-ai-course-draft";
 
@@ -52,16 +53,20 @@ export default function TutorPage() {
   const [saving, setSaving] = useState(false);
   const [analyticsSlug, setAnalyticsSlug] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (selectedSlug?: string | null) => {
     setLoading(true); setError(null);
     try {
       const response = await fetch("/api/tutor/courses");
       const data = await response.json().catch(() => ({})) as { courses?: TutorCourse[]; error?: string };
       if (!response.ok || !Array.isArray(data.courses)) throw new Error(data.error ?? "Couldn't load your courses.");
-      setItems(data.courses);
+      const reconciled = reconcileTutorCourses(data.courses, selectedSlug);
+      setItems(reconciled.items);
+      if (selectedSlug !== undefined) setSelected(reconciled.selected);
       setAnalyticsSlug((prev) => prev && data.courses!.some((i) => i.course.slug === prev) ? prev : data.courses![0]?.course.slug ?? null);
+      return true;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Couldn't load your courses.");
+      return false;
     } finally { setLoading(false); }
   }, []);
 
@@ -100,20 +105,36 @@ export default function TutorPage() {
   if (!hydrated || !state.user || (state.user.role !== "tutor" && state.user.role !== "admin")) return null;
   const saveCourse = async (course: Course) => {
     setSaving(true); setError(null);
-    try { const saved = await upsertCourse(course); setCreating(false); setAiDraft(false); setSelected(saved); await load(); }
+    try {
+      const saved = await upsertCourse(course);
+      const refreshed = await load(saved.slug);
+      setCreating(false);
+      setAiDraft(false);
+      if (!refreshed) {
+        setItems((current) => mergeSavedTutorCourse(current, saved));
+        setSelected(saved);
+      }
+    }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Couldn't save the course."); }
     finally { setSaving(false); }
   };
-  const updateLessons = async (lesson: Lesson, remove = false) => {
-    if (!selected) return;
+  const updateLessons = async (lesson: Lesson, remove = false): Promise<boolean> => {
+    if (!selected) return false;
     setSaving(true); setError(null);
     try {
       const updated = remove
         ? await deleteLesson(selected.slug, lesson.id)
         : await upsertLesson(selected.slug, lesson);
-      setSelected(updated);
-      await load();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Couldn't save the lesson."); }
+      const refreshed = await load(updated.slug);
+      if (!refreshed) {
+        setItems((current) => mergeSavedTutorCourse(current, updated));
+        setSelected(updated);
+      }
+      return true;
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Couldn't save the lesson.");
+      return false;
+    }
     finally { setSaving(false); }
   };
 
@@ -205,14 +226,14 @@ export default function TutorPage() {
               {selected && <>
                 {aiDraft && <div role="status" className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-sm text-violet-900"><strong>AI-generated draft:</strong> Review every field and lesson below. It is unpublished and has not been saved yet.</div>}
                 <CourseEditor
-                  key={`${selected.slug}-${aiDraft ? `ai-${aiDraftVersion}` : "saved"}`}
+                  key={`${selected.slug}-${aiDraft ? `ai-${aiDraftVersion}` : `saved-${selected.revision ?? 0}`}`}
                   course={selected}
                   saving={saving}
                   onCancel={() => { setSelected(null); setAiDraft(false); }}
                   onSave={saveCourse}
                   allowUploads={!aiDraft}
-                  onAddLesson={aiDraft ? async (lesson) => setSelected((current) => current ? { ...current, lessons: [...current.lessons.filter((item) => item.id !== lesson.id), lesson] } : current) : updateLessons}
-                  onDeleteLesson={aiDraft ? async (lesson) => setSelected((current) => current ? { ...current, lessons: current.lessons.filter((item) => item.id !== lesson.id) } : current) : (lesson) => updateLessons(lesson, true)}
+                  onAddLesson={aiDraft ? async (lesson) => { setSelected((current) => current ? { ...current, lessons: [...current.lessons.filter((item) => item.id !== lesson.id), lesson] } : current); return true; } : updateLessons}
+                  onDeleteLesson={aiDraft ? async (lesson) => { setSelected((current) => current ? { ...current, lessons: current.lessons.filter((item) => item.id !== lesson.id) } : current); return true; } : (lesson) => updateLessons(lesson, true)}
                   onDeleteCourse={aiDraft ? undefined : async () => { if (!confirm(`Delete "${selected.title}"?`)) return; setSaving(true); try { await deleteCourse(selected.slug); setSelected(null); await load(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Couldn't delete the course."); } finally { setSaving(false); } }}
                 />
               </>}
@@ -667,7 +688,7 @@ function TutorSubmissionsPanel({ lesson, onClose }: { lesson: Lesson; onClose: (
 
 const DURATION_PRESETS = [5, 10, 15, 20, 30, 45, 60];
 
-function CourseEditor({ course, saving, onCancel, onSave, onAddLesson, onDeleteLesson, onDeleteCourse, allowUploads = true }: { course?: Course | null; saving: boolean; onCancel: () => void; onSave: (course: Course) => Promise<void>; onAddLesson?: (lesson: Lesson) => Promise<void>; onDeleteLesson?: (lesson: Lesson) => Promise<void>; onDeleteCourse?: () => Promise<void>; allowUploads?: boolean }) {
+function CourseEditor({ course, saving, onCancel, onSave, onAddLesson, onDeleteLesson, onDeleteCourse, allowUploads = true }: { course?: Course | null; saving: boolean; onCancel: () => void; onSave: (course: Course) => Promise<void>; onAddLesson?: (lesson: Lesson) => Promise<boolean>; onDeleteLesson?: (lesson: Lesson) => Promise<boolean>; onDeleteCourse?: () => Promise<void>; allowUploads?: boolean }) {
   const { state } = useStore();
   const [title, setTitle] = useState(course?.title ?? ""); const [tagline, setTagline] = useState(course?.tagline ?? ""); const [category, setCategory] = useState(course?.category ?? "product"); const [level, setLevel] = useState<Course["level"]>(course?.level ?? "Beginner"); const [tags, setTags] = useState(course?.tags.join(", ") ?? ""); const [assessment, setAssessment] = useState(course?.baseAssessment ?? ""); const [published, setPublished] = useState(course?.published ?? false);
   const submit = (event: FormEvent) => { event.preventDefault(); const cleanCategory = category.trim(); if (!title.trim() || !cleanCategory) return; void onSave(course ? { ...course, title: title.trim(), tagline: tagline.trim(), category: cleanCategory, level, tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean), baseAssessment: assessment.trim() || undefined, cover: getCategoryCover(cleanCategory), published } : { slug: title.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || `course-${Date.now()}`, title: title.trim(), tagline: tagline.trim() || "New learning path.", category: cleanCategory, level, tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean), cover: getCategoryCover(cleanCategory), addedAt: new Date().toISOString().slice(0, 10), lessons: [], baseAssessment: assessment.trim() || undefined, published }); };
@@ -677,7 +698,7 @@ function CourseEditor({ course, saving, onCancel, onSave, onAddLesson, onDeleteL
 }
 
 /* ---------------- Lessons list + create/edit flow ---------------- */
-function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, allowUploads }: { course: Course; saving: boolean; onAddLesson: (lesson: Lesson) => Promise<void>; onDeleteLesson?: (lesson: Lesson) => Promise<void>; allowUploads: boolean }) {
+function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, allowUploads }: { course: Course; saving: boolean; onAddLesson: (lesson: Lesson) => Promise<boolean>; onDeleteLesson?: (lesson: Lesson) => Promise<boolean>; allowUploads: boolean }) {
   const [editing, setEditing] = useState<Lesson | null>(null);
   const [adding, setAdding] = useState(false);
   const [lessonFormVersion, setLessonFormVersion] = useState(0);
@@ -784,7 +805,8 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, allowUplo
               onSave={async (lesson) => {
                 const isNew = editing === null;
                 setCreatedLesson(null);
-                await onAddLesson(lesson);
+                const saved = await onAddLesson(lesson);
+                if (!saved) return;
                 if (isNew) {
                   setCreatedLesson({ id: lesson.id, title: lesson.title });
                   setLessonFormVersion((version) => version + 1);
