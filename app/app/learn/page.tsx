@@ -516,7 +516,7 @@ function LearnView() {
                         </ul>
                       </div>
                       {lesson.requiresSubmission && (
-                        <AssignmentSubmission lessonId={lesson.id} assignmentBrief={lesson.assignment} />
+                        <AssignmentSubmission lessonId={lesson.id} assignmentBrief={lesson.assignment} totalMarks={lesson.assignmentMarks} dueDate={lesson.assignmentDueDate} />
                       )}
                       <LessonAssignment lessonId={lesson.id} allowSubmission={!lesson.requiresSubmission} />
                     </div>

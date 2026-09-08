@@ -27,12 +27,14 @@ export async function GET(req: Request) {
     id: number; student_name: string | null; student_email: string;
     file_name: string; mime_type: string; file_size: number; submitted_at: string;
     lesson_id: string; lesson_title: string | null; course_slug: string; course_title: string;
-    marks: number | null; raw_score: number | null; raw_max: number | null; graded_at: string | null;
+    marks: number | null; raw_score: number | null; raw_max: number | null; graded_at: string | null; remark: string | null;
+    assignment_due_date: string | null; assignment_marks: number | null;
   }>(
     `SELECT s.id, u.name AS student_name, u.email AS student_email,
             s.file_name, s.mime_type, s.file_size, s.submitted_at,
             s.lesson_id, l.title AS lesson_title, s.course_slug, c.title AS course_title,
-            g.marks, g.raw_score, g.raw_max, g.graded_at
+             g.marks, g.raw_score, g.raw_max, g.graded_at, g.remark,
+             l.assignment_due_date, l.assignment_marks
      FROM assignment_submissions s
      JOIN users u ON u.id = s.user_id
      JOIN courses c ON c.slug = s.course_slug
@@ -75,11 +77,14 @@ export async function GET(req: Request) {
       lessonTitle: submission.lesson_title ?? "Untitled lesson",
       courseSlug: submission.course_slug,
       courseTitle: submission.course_title,
+      dueDate: submission.assignment_due_date,
+      totalMarks: submission.assignment_marks,
     },
     marks: submission.marks,
     rawScore: submission.raw_score,
     rawMax: submission.raw_max,
     gradedAt: submission.graded_at,
+    remark: submission.remark,
     rubric: criteriaRows.map((c) => ({
       id: c.id, title: c.title, description: c.description, maxPoints: c.max_points,
       score: scoreByCriterion.get(c.id) ?? null,

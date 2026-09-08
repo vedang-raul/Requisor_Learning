@@ -16,6 +16,7 @@ import { db } from "@/lib/db";
  *    cross-lesson stats even though rubrics have different point totals.
  */
 const canManage = (role: unknown) => role === "admin" || role === "tutor";
+const REMARKS = new Set(["Excellent", "Good", "Satisfactory", "Needs improvement"]);
 
 async function ownedSubmissionLesson(submissionId: number, userId: number, isAdmin: boolean) {
   const { rows } = await db.query<{ lesson_id: string }>(
@@ -40,9 +41,11 @@ export async function PUT(req: Request) {
   if (!Number.isSafeInteger(submissionId) || submissionId < 1) {
     return Response.json({ error: "A valid submissionId is required." }, { status: 400 });
   }
+  const remark = typeof body.remark === "string" ? body.remark.trim() : "";
+  if (!REMARKS.has(remark)) return Response.json({ error: "Select a valid remark." }, { status: 400 });
 
   if (Array.isArray(body.scores)) {
-    return gradeWithRubric(submissionId, body.scores, userId, isAdmin);
+    return gradeWithRubric(submissionId, body.scores, remark, userId, isAdmin);
   }
 
   const marks = Number(body.marks);
@@ -50,13 +53,13 @@ export async function PUT(req: Request) {
     return Response.json({ error: "marks must be a number between 0 and 100." }, { status: 400 });
   }
   const { rows } = await db.query<{ graded_at: string }>(
-    `INSERT INTO assignment_grades (submission_id, marks, raw_score, raw_max, graded_by, graded_at)
-     SELECT s.id, $2, NULL, NULL, $3, NOW()
+    `INSERT INTO assignment_grades (submission_id, marks, raw_score, raw_max, remark, graded_by, graded_at)
+     SELECT s.id, $2, NULL, NULL, $3, $4, NOW()
      FROM assignment_submissions s JOIN courses c ON c.slug = s.course_slug
-     WHERE s.id = $1 AND ($4::boolean OR c.owner_user_id = $3)
-     ON CONFLICT (submission_id) DO UPDATE SET marks = EXCLUDED.marks, raw_score = NULL, raw_max = NULL, graded_by = EXCLUDED.graded_by, graded_at = NOW()
+     WHERE s.id = $1 AND ($5::boolean OR c.owner_user_id = $4)
+     ON CONFLICT (submission_id) DO UPDATE SET marks = EXCLUDED.marks, raw_score = NULL, raw_max = NULL, remark = EXCLUDED.remark, graded_by = EXCLUDED.graded_by, graded_at = NOW()
      RETURNING graded_at`,
-    [submissionId, marks, userId, isAdmin]
+    [submissionId, marks, remark, userId, isAdmin]
   );
   if (!rows[0]) return Response.json({ error: "Submission not found." }, { status: 404 });
 
@@ -64,10 +67,10 @@ export async function PUT(req: Request) {
   // otherwise a stale per-criterion score list would outlive the grade it summed to.
   await db.query("DELETE FROM assignment_grade_scores WHERE submission_id = $1", [submissionId]);
 
-  return Response.json({ marks, rawScore: null, rawMax: null, gradedAt: rows[0].graded_at });
+  return Response.json({ marks, rawScore: null, rawMax: null, remark, gradedAt: rows[0].graded_at });
 }
 
-async function gradeWithRubric(submissionId: number, scoresInput: unknown[], userId: number, isAdmin: boolean) {
+async function gradeWithRubric(submissionId: number, scoresInput: unknown[], remark: string, userId: number, isAdmin: boolean) {
   const lessonId = await ownedSubmissionLesson(submissionId, userId, isAdmin);
   if (!lessonId) return Response.json({ error: "Submission not found." }, { status: 404 });
 
@@ -109,14 +112,14 @@ async function gradeWithRubric(submissionId: number, scoresInput: unknown[], use
       );
     }
     const { rows } = await client.query<{ graded_at: string }>(
-      `INSERT INTO assignment_grades (submission_id, marks, raw_score, raw_max, graded_by, graded_at)
-       VALUES ($1,$2,$3,$4,$5,NOW())
-       ON CONFLICT (submission_id) DO UPDATE SET marks = EXCLUDED.marks, raw_score = EXCLUDED.raw_score, raw_max = EXCLUDED.raw_max, graded_by = EXCLUDED.graded_by, graded_at = NOW()
+      `INSERT INTO assignment_grades (submission_id, marks, raw_score, raw_max, remark, graded_by, graded_at)
+       VALUES ($1,$2,$3,$4,$5,$6,NOW())
+       ON CONFLICT (submission_id) DO UPDATE SET marks = EXCLUDED.marks, raw_score = EXCLUDED.raw_score, raw_max = EXCLUDED.raw_max, remark = EXCLUDED.remark, graded_by = EXCLUDED.graded_by, graded_at = NOW()
        RETURNING graded_at`,
-      [submissionId, marks, rawScore, rawMax, userId]
+      [submissionId, marks, rawScore, rawMax, remark, userId]
     );
     await client.query("COMMIT");
-    return Response.json({ marks, rawScore, rawMax, gradedAt: rows[0].graded_at });
+    return Response.json({ marks, rawScore, rawMax, remark, gradedAt: rows[0].graded_at });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);
     console.error(JSON.stringify({ operation: "tutor.grade.rubric", submissionId, error: error instanceof Error ? error.message : "unknown" }));

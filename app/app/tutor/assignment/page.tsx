@@ -22,11 +22,13 @@ interface Detail {
     id: number; studentName: string; studentEmail: string; fileName: string; mimeType: string;
     fileSize: number; submittedAt: string; lessonId: string; lessonTitle: string;
     courseSlug: string; courseTitle: string;
+    dueDate: string | null; totalMarks: number | null;
   };
   marks: number | null;
   rawScore: number | null;
   rawMax: number | null;
   gradedAt: string | null;
+  remark: string | null;
   rubric: RubricCriterion[];
   stats: { total: number; checked: number; averageMarks: number | null };
 }
@@ -302,6 +304,7 @@ function GradeView() {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [marksInput, setMarksInput] = useState("");
+  const [remark, setRemark] = useState("");
   const [scoreInputs, setScoreInputs] = useState<Record<number, string>>({});
   const [savingGrade, setSavingGrade] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
@@ -319,6 +322,7 @@ function GradeView() {
         if (!cancelled) {
           setDetail(data);
           setMarksInput(data.marks !== null && data.rubric.length === 0 ? String(data.marks) : "");
+          setRemark(data.remark ?? "");
           setScoreInputs(Object.fromEntries(data.rubric.map((c) => [c.id, c.score !== null ? String(c.score) : ""])));
         }
       })
@@ -340,7 +344,7 @@ function GradeView() {
       const res = await fetch("/api/tutor/assignment-submissions/grade", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ submissionId: detail.submission.id, marks }),
+        body: JSON.stringify({ submissionId: detail.submission.id, marks, remark }),
       });
       const data = (await res.json().catch(() => ({}))) as { marks?: number; gradedAt?: string; error?: string };
       if (!res.ok) throw new Error(data.error || "Couldn't save marks.");
@@ -372,7 +376,7 @@ function GradeView() {
       const res = await fetch("/api/tutor/assignment-submissions/grade", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ submissionId: detail.submission.id, scores }),
+        body: JSON.stringify({ submissionId: detail.submission.id, scores, remark }),
       });
       const data = (await res.json().catch(() => ({}))) as { marks?: number; rawScore?: number; rawMax?: number; gradedAt?: string; error?: string };
       if (!res.ok) throw new Error(data.error || "Couldn't save the grade.");
@@ -439,6 +443,8 @@ function GradeView() {
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
               <span className="inline-flex items-center gap-1 rounded-md bg-zinc-100 px-2 py-1"><FileText className="h-3 w-3" />{submission.fileName}</span>
               <span className="inline-flex items-center gap-1 rounded-md bg-zinc-100 px-2 py-1"><Clock className="h-3 w-3" />{new Date(submission.submittedAt).toLocaleString()}</span>
+              {submission.dueDate && <span className="rounded-md bg-zinc-100 px-2 py-1">Due {new Date(`${submission.dueDate}T00:00:00`).toLocaleDateString()}</span>}
+              {submission.totalMarks && <span className="rounded-md bg-zinc-100 px-2 py-1">{submission.totalMarks} marks</span>}
               <AnimatePresence>
                 {detail.marks !== null && (
                   <motion.span key="graded" initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
@@ -477,6 +483,13 @@ function GradeView() {
         {/* grading card */}
         <motion.div variants={fadeUp} initial="hidden" animate="show" transition={{ delay: 0.08 }}>
           <Card className="space-y-3 p-4">
+            <label className="block text-sm font-medium text-zinc-800">
+              Remark
+              <select value={remark} onChange={(event) => setRemark(event.target.value)} required className="focus-ring mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm sm:max-w-xs">
+                <option value="">Select a remark</option>
+                <option>Excellent</option><option>Good</option><option>Satisfactory</option><option>Needs improvement</option>
+              </select>
+            </label>
             {hasRubric ? (
               <>
                 <div className="flex items-center justify-between">
@@ -533,7 +546,7 @@ function GradeView() {
                       {runningMax ? <span className="tabular-nums text-zinc-500"> ({runningPct}%)</span> : null}
                     </p>
                   </div>
-                  <SaveButton saving={savingGrade} saved={savedFlash} label="Save grade" onClick={() => void saveRubricScores()} disabled={savingGrade} />
+                  <SaveButton saving={savingGrade} saved={savedFlash} label="Save grade" onClick={() => void saveRubricScores()} disabled={savingGrade || !remark} />
                 </div>
               </>
             ) : (
@@ -546,7 +559,7 @@ function GradeView() {
                     className="h-9 w-24 tabular-nums transition-shadow focus-visible:ring-primary/40"
                   />
                 </label>
-                <SaveButton saving={savingGrade} saved={savedFlash} label="Save marks" onClick={() => void saveFlatMarks()} disabled={savingGrade || !marksInput.trim()} />
+                <SaveButton saving={savingGrade} saved={savedFlash} label="Save marks" onClick={() => void saveFlatMarks()} disabled={savingGrade || !marksInput.trim() || !remark} />
                 <span className="text-xs text-zinc-500">No rubric set up for this lesson — set one from the lesson editor to grade by criteria instead.</span>
               </div>
             )}

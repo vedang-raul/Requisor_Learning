@@ -832,6 +832,8 @@ function LessonEditor({ courseSlug, lesson, saving, onCancel, onSave, allowUploa
   const [section, setSection] = useState(lesson?.section ?? "");
   const [assignment, setAssignment] = useState(lesson?.assignment ?? "");
   const [requiresSubmission, setRequiresSubmission] = useState(lesson?.requiresSubmission ?? false);
+  const [assignmentMarks, setAssignmentMarks] = useState(lesson?.assignmentMarks ? String(lesson.assignmentMarks) : "");
+  const [assignmentDueDate, setAssignmentDueDate] = useState(lesson?.assignmentDueDate ?? "");
   const [takeaways, setTakeaways] = useState(lesson?.keyTakeaways.join("\n") ?? "");
   const [resources, setResources] = useState<Resource[]>(lesson?.resources ?? []);
   const [body, setBody] = useState(lesson?.body ?? "");
@@ -861,6 +863,8 @@ function LessonEditor({ courseSlug, lesson, saving, onCancel, onSave, allowUploa
         youtubeId: format === "reading" ? "" : detectedVideoId ?? PLACEHOLDER_VIDEO,
         durationMin: Math.min(1440, Math.max(1, Math.round(Number(duration) || 20))),
         section: section.trim() || undefined, assignment: assignment.trim() || undefined, requiresSubmission,
+        assignmentMarks: requiresSubmission && assignmentMarks ? Number(assignmentMarks) : undefined,
+        assignmentDueDate: requiresSubmission && assignmentDueDate ? assignmentDueDate : undefined,
         keyTakeaways: takeaways.split("\n").map((item) => item.trim()).filter(Boolean),
         resources: finalResources,
         body: format === "reading" && body.trim() ? body.trim() : undefined,
@@ -879,6 +883,8 @@ function LessonEditor({ courseSlug, lesson, saving, onCancel, onSave, allowUploa
     {format === "video" && <Field label="YouTube URL or video ID"><Input value={youtubeId} onChange={(e) => { setYoutubeId(e.target.value); setFormError(null); }} placeholder="Paste a YouTube URL or video ID" maxLength={2048} aria-invalid={Boolean(youtubeId.trim() && !detectedVideoId)} />{youtubeId.trim() && !detectedVideoId && <span className="mt-1 block text-xs text-red-700">Enter a valid YouTube URL or 11-character video ID.</span>}{detectedVideoId && <span className="mt-2 flex items-center gap-2 text-xs text-emerald-800"><img src={youTubeThumb(detectedVideoId)} alt="" className="h-9 w-16 rounded object-cover" />Video detected and ready to embed.</span>}</Field>}
     <Field label="Section"><Input value={section} onChange={(e) => setSection(e.target.value)} maxLength={200} /></Field>
     <Field label="Assignment"><Textarea value={assignment} onChange={(e) => setAssignment(e.target.value)} maxLength={5000} /></Field>
+    {requiresSubmission && <Field label="Total marks"><Input type="number" min="1" max="10000" step="1" value={assignmentMarks} onChange={(e) => setAssignmentMarks(e.target.value)} placeholder="e.g. 100" required /></Field>}
+    {requiresSubmission && <Field label="Due date"><Input type="date" value={assignmentDueDate} onChange={(e) => setAssignmentDueDate(e.target.value)} required /></Field>}
     {format === "reading" && <div className="sm:col-span-2"><LessonContentField body={body} bodyFileUrl={bodyFileUrl} uploading={uploading} setUploading={setUploading} allowUploads={allowUploads} onChange={({ body: nextBody, bodyFileUrl: nextUrl }) => { setBody(nextBody); setBodyFileUrl(nextUrl); }} /></div>}
     <div className="sm:col-span-2 space-y-2"><label className="flex items-center gap-2 text-sm font-medium text-zinc-800"><input type="checkbox" checked={requiresSubmission} onChange={(e) => setRequiresSubmission(e.target.checked)} className="h-4 w-4 rounded border-zinc-300 accent-primary" />Require a submitted assignment from learners{requiresSubmission && <span className="font-normal text-zinc-500">(the text above shows as their assignment brief)</span>}</label>{requiresSubmission && lesson && <Button type="button" size="sm" variant="outline" onClick={() => setRubricOpen(true)}><ListChecks className="h-3.5 w-3.5" />Grading rubric</Button>}{requiresSubmission && !lesson && <p className="text-xs text-zinc-500">Save this lesson first to set up a grading rubric.</p>}</div>
     <Field label="Key takeaways (one per line)"><Textarea value={takeaways} onChange={(e) => setTakeaways(e.target.value)} /></Field>

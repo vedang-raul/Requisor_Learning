@@ -14,6 +14,10 @@ export interface Lesson {
   resources: Resource[];
   keyTakeaways: string[];
   assignment?: string;
+  /** Total points available for a tutor-authored submitted assignment. */
+  assignmentMarks?: number;
+  /** Calendar due date in YYYY-MM-DD format. */
+  assignmentDueDate?: string;
   /** When true, the assignment isn't just an AI practice prompt — the lesson
    *  page shows an upload widget and learners must submit a file for it. */
   requiresSubmission?: boolean;

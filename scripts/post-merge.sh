@@ -180,6 +180,8 @@ p.query(`
     format VARCHAR(10) NOT NULL DEFAULT 'video' CHECK (format IN ('video','reading')),
     position INT NOT NULL DEFAULT 0,
     requires_submission BOOLEAN NOT NULL DEFAULT FALSE,
+    assignment_marks INT CHECK (assignment_marks BETWEEN 1 AND 10000),
+    assignment_due_date DATE,
     body TEXT,
     body_file_url VARCHAR(200)
   );
@@ -187,6 +189,8 @@ p.query(`
   ALTER TABLE course_lessons ADD COLUMN IF NOT EXISTS requires_submission BOOLEAN NOT NULL DEFAULT FALSE;
   ALTER TABLE course_lessons ADD COLUMN IF NOT EXISTS body TEXT;
   ALTER TABLE course_lessons ADD COLUMN IF NOT EXISTS body_file_url VARCHAR(200);
+  ALTER TABLE course_lessons ADD COLUMN IF NOT EXISTS assignment_marks INT;
+  ALTER TABLE course_lessons ADD COLUMN IF NOT EXISTS assignment_due_date DATE;
   CREATE INDEX IF NOT EXISTS courses_owner_idx ON courses (owner_user_id, added_at DESC);
   CREATE INDEX IF NOT EXISTS course_lessons_course_position_idx ON course_lessons (course_slug, position, id);
   CREATE INDEX IF NOT EXISTS course_reviews_slug_rating_idx ON course_reviews (course_slug, rating);
@@ -389,6 +393,7 @@ p.query(`
   );
   ALTER TABLE assignment_grades ADD COLUMN IF NOT EXISTS raw_score REAL;
   ALTER TABLE assignment_grades ADD COLUMN IF NOT EXISTS raw_max REAL;
+  ALTER TABLE assignment_grades ADD COLUMN IF NOT EXISTS remark VARCHAR(30);
 
   -- A lesson's grading rubric — set up once by its tutor, applied to every
   -- learner's submission for that lesson. lesson_id is deliberately not a

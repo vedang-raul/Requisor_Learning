@@ -21,6 +21,9 @@ interface Submission {
   checked: boolean;
   marks: number | null;
   gradedAt: string | null;
+  remark: string | null;
+  dueDate: string | null;
+  totalMarks: number | null;
 }
 
 function formatBytes(bytes: number): string {
@@ -85,6 +88,11 @@ export default function SubmissionsPage() {
                     {s.courseTitle} · {s.fileName} ({formatBytes(s.fileSize)}) · submitted{" "}
                     {new Date(s.submittedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
                   </p>
+                  {(s.dueDate || s.totalMarks) && <p className="mt-1 text-xs text-zinc-600">
+                    {s.dueDate ? `Due ${new Date(`${s.dueDate}T00:00:00`).toLocaleDateString(undefined, { dateStyle: "medium" })}` : ""}
+                    {s.dueDate && s.totalMarks ? " · " : ""}{s.totalMarks ? `${s.totalMarks} marks` : ""}
+                  </p>}
+                  {s.remark && <p className="mt-1 text-sm font-medium text-zinc-700">Tutor remark: {s.remark}</p>}
                   {s.checked && s.gradedAt && (
                     <p className="mt-0.5 text-xs text-zinc-400">
                       Graded {new Date(s.gradedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
