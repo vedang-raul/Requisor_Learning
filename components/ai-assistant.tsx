@@ -19,6 +19,7 @@ const COURSE_INTERVIEW_QUESTIONS = [
   "Who is the course for? Describe the target learners.",
   "What level should it be: beginner, intermediate, or advanced?",
   "What should learners be able to do by the end? List the main outcomes.",
+  "Should the lessons be reading, video, or a mix of both?",
   "How many lessons should the course have? Choose between 3 and 12.",
 ] as const;
 const LEARNER_QUICK_PROMPTS = [
@@ -433,6 +434,19 @@ export function AiAssistant() {
     if (!trimmed || streaming || interviewSubmittingRef.current) return;
     if (courseInterviewStep !== null && courseInterviewStep < COURSE_INTERVIEW_QUESTIONS.length) {
       interviewSubmittingRef.current = true;
+      if (courseInterviewStep === COURSE_INTERVIEW_QUESTIONS.length - 2) {
+        const format = trimmed.toLowerCase();
+        if (!format.includes("reading") && !format.includes("video") && !format.includes("mix") && !format.includes("both")) {
+          setMessages((prev) => [
+            ...prev,
+            { role: "user", content: trimmed },
+            { role: "assistant", content: "Please choose reading, video, or a mix of both." },
+          ]);
+          setInput("");
+          interviewSubmittingRef.current = false;
+          return;
+        }
+      }
       if (courseInterviewStep === COURSE_INTERVIEW_QUESTIONS.length - 1) {
         const lessonCount = parseCourseLessonCount(trimmed);
         if (lessonCount === null) {
@@ -459,7 +473,7 @@ export function AiAssistant() {
         setMessages([...answeredMessages, { role: "assistant", content: question }]);
         if (!voiceMuted && voice.ttsSupported) voice.speak(question);
       } else {
-        const summary = `Thanks — I have everything I need:\n\n• Topic: ${answers[0]}\n• Audience: ${answers[1]}\n• Level: ${answers[2]}\n• Outcomes: ${answers[3]}\n• Lessons: ${answers[4]}\n\nI’m creating your editable, unpublished course draft now.`;
+        const summary = `Thanks — I have everything I need:\n\n• Topic: ${answers[0]}\n• Audience: ${answers[1]}\n• Level: ${answers[2]}\n• Outcomes: ${answers[3]}\n• Lesson format: ${answers[4]}\n• Lessons: ${answers[5]}\n\nI’m creating your editable, unpublished course draft now.`;
         const completedMessages = [...answeredMessages, { role: "assistant" as const, content: summary }];
         setCourseInterviewStep(COURSE_INTERVIEW_QUESTIONS.length);
         setMessages(completedMessages);
@@ -569,8 +583,18 @@ export function AiAssistant() {
   async function generateCourseDraft(answers: string[]) {
     if (state.user?.role !== "tutor" || draftLoading || streaming) return;
     if (answers.length !== COURSE_INTERVIEW_QUESTIONS.length) return;
-    const lessonCount = Number(answers[4].match(/\d+/)?.[0]);
+    const lessonCount = Number(answers[5].match(/\d+/)?.[0]);
     if (!Number.isInteger(lessonCount) || lessonCount < 3 || lessonCount > 12) return;
+    const formatAnswer = answers[4].toLowerCase();
+    const lessonFormat =
+      formatAnswer.includes("mix") || formatAnswer.includes("both")
+        ? "mixed"
+        : formatAnswer.includes("video")
+          ? "video"
+          : formatAnswer.includes("reading")
+            ? "reading"
+            : null;
+    if (!lessonFormat) return;
     const requestId = draftRequestIdRef.current + 1;
     draftRequestIdRef.current = requestId;
     const controller = new AbortController();
@@ -588,6 +612,7 @@ export function AiAssistant() {
             audience: answers[1],
             level: answers[2],
             outcomes: answers[3],
+            lessonFormat,
             lessonCount,
           },
         }),

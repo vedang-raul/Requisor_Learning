@@ -26,6 +26,7 @@ const courseBrief = {
   audience: "New managers",
   level: "Intermediate",
   outcomes: "Lead teams clearly and run effective coaching conversations",
+  lessonFormat: "mixed",
   lessonCount: 3,
 };
 
@@ -147,7 +148,7 @@ describe("POST /api/tutor/course-draft", () => {
     expect(data.course.lessons.every((lesson: { id: string }) => lesson.id.startsWith("practical-leadership-2-"))).toBe(true);
   });
 
-  it("requires all five guided interview answers", async () => {
+  it("requires all six guided interview answers", async () => {
     mockSession.mockResolvedValue({ user: { id: "7", email: "tutor@example.test", role: "tutor" } });
     const response = await POST(request({
       courseBrief: { topic: "Leadership", audience: "Managers", level: "Beginner", lessonCount: 3 },
@@ -162,6 +163,15 @@ describe("POST /api/tutor/course-draft", () => {
     expect(response.status).toBe(422);
     await expect(response.json()).resolves.toEqual(expect.objectContaining({
       error: expect.stringContaining("requested 4 lessons"),
+    }));
+  });
+
+  it("rejects a draft that does not match the requested lesson format", async () => {
+    mockSession.mockResolvedValue({ user: { id: "7", email: "tutor@example.test", role: "tutor" } });
+    const response = await POST(request({ courseBrief: { ...courseBrief, lessonFormat: "video" } }));
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toEqual(expect.objectContaining({
+      error: expect.stringContaining("requested video lesson format"),
     }));
   });
 });
