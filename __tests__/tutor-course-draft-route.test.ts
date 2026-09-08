@@ -21,6 +21,13 @@ import { getCourses } from "@/lib/course-catalog";
 const mockSession = getServerSession as jest.Mock;
 const mockGetCourses = getCourses as jest.Mock;
 const originalApiKey = process.env.XAI_API_KEY;
+const courseBrief = {
+  topic: "Practical leadership",
+  audience: "New managers",
+  level: "Intermediate",
+  outcomes: "Lead teams clearly and run effective coaching conversations",
+  lessonCount: 3,
+};
 
 function request(body: unknown) {
   return new Request("http://localhost/api/tutor/course-draft", {
@@ -90,12 +97,12 @@ describe("POST /api/tutor/course-draft", () => {
 
   it("allows only server-authenticated tutors", async () => {
     mockSession.mockResolvedValue({ user: { id: "4", email: "learner@example.test", role: "employee" } });
-    const learner = await POST(request({ messages: [{ role: "user", content: "Make a course" }] }));
+    const learner = await POST(request({ courseBrief }));
     expect(learner.status).toBe(403);
     expect(global.fetch).not.toHaveBeenCalled();
 
     mockSession.mockResolvedValue({ user: { id: "1", email: "admin@example.test", role: "admin" } });
-    const admin = await POST(request({ messages: [{ role: "user", content: "Make a course" }] }));
+    const admin = await POST(request({ courseBrief }));
     expect(admin.status).toBe(403);
     expect(global.fetch).not.toHaveBeenCalled();
   });
@@ -104,7 +111,7 @@ describe("POST /api/tutor/course-draft", () => {
     mockSession.mockResolvedValue({ user: { id: "7", email: "tutor@example.test", role: "tutor" } });
     const response = await POST(request({
       role: "admin",
-      messages: [{ role: "user", content: "Create a leadership course for new managers." }],
+      courseBrief,
     }));
     const data = await response.json();
 
@@ -123,7 +130,7 @@ describe("POST /api/tutor/course-draft", () => {
     global.fetch = jest.fn(async () => Response.json({
       choices: [{ message: { content: "{\"title\":\"Incomplete\"}" } }],
     }));
-    const response = await POST(request({ messages: [{ role: "user", content: "Create it" }] }));
+    const response = await POST(request({ courseBrief }));
     expect(response.status).toBe(422);
     await expect(response.json()).resolves.toEqual(expect.objectContaining({
       error: expect.stringContaining("incomplete"),
@@ -133,10 +140,28 @@ describe("POST /api/tutor/course-draft", () => {
   it("chooses a new slug when a course title already exists", async () => {
     mockSession.mockResolvedValue({ user: { id: "7", email: "tutor@example.test", role: "tutor" } });
     mockGetCourses.mockResolvedValueOnce([{ slug: "practical-leadership" }]).mockResolvedValueOnce([]);
-    const response = await POST(request({ messages: [{ role: "user", content: "Create it" }] }));
+    const response = await POST(request({ courseBrief }));
     const data = await response.json();
     expect(response.status).toBe(200);
     expect(data.course.slug).toBe("practical-leadership-2");
     expect(data.course.lessons.every((lesson: { id: string }) => lesson.id.startsWith("practical-leadership-2-"))).toBe(true);
+  });
+
+  it("requires all five guided interview answers", async () => {
+    mockSession.mockResolvedValue({ user: { id: "7", email: "tutor@example.test", role: "tutor" } });
+    const response = await POST(request({
+      courseBrief: { topic: "Leadership", audience: "Managers", level: "Beginner", lessonCount: 3 },
+    }));
+    expect(response.status).toBe(400);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("rejects a draft that does not match the requested lesson count", async () => {
+    mockSession.mockResolvedValue({ user: { id: "7", email: "tutor@example.test", role: "tutor" } });
+    const response = await POST(request({ courseBrief: { ...courseBrief, lessonCount: 4 } }));
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toEqual(expect.objectContaining({
+      error: expect.stringContaining("requested 4 lessons"),
+    }));
   });
 });

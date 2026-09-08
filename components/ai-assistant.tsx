@@ -13,6 +13,13 @@ import { AI_GUIDE_PREFERENCES_UPDATED, getPersona } from "@/lib/personas";
 import { trackEvent } from "@/lib/analytics";
 import type { Course } from "@/lib/types";
 type ChatMessage = { role: "user" | "assistant"; content: string };
+const COURSE_INTERVIEW_QUESTIONS = [
+  "What topic should this course teach?",
+  "Who is the course for? Describe the target learners.",
+  "What level should it be: beginner, intermediate, or advanced?",
+  "What should learners be able to do by the end? List the main outcomes.",
+  "How many lessons should the course have? Choose between 3 and 12.",
+] as const;
 const LEARNER_QUICK_PROMPTS = [
   { icon: Compass, label: "Recommend a course for my background" },
   { icon: Compass, label: "What should I learn next?" },
@@ -209,6 +216,8 @@ export function AiAssistant() {
   const [courseDraft, setCourseDraft] = useState<Course | null>(null);
   const [draftLoading, setDraftLoading] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
+  const [courseInterviewStep, setCourseInterviewStep] = useState<number | null>(null);
+  const [courseInterviewAnswers, setCourseInterviewAnswers] = useState<string[]>([]);
   const [nudge, setNudge] = useState<Nudge | null>(null);
   const [assistantPersona, setAssistantPersona] = useState<string>("");
   const [preferredLanguage, setPreferredLanguage] = useState<string>("");
@@ -226,6 +235,9 @@ export function AiAssistant() {
   const revealedRef = useRef(0);
   const rafRef = useRef<number | null>(null);
   const requestAbortRef = useRef<AbortController | null>(null);
+  const draftAbortRef = useRef<AbortController | null>(null);
+  const draftRequestIdRef = useRef(0);
+  const interviewSubmittingRef = useRef(false);
   const streamReaderRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
   const networkDoneRef = useRef(false);
   const pauseUntilRef = useRef(0);
@@ -317,6 +329,7 @@ export function AiAssistant() {
   }, []);
   useEffect(() => () => {
     requestAbortRef.current?.abort();
+    draftAbortRef.current?.abort();
     void streamReaderRef.current?.cancel("component_unmount").catch(() => undefined);
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
   }, []);
@@ -356,6 +369,8 @@ export function AiAssistant() {
   }
   function closePanel() {
     cancelActiveRequest();
+    prevListeningRef.current = false;
+    voice.stopListening();
     voice.stopSpeaking();
     setOpen(false);
   }
@@ -414,7 +429,45 @@ export function AiAssistant() {
   }
   async function send(text: string) {
     const trimmed = text.trim();
-    if (!trimmed || streaming) return;
+    if (!trimmed || streaming || interviewSubmittingRef.current) return;
+    if (courseInterviewStep !== null && courseInterviewStep < COURSE_INTERVIEW_QUESTIONS.length) {
+      interviewSubmittingRef.current = true;
+      if (courseInterviewStep === COURSE_INTERVIEW_QUESTIONS.length - 1) {
+        const lessonCount = Number(trimmed.match(/\d+/)?.[0]);
+        if (!Number.isInteger(lessonCount) || lessonCount < 3 || lessonCount > 12) {
+          setMessages((prev) => [
+            ...prev,
+            { role: "user", content: trimmed },
+            { role: "assistant", content: "Please choose a lesson count between 3 and 12." },
+          ]);
+          setInput("");
+          interviewSubmittingRef.current = false;
+          return;
+        }
+      }
+      voice.stopSpeaking();
+      setInput("");
+      setDraftError(null);
+      const answers = [...courseInterviewAnswers, trimmed];
+      const answeredMessages: ChatMessage[] = [...messages, { role: "user", content: trimmed }];
+      setCourseInterviewAnswers(answers);
+      const nextStep = courseInterviewStep + 1;
+      if (nextStep < COURSE_INTERVIEW_QUESTIONS.length) {
+        const question = COURSE_INTERVIEW_QUESTIONS[nextStep];
+        setCourseInterviewStep(nextStep);
+        setMessages([...answeredMessages, { role: "assistant", content: question }]);
+        if (!voiceMuted && voice.ttsSupported) voice.speak(question);
+      } else {
+        const summary = `Thanks — I have everything I need:\n\n• Topic: ${answers[0]}\n• Audience: ${answers[1]}\n• Level: ${answers[2]}\n• Outcomes: ${answers[3]}\n• Lessons: ${answers[4]}\n\nI’m creating your editable, unpublished course draft now.`;
+        const completedMessages = [...answeredMessages, { role: "assistant" as const, content: summary }];
+        setCourseInterviewStep(COURSE_INTERVIEW_QUESTIONS.length);
+        setMessages(completedMessages);
+        if (!voiceMuted && voice.ttsSupported) voice.speak(summary);
+        await generateCourseDraft(answers);
+      }
+      interviewSubmittingRef.current = false;
+      return;
+    }
     // Stop any ongoing speech before sending
     voice.stopSpeaking();
     setRetryText(null);
@@ -479,36 +532,78 @@ export function AiAssistant() {
   }
   function newChat() {
     cancelActiveRequest();
+    cancelDraftGeneration();
+    prevListeningRef.current = false;
+    voice.stopListening();
     voice.stopSpeaking();
     setMessages([]);
     setRetryText(null);
     setCourseDraft(null);
     setDraftError(null);
+    setCourseInterviewStep(null);
+    setCourseInterviewAnswers([]);
   }
-  async function generateCourseDraft() {
+  function startCourseInterview() {
     if (state.user?.role !== "tutor" || draftLoading || streaming) return;
-    if (!messages.some((message) => message.role === "user")) {
-      setInput("Create a course for [audience] about [topic], at [level], with [number] lessons and these outcomes: …");
-      textareaRef.current?.focus();
-      setDraftError("Describe the topic, audience, level, outcomes, and preferred lesson count first.");
-      return;
-    }
+    cancelActiveRequest();
+    cancelDraftGeneration();
+    interviewSubmittingRef.current = false;
+    prevListeningRef.current = false;
+    voice.stopListening();
+    voice.stopSpeaking();
+    setCourseDraft(null);
+    setDraftError(null);
+    setCourseInterviewAnswers([]);
+    setCourseInterviewStep(0);
+    setMessages([{ role: "assistant", content: COURSE_INTERVIEW_QUESTIONS[0] }]);
+    setInput("");
+    textareaRef.current?.focus();
+  }
+  function cancelDraftGeneration() {
+    draftRequestIdRef.current += 1;
+    draftAbortRef.current?.abort();
+    draftAbortRef.current = null;
+    setDraftLoading(false);
+  }
+  async function generateCourseDraft(answers: string[]) {
+    if (state.user?.role !== "tutor" || draftLoading || streaming) return;
+    if (answers.length !== COURSE_INTERVIEW_QUESTIONS.length) return;
+    const lessonCount = Number(answers[4].match(/\d+/)?.[0]);
+    if (!Number.isInteger(lessonCount) || lessonCount < 3 || lessonCount > 12) return;
+    const requestId = draftRequestIdRef.current + 1;
+    draftRequestIdRef.current = requestId;
+    const controller = new AbortController();
+    draftAbortRef.current = controller;
     setDraftLoading(true);
     setDraftError(null);
     try {
       const response = await fetch("/api/tutor/course-draft", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages }),
+        signal: controller.signal,
+        body: JSON.stringify({
+          courseBrief: {
+            topic: answers[0],
+            audience: answers[1],
+            level: answers[2],
+            outcomes: answers[3],
+            lessonCount,
+          },
+        }),
       });
       const data = await response.json().catch(() => ({})) as { course?: Course; error?: string };
       if (!response.ok || !data.course) throw new Error(data.error ?? "Unable to generate a course draft.");
+      if (draftRequestIdRef.current !== requestId) return;
       setCourseDraft(data.course);
       trackEvent("ai_course_draft_generated", { lesson_count: data.course.lessons.length });
     } catch (error) {
+      if (controller.signal.aborted || draftRequestIdRef.current !== requestId) return;
       setDraftError(error instanceof Error ? error.message : "Unable to generate a course draft.");
     } finally {
-      setDraftLoading(false);
+      if (draftRequestIdRef.current === requestId) {
+        draftAbortRef.current = null;
+        setDraftLoading(false);
+      }
     }
   }
   function openCourseDraft() {
@@ -690,11 +785,19 @@ export function AiAssistant() {
             <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
               {isTutorMode && (
                 <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
-                  <strong>AI draft:</strong> Review and edit suggestions before adding them to your course. Nothing is saved automatically.
+                  <div className="flex items-center justify-between gap-2">
+                    <span><strong>Guided course builder:</strong> I’ll ask one question at a time.</span>
+                    {courseInterviewStep !== null && courseInterviewStep < COURSE_INTERVIEW_QUESTIONS.length && (
+                      <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 font-semibold">
+                        {courseInterviewStep + 1} / {COURSE_INTERVIEW_QUESTIONS.length}
+                      </span>
+                    )}
+                  </div>
+                  <p>After the final answer, I’ll create an unpublished draft for you to review. Nothing is saved automatically.</p>
                   {state.user?.role === "tutor" && (
-                    <button type="button" onClick={() => void generateCourseDraft()} disabled={draftLoading || streaming} className="focus-ring flex w-full items-center justify-center gap-1.5 rounded-lg bg-amber-900 px-3 py-2 font-semibold text-white disabled:opacity-60">
+                    <button type="button" onClick={startCourseInterview} disabled={draftLoading || streaming} className="focus-ring flex w-full items-center justify-center gap-1.5 rounded-lg bg-amber-900 px-3 py-2 font-semibold text-white disabled:opacity-60">
                       {draftLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BookPlus className="h-3.5 w-3.5" />}
-                      {draftLoading ? "Building course draft…" : "Create course from this chat"}
+                      {draftLoading ? "Building course draft…" : courseInterviewStep === null ? "Start course interview" : "Restart course interview"}
                     </button>
                   )}
                 </div>
@@ -714,7 +817,7 @@ export function AiAssistant() {
                   <p className="text-sm font-light text-zinc-600">
                     Hi {state.user?.name?.split(" ")[0] ?? "there"}.{" "}
                     {isTutorMode
-                      ? "What course would you like to design? Include the topic, audience, or level if you know them."
+                      ? "Start the guided course interview and I’ll collect everything I need, one question at a time."
                       : "Ask which course fits your background, or what to learn next based on your progress."}
                   </p>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -726,7 +829,10 @@ export function AiAssistant() {
                         transition={{ duration: 0.2, delay: i * 0.05 }}
                         whileHover={{ y: -2 }}
                         whileTap={{ scale: 0.97 }}
-                        onClick={() => send(label)}
+                        onClick={() => {
+                          if (isTutorMode && label === "Design a course from my topic") startCourseInterview();
+                          else void send(label);
+                        }}
                         className="focus-ring group flex items-center gap-2.5 rounded-xl border border-border bg-white px-3 py-2.5 text-left text-xs font-medium text-zinc-700 shadow-soft transition-colors hover:border-primary/50 hover:text-primary"
                       >
                         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-gradient-to-br group-hover:from-primary group-hover:to-secondary group-hover:text-white">

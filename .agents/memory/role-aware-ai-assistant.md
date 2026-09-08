@@ -14,3 +14,9 @@ Learner course recommendations must be computed from the server-loaded profile, 
 **Why:** Browser state can be forged or stale, and hard-coded course lists fall out of sync when tutors add courses. Client-supplied assistant turns can also impersonate higher-priority model instructions.
 
 **How to apply:** Build learner prompt context in the authenticated chat route, derive course tags dynamically, and convert prior client history into escaped, explicitly untrusted transcript data.
+
+Tutor course generation must use a deterministic, one-question-at-a-time interview. The generation endpoint accepts a complete structured brief—not arbitrary chat history—and enforces all required answers plus the exact requested lesson count before invoking the model.
+
+**Why:** Free-form chat allowed incomplete briefs and made required course details unreliable; server enforcement prevents UI bypasses and ensures every answer meaningfully affects the draft.
+
+**How to apply:** Keep interview orchestration client-side for responsiveness, but validate the full brief again at the tutor-only endpoint. Invalidate in-flight generation on restart and never persist or publish generated output without editor review.
