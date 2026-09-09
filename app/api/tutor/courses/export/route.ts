@@ -37,9 +37,13 @@ export async function GET(req: Request) {
   const { rows: lessonRows } = await db.query<{
     id: string; title: string; description: string; youtube_id: string; duration_min: number;
     resources: CourseExportPayload["lessons"][number]["resources"]; key_takeaways: string[];
-    assignment: string | null; requires_submission: boolean; section: string | null; format: "video" | "reading";
+    assignment: string | null; assignment_marks: number | null; assignment_due_date: Date | string | null;
+    requires_submission: boolean; section: string | null; format: "video" | "reading";
+    body: string | null; body_file_url: string | null;
   }>(
-    `SELECT id, title, description, youtube_id, duration_min, resources, key_takeaways, assignment, requires_submission, section, format
+    `SELECT id, title, description, youtube_id, duration_min, resources, key_takeaways,
+            assignment, assignment_marks, assignment_due_date, requires_submission,
+            section, format, body, body_file_url
      FROM course_lessons WHERE course_slug = $1 ORDER BY position, id`,
     [slug]
   );
@@ -68,9 +72,15 @@ export async function GET(req: Request) {
       title: l.title, description: l.description, youtubeId: l.youtube_id, durationMin: l.duration_min,
       resources: l.resources, keyTakeaways: l.key_takeaways,
       ...(l.assignment ? { assignment: l.assignment } : {}),
+      ...(l.assignment_marks ? { assignmentMarks: l.assignment_marks } : {}),
+      ...(l.assignment_due_date
+        ? { assignmentDueDate: new Date(l.assignment_due_date).toISOString().slice(0, 10) }
+        : {}),
       ...(l.requires_submission ? { requiresSubmission: true } : {}),
       ...(l.section ? { section: l.section } : {}),
       format: l.format,
+      ...(l.body ? { body: l.body } : {}),
+      ...(l.body_file_url ? { bodyFileUrl: l.body_file_url } : {}),
       rubric: rubricByLesson.get(l.id) ?? [],
     })),
   };

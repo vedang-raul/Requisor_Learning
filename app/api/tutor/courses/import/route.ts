@@ -20,6 +20,18 @@ const canManage = (role: unknown) => role === "admin" || role === "tutor";
 const MAX_IMPORT_BYTES = 512 * 1024;
 const string = (value: unknown, max: number, min = 1) =>
   typeof value === "string" && value.trim().length >= min && value.trim().length <= max;
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const URL_PROTOCOLS = new Set(["http:", "https:"]);
+
+function safeUrl(value: unknown, max = 2048): string | null {
+  if (!string(value, max)) return null;
+  try {
+    const url = new URL((value as string).trim());
+    return URL_PROTOCOLS.has(url.protocol) ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
 
 function slugify(title: string): string {
   const base = title.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -62,6 +74,13 @@ export async function POST(req: Request) {
 
   const slug = slugify(courseIn.title as string);
   const category = (courseIn.category as string).trim();
+  if (courseIn.tags !== undefined && (!Array.isArray(courseIn.tags) ||
+      courseIn.tags.length > 30 || courseIn.tags.some((tag) => !string(tag, 80)))) {
+    return Response.json({ error: "Invalid export file: invalid course tags." }, { status: 400 });
+  }
+  const tags = Array.isArray(courseIn.tags)
+    ? courseIn.tags.map((tag) => (tag as string).trim())
+    : [(courseIn.title as string).trim()];
 
   type RubricInput = { title: string; description: string | null; maxPoints: number };
   const rubricByLessonIndex: RubricInput[][] = [];
@@ -74,8 +93,40 @@ export async function POST(req: Request) {
     if (!string(l.title, 200) || !string(l.description, 2000)) {
       return Response.json({ error: `Lesson ${i + 1} is missing a title or description.` }, { status: 400 });
     }
-    const resources = Array.isArray(l.resources) ? l.resources.slice(0, 20) as Lesson["resources"] : [];
-    const keyTakeaways = Array.isArray(l.keyTakeaways) ? l.keyTakeaways.filter((x): x is string => typeof x === "string").slice(0, 20).map((x) => x.slice(0, 500)) : [];
+    if (l.resources !== undefined && !Array.isArray(l.resources)) {
+      return Response.json({ error: `Lesson ${i + 1} has invalid resources.` }, { status: 400 });
+    }
+    const resources: Lesson["resources"] = [];
+    for (const rawResource of (l.resources as unknown[] | undefined) ?? []) {
+      if (resources.length >= 20 || !rawResource || typeof rawResource !== "object" || Array.isArray(rawResource)) {
+        return Response.json({ error: `Lesson ${i + 1} has invalid resources.` }, { status: 400 });
+      }
+      const resource = rawResource as Record<string, unknown>;
+      const url = safeUrl(resource.url);
+      if (!string(resource.label, 200) || !url || (resource.type !== "pdf" && resource.type !== "link")) {
+        return Response.json({ error: `Lesson ${i + 1} has an invalid resource.` }, { status: 400 });
+      }
+      resources.push({ label: (resource.label as string).trim(), url, type: resource.type });
+    }
+    if (l.keyTakeaways !== undefined && (!Array.isArray(l.keyTakeaways) ||
+        l.keyTakeaways.length > 20 || l.keyTakeaways.some((item) => !string(item, 500)))) {
+      return Response.json({ error: `Lesson ${i + 1} has invalid key takeaways.` }, { status: 400 });
+    }
+    const keyTakeaways = Array.isArray(l.keyTakeaways)
+      ? l.keyTakeaways.map((item) => (item as string).trim())
+      : [];
+    if (l.assignmentMarks !== undefined &&
+        (!Number.isInteger(l.assignmentMarks) || (l.assignmentMarks as number) < 1 || (l.assignmentMarks as number) > 10000)) {
+      return Response.json({ error: `Lesson ${i + 1} has invalid assignment marks.` }, { status: 400 });
+    }
+    if (l.assignmentDueDate !== undefined &&
+        (typeof l.assignmentDueDate !== "string" || !DATE_PATTERN.test(l.assignmentDueDate) ||
+         Number.isNaN(Date.parse(`${l.assignmentDueDate}T00:00:00Z`)))) {
+      return Response.json({ error: `Lesson ${i + 1} has an invalid assignment due date.` }, { status: 400 });
+    }
+    if (l.bodyFileUrl !== undefined && !safeUrl(l.bodyFileUrl)) {
+      return Response.json({ error: `Lesson ${i + 1} has an invalid reading file URL.` }, { status: 400 });
+    }
     lessons.push({
       id: `${slug}-${i}`,
       title: (l.title as string).trim().slice(0, 200),
@@ -85,24 +136,40 @@ export async function POST(req: Request) {
       resources,
       keyTakeaways,
       ...(string(l.assignment, 5000) ? { assignment: (l.assignment as string).trim().slice(0, 5000) } : {}),
+      ...(Number.isInteger(l.assignmentMarks) && (l.assignmentMarks as number) >= 1 && (l.assignmentMarks as number) <= 10000
+        ? { assignmentMarks: l.assignmentMarks as number }
+        : {}),
+      ...(typeof l.assignmentDueDate === "string" && DATE_PATTERN.test(l.assignmentDueDate) &&
+          !Number.isNaN(Date.parse(`${l.assignmentDueDate}T00:00:00Z`))
+        ? { assignmentDueDate: l.assignmentDueDate }
+        : {}),
       ...(l.requiresSubmission === true ? { requiresSubmission: true } : {}),
       ...(string(l.section, 200) ? { section: (l.section as string).trim().slice(0, 200) } : {}),
       format: l.format === "reading" ? "reading" : "video",
+      ...(string(l.body, 100_000) ? { body: (l.body as string).trim() } : {}),
+      ...(safeUrl(l.bodyFileUrl) ? { bodyFileUrl: safeUrl(l.bodyFileUrl)! } : {}),
     });
 
     const rubricRaw = Array.isArray(l.rubric) ? l.rubric.slice(0, MAX_IMPORT_RUBRIC_CRITERIA) : [];
+    if (l.rubric !== undefined && (!Array.isArray(l.rubric) || l.rubric.length > MAX_IMPORT_RUBRIC_CRITERIA)) {
+      return Response.json({ error: `Lesson ${i + 1} has an invalid grading rubric.` }, { status: 400 });
+    }
     const rubric: RubricInput[] = [];
     for (const rc of rubricRaw) {
-      if (!rc || typeof rc !== "object") continue;
+      if (!rc || typeof rc !== "object" || Array.isArray(rc)) {
+        return Response.json({ error: `Lesson ${i + 1} has an invalid grading rubric.` }, { status: 400 });
+      }
       const r = rc as Record<string, unknown>;
       const maxPoints = Number(r.maxPoints);
-      if (string(r.title, 200) && Number.isFinite(maxPoints) && maxPoints > 0 && maxPoints <= 1000) {
-        rubric.push({
-          title: (r.title as string).trim(),
-          description: string(r.description, 1000) ? (r.description as string).trim() : null,
-          maxPoints,
-        });
+      if (!string(r.title, 200) || !Number.isFinite(maxPoints) || maxPoints <= 0 || maxPoints > 1000 ||
+          (r.description !== null && r.description !== undefined && !string(r.description, 1000))) {
+        return Response.json({ error: `Lesson ${i + 1} has an invalid grading rubric.` }, { status: 400 });
       }
+      rubric.push({
+        title: (r.title as string).trim(),
+        description: typeof r.description === "string" ? r.description.trim() : null,
+        maxPoints,
+      });
     }
     rubricByLessonIndex.push(rubric);
   }
@@ -110,7 +177,7 @@ export async function POST(req: Request) {
   const candidate = {
     slug, title: (courseIn.title as string).trim(), tagline: ((courseIn.tagline as string) || "Imported course.").trim() || "Imported course.",
     category, level: courseIn.level === "Intermediate" || courseIn.level === "Advanced" ? courseIn.level : "Beginner",
-    tags: [(courseIn.title as string).trim()], cover: getCategoryCover(category),
+    tags, cover: getCategoryCover(category),
     addedAt: new Date().toISOString().slice(0, 10), lessons,
     ...(string(courseIn.baseAssessment, 5000) ? { baseAssessment: (courseIn.baseAssessment as string).trim() } : {}),
     published: false,
@@ -129,6 +196,7 @@ export async function POST(req: Request) {
     return Response.json({ error: "Couldn't import the course." }, { status: 500 });
   }
 
+  let warning: string | undefined;
   if (rubricByLessonIndex.some((r) => r.length > 0)) {
     const client = await db.connect();
     try {
@@ -149,10 +217,11 @@ export async function POST(req: Request) {
       // The course itself imported fine — a rubric-copy hiccup shouldn't
       // surface as a failed import; the tutor can rebuild the rubric manually.
       console.error(JSON.stringify({ operation: "tutor.course.import.rubric", slug, error: error instanceof Error ? error.message : "unknown" }));
+      warning = "The course imported, but its grading rubric could not be copied.";
     } finally {
       client.release();
     }
   }
 
-  return Response.json({ course: validated.course });
+  return Response.json({ course: validated.course, ...(warning ? { warning } : {}) });
 }

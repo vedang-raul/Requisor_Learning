@@ -41,9 +41,13 @@ export interface CourseExportLesson {
   resources: CourseExportResource[];
   keyTakeaways: string[];
   assignment?: string;
+  assignmentMarks?: number;
+  assignmentDueDate?: string;
   requiresSubmission?: boolean;
   section?: string;
   format?: "video" | "reading";
+  body?: string;
+  bodyFileUrl?: string;
   rubric: RubricCriterionExport[];
 }
 

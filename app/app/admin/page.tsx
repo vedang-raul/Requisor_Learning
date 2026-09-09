@@ -2,7 +2,6 @@
 import { useEffect, useMemo, useState , useRef} from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { buildCourseFromImport } from "@/lib/course-export";
 import {
   BarChart3, BookPlus, Calendar, Check, ChevronDown, Download, Users, GraduationCap,
   Mail, Pencil, Plus, ShieldCheck, Trash2, TrendingUp, TrendingDown, Video, X, Youtube, LayoutGrid, Upload,
@@ -528,37 +527,23 @@ function categoryOptions(courses: Course[]): string[] {
        attached to a lesson in the export is applied afterward via the existing
        per-lesson rubric endpoint. */
     function ImportCourseButton({ onImported }: { onImported: (course: Course) => void | Promise<void> }) {
-      const { upsertCourse } = useStore();
-      const [state, setState] = useState<{ status: "idle" } | { status: "importing" } | { status: "error"; message: string }>({ status: "idle" });
+      const [state, setState] = useState<
+        { status: "idle" } | { status: "importing" } | { status: "error" | "warning"; message: string }
+      >({ status: "idle" });
       const inputRef = useRef<HTMLInputElement>(null);
 
       async function handleFile(file: File) {
         setState({ status: "importing" });
         try {
-          let parsed: unknown;
-          try {
-            parsed = JSON.parse(await file.text());
-          } catch {
-            throw new Error("That doesn't look like a valid export file.");
-          }
-          const result = buildCourseFromImport(parsed);
-          if (!result.ok) throw new Error(result.error);
-
-          const saved = await upsertCourse(result.course);
-
-          const rubricEntries = Object.entries(result.rubricByLessonId);
-          if (rubricEntries.length) {
-            await Promise.all(rubricEntries.map(([lessonId, criteria]) =>
-              fetch("/api/tutor/assignment-submissions/rubric", {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ lessonId, criteria }),
-              }).catch(() => {}) // the course itself imported fine; a rubric hiccup can be redone manually
-            ));
-          }
-
-          setState({ status: "idle" });
-          await onImported(saved);
+          const response = await fetch("/api/tutor/courses/import", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: await file.text(),
+          });
+          const result = await response.json().catch(() => ({})) as { course?: Course; error?: string; warning?: string };
+          if (!response.ok || !result.course) throw new Error(result.error || "Couldn't import the course.");
+          setState(result.warning ? { status: "warning", message: result.warning } : { status: "idle" });
+          await onImported(result.course);
         } catch (error) {
           setState({ status: "error", message: error instanceof Error ? error.message : "Couldn't import the course." });
         } finally {
@@ -579,8 +564,8 @@ function categoryOptions(courses: Course[]): string[] {
             {state.status === "importing" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
             Import
           </Button>
-          {state.status === "error" && (
-            <p role="alert" className="absolute right-0 top-full z-10 mt-1 w-64 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+          {(state.status === "error" || state.status === "warning") && (
+            <p role="alert" className={cn("absolute right-0 top-full z-10 mt-1 w-64 rounded-lg border p-2 text-xs", state.status === "error" ? "border-red-200 bg-red-50 text-red-700" : "border-amber-200 bg-amber-50 text-amber-800")}>
               {state.message}
             </p>
           )}
