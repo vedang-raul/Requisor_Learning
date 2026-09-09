@@ -52,6 +52,19 @@ const LANGUAGE_VOICE_PREFIXES: Record<string, string[]> = {
   pl: ["pl-"],
   id: ["id-"],
 };
+// Web Speech API exposes no explicit "quality" flag, so this scores by
+// naming patterns browsers commonly use for their newer, more natural-
+// sounding voices (vs. older, more robotic-sounding ones) — used to auto-pick
+// a good-sounding default instead of leaving it to whatever order the
+// browser happens to list voices in.
+const NATURAL_VOICE_HINTS = ["natural", "neural", "online", "premium", "enhanced", "google", "aria", "jenny", "guy"];
+function voiceQualityScore(v: SpeechSynthesisVoice): number {
+  const name = v.name.toLowerCase();
+  return NATURAL_VOICE_HINTS.some((hint) => name.includes(hint)) ? 1 : 0;
+}
+function bestVoice(candidates: SpeechSynthesisVoice[]): SpeechSynthesisVoice | undefined {
+  return [...candidates].sort((a, b) => voiceQualityScore(b) - voiceQualityScore(a))[0];
+}
 const dotTransition = (delay: number) => ({
   duration: 0.9,
   repeat: Infinity,
@@ -279,19 +292,31 @@ export function AiAssistant() {
       window.removeEventListener(AI_GUIDE_PREFERENCES_UPDATED, handlePreferenceUpdate);
     };
   }, [hydrated, state.user]);
-  // Once voices and a language preference are both known, pick a matching
-  // voice automatically — but only if the user hasn't manually chosen one.
+  // Once voices are known, pick one automatically — but only if the user
+  // hasn't manually chosen one. Prefers a language match if the user set one,
+  // and within any set of candidates prefers the most natural-sounding voice
+  // available rather than just the first one the browser happens to list.
   useEffect(() => {
-    if (voice.selectedVoiceName || !preferredLanguage || voice.voices.length === 0) return;
-    const prefixes = LANGUAGE_VOICE_PREFIXES[preferredLanguage];
-    if (!prefixes) return;
-    for (const prefix of prefixes) {
-      const match = voice.voices.find((v) => v.lang.startsWith(prefix));
-      if (match) {
-        voice.setSelectedVoiceName(match.name);
-        break;
+    if (voice.voices.length === 0) return;
+    // Keep a real manual choice, but recover when a stored browser-specific
+    // voice name is no longer available on this device.
+    if (voice.selectedVoiceName && voice.voices.some((v) => v.name === voice.selectedVoiceName)) return;
+    const prefixes = preferredLanguage ? LANGUAGE_VOICE_PREFIXES[preferredLanguage] : undefined;
+    if (prefixes) {
+      for (const prefix of prefixes) {
+        const candidates = voice.voices.filter((v) => v.lang.startsWith(prefix));
+        const match = bestVoice(candidates);
+        if (match) {
+          voice.setSelectedVoiceName(match.name);
+          return;
+        }
       }
     }
+    // No language preference set (or no matching voice for it) — still pick
+    // a good default English voice rather than leaving it to the browser.
+    const englishCandidates = voice.voices.filter((v) => v.lang.startsWith("en-"));
+    const fallback = bestVoice(englishCandidates.length ? englishCandidates : voice.voices);
+    if (fallback) voice.setSelectedVoiceName(fallback.name);
   }, [preferredLanguage, voice.voices, voice.selectedVoiceName, voice.setSelectedVoiceName]);
   // When a transcript arrives from STT, put it in the input box so the user
   // can see what was heard before it's sent.
