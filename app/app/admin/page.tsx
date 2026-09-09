@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState , useRef} from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
+import { buildCourseFromImport } from "@/lib/course-export";
 import {
   BarChart3, BookPlus, Calendar, Check, ChevronDown, Download, Users, GraduationCap,
-  Mail, Pencil, Plus, ShieldCheck, Trash2, TrendingUp, TrendingDown, Video, X, Youtube, LayoutGrid,
+  Mail, Pencil, Plus, ShieldCheck, Trash2, TrendingUp, TrendingDown, Video, X, Youtube, LayoutGrid, Upload,
   Clock, FileText, Send, RefreshCw, Star, MessageSquare, Smile, Meh, Frown, Hash, Filter, Quote,
   ThumbsUp, ThumbsDown, Layers, Copy, ShieldAlert, Tags, Angry, HelpCircle, PartyPopper,
   Gauge, Sparkles, ScanText, Bug, AlertCircle, CheckCircle2, ChevronUp, Image, Loader2,
@@ -384,9 +385,12 @@ function ContentManager() {
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <CardTitle>Courses</CardTitle>
+          <div className="flex gap-1.5">
+            <ImportCourseButton onImported={(imported) => setSelected(imported.slug)} />
           <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
-            <Button size="sm" variant="outline" onClick={() => setCreatingCourse(true)}><Plus className="h-3.5 w-3.5" />New</Button>
-          </motion.div>
+              <Button size="sm" variant="outline" onClick={() => setCreatingCourse(true)}><Plus className="h-3.5 w-3.5" />New</Button>
+            </motion.div>
+          </div>
         </div>
         <div className="space-y-2">
           {state.courses.map((c, i) => {
@@ -431,6 +435,11 @@ function ContentManager() {
                   <Button size="sm" onClick={() => { setCreatingLesson(true); setEditingLesson(null); }}><BookPlus className="h-3.5 w-3.5" />Add lesson</Button>
                 </motion.div>
                 <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+                  <Button size="sm" variant="outline" onClick={() => window.open(`/api/tutor/courses/export?slug=${encodeURIComponent(course.slug)}`, "_blank")}>
+                    <Download className="h-3.5 w-3.5" />Export
+                  </Button>
+                  </motion.div>
+                  <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
                   <Button size="sm" variant="danger" onClick={async () => { if (confirm(`Delete course "${course.title}" and all its lessons?`)) { try { await deleteCourse(course.slug); setSelected(state.courses.find((c) => c.slug !== course.slug)?.slug ?? null); } catch (error) { reportFailure(error); } } }}>
                     <Trash2 className="h-3.5 w-3.5" />Delete course
                   </Button>
@@ -511,6 +520,73 @@ function categoryOptions(courses: Course[]): string[] {
   for (const c of courses) if (c.category) inUse.add(c.category);
   return [...inUse].sort();
 }
+
+    /* Imports a previously exported course JSON file (see /api/tutor/courses/export)
+       as a brand-new draft course — never merged into an existing one. Reuses the
+       same upsertCourse() path a manually created course goes through, so the
+       server's real validateCourse is still the final authority; a rubric
+       attached to a lesson in the export is applied afterward via the existing
+       per-lesson rubric endpoint. */
+    function ImportCourseButton({ onImported }: { onImported: (course: Course) => void | Promise<void> }) {
+      const { upsertCourse } = useStore();
+      const [state, setState] = useState<{ status: "idle" } | { status: "importing" } | { status: "error"; message: string }>({ status: "idle" });
+      const inputRef = useRef<HTMLInputElement>(null);
+
+      async function handleFile(file: File) {
+        setState({ status: "importing" });
+        try {
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(await file.text());
+          } catch {
+            throw new Error("That doesn't look like a valid export file.");
+          }
+          const result = buildCourseFromImport(parsed);
+          if (!result.ok) throw new Error(result.error);
+
+          const saved = await upsertCourse(result.course);
+
+          const rubricEntries = Object.entries(result.rubricByLessonId);
+          if (rubricEntries.length) {
+            await Promise.all(rubricEntries.map(([lessonId, criteria]) =>
+              fetch("/api/tutor/assignment-submissions/rubric", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ lessonId, criteria }),
+              }).catch(() => {}) // the course itself imported fine; a rubric hiccup can be redone manually
+            ));
+          }
+
+          setState({ status: "idle" });
+          await onImported(saved);
+        } catch (error) {
+          setState({ status: "error", message: error instanceof Error ? error.message : "Couldn't import the course." });
+        } finally {
+          if (inputRef.current) inputRef.current.value = "";
+        }
+      }
+
+      return (
+        <div className="relative">
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".json,application/json"
+            className="sr-only"
+            onChange={(event) => { const file = event.target.files?.[0]; if (file) void handleFile(file); }}
+          />
+          <Button size="sm" variant="outline" disabled={state.status === "importing"} onClick={() => inputRef.current?.click()}>
+            {state.status === "importing" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+            Import
+          </Button>
+          {state.status === "error" && (
+            <p role="alert" className="absolute right-0 top-full z-10 mt-1 w-64 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+              {state.message}
+            </p>
+          )}
+        </div>
+      );
+    }
 
 function CourseForm({ onSave, onClose }: { onSave: (c: Course) => void | Promise<void>; onClose: () => void }) {
   const { state } = useStore();
