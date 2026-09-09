@@ -4,6 +4,7 @@ import { FormEvent, ReactNode, SelectHTMLAttributes, useCallback, useEffect, use
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
+import { buildCourseFromImport } from "@/lib/course-export";
 import {
   Activity, BarChart3, BookPlus, Check, CheckCircle2, Download, FileText, GraduationCap, Inbox, LayoutGrid, Paperclip, Upload,
   ListChecks, Loader2, Pencil, Plus, Send, Star, Trash2, TrendingUp, Users, X,BookOpen, ChevronDown, Clock, Layers, Sparkles, Video
@@ -27,23 +28,35 @@ const AI_COURSE_DRAFT_EVENT = "requisor:open-ai-course-draft";
 const springTab = { type: "spring" as const, stiffness: 500, damping: 35 };
 
 function ImportCourseButton({ onImported }: { onImported: (course: Course) => void | Promise<void> }) {
-  const [state, setState] = useState<
-    { status: "idle" } | { status: "importing" } | { status: "error" | "warning"; message: string }
-  >({ status: "idle" });
+  const { upsertCourse } = useStore();
+  const [state, setState] = useState<{ status: "idle" } | { status: "importing" } | { status: "error"; message: string }>({ status: "idle" });
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function handleFile(file: File) {
     setState({ status: "importing" });
     try {
-      const response = await fetch("/api/tutor/courses/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: await file.text(),
-      });
-      const result = await response.json().catch(() => ({})) as { course?: Course; error?: string; warning?: string };
-      if (!response.ok || !result.course) throw new Error(result.error || "Couldn't import the course.");
-      setState(result.warning ? { status: "warning", message: result.warning } : { status: "idle" });
-      await onImported(result.course);
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(await file.text());
+      } catch {
+        throw new Error("That doesn't look like a valid export file.");
+      }
+      const result = buildCourseFromImport(parsed);
+      if (!result.ok) throw new Error(result.error);
+      const saved = await upsertCourse(result.course);
+      const rubricEntries = Object.entries(result.rubricByLessonId);
+      if (rubricEntries.length) {
+        await Promise.all(rubricEntries.map(async ([lessonId, criteria]) => {
+          const response = await fetch("/api/tutor/assignment-submissions/rubric", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ lessonId, criteria }),
+          });
+          if (!response.ok) throw new Error("The course imported, but its grading rubric could not be copied.");
+        }));
+      }
+      setState({ status: "idle" });
+      await onImported(saved);
     } catch (error) {
       setState({ status: "error", message: error instanceof Error ? error.message : "Couldn't import the course." });
     } finally {
@@ -68,8 +81,8 @@ function ImportCourseButton({ onImported }: { onImported: (course: Course) => vo
         {state.status === "importing" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
         Import course
       </Button>
-      {(state.status === "error" || state.status === "warning") && (
-        <p role="alert" className={cn("absolute right-0 top-full z-10 mt-1 w-64 rounded-lg border p-2 text-xs", state.status === "error" ? "border-red-200 bg-red-50 text-red-700" : "border-amber-200 bg-amber-50 text-amber-800")}>
+      {state.status === "error" && (
+        <p role="alert" className="absolute right-0 top-full z-10 mt-1 w-64 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-700">
           {state.message}
         </p>
       )}
