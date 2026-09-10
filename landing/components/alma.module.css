@@ -71,11 +71,11 @@
   outline: 2px solid var(--pulse);
   outline-offset: 3px;
 }
-.btnSolid {
+.root .btnSolid {
   background: var(--text);
   color: #0A0C0B;
 }
-.btnSolid:hover {
+.root .btnSolid:hover {
   opacity: .85;
 }
 .btnGhost {
@@ -536,6 +536,69 @@
   .uniRow {
     grid-template-columns: 1fr;
     gap: 6px;
+  }
+}
+@media (max-width: 600px) {
+  .wrap {
+    padding: 0 20px;
+  }
+  .navIn {
+    height: 58px;
+    gap: 14px;
+  }
+  .wordmark small {
+    display: none;
+  }
+  .navLinks {
+    gap: 0;
+  }
+  .navLinks .btn {
+    min-height: 44px;
+    padding: 13px 20px;
+  }
+  .hero {
+    min-height: auto;
+    padding: 128px 0 90px;
+  }
+  .heroTitle {
+    font-size: clamp(43px, 13vw, 62px);
+  }
+  .heroLede {
+    font-size: 17px;
+  }
+  .heroCtas {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .heroCtas .btn {
+    min-height: 48px;
+    width: 100%;
+  }
+  .scrollHint {
+    display: none;
+  }
+  .strip .wrap {
+    grid-template-columns: 1fr;
+  }
+  .cell {
+    border-bottom: 1px solid var(--lineSoft);
+    padding: 22px 0;
+  }
+  .cell:last-child {
+    border-bottom: none;
+  }
+  .section, .tutorsSection {
+    padding: 76px 0;
+  }
+  .assign {
+    padding: 24px 20px;
+  }
+  .uniPanel {
+    border-radius: 20px;
+    padding: 34px 22px;
+  }
+  .finale {
+    padding: 100px 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -1,5 +1,5 @@
 import styles from './alma.module.css'
-import AlmaField from './AlmaField.jsx'
+import AlmaField from './AlmaFiled.jsx'
 import TutorDemo from './TutorDemo.jsx'
 
 export default function AlmaHero() {

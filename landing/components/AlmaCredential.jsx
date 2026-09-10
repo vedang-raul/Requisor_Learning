@@ -1,6 +1,6 @@
 import styles from './alma.module.css'
 import Reveal from './Reveal.jsx'
-import { masteryTicks } from '../lib/masteryTicks.js'
+import { masteryTicks } from '../../lib/masteryTrick.js'
 
 const ticks = masteryTicks(120, 120, 88, 100, 24, 9)
 
