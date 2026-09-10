@@ -299,7 +299,7 @@ export async function parseCanvasCartridge(fileBytes: ArrayBuffer): Promise<Canv
       tagline: "Imported from a Canvas course export.",
       category: "imported",
       level: "Beginner",
-      tags: [courseTitle.slice(0, 80)],
+      tags: [courseTitle.slice(0, 50)],
     },
     lessons,
   };
