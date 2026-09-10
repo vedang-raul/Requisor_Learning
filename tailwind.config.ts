@@ -26,6 +26,18 @@ const config: Config = {
         apricot: "#FF9E5E",
         mint: "#17B890",
         line: "#E4E4E7",
+        // "Alma" landing page palette — a dark theme distinct from the rest
+        // of the site, so these are additive tokens rather than repurposed
+        // existing ones (nothing outside landing/ should ever use them).
+        void: "#060708",
+        "alma-surface": "#0C0E0F",
+        "alma-line": "rgba(255,255,255,.09)",
+        "alma-line-soft": "rgba(255,255,255,.05)",
+        "alma-text": "#F4F6F5",
+        "alma-muted": "rgba(244,246,245,.56)",
+        "alma-faint": "rgba(244,246,245,.32)",
+        pulse: "#7DF3D8",
+        "pulse-deep": "#17A78C",
       },
       fontFamily: {
         sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],

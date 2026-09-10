@@ -1,4 +1,4 @@
-import { Wrap } from './ui.jsx'
+import styles from './alma.module.css'
 
 const SOCIAL_LINKS = [
   { name: 'LinkedIn', href: 'https://www.linkedin.com/company/requisor', Icon: LinkedInIcon },
@@ -10,68 +10,43 @@ export default function Footer() {
   const year = new Date().getFullYear()
 
   return (
-    <footer id="site-footer" className="border-t border-line text-ink-soft">
-      <Wrap className="flex flex-col gap-7 py-10">
-        {/* brand + social */}
-        <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <img
-              src="/requisor.png"
-              alt=""
-              width="56"
-              height="56"
-              className="size-14 shrink-0 object-contain"
-            />
-            <div className="text-[13.5px] leading-snug">
-              <strong className="block text-[15px] font-semibold text-ink">Requisor Learning</strong>
-              <span>The AI-Native University · Milwaukee, WI</span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3" aria-label="Follow Requisor Learning">
-            {SOCIAL_LINKS.map(({ name, href, Icon }) => (
-              <a key={name} href={href} aria-label={name}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group flex size-9 items-center justify-center rounded-full border border-line text-ink-soft transition-all duration-200 hover:-translate-y-0.5 hover:border-[#23AE97] hover:text-[#23AE97] hover:shadow-[0_8px_18px_-8px_rgba(35,174,151,0.5)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#23AE97]"
-              >
-                <Icon className="size-4 transition-transform duration-200 ease-out group-hover:scale-110" />
-              </a>
-            ))}
-          </div>
-        </div>
-
-        <div className="h-px w-full bg-line" aria-hidden="true" />
-
-        {/* affiliation + copyright */}
-        <div className="flex flex-col gap-4 text-[13px] sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2.5" aria-label="In association with Milwaukee School of Engineering">
+    <footer id="site-footer" className={styles.footer}>
+      <div className={styles.wrap}>
+        <div>
+          <span>© {year} Citrus Innovations Inc. — Alma, by{' '}
+            <a href="https://requisor.io" target="_blank" rel="noopener noreferrer">Requisor</a>. Milwaukee, WI.
+          </span>
+          <div className="mt-2 flex items-center gap-2.5" aria-label="In association with Milwaukee School of Engineering">
             <img
               src="/msoe-logo.png"
               alt="Milwaukee School of Engineering"
-              className="size-8 shrink-0 object-contain transition-transform duration-300 ease-out hover:-rotate-6 hover:scale-110"
-              width="32"
-              height="32"
+              className="size-6 shrink-0 object-contain opacity-80 transition-transform duration-300 ease-out hover:-rotate-6 hover:scale-110"
+              width="24"
+              height="24"
               loading="lazy"
             />
-            <span className="text-[11px] leading-tight text-ink-soft">
-              In association with
-              <strong className="block font-semibold text-ink">Milwaukee School of Engineering</strong>
+            <span className="text-[11px] leading-tight text-alma-faint">
+              In association with <strong className="font-semibold text-alma-muted">Milwaukee School of Engineering</strong>
             </span>
           </div>
-
-          <span className="font-mono text-[12.5px]">
-            © {year} · Built by{' '}
-
-    <a          href="https://requisor.io"
-              className="text-ink decoration-current decoration-1  transition-colors duration-200 hover:text-[#23AE97] focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#23AE97] font-semibold"
-            >
-              Requisor.io
-            </a>
-            . Personalized by design.
-          </span>
         </div>
-      </Wrap>
+
+        <div className={styles.footerLinks}>
+          {SOCIAL_LINKS.map(({ name, href, Icon }) => (
+            <a
+              key={name}
+              href={href}
+              aria-label={name}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group flex size-8 items-center justify-center rounded-full border border-alma-line text-alma-faint transition-all duration-200 hover:-translate-y-0.5 hover:border-pulse hover:text-pulse"
+            >
+              <Icon className="size-3.5 transition-transform duration-200 ease-out group-hover:scale-110" />
+            </a>
+          ))}
+          <a href="mailto:naveen@requisor.io">Contact</a>
+        </div>
+      </div>
     </footer>
   )
 }
