@@ -96,7 +96,7 @@ export async function GET(req: Request) {
   return new Response(new Uint8Array(zipBytes), {
     headers: {
       "Content-Type": "application/zip",
-      "Content-Disposition": `attachment; filename="${slug}-export.zip"`,
+      "Content-Disposition": `attachment; filename="${slug}-export.imscc"`,
     },
   });
 }

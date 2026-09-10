@@ -94,7 +94,7 @@ function firstText(el: Element | Document, tag: string): string {
 function parseCourseTitle(manifestDoc: Document): string {
   const general = manifestDoc.getElementsByTagName("lomimscc:general")[0];
   const title = general ? firstText(general, "lomimscc:string") : "";
-  return title || "Imported Canvas course";
+  return (title || "Imported Canvas course").slice(0, 160);
 }
 
 function parseResources(manifestDoc: Document): Map<string, CanvasResource> {
@@ -299,7 +299,7 @@ export async function parseCanvasCartridge(fileBytes: ArrayBuffer): Promise<Canv
       tagline: "Imported from a Canvas course export.",
       category: "imported",
       level: "Beginner",
-      tags: [courseTitle],
+      tags: [courseTitle.slice(0, 80)],
     },
     lessons,
   };

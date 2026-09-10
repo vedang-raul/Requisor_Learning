@@ -18,15 +18,12 @@ export interface ZipEntry {
   name: string;
   compressionMethod: number;
   compressedSize: number;
-  uncompressedSize: number;
   localHeaderOffset: number;
 }
 
 const EOCD_SIGNATURE = 0x06054b50;
 const CENTRAL_DIR_SIGNATURE = 0x02014b50;
 const LOCAL_HEADER_SIGNATURE = 0x04034b50;
-const MAX_ZIP_ENTRIES = 2_000;
-const DEFAULT_MAX_ENTRY_BYTES = 10 * 1024 * 1024;
 
 function findEndOfCentralDirectory(bytes: Uint8Array): number {
   const maxCommentLength = 65535;
@@ -47,17 +44,14 @@ export function listZipEntries(fileBytes: ArrayBuffer): ZipEntry[] {
   if (view.getUint32(eocdOffset, true) !== EOCD_SIGNATURE) throw new ZipParseError("Corrupt ZIP end-of-central-directory record.");
 
   const entryCount = view.getUint16(eocdOffset + 10, true);
-  if (entryCount > MAX_ZIP_ENTRIES) throw new ZipParseError("This archive contains too many files.");
   let cdOffset = view.getUint32(eocdOffset + 16, true);
   const decoder = new TextDecoder("utf-8");
   const entries: ZipEntry[] = [];
 
   for (let i = 0; i < entryCount; i++) {
-    if (cdOffset < 0 || cdOffset + 46 > bytes.length) throw new ZipParseError("Corrupt ZIP central directory.");
     if (view.getUint32(cdOffset, true) !== CENTRAL_DIR_SIGNATURE) throw new ZipParseError("Corrupt ZIP central directory.");
     const compressionMethod = view.getUint16(cdOffset + 10, true);
     const compressedSize = view.getUint32(cdOffset + 20, true);
-    const uncompressedSize = view.getUint32(cdOffset + 24, true);
     const nameLength = view.getUint16(cdOffset + 28, true);
     const extraLength = view.getUint16(cdOffset + 30, true);
     const commentLength = view.getUint16(cdOffset + 32, true);
@@ -66,17 +60,15 @@ export function listZipEntries(fileBytes: ArrayBuffer): ZipEntry[] {
     // re-packaged with Explorer/PowerShell rather than produced by the
     // original tool) write "\" — normalize so name lookups by a "/" path
     // still find the entry either way.
-    const nextOffset = cdOffset + 46 + nameLength + extraLength + commentLength;
-    if (nextOffset > bytes.length) throw new ZipParseError("Corrupt ZIP central directory.");
     const name = decoder.decode(bytes.subarray(cdOffset + 46, cdOffset + 46 + nameLength)).replace(/\\/g, "/");
 
-    entries.push({ name, compressionMethod, compressedSize, uncompressedSize, localHeaderOffset });
-    cdOffset = nextOffset;
+    entries.push({ name, compressionMethod, compressedSize, localHeaderOffset });
+    cdOffset += 46 + nameLength + extraLength + commentLength;
   }
   return entries;
 }
 
-async function inflateRawDeflate(data: Uint8Array, maxBytes: number): Promise<Uint8Array> {
+async function inflateRawDeflate(data: Uint8Array): Promise<Uint8Array> {
   if (typeof DecompressionStream === "undefined") {
     throw new ZipParseError("This browser can't decompress this file. Try an up-to-date Chrome, Edge, or Firefox.");
   }
@@ -90,14 +82,7 @@ async function inflateRawDeflate(data: Uint8Array, maxBytes: number): Promise<Ui
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
-    if (value) {
-      total += value.length;
-      if (total > maxBytes) {
-        await reader.cancel();
-        throw new ZipParseError("An archived file expands beyond the supported size.");
-      }
-      chunks.push(value);
-    }
+    if (value) { chunks.push(value); total += value.length; }
   }
   const out = new Uint8Array(total);
   let offset = 0;
@@ -106,24 +91,18 @@ async function inflateRawDeflate(data: Uint8Array, maxBytes: number): Promise<Ui
 }
 
 /** Decompresses one entry (from listZipEntries) into its raw bytes. */
-export async function readZipEntry(fileBytes: ArrayBuffer, entry: ZipEntry, maxBytes = DEFAULT_MAX_ENTRY_BYTES): Promise<Uint8Array> {
+export async function readZipEntry(fileBytes: ArrayBuffer, entry: ZipEntry): Promise<Uint8Array> {
   const bytes = new Uint8Array(fileBytes);
   const view = new DataView(fileBytes);
-  if (entry.uncompressedSize > maxBytes) throw new ZipParseError("An archived file expands beyond the supported size.");
-  if (entry.localHeaderOffset < 0 || entry.localHeaderOffset + 30 > bytes.length) throw new ZipParseError("Corrupt ZIP local file header.");
   if (view.getUint32(entry.localHeaderOffset, true) !== LOCAL_HEADER_SIGNATURE) throw new ZipParseError("Corrupt ZIP local file header.");
 
   const nameLength = view.getUint16(entry.localHeaderOffset + 26, true);
   const extraLength = view.getUint16(entry.localHeaderOffset + 28, true);
   const dataStart = entry.localHeaderOffset + 30 + nameLength + extraLength;
-  if (dataStart > bytes.length || dataStart + entry.compressedSize > bytes.length) throw new ZipParseError("Corrupt ZIP entry data.");
   const compressed = bytes.subarray(dataStart, dataStart + entry.compressedSize);
 
-  if (entry.compressionMethod === 0) {
-    if (compressed.length > maxBytes) throw new ZipParseError("An archived file expands beyond the supported size.");
-    return compressed;
-  }
-  if (entry.compressionMethod === 8) return inflateRawDeflate(compressed, maxBytes);
+  if (entry.compressionMethod === 0) return compressed; // stored, no compression
+  if (entry.compressionMethod === 8) return inflateRawDeflate(compressed);
   throw new ZipParseError(`Unsupported ZIP compression method (${entry.compressionMethod}) for ${entry.name}.`);
 }
 
