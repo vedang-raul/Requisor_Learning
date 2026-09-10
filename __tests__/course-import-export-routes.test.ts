@@ -18,7 +18,7 @@ jest.mock("@/components/category-icon", () => ({
 import { getServerSession } from "next-auth/next";
 import { db } from "@/lib/db";
 import { replaceCourse } from "@/lib/course-catalog";
-import { COURSE_EXPORT_FORMAT, MAX_IMPORT_RUBRIC_CRITERIA } from "@/lib/course-export";
+import { buildCourseFromImport, COURSE_EXPORT_FORMAT, MAX_IMPORT_RUBRIC_CRITERIA } from "@/lib/course-export";
 import { GET } from "@/app/api/tutor/courses/export/route";
 import { POST } from "@/app/api/tutor/courses/import/route";
 
@@ -57,7 +57,6 @@ const validPackage = {
       section: "Foundations",
       format: "reading",
       body: "## Leadership\n\nClarity builds trust.",
-      bodyFileUrl: "https://example.com/leadership.pdf",
       rubric: [
         { title: "Clarity", description: "Sets clear expectations.", maxPoints: 20 },
       ],
@@ -72,6 +71,49 @@ function importRequest(body: unknown): Request {
     body: JSON.stringify(body),
   });
 }
+
+describe("buildCourseFromImport", () => {
+  it("preserves all portable fields in the browser preview", () => {
+    const result = buildCourseFromImport(validPackage);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.course.tags).toEqual(["leadership", "teams"]);
+    expect(result.course.lessons[0]).toEqual(expect.objectContaining({
+      assignmentMarks: 40,
+      assignmentDueDate: "2026-10-15",
+      body: "## Leadership\n\nClarity builds trust.",
+      resources: validPackage.lessons[0].resources,
+    }));
+    expect(result.rubricByLessonId[result.course.lessons[0].id]).toEqual(validPackage.lessons[0].rubric);
+  });
+
+  it.each([
+    [
+      { resources: [{ label: "Unsafe", url: "javascript:alert(1)", type: "link" }] },
+      "Lesson 1 has an invalid resource.",
+    ],
+    [
+      { rubric: [{ title: "", description: null, maxPoints: -1 }] },
+      "Lesson 1 has an invalid grading rubric.",
+    ],
+    [
+      { assignmentMarks: 0 },
+      "Lesson 1 has invalid assignment marks.",
+    ],
+    [
+      { assignmentDueDate: "2026-02-30" },
+      "Lesson 1 has an invalid assignment due date.",
+    ],
+  ])("returns the shared nested-field error for %#", (lessonPatch, error) => {
+    const result = buildCourseFromImport({
+      ...validPackage,
+      lessons: [{ ...validPackage.lessons[0], ...lessonPatch }],
+    });
+
+    expect(result).toEqual({ ok: false, error });
+  });
+});
 
 describe("GET /api/tutor/courses/export", () => {
   beforeEach(() => {
@@ -174,7 +216,6 @@ describe("POST /api/tutor/courses/import", () => {
       assignmentDueDate: "2026-10-15",
       format: "reading",
       body: "## Leadership\n\nClarity builds trust.",
-      bodyFileUrl: "https://example.com/leadership.pdf",
       resources: validPackage.lessons[0].resources,
     }));
     expect(mockReplaceCourse).toHaveBeenCalledWith(

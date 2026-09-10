@@ -30,7 +30,7 @@ export interface RubricCriterionExport {
 export interface CourseExportResource {
   label: string;
   url: string;
-  type: "pdf" | "link";
+  type: "pdf" | "link" | "file";
 }
 
 export interface CourseExportLesson {
@@ -71,12 +71,27 @@ export const MAX_IMPORT_RUBRIC_CRITERIA = 20;
 
 import type { Course, Lesson } from "@/lib/types";
 import { getCategoryCover } from "@/components/category-icon";
+import { isResourceFileUrl } from "@/lib/resource-files";
+import { extractYouTubeId, PLACEHOLDER_VIDEO } from "@/lib/utils";
+import { isIsoCalendarDate } from "@/lib/validation";
 
 const string = (value: unknown, max: number, min = 1) =>
   typeof value === "string" && value.trim().length >= min && value.trim().length <= max;
+function safeResourceUrl(value: unknown, max = 2048): string | null {
+  if (!string(value, max)) return null;
+  const trimmed = (value as string).trim();
+  if (trimmed === "#" || isResourceFileUrl(trimmed)) return trimmed;
+  try {
+    const url = new URL(trimmed);
+    return url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
 
 function slugify(title: string): string {
-  const base = title.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  const base = title.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")
+    .slice(0, 70).replace(/-$/, "");
   return (base || "course") + "-" + Date.now().toString(36);
 }
 
@@ -106,6 +121,10 @@ export function buildCourseFromImport(raw: unknown): CourseImportResult {
   if (!string(courseIn.title, 160) || !string(courseIn.tagline, 400, 0) || !string(courseIn.category, 40)) {
     return { ok: false, error: "Invalid export file: missing course title or category." };
   }
+  if (!Array.isArray(courseIn.tags) || courseIn.tags.length > 20 ||
+      !courseIn.tags.every((tag) => string(tag, 50))) {
+    return { ok: false, error: "Invalid export file: invalid course tags." };
+  }
 
   const slug = slugify(courseIn.title as string);
   const category = (courseIn.category as string).trim();
@@ -120,37 +139,96 @@ export function buildCourseFromImport(raw: unknown): CourseImportResult {
       return { ok: false, error: `Lesson ${i + 1} is missing a title or description.` };
     }
     const lessonId = `${slug}-${i}`;
-    const resources = Array.isArray(l.resources) ? (l.resources.slice(0, 20) as Lesson["resources"]) : [];
+    if (l.resources !== undefined && !Array.isArray(l.resources)) {
+      return { ok: false, error: `Lesson ${i + 1} has invalid resources.` };
+    }
+    const resources: Lesson["resources"] = [];
+    for (const rawResource of (l.resources as unknown[] | undefined) ?? []) {
+      if (resources.length >= 20 || !rawResource || typeof rawResource !== "object" || Array.isArray(rawResource)) {
+        return { ok: false, error: `Lesson ${i + 1} has invalid resources.` };
+      }
+      const resource = rawResource as Record<string, unknown>;
+      const url = safeResourceUrl(resource.url);
+      if (!string(resource.label, 200) || !url ||
+          (resource.type !== "pdf" && resource.type !== "link" && resource.type !== "file")) {
+        return { ok: false, error: `Lesson ${i + 1} has an invalid resource.` };
+      }
+      resources.push({ label: (resource.label as string).trim(), url, type: resource.type });
+    }
     const keyTakeaways = Array.isArray(l.keyTakeaways)
-      ? l.keyTakeaways.filter((x): x is string => typeof x === "string").slice(0, 20).map((x) => x.slice(0, 500))
+      ? l.keyTakeaways
+          .filter((x): x is string => typeof x === "string")
+          .map((x) => x.trim().slice(0, 500))
+          .filter((x) => x.length > 0)
+          .slice(0, 20)
       : [];
+    if (l.assignmentMarks !== undefined &&
+        (!Number.isInteger(l.assignmentMarks) || (l.assignmentMarks as number) < 1 || (l.assignmentMarks as number) > 10000)) {
+      return { ok: false, error: `Lesson ${i + 1} has invalid assignment marks.` };
+    }
+    if (l.assignmentDueDate !== undefined && !isIsoCalendarDate(l.assignmentDueDate)) {
+      return { ok: false, error: `Lesson ${i + 1} has an invalid assignment due date.` };
+    }
+    if (l.format !== undefined && l.format !== "reading" && l.format !== "video") {
+      return { ok: false, error: `Lesson ${i + 1} has an invalid format.` };
+    }
+    const format = l.format === "reading" ? "reading" : "video";
+    const bodyFileUrl = typeof l.bodyFileUrl === "string" && string(l.bodyFileUrl, 200) &&
+      isResourceFileUrl(l.bodyFileUrl.trim()) ? l.bodyFileUrl.trim() : null;
+    if ((l.body !== undefined && (format !== "reading" || !string(l.body, 20_000))) ||
+        (l.bodyFileUrl !== undefined && (format !== "reading" || !bodyFileUrl)) ||
+        (l.body !== undefined && l.bodyFileUrl !== undefined)) {
+      return { ok: false, error: `Lesson ${i + 1} has invalid reading content.` };
+    }
+    const rawYoutubeId = typeof l.youtubeId === "string" ? l.youtubeId.trim() : "";
+    const youtubeId = format === "reading"
+      ? ""
+      : rawYoutubeId === "" || rawYoutubeId === PLACEHOLDER_VIDEO
+        ? PLACEHOLDER_VIDEO
+        : extractYouTubeId(rawYoutubeId);
+    if (!string(l.youtubeId, 2048, 0) || (format === "video" && !youtubeId)) {
+      return { ok: false, error: `Lesson ${i + 1} has an invalid video.` };
+    }
+    const normalizedYoutubeId = youtubeId ?? "";
     lessons.push({
       id: lessonId,
       title: (l.title as string).trim().slice(0, 200),
       description: (l.description as string).trim().slice(0, 2000),
-      youtubeId: string(l.youtubeId, 120, 0) ? (l.youtubeId as string).trim().slice(0, 120) : "REPLACE_ME",
+      youtubeId: normalizedYoutubeId,
       durationMin: Number.isInteger(l.durationMin) ? Math.min(1440, Math.max(1, l.durationMin as number)) : 20,
       resources,
       keyTakeaways,
       ...(string(l.assignment, 5000) ? { assignment: (l.assignment as string).trim().slice(0, 5000) } : {}),
+      ...(l.assignmentMarks !== undefined ? { assignmentMarks: l.assignmentMarks as number } : {}),
+      ...(l.assignmentDueDate !== undefined ? { assignmentDueDate: l.assignmentDueDate as string } : {}),
       ...(l.requiresSubmission === true ? { requiresSubmission: true } : {}),
       ...(string(l.section, 200) ? { section: (l.section as string).trim().slice(0, 200) } : {}),
-      format: l.format === "reading" ? "reading" : "video",
+      format,
+      ...(l.body !== undefined ? { body: (l.body as string).trim() } : {}),
+      ...(bodyFileUrl ? { bodyFileUrl } : {}),
     });
 
-    const rubricRaw = Array.isArray(l.rubric) ? l.rubric.slice(0, MAX_IMPORT_RUBRIC_CRITERIA) : [];
+    if (l.rubric !== undefined &&
+        (!Array.isArray(l.rubric) || l.rubric.length > MAX_IMPORT_RUBRIC_CRITERIA)) {
+      return { ok: false, error: `Lesson ${i + 1} has an invalid grading rubric.` };
+    }
+    const rubricRaw = (l.rubric as unknown[] | undefined) ?? [];
     const rubric: RubricCriterionExport[] = [];
     for (const rc of rubricRaw) {
-      if (!rc || typeof rc !== "object") continue;
-      const r = rc as Record<string, unknown>;
-      const maxPoints = Number(r.maxPoints);
-      if (string(r.title, 200) && Number.isFinite(maxPoints) && maxPoints > 0 && maxPoints <= 1000) {
-        rubric.push({
-          title: (r.title as string).trim(),
-          description: string(r.description, 1000) ? (r.description as string).trim() : null,
-          maxPoints,
-        });
+      if (!rc || typeof rc !== "object" || Array.isArray(rc)) {
+        return { ok: false, error: `Lesson ${i + 1} has an invalid grading rubric.` };
       }
+      const r = rc as Record<string, unknown>;
+      if (!string(r.title, 200) || typeof r.maxPoints !== "number" || !Number.isFinite(r.maxPoints) ||
+          r.maxPoints <= 0 || r.maxPoints > 1000 ||
+          (r.description !== null && r.description !== undefined && !string(r.description, 1000))) {
+        return { ok: false, error: `Lesson ${i + 1} has an invalid grading rubric.` };
+      }
+      rubric.push({
+        title: (r.title as string).trim(),
+        description: typeof r.description === "string" ? r.description.trim() : null,
+        maxPoints: r.maxPoints,
+      });
     }
     if (rubric.length) rubricByLessonId[lessonId] = rubric;
   }
@@ -161,7 +239,7 @@ export function buildCourseFromImport(raw: unknown): CourseImportResult {
     tagline: ((courseIn.tagline as string) || "").trim() || "Imported course.",
     category,
     level: courseIn.level === "Intermediate" || courseIn.level === "Advanced" ? courseIn.level : "Beginner",
-    tags: [(courseIn.title as string).trim()],
+    tags: courseIn.tags.map((tag) => (tag as string).trim()),
     cover: getCategoryCover(category),
     addedAt: new Date().toISOString().slice(0, 10),
     lessons,

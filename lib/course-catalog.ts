@@ -4,6 +4,7 @@ import { seedCourses } from "@/lib/data";
 import type { Course, Lesson, Resource } from "@/lib/types";
 import { extractYouTubeId, PLACEHOLDER_VIDEO } from "@/lib/utils";
 import { isResourceFileUrl } from "@/lib/resource-files";
+import { isIsoCalendarDate } from "@/lib/validation";
 
 type CourseRow = {
   slug: string;
@@ -244,7 +245,7 @@ export function validateCourse(value: unknown, expectedSlug?: string, requireRev
       !Array.isArray(l.resources) || l.resources.length > 20 ||
       (l.assignment !== undefined && !string(l.assignment, 5000)) ||
       (l.assignmentMarks !== undefined && (!Number.isInteger(l.assignmentMarks) || (l.assignmentMarks as number) < 1 || (l.assignmentMarks as number) > 10000)) ||
-      (l.assignmentDueDate !== undefined && (typeof l.assignmentDueDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(l.assignmentDueDate) || Number.isNaN(Date.parse(`${l.assignmentDueDate}T00:00:00Z`)))) ||
+      (l.assignmentDueDate !== undefined && !isIsoCalendarDate(l.assignmentDueDate)) ||
       (l.section !== undefined && !string(l.section, 200)) ||
       (l.format !== undefined && l.format !== "video" && l.format !== "reading") ||
       (format !== "reading" && !youtubeId) ||

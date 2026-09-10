@@ -33,6 +33,12 @@ describe("course catalog validation", () => {
     expect(validateCourse(course)).toEqual(expect.objectContaining({ ok: false }));
   });
 
+  it("rejects normalized/non-calendar assignment due dates", () => {
+    const course = courseFixture();
+    course.lessons[0].assignmentDueDate = "2026-02-30";
+    expect(validateCourse(course)).toEqual(expect.objectContaining({ ok: false }));
+  });
+
   it("accepts a tutor-uploaded file resource", () => {
     const course = courseFixture();
     course.lessons[0].resources[0] = { label: "Syllabus.pdf", url: resourceUrl, type: "file" };
