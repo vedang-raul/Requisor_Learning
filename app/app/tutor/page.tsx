@@ -4,7 +4,6 @@ import { FormEvent, ReactNode, SelectHTMLAttributes, useCallback, useEffect, use
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { buildCourseFromImport } from "@/lib/course-export";
 import {
   Activity, BarChart3, BookPlus, Check, CheckCircle2, Download, FileText, GraduationCap, Inbox, LayoutGrid, Paperclip, Upload,
   ListChecks, Loader2, Pencil, Plus, Send, Star, Trash2, TrendingUp, Users, X,BookOpen, ChevronDown, Clock, Layers, Sparkles, Video
@@ -14,6 +13,7 @@ import { Course, Lesson, Resource } from "@/lib/types";
 import { cn, extractYouTubeId, isPlaceholder, PLACEHOLDER_VIDEO, youTubeThumb } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
+import { parseCanvasCartridge, type CanvasImportSummary } from "@/lib/canvas-import";
 import { Input, Textarea } from "@/components/ui/input";
 import { PageTransition } from "@/components/motion";
 import { getCategoryCover, DEFAULT_CATEGORIES } from "@/components/category-icon";
@@ -26,37 +26,47 @@ const AI_COURSE_DRAFT_KEY = "requisor-ai-course-draft";
 const AI_COURSE_DRAFT_EVENT = "requisor:open-ai-course-draft";
 
 const springTab = { type: "spring" as const, stiffness: 500, damping: 35 };
+const MAX_COURSE_IMPORT_BYTES = 50 * 1024 * 1024;
+
+type ImportState =
+  | { status: "idle" }
+  | { status: "importing" }
+  | { status: "error"; message: string }
+  | { status: "summary"; summary: CanvasImportSummary };
 
 function ImportCourseButton({ onImported }: { onImported: (course: Course) => void | Promise<void> }) {
-  const { upsertCourse } = useStore();
-  const [state, setState] = useState<{ status: "idle" } | { status: "importing" } | { status: "error"; message: string }>({ status: "idle" });
+  const [state, setState] = useState<ImportState>({ status: "idle" });
   const inputRef = useRef<HTMLInputElement>(null);
+  async function applyImport(payload: unknown) {
+    const response = await fetch("/api/tutor/courses/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json().catch(() => ({})) as { course?: Course; error?: string };
+    if (!response.ok || !result.course) throw new Error(result.error || "Couldn't import the course.");
+    await onImported(result.course);
+  }
 
   async function handleFile(file: File) {
     setState({ status: "importing" });
+    const isCanvas = /\.(imscc|zip)$/i.test(file.name);
     try {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(await file.text());
-      } catch {
-        throw new Error("That doesn't look like a valid export file.");
+      if (file.size > MAX_COURSE_IMPORT_BYTES) throw new Error("Course import files must be 50 MB or smaller.");
+      if (isCanvas) {
+        const { payload, summary } = await parseCanvasCartridge(await file.arrayBuffer());
+        await applyImport(payload);
+        setState({ status: "summary", summary });
+      } else {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(await file.text());
+        } catch {
+          throw new Error("That doesn't look like a valid export file.");
+        }
+        await applyImport(parsed);
+        setState({ status: "idle" });
       }
-      const result = buildCourseFromImport(parsed);
-      if (!result.ok) throw new Error(result.error);
-      const saved = await upsertCourse(result.course);
-      const rubricEntries = Object.entries(result.rubricByLessonId);
-      if (rubricEntries.length) {
-        await Promise.all(rubricEntries.map(async ([lessonId, criteria]) => {
-          const response = await fetch("/api/tutor/assignment-submissions/rubric", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ lessonId, criteria }),
-          });
-          if (!response.ok) throw new Error("The course imported, but its grading rubric could not be copied.");
-        }));
-      }
-      setState({ status: "idle" });
-      await onImported(saved);
     } catch (error) {
       setState({ status: "error", message: error instanceof Error ? error.message : "Couldn't import the course." });
     } finally {
@@ -69,7 +79,7 @@ function ImportCourseButton({ onImported }: { onImported: (course: Course) => vo
       <input
         ref={inputRef}
         type="file"
-        accept=".json,application/json"
+        accept=".json,application/json,.imscc,.zip"
         className="sr-only"
         aria-label="Import course JSON file"
         onChange={(event) => {
@@ -86,6 +96,43 @@ function ImportCourseButton({ onImported }: { onImported: (course: Course) => vo
           {state.message}
         </p>
       )}
+       {state.status === "summary" && <CanvasImportSummaryPanel summary={state.summary} onClose={() => setState({ status: "idle" })} />}
+    </div>
+  );
+}
+
+function CanvasImportSummaryPanel({ summary, onClose }: { summary: CanvasImportSummary; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <Card className="max-h-[80vh] w-full max-w-lg space-y-3 overflow-y-auto text-left" onClick={(event) => event.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <CardTitle>Imported "{summary.courseTitle}"</CardTitle>
+          <Button size="sm" variant="ghost" onClick={onClose} aria-label="Close"><X className="h-4 w-4" /></Button>
+        </div>
+        <p className="text-sm text-zinc-700">{summary.lessonCount} lesson{summary.lessonCount === 1 ? "" : "s"} imported as a draft — review before publishing.</p>
+
+        {summary.rubricsFound.length > 0 && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <p className="text-sm font-medium text-amber-900">{summary.rubricsFound.length} rubric{summary.rubricsFound.length === 1 ? "" : "s"} found in this export</p>
+            <p className="mt-1 text-xs text-amber-800">Canvas doesn&apos;t export which assignment a rubric belongs to, so these weren&apos;t attached automatically — set them up per-lesson from the Grading rubric editor if you want them.</p>
+            <ul className="mt-2 space-y-1 text-xs text-amber-800">
+              {summary.rubricsFound.map((r, i) => <li key={i}>• {r.title} — {r.criteriaCount} criteria, {r.totalPoints} points</li>)}
+            </ul>
+          </div>
+        )}
+
+        {summary.skippedItems.length > 0 && (
+          <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+            <p className="text-sm font-medium text-zinc-800">{summary.skippedItems.length} item{summary.skippedItems.length === 1 ? "" : "s"} skipped</p>
+            <p className="mt-1 text-xs text-zinc-500">Quizzes, discussions, files, and instructor-only content have no equivalent in Requisor.</p>
+            <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto text-xs text-zinc-600">
+              {summary.skippedItems.map((item, i) => <li key={i} className="truncate">• {item.title} — {item.reason}</li>)}
+            </ul>
+          </div>
+        )}
+
+        <Button size="sm" onClick={onClose}>Done</Button>
+      </Card>
     </div>
   );
 }
@@ -758,7 +805,7 @@ function CourseEditor({ course, saving, onCancel, onSave, onAddLesson, onDeleteL
   const { state } = useStore();
   const [title, setTitle] = useState(course?.title ?? ""); const [tagline, setTagline] = useState(course?.tagline ?? ""); const [category, setCategory] = useState(course?.category ?? "product"); const [level, setLevel] = useState<Course["level"]>(course?.level ?? "Beginner"); const [tags, setTags] = useState(course?.tags.join(", ") ?? ""); const [assessment, setAssessment] = useState(course?.baseAssessment ?? ""); const [published, setPublished] = useState(course?.published ?? false);
   const submit = (event: FormEvent) => { event.preventDefault(); const cleanCategory = category.trim(); if (!title.trim() || !cleanCategory) return; void onSave(course ? { ...course, title: title.trim(), tagline: tagline.trim(), category: cleanCategory, level, tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean), baseAssessment: assessment.trim() || undefined, cover: getCategoryCover(cleanCategory), published } : { slug: title.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || `course-${Date.now()}`, title: title.trim(), tagline: tagline.trim() || "New learning path.", category: cleanCategory, level, tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean), cover: getCategoryCover(cleanCategory), addedAt: new Date().toISOString().slice(0, 10), lessons: [], baseAssessment: assessment.trim() || undefined, published }); };
-    return <Card className="space-y-4"><div className="flex items-center justify-between"><CardTitle>{course ? `Edit ${course.title}` : "New course"}</CardTitle><div className="flex gap-1">{course && <Button type="button" size="sm" variant="outline" onClick={() => window.open(`/api/tutor/courses/export?slug=${encodeURIComponent(course.slug)}`, "_blank")}><Download className="h-3.5 w-3.5" />Export</Button>}<Button size="sm" variant="ghost" onClick={onCancel}>Close</Button></div></div><form onSubmit={submit} className="grid gap-3 sm:grid-cols-2"><Field label="Course title"><Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={160} /></Field><Field label="Tagline"><Input value={tagline} onChange={(e) => setTagline(e.target.value)} required maxLength={400} /></Field><Field label="Category"><Input list="tutor-editor-category-options" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Pick an existing one or type a new one" required maxLength={40} /><datalist id="tutor-editor-category-options">{categoryOptions(state.courses).map((c) => <option key={c} value={c} />)}</datalist></Field><Field label="Level"><Select value={level} onChange={(e) => setLevel(e.target.value as Course["level"])}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></Select></Field><Field label="Tags (comma separated)"><Input value={tags} onChange={(e) => setTags(e.target.value)} /></Field><Field label="Base assessment"><Textarea value={assessment} onChange={(e) => setAssessment(e.target.value)} maxLength={5000} /></Field><label className="flex items-center gap-2 text-sm font-medium text-zinc-800 sm:col-span-2"><input type="checkbox" checked={published} onChange={(e) => setPublished(e.target.checked)} className="h-4 w-4 rounded border-zinc-300 accent-primary" />Published — visible to learners{!published && <span className="font-normal text-zinc-500">(currently a private draft)</span>}</label><div className="flex items-end gap-2"><Button type="submit" disabled={saving} className="min-h-11">{saving && <Loader2 className="h-4 w-4 animate-spin" />}Save course</Button>{course && onDeleteCourse && <Button type="button" variant="danger" disabled={saving} onClick={() => void onDeleteCourse()} aria-label={`Delete ${course.title}`}><Trash2 className="h-4 w-4" /></Button>}</div></form>
+    return <Card className="space-y-4"><div className="flex items-center justify-between"><CardTitle>{course ? `Edit ${course.title}` : "New course"}</CardTitle><div className="flex gap-1">{course && <Button type="button" size="sm" variant="outline" onClick={() => window.open(`/api/courses/export?slug=${encodeURIComponent(course.slug)}`, "_blank")}><Download className="h-3.5 w-3.5" />Export Canvas</Button>}<Button size="sm" variant="ghost" onClick={onCancel}>Close</Button></div></div><form onSubmit={submit} className="grid gap-3 sm:grid-cols-2"><Field label="Course title"><Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={160} /></Field><Field label="Tagline"><Input value={tagline} onChange={(e) => setTagline(e.target.value)} required maxLength={400} /></Field><Field label="Category"><Input list="tutor-editor-category-options" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Pick an existing one or type a new one" required maxLength={40} /><datalist id="tutor-editor-category-options">{categoryOptions(state.courses).map((c) => <option key={c} value={c} />)}</datalist></Field><Field label="Level"><Select value={level} onChange={(e) => setLevel(e.target.value as Course["level"])}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></Select></Field><Field label="Tags (comma separated)"><Input value={tags} onChange={(e) => setTags(e.target.value)} /></Field><Field label="Base assessment"><Textarea value={assessment} onChange={(e) => setAssessment(e.target.value)} maxLength={5000} /></Field><label className="flex items-center gap-2 text-sm font-medium text-zinc-800 sm:col-span-2"><input type="checkbox" checked={published} onChange={(e) => setPublished(e.target.checked)} className="h-4 w-4 rounded border-zinc-300 accent-primary" />Published — visible to learners{!published && <span className="font-normal text-zinc-500">(currently a private draft)</span>}</label><div className="flex items-end gap-2"><Button type="submit" disabled={saving} className="min-h-11">{saving && <Loader2 className="h-4 w-4 animate-spin" />}Save course</Button>{course && onDeleteCourse && <Button type="button" variant="danger" disabled={saving} onClick={() => void onDeleteCourse()} aria-label={`Delete ${course.title}`}><Trash2 className="h-4 w-4" /></Button>}</div></form>
     {course && onAddLesson && <LessonsSection course={course} saving={saving} onAddLesson={onAddLesson} onDeleteLesson={onDeleteLesson} allowUploads={allowUploads} />}
   </Card>;
 }
