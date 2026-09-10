@@ -1,6 +1,6 @@
 import { createZip, type ZipInputEntry } from "@/lib/zip-writer";
 
-export const MAX_COURSE_IMPORT_BYTES = 50 * 1024 * 1024;
+export const MAX_COURSE_IMPORT_BYTES = 200 * 1024 * 1024;
 const MAX_FOLDER_FILES = 2_000;
 
 export async function courseFolderToZip(files: FileList | File[]): Promise<ArrayBuffer> {
@@ -9,7 +9,7 @@ export async function courseFolderToZip(files: FileList | File[]): Promise<Array
   if (selected.length > MAX_FOLDER_FILES) throw new Error("The selected folder contains too many files.");
 
   const totalBytes = selected.reduce((sum, file) => sum + file.size, 0);
-  if (totalBytes > MAX_COURSE_IMPORT_BYTES) throw new Error("Course import folders must be 50 MB or smaller.");
+  if (totalBytes > MAX_COURSE_IMPORT_BYTES) throw new Error("Course import folders must be 200 MB or smaller.");
 
   const entries: ZipInputEntry[] = await Promise.all(selected.map(async (file) => {
     const relativePath = file.webkitRelativePath || file.name;

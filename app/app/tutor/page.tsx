@@ -53,7 +53,7 @@ function ImportCourseButton({ onImported }: { onImported: (course: Course) => vo
     setState({ status: "importing" });
     const isCanvas = /\.(imscc|zip)$/i.test(file.name);
     try {
-      if (file.size > MAX_COURSE_IMPORT_BYTES) throw new Error("Course import files must be 50 MB or smaller.");
+      if (file.size > MAX_COURSE_IMPORT_BYTES) throw new Error("Course import files must be 200 MB or smaller.");
       if (isCanvas) {
         const { payload, summary } = await parseCanvasCartridge(await file.arrayBuffer());
         await applyImport(payload);
