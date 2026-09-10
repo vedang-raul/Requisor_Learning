@@ -13,6 +13,7 @@ import { useStore } from "@/lib/store";
 import { Course, Lesson } from "@/lib/types";
 import { cn, extractYouTubeId, formatMinutes, youTubeThumb, isPlaceholder, PLACEHOLDER_VIDEO } from "@/lib/utils";
 import { parseCanvasCartridge, type CanvasImportSummary } from "@/lib/canvas-import";
+import { courseFolderToZip, MAX_COURSE_IMPORT_BYTES } from "@/lib/course-folder-import";
 import { Card, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
@@ -436,7 +437,7 @@ function ContentManager() {
                 </motion.div>
                 <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
                   <Button size="sm" variant="outline" onClick={() => window.open(`/api/courses/export?slug=${encodeURIComponent(course.slug)}`, "_blank")}>
-                    <Download className="h-3.5 w-3.5" />Export Canvas
+                    <Download className="h-3.5 w-3.5" />Export ZIP
                   </Button>
                   </motion.div>
                   <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
@@ -535,11 +536,11 @@ type ImportState =
   | { status: "importing" }
   | { status: "error"; message: string }
   | { status: "summary"; summary: CanvasImportSummary };
-const MAX_COURSE_IMPORT_BYTES = 50 * 1024 * 1024;
 
     function ImportCourseButton({ onImported }: { onImported: (course: Course) => void | Promise<void> }) {
       const [state, setState] = useState<ImportState>({ status: "idle" });
       const inputRef = useRef<HTMLInputElement>(null);
+      const folderInputRef = useRef<HTMLInputElement>(null);
 
       async function applyImport(payload: unknown) {
         const response = await fetch("/api/tutor/courses/import", {
@@ -579,6 +580,20 @@ const MAX_COURSE_IMPORT_BYTES = 50 * 1024 * 1024;
         }
       }
 
+      async function handleFolder(files: FileList) {
+        setState({ status: "importing" });
+        try {
+          const archive = await courseFolderToZip(files);
+          const { payload, summary } = await parseCanvasCartridge(archive);
+          await applyImport(payload);
+          setState({ status: "summary", summary });
+        } catch (error) {
+          setState({ status: "error", message: error instanceof Error ? error.message : "Couldn't import the course folder." });
+        } finally {
+          if (folderInputRef.current) folderInputRef.current.value = "";
+        }
+      }
+
       return (
         <div className="relative">
           <input
@@ -588,10 +603,23 @@ const MAX_COURSE_IMPORT_BYTES = 50 * 1024 * 1024;
             className="sr-only"
             onChange={(event) => { const file = event.target.files?.[0]; if (file) void handleFile(file); }}
           />
-          <Button size="sm" variant="outline" disabled={state.status === "importing"} onClick={() => inputRef.current?.click()}>
-            {state.status === "importing" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-            Import
-          </Button>
+          <input
+            ref={folderInputRef}
+            type="file"
+            className="sr-only"
+            aria-label="Import extracted course folder"
+            {...({ webkitdirectory: "", directory: "" } as React.InputHTMLAttributes<HTMLInputElement>)}
+            onChange={(event) => { if (event.target.files?.length) void handleFolder(event.target.files); }}
+          />
+          <div className="flex gap-1">
+            <Button size="sm" variant="outline" disabled={state.status === "importing"} onClick={() => inputRef.current?.click()}>
+              {state.status === "importing" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+              Import file
+            </Button>
+            <Button size="sm" variant="outline" disabled={state.status === "importing"} onClick={() => folderInputRef.current?.click()}>
+              Import folder
+            </Button>
+          </div>
           {state.status === "error" && (
             <p role="alert" className="absolute right-0 top-full z-10 mt-1 w-64 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-700">
               {state.message}
