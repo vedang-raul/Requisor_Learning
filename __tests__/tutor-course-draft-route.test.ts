@@ -96,7 +96,7 @@ describe("POST /api/tutor/course-draft", () => {
     }));
   });
 
-  it("allows only server-authenticated tutors", async () => {
+  it("allows only server-authenticated tutors and admins", async () => {
     mockSession.mockResolvedValue({ user: { id: "4", email: "learner@example.test", role: "employee" } });
     const learner = await POST(request({ courseBrief }));
     expect(learner.status).toBe(403);
@@ -104,8 +104,10 @@ describe("POST /api/tutor/course-draft", () => {
 
     mockSession.mockResolvedValue({ user: { id: "1", email: "admin@example.test", role: "admin" } });
     const admin = await POST(request({ courseBrief }));
-    expect(admin.status).toBe(403);
-    expect(global.fetch).not.toHaveBeenCalled();
+    const data = await admin.json();
+    expect(admin.status).toBe(200);
+    expect(data.course.published).toBe(false);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
   it("returns a validated unpublished draft without persisting it", async () => {

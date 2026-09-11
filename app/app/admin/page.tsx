@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState , useRef} from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BarChart3, BookPlus, Calendar, Check, ChevronDown, Download, Users, GraduationCap,
@@ -23,6 +23,8 @@ import { TeamInsights } from "@/components/team-insights";
 import { getCategoryCover, DEFAULT_CATEGORIES } from "@/components/category-icon";
 
 type TabKey = "analytics" | "content" | "users" | "reviews" | "bugs";
+const AI_COURSE_DRAFT_KEY = "requisor-ai-course-draft";
+const AI_COURSE_DRAFT_EVENT = "requisor:open-ai-course-draft";
 
 interface AnalyticsUser {
   id: number;
@@ -62,6 +64,7 @@ export default function AdminPage() {
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     if (hydrated && state.user && state.user.role !== "admin") router.replace("/app/dashboard/");
@@ -79,6 +82,10 @@ export default function AdminPage() {
   useEffect(() => {
     if (hydrated && state.user?.role === "admin") loadAnalytics();
   }, [hydrated, state.user]);
+
+  useEffect(() => {
+    if (searchParams.get("aiCourseDraft") === "1") setTab("content");
+  }, [searchParams]);
 
   if (!hydrated || !state.user || state.user.role !== "admin") return null;
 
@@ -376,8 +383,36 @@ function ContentManager() {
   const [creatingLesson, setCreatingLesson] = useState(false);
   const [creatingCourse, setCreatingCourse] = useState(false);
   const [contentError, setContentError] = useState<string | null>(null);
-  const course = state.courses.find((c) => c.slug === selected);
+  const [aiDraft, setAiDraft] = useState<Course | null>(null);
+  const course = aiDraft ?? state.courses.find((c) => c.slug === selected);
   const reportFailure = (error: unknown) => setContentError(error instanceof Error ? error.message : "The catalog change couldn't be saved.");
+
+  useEffect(() => {
+    const openDraft = (value: unknown) => {
+      try {
+        const draft = value as Course;
+        if (!draft || typeof draft !== "object" || !draft.slug || !Array.isArray(draft.lessons)) throw new Error("invalid");
+        setAiDraft({ ...draft, published: false });
+        setSelected(draft.slug);
+        setCreatingCourse(false);
+        setCreatingLesson(false);
+        setEditingLesson(null);
+        sessionStorage.removeItem(AI_COURSE_DRAFT_KEY);
+      } catch {
+        setContentError("The AI course draft could not be opened. Please generate it again.");
+      }
+    };
+    const onDraft = (event: Event) => openDraft((event as CustomEvent<unknown>).detail);
+    window.addEventListener(AI_COURSE_DRAFT_EVENT, onDraft);
+    try {
+      const stored = sessionStorage.getItem(AI_COURSE_DRAFT_KEY);
+      if (stored) openDraft(JSON.parse(stored));
+    } catch {
+      sessionStorage.removeItem(AI_COURSE_DRAFT_KEY);
+      setContentError("The AI course draft could not be opened. Please generate it again.");
+    }
+    return () => window.removeEventListener(AI_COURSE_DRAFT_EVENT, onDraft);
+  }, []);
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[300px_1fr]">
@@ -386,9 +421,9 @@ function ContentManager() {
         <div className="flex items-center justify-between">
           <CardTitle>Courses</CardTitle>
           <div className="flex gap-1.5">
-            <ImportCourseButton onImported={(imported) => setSelected(imported.slug)} />
+            <ImportCourseButton onImported={(imported) => { setAiDraft(null); setSelected(imported.slug); }} />
           <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}>
-              <Button size="sm" variant="outline" onClick={() => setCreatingCourse(true)}><Plus className="h-3.5 w-3.5" />New</Button>
+              <Button size="sm" variant="outline" onClick={() => { setAiDraft(null); setCreatingCourse(true); }}><Plus className="h-3.5 w-3.5" />New</Button>
             </motion.div>
           </div>
         </div>
@@ -402,7 +437,7 @@ function ContentManager() {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.04 }}
                 whileHover={{ x: active ? 0 : 2 }}
-                onClick={() => setSelected(c.slug)}
+                onClick={() => { setAiDraft(null); setSelected(c.slug); }}
                 className={cn(
                   "focus-ring relative flex w-full items-center gap-3 overflow-hidden rounded-xl border p-3 text-left transition-colors",
                   active ? "border-primary/50 bg-primary/10" : "border-zinc-100 bg-card/60 hover:border-zinc-300"
@@ -425,12 +460,28 @@ function ContentManager() {
       <div className="space-y-3">
         {course ? (
           <>
+            {aiDraft && (
+              <div role="status" className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-sm text-violet-900">
+                <strong>AI-generated draft:</strong> Review the course and lessons below. It has not been saved or published.
+              </div>
+            )}
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <CardTitle>{course.title} — Lessons</CardTitle>
-                <CardDescription className="text-xs">Paste a YouTube URL on any lesson; thumbnail, player and title wire up automatically.</CardDescription>
+                <CardDescription className="text-xs">
+                  {aiDraft ? "Review the generated lessons, then save the draft when it is ready." : "Paste a YouTube URL on any lesson; thumbnail, player and title wire up automatically."}
+                </CardDescription>
               </div>
               <div className="flex gap-2">
+                {aiDraft ? (
+                  <>
+                    <Button size="sm" onClick={async () => { try { const saved = await upsertCourse(aiDraft); setAiDraft(null); setSelected(saved.slug); } catch (error) { reportFailure(error); } }}>
+                      <Check className="h-3.5 w-3.5" />Save draft
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => { setAiDraft(null); setSelected(state.courses[0]?.slug ?? null); }}>Discard</Button>
+                  </>
+                ) : (
+                  <>
                 <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
                   <Button size="sm" onClick={() => { setCreatingLesson(true); setEditingLesson(null); }}><BookPlus className="h-3.5 w-3.5" />Add lesson</Button>
                 </motion.div>
@@ -444,9 +495,11 @@ function ContentManager() {
                     <Trash2 className="h-3.5 w-3.5" />Delete course
                   </Button>
                 </motion.div>
+                  </>
+                )}
               </div>
             </div>
-            <AnimatePresence>
+            {!aiDraft && <AnimatePresence>
               {(creatingLesson || editingLesson) && (
                 <LessonForm
                   key={editingLesson?.id ?? "new"}
@@ -457,7 +510,7 @@ function ContentManager() {
                   onSave={async (l) => { try { await upsertLesson(course.slug, l); setCreatingLesson(false); setEditingLesson(null); } catch (error) { reportFailure(error); } }}
                 />
               )}
-            </AnimatePresence>
+            </AnimatePresence>}
             <div className="space-y-2">
               <AnimatePresence initial={false}>
                 {course.lessons.map((l, i) => (
@@ -492,13 +545,13 @@ function ContentManager() {
                       </p>
                     </div>
                     {l.format === "reading" ? <Tag tone="accent">Reading</Tag> : isPlaceholder(l.youtubeId) && <Tag tone="warning">Needs video</Tag>}
-                    {l.format !== "reading" && !isPlaceholder(l.youtubeId) && <NotifyButton course={course} lesson={l} />}
-                    <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
+                    {!aiDraft && l.format !== "reading" && !isPlaceholder(l.youtubeId) && <NotifyButton course={course} lesson={l} />}
+                    {!aiDraft && <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
                       <Button size="icon" variant="ghost" aria-label={`Edit ${l.title}`} onClick={() => { setEditingLesson(l); setCreatingLesson(false); }}><Pencil className="h-4 w-4" /></Button>
-                    </motion.div>
-                    <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
+                    </motion.div>}
+                    {!aiDraft && <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
                       <Button size="icon" variant="ghost" aria-label={`Delete ${l.title}`} onClick={async () => { if (confirm(`Delete lesson "${l.title}"?`)) { try { await deleteLesson(course.slug, l.id); } catch (error) { reportFailure(error); } } }}><Trash2 className="h-4 w-4 text-red-600" /></Button>
-                    </motion.div>
+                    </motion.div>}
                   </motion.div>
                 ))}
               </AnimatePresence>

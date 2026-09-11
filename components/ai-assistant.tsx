@@ -584,7 +584,7 @@ export function AiAssistant() {
     setCourseInterviewAnswers([]);
   }
   function startCourseInterview() {
-    if (state.user?.role !== "tutor" || draftLoading || streaming) return;
+    if (!isTutorMode || draftLoading || streaming) return;
     cancelActiveRequest();
     cancelDraftGeneration();
     interviewSubmittingRef.current = false;
@@ -606,7 +606,7 @@ export function AiAssistant() {
     setDraftLoading(false);
   }
   async function generateCourseDraft(answers: string[]) {
-    if (state.user?.role !== "tutor" || draftLoading || streaming) return;
+    if (!isTutorMode || draftLoading || streaming) return;
     if (answers.length !== COURSE_INTERVIEW_QUESTIONS.length) return;
     const lessonCount = Number(answers[5].match(/\d+/)?.[0]);
     if (!Number.isInteger(lessonCount) || lessonCount < 3 || lessonCount > 12) return;
@@ -667,7 +667,7 @@ export function AiAssistant() {
     }
     window.dispatchEvent(new CustomEvent(COURSE_DRAFT_EVENT, { detail: courseDraft }));
     closePanel();
-    router.push("/app/tutor/?aiCourseDraft=1");
+    router.push(state.user?.role === "admin" ? "/app/admin/?aiCourseDraft=1" : "/app/tutor/?aiCourseDraft=1");
   }
   function handleMicClick() {
     if (voice.isListening) {
@@ -845,7 +845,7 @@ export function AiAssistant() {
                     )}
                   </div>
                   <p>After the final answer, I’ll create an unpublished draft for you to review. Nothing is saved automatically.</p>
-                  {state.user?.role === "tutor" && (
+                  {isTutorMode && (
                     <button type="button" onClick={startCourseInterview} disabled={draftLoading || streaming} className="focus-ring flex w-full items-center justify-center gap-1.5 rounded-lg bg-amber-900 px-3 py-2 font-semibold text-white disabled:opacity-60">
                       <BookPlus className="h-3.5 w-3.5" />
                       {courseInterviewStep === null ? "Start course interview" : "Restart course interview"}
