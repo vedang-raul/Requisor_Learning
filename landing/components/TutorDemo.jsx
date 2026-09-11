@@ -153,9 +153,9 @@ export default function TutorDemo() {
   const [messages, setMessages] = useState([])
   const [typing, setTyping] = useState(false)
   const [draft, setDraft] = useState('')
-  const [personaId, setPersonaId] = useState(() => readLocal(PERSONA_KEY, DEFAULT_PERSONA_ID))
-  const [language, setLanguage] = useState(() => readLocal(LANGUAGE_KEY, ''))
-  const [muted, setMuted] = useState(() => readLocal(MUTE_KEY, 'false') === 'true')
+  const [personaId, setPersonaId] = useState(DEFAULT_PERSONA_ID)
+  const [language, setLanguage] = useState('')
+  const [muted, setMuted] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [settingsPos, setSettingsPos] = useState({ top: 0, right: 0 })
   const settingsBtnRef = useRef(null)
@@ -164,6 +164,14 @@ export default function TutorDemo() {
   const historyRef = useRef([])
   const cannedRef = useRef(0)
   const voice = useVoice()
+
+  // The initial HTML must match on the server and browser. Browser-only saved
+  // choices are restored after hydration so they cannot change first render.
+  useEffect(() => {
+    setPersonaId(readLocal(PERSONA_KEY, DEFAULT_PERSONA_ID))
+    setLanguage(readLocal(LANGUAGE_KEY, ''))
+    setMuted(readLocal(MUTE_KEY, 'false') === 'true')
+  }, [])
 
   function toggleSettings() {
     if (!showSettings && settingsBtnRef.current) {
