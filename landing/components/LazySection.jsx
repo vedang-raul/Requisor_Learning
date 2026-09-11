@@ -36,5 +36,5 @@ export default function LazySection({ id, minHeight = 400, children }) {
 }
 
 function Skeleton({ minHeight }) {
-  return <div aria-hidden="true" className="section-skeleton bg-paper" style={{ minHeight }} />
+  return <div aria-hidden="true" className="section-skeleton" style={{ minHeight, background: '#060708' }} />
 }
