@@ -93,8 +93,11 @@
   z-index: 100;
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
-  background: rgba(6, 7, 8, .6);
-  border-bottom: 1px solid var(--lineSoft);
+  background:
+    linear-gradient(90deg, rgba(125, 243, 216, .045), transparent 34%),
+    rgba(12, 14, 15, .96);
+  border-bottom: 1px solid rgba(125, 243, 216, .13);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, .3);
 }
 .navIn {
   display: flex;
@@ -125,8 +128,34 @@
   font-size: 14px;
   color: var(--muted);
 }
-.navLinks a:hover {
+.navLinks a {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  white-space: nowrap;
+  transition: color .18s ease;
+}
+.navLinks a::after {
+  position: absolute;
+  right: 0;
+  bottom: 4px;
+  left: 0;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--pulse);
+  content: "";
+  opacity: 0;
+  transform: scaleX(.45);
+  transition: opacity .18s ease, transform .18s ease;
+}
+.navLinks a:hover,
+.navLinks .navLinkActive {
   color: var(--text);
+}
+.navLinks .navLinkActive::after {
+  opacity: 1;
+  transform: scaleX(1);
 }
 
 /* hero */
@@ -527,8 +556,30 @@
     border-left: none;
     padding-left: 0;
   }
-  .navLinks a {
+  .nav {
+    overflow: visible;
+  }
+  .navIn {
+    height: 64px;
+  }
+  .navLinks {
+    position: absolute;
+    top: 64px;
+    right: 0;
+    left: 0;
+    justify-content: flex-start;
+    gap: 24px;
+    overflow-x: auto;
+    padding: 0 28px;
+    background: rgba(12, 14, 15, .98);
+    border-bottom: 1px solid var(--lineSoft);
+    scrollbar-width: none;
+  }
+  .navLinks::-webkit-scrollbar {
     display: none;
+  }
+  .navLinks a {
+    min-height: 46px;
   }
   .section, .tutorsSection {
     padding: 100px 0;
@@ -543,22 +594,20 @@
     padding: 0 20px;
   }
   .navIn {
-    height: 58px;
+    height: 60px;
     gap: 14px;
   }
   .wordmark small {
     display: none;
   }
   .navLinks {
-    gap: 0;
-  }
-  .navLinks .btn {
-    min-height: 44px;
-    padding: 13px 20px;
+    top: 60px;
+    gap: 22px;
+    padding: 0 20px;
   }
   .hero {
     min-height: auto;
-    padding: 128px 0 90px;
+    padding: 170px 0 90px;
   }
   .heroTitle {
     font-size: clamp(43px, 13vw, 62px);
