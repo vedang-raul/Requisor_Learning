@@ -62,12 +62,13 @@ export default function Tutors() {
               <Reveal key={tutor.id} delay={tIdx * 90} as="div">
                 <div className="rounded-[22px] border border-alma-line bg-white/[0.03] p-5 transition-colors duration-300 hover:border-pulse/30 sm:p-[30px]">
                   <div className="mb-5 flex items-center gap-4">
-                    <span
-                      className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-pulse to-pulse-deep text-lg font-bold text-[#062017] shadow-[0_10px_24px_-10px_rgba(125,243,216,.4)]"
-                      aria-hidden="true"
-                    >
-                      {tutor.initials}
-                    </span>
+                    <img
+                      src={tutor.imageSrc}
+                      alt={`${tutor.name}, ${tutor.role}`}
+                      width="56"
+                      height="56"
+                      className="size-14 shrink-0 rounded-2xl border border-pulse/25 object-cover shadow-[0_10px_24px_-10px_rgba(125,243,216,.4)]"
+                    />
                     <div className="min-w-0">
                       <h3 className="text-[20px] leading-[1.1] tracking-[-.02em] text-alma-text" style={{ fontFamily: 'Inter, sans-serif', fontWeight: 500 }}>{tutor.name}</h3>
                       <p className="font-mono text-[12px] uppercase tracking-[.08em] text-pulse">{tutor.role}</p>
