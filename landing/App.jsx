@@ -20,31 +20,29 @@ export default function App() {
   return (
     <div className={`landing-page ${styles.root}`}>
       <AlmaNav />
-      <main>
-        <AlmaHero />
-        <AlmaStrip />
-        <LazySection minHeight={420}>
-          <AlmaDoctrine />
-        </LazySection>
-        <LazySection minHeight={520}>
-          <AlmaPipeline />
-        </LazySection>
-        <LazySection minHeight={560}>
-          <AlmaIndustry />
-        </LazySection>
-        <LazySection minHeight={560}>
-          <AlmaUniversities />
-        </LazySection>
-        <LazySection minHeight={420}>
-          <Tutors />
-        </LazySection>
-        <LazySection minHeight={560}>
-          <AlmaCredential />
-        </LazySection>
-        <LazySection minHeight={420}>
-          <AlmaFinale />
-        </LazySection>
-      </main>
+      <AlmaHero />
+      <AlmaStrip />
+      <LazySection minHeight={420}>
+        <AlmaDoctrine />
+      </LazySection>
+      <LazySection minHeight={520}>
+        <AlmaPipeline />
+      </LazySection>
+      <LazySection minHeight={560}>
+        <AlmaIndustry />
+      </LazySection>
+      <LazySection minHeight={560}>
+        <AlmaUniversities />
+      </LazySection>
+      <LazySection minHeight={420}>
+        <Tutors />
+      </LazySection>
+      <LazySection minHeight={560}>
+        <AlmaCredential />
+      </LazySection>
+      <LazySection minHeight={420}>
+        <AlmaFinale />
+      </LazySection>
       <Footer />
     </div>
   )
