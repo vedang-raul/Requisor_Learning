@@ -6,7 +6,7 @@ const ticks = masteryTicks(120, 120, 88, 100, 24, 9)
 
 export default function AlmaCredential() {
   return (
-    <section id="credential" className={`${styles.section} ${styles.credential}`}>
+    <section className={`${styles.section} ${styles.credential}`}>
       <div className={styles.wrap}>
         <Reveal>
           <svg className={styles.ringBig} viewBox="0 0 240 240" aria-label="Alma mastery ring">

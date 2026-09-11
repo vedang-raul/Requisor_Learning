@@ -25,19 +25,19 @@ export default function App() {
       <LazySection minHeight={420}>
         <AlmaDoctrine />
       </LazySection>
-      <LazySection minHeight={520}>
+        <LazySection id="how" minHeight={520}>
         <AlmaPipeline />
       </LazySection>
-      <LazySection minHeight={560}>
+        <LazySection id="industry" minHeight={560}>
         <AlmaIndustry />
       </LazySection>
-      <LazySection minHeight={560}>
+        <LazySection id="universities" minHeight={560}>
         <AlmaUniversities />
       </LazySection>
-      <LazySection minHeight={420}>
+        <LazySection id="tutors" minHeight={420}>
         <Tutors />
       </LazySection>
-      <LazySection minHeight={560}>
+        <LazySection id="credential" minHeight={560}>
         <AlmaCredential />
       </LazySection>
       <LazySection minHeight={420}>

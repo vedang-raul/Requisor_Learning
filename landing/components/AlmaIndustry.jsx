@@ -28,7 +28,7 @@ export default function AlmaIndustry() {
   const d = INDUSTRIES[active]
 
   return (
-    <section id="industry" className={`${styles.section} ${styles.industry}`}>
+    <section className={`${styles.section} ${styles.industry}`}>
       <div className={styles.wrap}>
         <Reveal as="h2">The same course reads differently to a banker and a nurse.</Reveal>
         <Reveal as="p" className={styles.industryIntro}>

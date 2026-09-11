@@ -37,7 +37,7 @@ export default function Tutors() {
   }, [])
 
   return (
-    <section id="tutors" className={styles.tutorsSection}>
+    <section className={styles.tutorsSection}>
       <div className={styles.wrap}>
         <Reveal className="mb-14">
           <span className="mb-4 inline-flex items-center gap-2.5 font-mono text-[12px] uppercase tracking-[.14em] text-pulse">

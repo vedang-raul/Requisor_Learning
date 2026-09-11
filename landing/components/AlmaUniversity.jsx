@@ -9,7 +9,7 @@ const rows = [
 
 export default function AlmaUniversities() {
   return (
-    <section id="universities" className={styles.section}>
+    <section className={styles.section}>
       <div className={styles.wrap}>
         <Reveal as="div" className={styles.uniPanel}>
           <h2>Give every one of your students a personal tutor.</h2>

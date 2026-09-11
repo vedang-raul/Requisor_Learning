@@ -59,6 +59,16 @@
   overflow-x: clip;
 }
 
+.landing-page .landing-anchor {
+  scroll-margin-top: 76px;
+}
+
+@media (max-width: 900px) {
+  .landing-page .landing-anchor {
+    scroll-margin-top: 116px;
+  }
+}
+
 .landing-page .font-display,
 .landing-page .font-mono {
   font-family: inherit;

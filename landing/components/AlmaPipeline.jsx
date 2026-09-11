@@ -26,7 +26,7 @@ const stages = [
 
 export default function AlmaPipeline() {
   return (
-    <section id="how" className={`${styles.section} ${styles.pipeline}`}>
+    <section className={`${styles.section} ${styles.pipeline}`}>
       <div className={styles.wrap}>
         <Reveal as="h2">Four moves, repeated until it&apos;s yours.</Reveal>
         <div className={styles.rail}>
