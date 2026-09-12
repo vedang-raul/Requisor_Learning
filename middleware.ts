@@ -38,7 +38,7 @@ export async function middleware(req: NextRequest) {
   const csp = [
     "default-src 'self'",
     // The Cloudflare host is needed for the browser-loaded Turnstile API.
-    `script-src 'self' 'nonce-${nonce}' https://challenges.cloudflare.com`,
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://challenges.cloudflare.com`,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "img-src 'self' data: blob: https:",
     // challenges.cloudflare.com: Turnstile widget makes API calls from the page

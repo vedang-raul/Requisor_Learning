@@ -21,7 +21,7 @@ interface YTPlayerOptions {
   playerVars?: Record<string, number | string>;
   events?: {
     onReady?: () => void;
-    onError?: () => void;
+    onError?: (e: { data: number }) => void;
     onStateChange?: (e: { data: number }) => void;
   };
 }
@@ -70,6 +70,7 @@ export function VideoEmbed({
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YTPlayerInstance | null>(null);
   const [playerStatus, setPlayerStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [playerErrorCode, setPlayerErrorCode] = useState<number | null>(null);
   const normalizedVideoId = extractYouTubeId(youtubeId);
   // Keep onEnded in a ref so the effect doesn't need it as a dependency
   // (avoids destroying/recreating the player when the callback identity changes).
@@ -80,6 +81,7 @@ export function VideoEmbed({
     if (format !== "video" || !normalizedVideoId) return;
     let cancelled = false;
     setPlayerStatus("loading");
+    setPlayerErrorCode(null);
     const timeout = window.setTimeout(() => {
       if (!cancelled) setPlayerStatus("error");
     }, 10_000);
@@ -95,15 +97,28 @@ export function VideoEmbed({
         videoId: normalizedVideoId,
         width: "100%",
         height: "100%",
-        playerVars: { rel: 0, modestbranding: 1 },
+        playerVars: {
+          rel: 0,
+          modestbranding: 1,
+          playsinline: 1,
+          enablejsapi: 1,
+          // YouTube error 153 occurs when an IFrame API client does not
+          // identify its parent origin. This is especially common behind
+          // hosted preview proxies, where relying on the Referer is brittle.
+          origin: window.location.origin,
+        },
         events: {
           onReady: () => {
             window.clearTimeout(timeout);
             if (!cancelled) setPlayerStatus("ready");
           },
-          onError: () => {
+          onError: (event) => {
             window.clearTimeout(timeout);
-            if (!cancelled) setPlayerStatus("error");
+            if (!cancelled) {
+              console.warn("YouTube player error", { videoId: normalizedVideoId, code: event.data });
+              setPlayerErrorCode(event.data);
+              setPlayerStatus("error");
+            }
           },
           onStateChange: (e) => {
             if (e.data === window.YT.PlayerState.ENDED) {
@@ -206,7 +221,11 @@ export function VideoEmbed({
               <>
                 <MonitorPlay className="h-8 w-8 text-primary" aria-hidden="true" />
                 <p className="text-sm font-medium">This video could not be embedded.</p>
-                <p className="text-xs text-zinc-400">It may be private or have embedding disabled.</p>
+                <p className="text-xs text-zinc-400">
+                  {playerErrorCode === 101 || playerErrorCode === 150
+                    ? "The video owner has disabled playback on other websites."
+                    : "Try opening it on YouTube below, or ask the tutor to check the video link."}
+                </p>
               </>
             )}
           </div>

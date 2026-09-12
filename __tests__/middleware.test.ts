@@ -65,3 +65,14 @@ describe("embeddable protected files", () => {
     expect(csp).not.toContain("frame-ancestors 'none'");
   });
 });
+
+describe("content security policy", () => {
+  it("allows nonce-trusted scripts to load the YouTube IFrame API", async () => {
+    const response = await middleware(request("/app/learn/"));
+    const csp = response.headers.get("content-security-policy");
+
+    expect(csp).toMatch(/script-src[^;]*'nonce-[^']+'/);
+    expect(csp).toContain("'strict-dynamic'");
+    expect(csp).toContain("frame-src 'self' blob: https://www.youtube.com");
+  });
+});
