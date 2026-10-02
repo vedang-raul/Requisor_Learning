@@ -44,7 +44,7 @@ describe("demo edit result", () => {
   it("uses the recording's real length and marks everything as a sample", () => {
     const result = buildDemoEditResult("Prompt Chaining", 600);
     expect(result).toMatchObject({ demo: true, originalSeconds: 600, downloadUrl: null, subtitleLanguage: "English" });
-    expect(result.editedSeconds).toBe(600 - result.secondsRemoved);
+    expect(result.editedSeconds).toBe(600 - (result.secondsRemoved ?? 0));
     expect(result.editedSeconds).toBeLessThan(600);
     expect(result.subtitlePreview[0].text).toContain("Prompt Chaining");
     expect(result.vtt.startsWith("WEBVTT")).toBe(true);

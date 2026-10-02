@@ -5,9 +5,31 @@ declare global {
   var __pgPool: Pool | undefined;
 }
 
+/**
+ * Hosted Postgres (Supabase) needs TLS. Set DATABASE_SSL=require to turn it
+ * on. Supabase's certificates are signed by its own CA, which Node doesn't
+ * trust by default, so the connection is encrypted but the certificate is only
+ * verified when DATABASE_CA_CERT holds that CA (paste the PEM; "\n" allowed).
+ * Unset (local Docker, Replit) leaves the connection string in charge.
+ */
+function sslConfig(): { ssl?: { rejectUnauthorized: boolean; ca?: string } } {
+  const mode = (process.env.DATABASE_SSL ?? "").toLowerCase();
+  if (!mode || mode === "off" || mode === "false") return {};
+  const ca = process.env.DATABASE_CA_CERT?.replace(/\\n/g, "\n");
+  return { ssl: ca ? { ca, rejectUnauthorized: true } : { rejectUnauthorized: false } };
+}
+
+/** With explicit SSL settings, an sslmode in the URL would override them. */
+function connectionString(): string | undefined {
+  const url = process.env.DATABASE_URL;
+  if (!url || !sslConfig().ssl) return url;
+  return url.replace(/([?&])sslmode=[^&]*&?/i, "$1").replace(/[?&]$/, "");
+}
+
 function makePool(): Pool {
   const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: connectionString(),
+    ...sslConfig(),
     // Evict idle connections after 30 s to avoid exhausting the server-side
     // limit when traffic temporarily subsides.
     max: Number(process.env.PG_POOL_MAX) || 20,

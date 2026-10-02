@@ -1,7 +1,14 @@
-import { ReplitConnectors } from "@replit/connectors-sdk";
 import { getBaseUrl } from "./base-url";
 
-const FROM = `Requisor Learning <support@requisor.io>`;
+/**
+ * Outgoing email. Three transports, picked in this order:
+ *  1. Resend (https://resend.com) when RESEND_API_KEY is set — use this on
+ *     Render or any host other than Replit. EMAIL_FROM must be an address on
+ *     a domain verified in Resend.
+ *  2. The Gmail connector, inside a Repl.
+ *  3. Local development: nothing is sent; the email's links are logged.
+ */
+const FROM = process.env.EMAIL_FROM || `Requisor Learning <support@requisor.io>`;
 
 function base64Url(input: string): string {
   return Buffer.from(input).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -10,8 +17,22 @@ function base64Url(input: string): string {
 /** The Gmail connector only works inside a Repl, which provides one of these tokens. */
 const hasReplitIdentity = Boolean(process.env.REPL_IDENTITY || process.env.WEB_REPL_RENEWAL);
 
-/** Send an HTML email from support@requisor.io via the connected Gmail account. */
+async function sendWithResend(to: string, subject: string, html: string): Promise<void> {
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ from: FROM, to: [to], subject, html }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Resend send failed (${res.status}): ${text.slice(0, 500)}`);
+  }
+}
+
+/** Send an HTML email (see the transports above). */
 export async function sendEmail(to: string, subject: string, html: string): Promise<void> {
+  if (process.env.RESEND_API_KEY) return sendWithResend(to, subject, html);
+
   // Local development outside Replit: there is no mail transport, so print the
   // email (and its links, e.g. verification/reset) to the server console instead.
   if (process.env.NODE_ENV !== "production" && !hasReplitIdentity) {
@@ -20,6 +41,11 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
     return;
   }
 
+  if (!hasReplitIdentity) {
+    throw new Error("No email transport is configured: set RESEND_API_KEY (and EMAIL_FROM).");
+  }
+  // Loaded on demand so hosts other than Replit never touch the connector SDK.
+  const { ReplitConnectors } = await import("@replit/connectors-sdk");
   const connectors = new ReplitConnectors();
   const mime = [
     `From: ${FROM}`,

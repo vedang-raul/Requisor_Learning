@@ -10,7 +10,11 @@
     "lint": "next lint",
     "test": "jest --runInBand",
     "test:e2e": "bash scripts/run-e2e.sh",
-    "prebuild": "rm -rf .next"
+    "prebuild": "rm -rf .next",
+    "db:migrate": "node scripts/migrate.js"
+  },
+  "engines": {
+    "node": ">=20.9"
   },
   "dependencies": {
     "@marsidev/react-turnstile": "^1.6.0",

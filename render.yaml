@@ -1,0 +1,32 @@
+# Render Blueprint: one Node web service running the Next.js app.
+# The database lives on Supabase (see DEPLOY.md), so no Render database here.
+# Values marked "sync: false" are secrets you type into the Render dashboard.
+services:
+  - type: web
+    name: requisor-learning
+    runtime: node
+    plan: starter # the free plan also works, but sleeps when idle
+    # --include=dev: the build needs TypeScript and Tailwind, which are dev dependencies.
+    # The schema migration runs on every deploy; it is safe to repeat.
+    buildCommand: npm ci --include=dev && npm run db:migrate && npm run build
+    startCommand: npm start
+    healthCheckPath: /login/
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL # Supabase "Session pooler" connection string
+        sync: false
+      - key: DATABASE_SSL
+        value: require
+      - key: PG_POOL_MAX # stay under the Supabase pooler's client limit
+        value: "10"
+      - key: NEXTAUTH_SECRET
+        generateValue: true
+      - key: XAI_API_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM # e.g. Requisor Learning <support@your-verified-domain>
+        sync: false
+      - key: AUPHONIC_API_KEY
+        sync: false
