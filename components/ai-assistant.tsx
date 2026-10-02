@@ -13,7 +13,17 @@ import { PersonaAvatar } from "@/components/persona-avatar";
 import { AI_GUIDE_PREFERENCES_UPDATED, getPersona } from "@/lib/personas";
 import { trackEvent } from "@/lib/analytics";
 import type { Course } from "@/lib/types";
-type ChatMessage = { role: "user" | "assistant"; content: string };
+import { splitActionFrames, type AssistantAction } from "@/lib/assistant-actions";
+import { AssistantActionCard, type ActionOutcome } from "@/components/assistant-action-card";
+/** An assistant reply may carry actions the user can confirm (see lib/assistant-actions.ts). */
+type ChatMessage = { role: "user" | "assistant"; content: string; actions?: AssistantAction[] };
+
+/** What the model is told happened to its proposals, so the conversation stays accurate. */
+function describeOutcome(action: AssistantAction, outcome: ActionOutcome | undefined): string {
+  const what = action.kind.replace(/_/g, " ");
+  if (!outcome) return `[Proposed ${what}: not confirmed yet]`;
+  return outcome.status === "done" ? `[User confirmed ${what}: ${outcome.message}]` : `[User cancelled ${what}]`;
+}
 const COURSE_INTERVIEW_QUESTIONS = [
   "What topic should this course teach?",
   "Who is the course for? Describe the target learners.",
@@ -23,16 +33,20 @@ const COURSE_INTERVIEW_QUESTIONS = [
   "How many lessons should the course have? Choose between 3 and 12.",
 ] as const;
 const LEARNER_QUICK_PROMPTS = [
-  { icon: Compass, label: "Recommend a course for my background" },
   { icon: Compass, label: "What should I learn next?" },
   { icon: ListChecks, label: "Summarize my progress" },
-  { icon: TrendingUp, label: "How am I doing overall?" },
+  { icon: Sparkles, label: "Give me a practice assignment" },
+  { icon: Check, label: "Quiz me on a lesson" },
+  { icon: TrendingUp, label: "What grades did I get?" },
+  { icon: Compass, label: "Recommend a course for my background" },
 ];
 const TUTOR_QUICK_PROMPTS = [
   { icon: Sparkles, label: "Design a course from my topic" },
-  { icon: ListChecks, label: "Suggest modules and lessons" },
-  { icon: Compass, label: "Improve my course structure" },
+  { icon: ListChecks, label: "What needs grading?" },
+  { icon: BookPlus, label: "Add a lesson to one of my courses" },
+  { icon: Compass, label: "Publish or unpublish a course or lesson" },
   { icon: TrendingUp, label: "Create activities and assessments" },
+  { icon: Check, label: "Check my video edits" },
 ];
 /** Best-effort match from a preferred language code to a Web Speech voice lang prefix. */
 const LANGUAGE_VOICE_PREFIXES: Record<string, string[]> = {
@@ -234,6 +248,26 @@ export function AiAssistant() {
   const [courseInterviewStep, setCourseInterviewStep] = useState<number | null>(null);
   const [courseInterviewAnswers, setCourseInterviewAnswers] = useState<string[]>([]);
   const [nudge, setNudge] = useState<Nudge | null>(null);
+  const [hintVisible, setHintVisible] = useState(false);
+
+  // Introduce the assistant once per browser session with a short-lived
+  // hint, so it never sits on top of page content.
+  useEffect(() => {
+    const KEY = "requisor-assistant-hint-shown";
+    try {
+      if (sessionStorage.getItem(KEY)) return;
+    } catch {
+      // Storage blocked: still show the hint once for this page view.
+    }
+    // Mark it shown only when it actually appears, so an effect that is
+    // cancelled before then (e.g. React's dev double-run) doesn't skip it.
+    const show = setTimeout(() => {
+      try { sessionStorage.setItem(KEY, "1"); } catch { /* ignore */ }
+      setHintVisible(true);
+    }, 1200);
+    const hide = setTimeout(() => setHintVisible(false), 7200);
+    return () => { clearTimeout(show); clearTimeout(hide); };
+  }, []);
   const [assistantPersona, setAssistantPersona] = useState<string>("");
   const [preferredLanguage, setPreferredLanguage] = useState<string>("");
   const [voiceMuted, setVoiceMuted] = useState<boolean>(() => {
@@ -247,6 +281,10 @@ export function AiAssistant() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // Typewriter reveal
   const fullTextRef = useRef("");
+  // Raw streamed text including action frames; fullTextRef holds the visible part.
+  const rawTextRef = useRef("");
+  const replyActionsRef = useRef<AssistantAction[]>([]);
+  const [actionOutcomes, setActionOutcomes] = useState<Record<string, ActionOutcome>>({});
   const revealedRef = useRef(0);
   const rafRef = useRef<number | null>(null);
   const requestAbortRef = useRef<AbortController | null>(null);
@@ -419,7 +457,7 @@ export function AiAssistant() {
         }
         setMessages((prev) => {
           const updated = [...prev];
-          updated[updated.length - 1] = { role: "assistant", content: fullTextRef.current.slice(0, count) };
+          updated[updated.length - 1] = { ...updated[updated.length - 1], role: "assistant", content: fullTextRef.current.slice(0, count) };
           return updated;
         });
       }
@@ -442,7 +480,7 @@ export function AiAssistant() {
           voice.speak(stripForSpeech(finalText));
         }
         // Auto-navigate to the first course/lesson tag in the reply
-        if (!isTutorMode && !didNavigateRef.current) {
+        if (!isTutorMode && !didNavigateRef.current && replyActionsRef.current.length === 0) {
           didNavigateRef.current = true;
           const navUrl = extractFirstNavUrl(finalText, resolveLesson);
           if (navUrl) {
@@ -516,6 +554,8 @@ export function AiAssistant() {
     setInput("");
     setStreaming(true);
     fullTextRef.current = "";
+    rawTextRef.current = "";
+    replyActionsRef.current = [];
     revealedRef.current = 0;
     networkDoneRef.current = false;
     pauseUntilRef.current = 0;
@@ -535,7 +575,14 @@ export function AiAssistant() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: requestController.signal,
-        body: JSON.stringify({ messages: next }),
+        body: JSON.stringify({
+          messages: next.map((m) => ({
+            role: m.role,
+            content: m.actions?.length
+              ? [m.content, ...m.actions.map((a) => describeOutcome(a, actionOutcomes[a.id]))].filter(Boolean).join("\n")
+              : m.content,
+          })),
+        }),
       });
       if (!res.body) throw new Error("No response body");
       if (!res.ok) setRetryText(trimmed);
@@ -545,7 +592,19 @@ export function AiAssistant() {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        fullTextRef.current += decoder.decode(value, { stream: true });
+        rawTextRef.current += decoder.decode(value, { stream: true });
+        const split = splitActionFrames(rawTextRef.current);
+        fullTextRef.current = split.text;
+        if (split.actions.length !== replyActionsRef.current.length) {
+          replyActionsRef.current = split.actions;
+          const actions = split.actions;
+          setMessages((prev) => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            if (last?.role === "assistant") updated[updated.length - 1] = { ...last, actions };
+            return updated;
+          });
+        }
       }
     } catch (error) {
       if (requestController.signal.aborted || (error instanceof DOMException && error.name === "AbortError")) {
@@ -577,6 +636,7 @@ export function AiAssistant() {
     voice.stopListening();
     voice.stopSpeaking();
     setMessages([]);
+    setActionOutcomes({});
     setRetryText(null);
     setCourseDraft(null);
     setDraftError(null);
@@ -679,24 +739,31 @@ export function AiAssistant() {
   return (
     <>
       {/* Floating trigger */}
-      <div className="fixed bottom-5 right-5 z-40 flex h-24 w-24 items-center justify-center">
-        {/* Speech bubble */}
+      <div
+        className="fixed bottom-4 right-4 z-40 flex h-16 w-16 items-center justify-center"
+        onMouseEnter={() => setHintVisible(true)}
+        onMouseLeave={() => setHintVisible(false)}
+        onFocus={() => setHintVisible(true)}
+        onBlur={() => setHintVisible(false)}
+      >
+        {/* Speech bubble — shown briefly once per session, then only on
+            hover/focus, and never catches clicks meant for page content. */}
         <AnimatePresence>
-          {!open && (
+          {!open && hintVisible && (
             <motion.div
               initial={{ opacity: 0, y: 6, scale: 0.92 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 4, scale: 0.95 }}
-              transition={{ delay: 1.2, duration: 0.25 }}
-              className="absolute bottom-full right-0 mb-3 w-52 rounded-2xl rounded-br-sm px-3.5 py-2.5 bg-gray-200   shadow-soft"
+              transition={{ duration: 0.2 }}
+              className="pointer-events-none absolute bottom-full right-0 mb-1.5 w-40 rounded-xl rounded-br-sm bg-gray-200/95 px-2.5 py-1.5 shadow-soft"
             >
-              <p className="text-[11px] font-medium leading-snug text-zinc-700">
+              <p className="text-[10px] font-medium leading-snug text-zinc-700">
                 {isTutorMode
                   ? "Tell me your course topic and I’ll help shape the learning experience."
                   : "I’ll recommend courses using your background and progress."}
               </p>
               {/* Tail */}
-              <span className="absolute -bottom-2 right-3 h-0 w-0 border-x-8 border-t-8 border-x-transparent border-t-gray-200 " />
+              <span className="absolute -bottom-1.5 right-4 h-0 w-0 border-x-[6px] border-t-[6px] border-x-transparent border-t-gray-200" />
             </motion.div>
           )}
         </AnimatePresence>
@@ -705,7 +772,7 @@ export function AiAssistant() {
           aria-label={open ? "Close AI assistant" : "Open AI assistant"}
           whileHover={{ scale: 1.06 }}
           whileTap={{ scale: 0.95 }}
-          className="relative z-10 flex h-24 w-24 items-center justify-center"
+          className="relative z-10 flex h-16 w-16 items-center justify-center"
         >
           <AnimatePresence mode="wait" initial={false}>
             <motion.span
@@ -751,7 +818,7 @@ export function AiAssistant() {
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
             role="dialog"
             aria-label={isTutorMode ? "AI course design assistant" : "AI learning assistant"}
-            className="fixed bottom-24 right-5 z-40 flex h-[34rem] w-[23rem] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-3xl border border-zinc-100 bg-card shadow-[0_25px_60px_-15px_rgba(15,23,42,0.25)]"
+            className="fixed bottom-20 right-4 z-40 flex h-[34rem] w-[23rem] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-3xl border border-zinc-100 bg-card shadow-[0_25px_60px_-15px_rgba(15,23,42,0.25)]"
           >
             {/* Header */}
             <div className="relative flex items-center gap-2.5 overflow-hidden bg-gradient-to-r from-primary/[0.07] via-white to-white px-4 py-3.5">
@@ -773,7 +840,7 @@ export function AiAssistant() {
                   {isTutorMode ? "Requisor Assistant" : getPersona(assistantPersona).name}
                 </p>
                 <p className="truncate text-xs text-zinc-500">
-                  {isTutorMode ? "Course structure and content copilot" : "Guidance based on your background and progress"}
+                  {isTutorMode ? "Design courses, add lessons, grade and publish" : "Guidance, practice assignments, quizzes and grades"}
                 </p>
               </div>
               {/* Mute/unmute TTS button — only shown when TTS is supported */}
@@ -889,7 +956,20 @@ export function AiAssistant() {
               {messages.map((m, i) => {
                 const isLastAssistant = streaming && m.role === "assistant" && i === messages.length - 1;
                 const isUser = m.role === "user";
-                return (
+                const actionCards = m.role === "assistant" && m.actions?.length ? (
+                  <div key={`${i}-actions`} className="space-y-2 pl-8">
+                    {m.actions.map((action) => (
+                      <AssistantActionCard
+                        key={action.id}
+                        action={action}
+                        onOutcome={(outcome) => setActionOutcomes((prev) => ({ ...prev, [action.id]: outcome }))}
+                      />
+                    ))}
+                  </div>
+                ) : null;
+                // A reply that is only a proposal has no text bubble, just its card(s).
+                if (actionCards && !m.content.trim() && !isLastAssistant) return actionCards;
+                return [
                   <motion.div
                     key={i}
                     layout="position"
@@ -933,8 +1013,9 @@ export function AiAssistant() {
                         {initials}
                       </div>
                     )}
-                  </motion.div>
-                );
+                  </motion.div>,
+                  actionCards,
+                ];
               })}
               {retryText && !streaming && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start pl-8">
@@ -1021,7 +1102,7 @@ export function AiAssistant() {
                           send(input);
                         }
                       }}
-                      placeholder={isTutorMode ? "Describe a course you want to design…" : "Ask what course fits you next…"}
+                      placeholder={isTutorMode ? "Ask me to grade, add a lesson, publish…" : "Ask for a next step, an assignment, a quiz…"}
                       disabled={streaming}
                       className="max-h-[120px] flex-1 resize-none bg-transparent py-1.5 text-sm text-zinc-900 placeholder:text-zinc-500 focus:outline-none disabled:opacity-60"
                     />

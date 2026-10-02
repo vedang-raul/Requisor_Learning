@@ -43,11 +43,11 @@ export async function GET(req: Request) {
     id: string; title: string; description: string; youtube_id: string; duration_min: number;
     resources: Lesson["resources"]; key_takeaways: string[];
     assignment: string | null; assignment_marks: number | null; assignment_due_date: Date | string | null;
-    requires_submission: boolean; section: string | null; format: "video" | "reading";
+    requires_submission: boolean; published: boolean; publish_at: Date | string | null; section: string | null; format: "video" | "reading";
     body: string | null; body_file_url: string | null;
   }>(
     `SELECT id, title, description, youtube_id, duration_min, resources, key_takeaways,
-            assignment, assignment_marks, assignment_due_date, requires_submission,
+            assignment, assignment_marks, assignment_due_date, requires_submission, published, publish_at,
             section, format, body, body_file_url
      FROM course_lessons WHERE course_slug = $1 ORDER BY position, id`,
     [slug]
@@ -84,6 +84,8 @@ export async function GET(req: Request) {
       ...(l.assignment_marks ? { assignmentMarks: l.assignment_marks } : {}),
       ...(l.assignment_due_date ? { assignmentDueDate: new Date(l.assignment_due_date).toISOString().slice(0, 10) } : {}),
       ...(l.requires_submission ? { requiresSubmission: true } : {}),
+      ...(l.published === false ? { published: false } : {}),
+      ...(l.published !== false && l.publish_at && new Date(l.publish_at).getTime() > Date.now() ? { publishAt: new Date(l.publish_at).toISOString() } : {}),
       ...(l.section ? { section: l.section } : {}),
       format: l.format,
       ...(l.body ? { body: l.body } : {}),

@@ -1,6 +1,6 @@
 "use client";
 
-import TutorAuth from "../Tutors-login/login";
+import TutorAuth from "./login";
 
 export default function TutorLoginPage() {
   return <TutorAuth />;

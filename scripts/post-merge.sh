@@ -191,6 +191,50 @@ p.query(`
   ALTER TABLE course_lessons ADD COLUMN IF NOT EXISTS body_file_url VARCHAR(200);
   ALTER TABLE course_lessons ADD COLUMN IF NOT EXISTS assignment_marks INT;
   ALTER TABLE course_lessons ADD COLUMN IF NOT EXISTS assignment_due_date DATE;
+  -- Per-lesson drafts: a tutor can keep an unfinished lesson hidden inside a
+  -- live course. DEFAULT TRUE keeps every existing lesson visible.
+  ALTER TABLE course_lessons ADD COLUMN IF NOT EXISTS published BOOLEAN NOT NULL DEFAULT TRUE;
+  -- Scheduled launch: a published lesson stays hidden from learners until this
+  -- moment. Checked whenever lessons are read, so no background job is needed.
+  ALTER TABLE course_lessons ADD COLUMN IF NOT EXISTS publish_at TIMESTAMPTZ;
+
+  -- OpusClip was removed in favour of auto-editing (below); drop its job table.
+  DROP TABLE IF EXISTS video_clip_jobs;
+
+  -- Auto-edit jobs: a tutor drops a long recording into a lesson and gets it
+  -- back cleaned up (subtitles, silences cut, audio evened out). result holds
+  -- the outcome (durations, cut stats, transcript, subtitles, output location);
+  -- provider is 'demo' for simulated jobs. youtube_video_id is set if the
+  -- edited video was posted to YouTube for the tutor (optional delivery mode).
+  CREATE TABLE IF NOT EXISTS video_edit_jobs (
+    id SERIAL PRIMARY KEY,
+    owner_user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    course_slug VARCHAR(80) REFERENCES courses(slug) ON DELETE SET NULL,
+    title VARCHAR(200) NOT NULL,
+    file_name VARCHAR(200) NOT NULL,
+    source_seconds INT,
+    storage_key TEXT,
+    provider VARCHAR(20) NOT NULL DEFAULT 'demo',
+    provider_job_id TEXT,
+    status VARCHAR(12) NOT NULL DEFAULT 'processing' CHECK (status IN ('processing', 'ready', 'failed')),
+    result JSONB,
+    youtube_video_id VARCHAR(20),
+    error TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS video_edit_jobs_owner_idx ON video_edit_jobs (owner_user_id, created_at DESC);
+
+  -- A tutor's connected YouTube channel, for posting edited videos on their
+  -- behalf. The refresh token is stored AES-256-GCM encrypted (lib/youtube.ts),
+  -- never in plain text.
+  CREATE TABLE IF NOT EXISTS youtube_connections (
+    user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    channel_id TEXT,
+    channel_title TEXT,
+    refresh_token_enc TEXT NOT NULL,
+    connected_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
   CREATE INDEX IF NOT EXISTS courses_owner_idx ON courses (owner_user_id, added_at DESC);
   CREATE INDEX IF NOT EXISTS course_lessons_course_position_idx ON course_lessons (course_slug, position, id);
   CREATE INDEX IF NOT EXISTS course_reviews_slug_rating_idx ON course_reviews (course_slug, rating);
@@ -352,6 +396,29 @@ p.query(`
   );
   CREATE INDEX IF NOT EXISTS assignment_submissions_course_idx
     ON assignment_submissions (course_slug, submitted_at DESC);
+
+  -- Which kind of assignment a submission answers, so tutors can tell them
+  -- apart: 'tutor' = the lesson's tutor-set assignment (requires_submission),
+  -- 'ai' = the learner's AI-generated practice assignment. Recorded at upload
+  -- time so later lesson edits don't relabel old work. Existing rows are
+  -- backfilled once (only NULLs) from the lesson flag + a generated brief.
+  ALTER TABLE assignment_submissions ADD COLUMN IF NOT EXISTS source VARCHAR(10);
+  UPDATE assignment_submissions s
+     SET source = CASE
+       WHEN COALESCE((SELECT l.requires_submission FROM course_lessons l WHERE l.id = s.lesson_id), FALSE) THEN 'tutor'
+       WHEN EXISTS (SELECT 1 FROM generated_assignments ga WHERE ga.user_id = s.user_id AND ga.lesson_id = s.lesson_id) THEN 'ai'
+       ELSE 'tutor'
+     END
+   WHERE s.source IS NULL;
+  ALTER TABLE assignment_submissions ALTER COLUMN source SET DEFAULT 'tutor';
+  ALTER TABLE assignment_submissions ALTER COLUMN source SET NOT NULL;
+  DO $$
+  BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'assignment_submissions_source_check') THEN
+      ALTER TABLE assignment_submissions
+        ADD CONSTRAINT assignment_submissions_source_check CHECK (source IN ('tutor', 'ai'));
+    END IF;
+  END $$;
 
   -- Markup a tutor leaves on one submission while reviewing it: a pinned
   -- comment, a whole-paragraph highlight (docx), or a freehand stroke (pdf

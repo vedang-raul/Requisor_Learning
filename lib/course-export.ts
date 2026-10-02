@@ -164,7 +164,7 @@ export function buildCourseFromImport(raw: unknown): CourseImportResult {
       : [];
     if (l.assignmentMarks !== undefined &&
         (!Number.isInteger(l.assignmentMarks) || (l.assignmentMarks as number) < 1 || (l.assignmentMarks as number) > 10000)) {
-      return { ok: false, error: `Lesson ${i + 1} has invalid assignment marks.` };
+      return { ok: false, error: `Lesson ${i + 1} has invalid assignment points.` };
     }
     if (l.assignmentDueDate !== undefined && !isIsoCalendarDate(l.assignmentDueDate)) {
       return { ok: false, error: `Lesson ${i + 1} has an invalid assignment due date.` };

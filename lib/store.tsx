@@ -1,4 +1,5 @@
 "use client";
+import { isLessonLive } from "@/lib/utils";
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useSession, signOut } from "next-auth/react";
@@ -39,6 +40,7 @@ interface StoreApi {
   setWorkspaceMode: (mode: WorkspaceMode) => void;
   logout: () => void;
   toggleSidebar: () => void;
+  setSidebarCollapsed: (collapsed: boolean) => void;
   recordView: (courseSlug: string, lessonId: string) => void;
   setWatchPct: (lessonId: string, pct: number) => void;
   toggleComplete: (courseSlug: string, lessonId: string) => { courseCompleted: boolean };
@@ -50,8 +52,8 @@ interface StoreApi {
   // Admin
   upsertCourse: (course: Course) => Promise<Course>;
   deleteCourse: (slug: string) => Promise<void>;
-  upsertLesson: (courseSlug: string, lesson: Lesson) => Promise<Course>;
-  deleteLesson: (courseSlug: string, lessonId: string) => Promise<Course>;
+  upsertLesson: (courseSlug: string, lesson: Lesson, base?: Course) => Promise<Course>;
+  deleteLesson: (courseSlug: string, lessonId: string, base?: Course) => Promise<Course>;
   resetAll: () => void;
 }
 
@@ -302,6 +304,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const toggleSidebar = useCallback(() => setState((s) => ({ ...s, sidebarCollapsed: !s.sidebarCollapsed })), []);
+  const setSidebarCollapsed = useCallback((collapsed: boolean) => setState((s) => (s.sidebarCollapsed === collapsed ? s : { ...s, sidebarCollapsed: collapsed })), []);
 
   const recordView = useCallback((courseSlug: string, lessonId: string) => {
     setState((s) => {
@@ -436,16 +439,32 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     return data.course;
   }, []);
 
+  /** Puts a saved course into the learner catalog — or keeps it out. The
+   *  catalog mirrors GET /api/courses: non-admins only ever see published
+   *  courses, so a tutor's draft must not leak onto their learner pages. */
+  const syncCatalog = useCallback((courses: Course[], saved: Course): Course[] => {
+    const isAdmin = sessionUser?.role === "admin";
+    if (!isAdmin && saved.published === false) return courses.filter((item) => item.slug !== saved.slug);
+    // Draft lessons are hidden from learners too (see GET /api/courses).
+    const entry = isAdmin ? saved : { ...saved, lessons: saved.lessons.filter((lesson) => isLessonLive(lesson)) };
+    return courses.some((item) => item.slug === saved.slug)
+      ? courses.map((item) => (item.slug === saved.slug ? entry : item))
+      : [...courses, entry];
+  }, [sessionUser?.role]);
+
   const upsertCourse = useCallback(async (course: Course) => {
-    const exists = state.courses.some((item) => item.slug === course.slug);
+    // A server revision means the course already exists. Don't infer that
+    // from the catalog: it omits drafts for tutors, which turned every save of
+    // a draft (including publishing it) into a rejected "create".
+    const exists = course.revision != null || state.courses.some((item) => item.slug === course.slug);
     const saved = await courseRequest(exists ? `/api/courses/${encodeURIComponent(course.slug)}` : "/api/courses", {
       method: exists ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(course),
     });
-    setState((s) => ({ ...s, courses: s.courses.some((item) => item.slug === saved.slug) ? s.courses.map((item) => item.slug === saved.slug ? saved : item) : [...s.courses, saved] }));
+    setState((s) => ({ ...s, courses: syncCatalog(s.courses, saved) }));
     return saved;
-  }, [courseRequest, state.courses]);
+  }, [courseRequest, state.courses, syncCatalog]);
 
   const deleteCourse = useCallback(async (slug: string) => {
     const response = await fetch(`/api/courses/${encodeURIComponent(slug)}`, { method: "DELETE" });
@@ -456,28 +475,30 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setState((s) => ({ ...s, courses: s.courses.filter((c) => c.slug !== slug) }));
   }, []);
 
-  const upsertLesson = useCallback(async (courseSlug: string, lesson: Lesson) => {
-    const current = state.courses.find((course) => course.slug === courseSlug);
+  // `base` is the course as the caller last loaded it. Pass it for courses the
+  // learner catalog may not contain (a tutor's drafts); otherwise it's looked up.
+  const upsertLesson = useCallback(async (courseSlug: string, lesson: Lesson, base?: Course) => {
+    const current = base ?? state.courses.find((course) => course.slug === courseSlug);
     if (!current) throw new Error("This course no longer exists.");
     const exists = current.lessons.some((item) => item.id === lesson.id);
     const saved = await courseRequest(`/api/courses/${encodeURIComponent(courseSlug)}`, {
       method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...current, lessons: exists ? current.lessons.map((item) => item.id === lesson.id ? lesson : item) : [...current.lessons, lesson] }),
     });
-    setState((s) => ({ ...s, courses: s.courses.map((course) => course.slug === courseSlug ? saved : course) }));
+    setState((s) => ({ ...s, courses: syncCatalog(s.courses, saved) }));
     return saved;
-  }, [courseRequest, state.courses]);
+  }, [courseRequest, state.courses, syncCatalog]);
 
-  const deleteLesson = useCallback(async (courseSlug: string, lessonId: string) => {
-    const current = state.courses.find((course) => course.slug === courseSlug);
+  const deleteLesson = useCallback(async (courseSlug: string, lessonId: string, base?: Course) => {
+    const current = base ?? state.courses.find((course) => course.slug === courseSlug);
     if (!current) throw new Error("This course no longer exists.");
     const saved = await courseRequest(`/api/courses/${encodeURIComponent(courseSlug)}`, {
       method: "PUT", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...current, lessons: current.lessons.filter((lesson) => lesson.id !== lessonId) }),
     });
-    setState((s) => ({ ...s, courses: s.courses.map((course) => course.slug === courseSlug ? saved : course) }));
+    setState((s) => ({ ...s, courses: syncCatalog(s.courses, saved) }));
     return saved;
-  }, [courseRequest, state.courses]);
+  }, [courseRequest, state.courses, syncCatalog]);
 
   const resetAll = useCallback(() => {
     if (email) localStorage.removeItem(storageKeyFor(email));
@@ -494,12 +515,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           ? "tutor"
           : "student",
       setWorkspaceMode,
-      logout, toggleSidebar, recordView, setWatchPct, toggleComplete,
+      logout, toggleSidebar, setSidebarCollapsed, recordView, setWatchPct, toggleComplete,
       toggleBookmark, toggleSavedLesson, setNote, markNotificationsRead,
       toggleAssessmentComplete,
       upsertCourse, deleteCourse, upsertLesson, deleteLesson, resetAll,
     }),
-    [state, sessionUser, hydrated, status, workspaceMode, setWorkspaceMode, logout, toggleSidebar, recordView, setWatchPct, toggleComplete, toggleBookmark, toggleSavedLesson, setNote, markNotificationsRead, toggleAssessmentComplete, upsertCourse, deleteCourse, upsertLesson, deleteLesson, resetAll]
+    [state, sessionUser, hydrated, status, workspaceMode, setWorkspaceMode, logout, toggleSidebar, setSidebarCollapsed, recordView, setWatchPct, toggleComplete, toggleBookmark, toggleSavedLesson, setNote, markNotificationsRead, toggleAssessmentComplete, upsertCourse, deleteCourse, upsertLesson, deleteLesson, resetAll]
   );
 
   return <StoreContext.Provider value={api}>{children}</StoreContext.Provider>;

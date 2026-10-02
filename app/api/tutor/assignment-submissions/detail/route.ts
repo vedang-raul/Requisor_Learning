@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { toSubmissionSource } from "@/lib/submission-source";
 
 /** Everything the grading view needs about one submission in a single
  *  request: who submitted it, its file, its current mark, and the
@@ -29,12 +30,13 @@ export async function GET(req: Request) {
     lesson_id: string; lesson_title: string | null; course_slug: string; course_title: string;
     marks: number | null; raw_score: number | null; raw_max: number | null; graded_at: string | null; remark: string | null;
     assignment_due_date: string | null; assignment_marks: number | null;
+    source: string; lesson_assignment: string | null;
   }>(
     `SELECT s.id, u.name AS student_name, u.email AS student_email,
             s.file_name, s.mime_type, s.file_size, s.submitted_at,
             s.lesson_id, l.title AS lesson_title, s.course_slug, c.title AS course_title,
              g.marks, g.raw_score, g.raw_max, g.graded_at, g.remark,
-             l.assignment_due_date, l.assignment_marks
+             to_char(l.assignment_due_date, 'YYYY-MM-DD') AS assignment_due_date, l.assignment_marks, s.source, l.assignment AS lesson_assignment
      FROM assignment_submissions s
      JOIN users u ON u.id = s.user_id
      JOIN courses c ON c.slug = s.course_slug
@@ -64,6 +66,19 @@ export async function GET(req: Request) {
   );
   const scoreByCriterion = new Map(scoreRows.map((r) => [r.criterion_id, r.score]));
 
+  // AI practice assignments are personalized per learner, so the grader needs
+  // this learner's own brief (steps, deliverables, success criteria). Tutor
+  // assignments are graded against the lesson's own assignment text instead.
+  const source = toSubmissionSource(submission.source);
+  const { rows: briefRows } = source === "ai"
+    ? await db.query<{ content: string }>(
+        `SELECT ga.content FROM generated_assignments ga
+         JOIN assignment_submissions s ON s.user_id = ga.user_id AND s.lesson_id = ga.lesson_id
+         WHERE s.id = $1`,
+        [submissionId]
+      )
+    : { rows: [] as { content: string }[] };
+
   return Response.json({
     submission: {
       id: submission.id,
@@ -79,6 +94,9 @@ export async function GET(req: Request) {
       courseTitle: submission.course_title,
       dueDate: submission.assignment_due_date,
       totalMarks: submission.assignment_marks,
+      source,
+      assignmentBrief: briefRows[0]?.content ?? null,
+      tutorAssignment: source === "tutor" ? submission.lesson_assignment?.trim() || null : null,
     },
     marks: submission.marks,
     rawScore: submission.raw_score,

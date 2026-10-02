@@ -44,12 +44,17 @@ export async function middleware(req: NextRequest) {
     // challenges.cloudflare.com: Turnstile widget makes API calls from the page
     // to Cloudflare to validate challenge responses.
     "connect-src 'self' https://accounts.google.com https://oauth2.googleapis.com https://challenges.cloudflare.com",
+    // Edited lesson videos preview from this app's own download route. blob:
+    // lets a tutor preview their recording locally and carries subtitle tracks.
+    "media-src 'self' blob:",
     // fonts.gstatic.com serves the actual Inter font binary files.
     "font-src 'self' data: https://fonts.gstatic.com",
     // challenges.cloudflare.com: Turnstile renders its challenge UI inside a
     // sandboxed iframe served from Cloudflare.
     "frame-src 'self' blob: https://www.youtube.com https://www.youtube-nocookie.com https://challenges.cloudflare.com",
     isEmbeddableFileRoute ? "frame-ancestors 'self'" : "frame-ancestors 'none'",
+    // PDF.js parses submission PDFs in a same-origin, bundled Web Worker.
+    "worker-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self' https://accounts.google.com",
@@ -116,7 +121,9 @@ export const config = {
   // Run on every request except Next.js internals and static assets.
   // The nonce must be present on every HTML page response; static files
   // (_next/static chunks, images, fonts) are not HTML so they don't need it.
+  // The recording upload route is skipped too: middleware buffers request
+  // bodies in memory, and that route streams multi-gigabyte videos through.
   matcher: [
-    "/((?!_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon\\.ico|api/tutor/video-edits/[^/]+/upload|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

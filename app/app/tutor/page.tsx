@@ -5,9 +5,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Activity, BarChart3, BookPlus, Check, CheckCircle2, Download, FileText, GraduationCap, Inbox, LayoutGrid, Paperclip, Upload,
-  ListChecks, Loader2, Pencil, Plus, Send, Star, Trash2, TrendingUp, Users, X,BookOpen, ChevronDown, Clock, Layers, Sparkles, Video
+  Activity, BarChart3, BookPlus, Check, CheckCircle2, Download, Eye, EyeOff, FileText, GraduationCap, Inbox, LayoutGrid, Paperclip, Upload,
+  ListChecks, Loader2, Pencil, Plus, Send, Star, Trash2, TrendingUp, Users, X,BookOpen, ChevronDown, ChevronLeft, ChevronRight, Clock, Layers, Sparkles, Video
 } from "lucide-react";
+import { VideoEditStudio } from "@/components/video-edit-studio";
+import { isLessonScheduled } from "@/lib/utils";
+import { DATA_CHANGED_EVENT } from "@/components/assistant-action-card";
 import { useStore } from "@/lib/store";
 import { Course, Lesson, Resource } from "@/lib/types";
 import { cn, extractYouTubeId, isPlaceholder, PLACEHOLDER_VIDEO, youTubeThumb } from "@/lib/utils";
@@ -20,6 +23,8 @@ import { PageTransition } from "@/components/motion";
 import { getCategoryCover, DEFAULT_CATEGORIES } from "@/components/category-icon";
 import { MAX_RESOURCE_FILE_BYTES, RESOURCE_FILE_ACCEPT } from "@/lib/resource-files";
 import { mergeSavedTutorCourse, reconcileTutorCourses, type TutorCourseSummary } from "@/lib/tutor-course-sync";
+import { SubmissionSourceBadge } from "@/components/submission-source-badge";
+import type { SubmissionSource } from "@/lib/submission-source";
 
 type TabKey = "analytics" | "courses" | "learners" | "ratings";
 type TutorCourse = TutorCourseSummary;
@@ -209,6 +214,16 @@ export default function TutorPage() {
     } finally { setLoading(false); }
   }, []);
 
+  // When the AI assistant changes a course (after the tutor confirms), reload
+  // so this screen — and the open course's revision — stays current.
+  const selectedSlugRef = useRef<string | null>(null);
+  useEffect(() => { selectedSlugRef.current = selected?.slug ?? null; }, [selected]);
+  useEffect(() => {
+    const reload = () => void load(selectedSlugRef.current ?? undefined);
+    window.addEventListener(DATA_CHANGED_EVENT, reload);
+    return () => window.removeEventListener(DATA_CHANGED_EVENT, reload);
+  }, [load]);
+
   useEffect(() => {
     if (hydrated && state.user && state.user.role !== "tutor" && state.user.role !== "admin") router.replace("/app/dashboard/");
   }, [hydrated, router, state.user]);
@@ -262,8 +277,8 @@ export default function TutorPage() {
     setSaving(true); setError(null);
     try {
       const updated = remove
-        ? await deleteLesson(selected.slug, lesson.id)
-        : await upsertLesson(selected.slug, lesson);
+        ? await deleteLesson(selected.slug, lesson.id, selected)
+        : await upsertLesson(selected.slug, lesson, selected);
       const refreshed = await load(updated.slug);
       if (!refreshed) {
         setItems((current) => mergeSavedTutorCourse(current, updated));
@@ -366,6 +381,13 @@ export default function TutorPage() {
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{items.map((item) => <button key={item.course.slug} onClick={() => { setCreating(false); setAiDraft(false); setSelected(item.course); }} className="focus-ring group min-h-32 rounded-2xl text-left"><Card className="relative h-full transition hover:border-primary/40">{item.course.published === false && <span className="absolute left-3 top-3 rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700">Draft</span>}<span className="absolute right-3 top-3 flex items-center gap-1 rounded-full border border-transparent px-2 py-1 text-[11px] font-medium text-zinc-400 opacity-0 transition group-hover:border-primary/30 group-hover:bg-primary/10 group-hover:text-primary group-hover:opacity-100"><Pencil className="h-3 w-3" aria-hidden="true" />Edit</span><div className={`mb-3 h-2 rounded-full bg-gradient-to-r ${item.course.cover}`} /><CardTitle>{item.course.title}</CardTitle><p className="mt-1 text-xs text-zinc-600">{item.course.lessons.length} lessons · <span className="inline-flex items-center gap-1"><Star className="h-3 w-3 fill-amber-400 text-amber-400" aria-hidden="true" />{item.averageRating.toFixed(1)} ({item.ratingCount})</span></p><div className="mt-3 flex gap-1" aria-hidden="true">{[5,4,3,2,1].map((rating) => <span key={rating} title={`${rating} stars: ${distributionCount(item.ratingDistribution, rating)}`} className="h-1 flex-1 rounded bg-primary/20" style={{ opacity: item.ratingCount ? Math.max(.2, distributionCount(item.ratingDistribution, rating) / item.ratingCount) : .2 }} />)}</div><span className="sr-only">{[5,4,3,2,1].map((rating) => `${rating} stars: ${distributionCount(item.ratingDistribution, rating)}`).join(", ")}</span></Card></button>)}</div>}
               {selected && <>
                 {aiDraft && <div role="status" className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-sm text-violet-900"><strong>AI-generated draft:</strong> Review every field and lesson below. It is unpublished and has not been saved yet.</div>}
+                {!aiDraft && (
+                  <CourseVisibilityBanner
+                    course={selected}
+                    saving={saving}
+                    onChange={(published) => void saveCourse({ ...selected, published })}
+                  />
+                )}
                 <CourseEditor
                   key={`${selected.slug}-${aiDraft ? `ai-${aiDraftVersion}` : `saved-${selected.revision ?? 0}`}`}
                   course={selected}
@@ -737,7 +759,51 @@ function TutorNotifyButton({ courseSlug, courseTitle, lesson }: { courseSlug: st
   );
 }
 
-type SubmissionRow = { id: number; studentName: string; studentEmail: string; fileName: string; fileSize: number; submittedAt: string; marks: number | null; gradedAt: string | null };
+/** Makes a course's visibility unmissable. New courses start as private
+ *  drafts, and the only other publish control is a checkbox deep in the
+ *  course form, so tutors could believe a course was live when it wasn't. */
+/** A Date as a datetime-local input value, in the browser's time zone. */
+function toLocalInput(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+const formatLaunch = (iso: string) => new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+
+function CourseVisibilityBanner({ course, saving, onChange }: { course: Course; saving: boolean; onChange: (published: boolean) => void }) {
+  if (course.published === false) {
+    return (
+      <div role="status" className="flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex gap-3">
+          <EyeOff className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" aria-hidden="true" />
+          <div>
+            <p className="font-semibold text-amber-900">Draft — students can&apos;t see this course yet</p>
+            <p className="mt-0.5 text-sm text-amber-800">
+              Only you can see it here. Publish it to make it and its {course.lessons.length} lesson{course.lessons.length === 1 ? "" : "s"} visible to all students.
+            </p>
+          </div>
+        </div>
+        <Button className="shrink-0" onClick={() => onChange(true)} disabled={saving}>
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+          Publish to all students
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <div role="status" className="flex flex-col gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <p className="flex items-center gap-2 text-sm text-emerald-900">
+        <Eye className="h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
+        <span><strong>Live</strong> — visible to all students. Changes you save appear for them right away.</span>
+      </p>
+      <Button size="sm" variant="ghost" className="shrink-0 text-emerald-800" onClick={() => onChange(false)} disabled={saving}>
+        <EyeOff className="h-3.5 w-3.5" />
+        Unpublish
+      </Button>
+    </div>
+  );
+}
+
+type SubmissionRow = { id: number; studentName: string; studentEmail: string; fileName: string; fileSize: number; submittedAt: string; marks: number | null; gradedAt: string | null; source: SubmissionSource };
 
 function TutorSubmissionsButton({ lesson }: { lesson: Lesson }) {
   const [open, setOpen] = useState(false);
@@ -793,10 +859,11 @@ function TutorSubmissionsPanel({ lesson, onClose }: { lesson: Lesson; onClose: (
             {state.submissions.map((s) => (
               <li key={s.id} className="flex items-center justify-between gap-2 rounded-xl border p-3 text-sm">
                 <div className="min-w-0">
-                  <p className="truncate font-medium text-zinc-900">
-                    {s.studentName}
+                  <p className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 font-medium text-zinc-900">
+                    <span className="truncate">{s.studentName}</span>
+                    <SubmissionSourceBadge source={s.source} />
                     {s.marks !== null && (
-                      <span className="ml-2 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-700">{s.marks}%</span>
+                      <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-700">{s.marks}%</span>
                     )}
                   </p>
                   <p className="truncate text-xs text-zinc-500">
@@ -911,10 +978,12 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, allowUplo
                       {lesson.section && <><span>·</span><span className="truncate">{lesson.section}</span></>}
                       {lesson.requiresSubmission && <span className="rounded-full bg-violet-50 px-1.5 py-0.5 text-[11px] font-medium text-violet-700">Submission</span>}
                       {missingVideo && <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700">No video yet</span>}
+                      {lesson.published === false && <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700">Draft</span>}
+                      {isLessonScheduled(lesson) && <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-1.5 py-0.5 text-[11px] font-semibold text-sky-800"><Clock className="h-3 w-3" aria-hidden="true" />Scheduled · {formatLaunch(lesson.publishAt!)}</span>}
                     </p>
                   </div>
                   <span className="flex shrink-0 gap-0.5 opacity-70 transition-opacity group-hover:opacity-100">
-                    {isVideo && !missingVideo && <TutorNotifyButton courseSlug={course.slug} courseTitle={course.title} lesson={lesson} />}
+                    {isVideo && !missingVideo && lesson.published !== false && !isLessonScheduled(lesson) && <TutorNotifyButton courseSlug={course.slug} courseTitle={course.title} lesson={lesson} />}
                     {lesson.requiresSubmission && <TutorSubmissionsButton lesson={lesson} />}
                     <Button size="sm" variant="ghost" disabled={saving} onClick={() => openEdit(lesson)} aria-label={`Edit ${lesson.title}`}><Pencil className="h-4 w-4" /></Button>
                     <Button size="sm" variant="ghost" disabled={saving} onClick={() => void onDeleteLesson?.(lesson)} aria-label={`Delete ${lesson.title}`}><Trash2 className="h-4 w-4 text-red-600" /></Button>
@@ -936,9 +1005,10 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, allowUplo
             transition={{ duration: 0.25 }}
             className="overflow-hidden"
           >
-            <LessonEditor
+            <LessonWizard
               key={`${editing?.id ?? "new"}-${lessonFormVersion}`}
               courseSlug={course.slug}
+              coursePublished={course.published !== false}
               lesson={editing}
               saving={saving}
               allowUploads={allowUploads}
@@ -964,76 +1034,358 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, allowUplo
 
 function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="text-sm font-medium text-zinc-800">{label}{children}</label>; }
 function Select({ children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) { return <select {...props} className="focus-ring mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm">{children}</select>; }
-function LessonEditor({ courseSlug, lesson, saving, onCancel, onSave, allowUploads }: { courseSlug: string; lesson: Lesson | null; saving: boolean; onCancel: () => void; onSave: (lesson: Lesson) => Promise<void>; allowUploads: boolean }) {
+/* ---------- lesson wizard ----------
+   A lesson is built in five steps shown side by side with a tracker:
+   details → video/content → assignment → takeaways & resources → publish.
+   Every step is optional to visit (the tracker jumps anywhere) and a draft
+   can be saved from any step; publishing checks the lesson is complete. */
+const WIZARD_STEPS = [
+  { key: "details", label: "Details" },
+  { key: "video", label: "Video or text" },
+  { key: "assignment", label: "Assignment" },
+  { key: "takeaways", label: "Takeaways & resources" },
+  { key: "publish", label: "Publish" },
+] as const;
+type WizardStep = (typeof WIZARD_STEPS)[number]["key"];
+
+function WizardTracker({ current, completed, onJump }: { current: number; completed: boolean[]; onJump: (index: number) => void }) {
+  return (
+    <nav aria-label="Lesson steps" className="overflow-x-auto pb-1">
+      <ol className="flex min-w-max items-center">
+        {WIZARD_STEPS.map((step, index) => {
+          const active = index === current;
+          const done = completed[index] && !active;
+          return (
+            <li key={step.key} className="flex items-center">
+              <button
+                type="button"
+                onClick={() => onJump(index)}
+                aria-current={active ? "step" : undefined}
+                className="focus-ring group flex items-center gap-2 rounded-full py-1 pr-2 text-left"
+              >
+                <span
+                  className={cn(
+                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-xs font-bold transition-colors",
+                    active && "border-primary bg-primary text-white shadow-sm shadow-primary/30",
+                    done && "border-primary bg-primary/10 text-primary",
+                    !active && !done && "border-zinc-200 bg-white text-zinc-400 group-hover:border-zinc-300"
+                  )}
+                >
+                  {done ? <Check className="h-4 w-4" aria-hidden="true" /> : index + 1}
+                </span>
+                <span className={cn("text-sm font-medium", active ? "text-zinc-900" : done ? "text-primary" : "text-zinc-500")}>
+                  {step.label}
+                </span>
+              </button>
+              {index < WIZARD_STEPS.length - 1 && (
+                <span aria-hidden="true" className={cn("mx-2 h-0.5 w-8 rounded-full sm:w-12", completed[index] ? "bg-primary/60" : "bg-zinc-200")} />
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
+  );
+}
+
+function LessonWizard({ courseSlug, coursePublished, lesson, saving, onCancel, onSave, allowUploads }: {
+  courseSlug: string; coursePublished: boolean; lesson: Lesson | null; saving: boolean;
+  onCancel: () => void; onSave: (lesson: Lesson) => Promise<void>; allowUploads: boolean;
+}) {
+  const [stepIndex, setStepIndex] = useState(0);
+  const [direction, setDirection] = useState(1);
+  const [visited, setVisited] = useState<boolean[]>(() => WIZARD_STEPS.map((_, i) => i === 0 || Boolean(lesson)));
+  // Step 1 — details
   const [title, setTitle] = useState(lesson?.title ?? "");
   const [description, setDescription] = useState(lesson?.description ?? "");
-  const [format, setFormat] = useState<"video" | "reading">(lesson?.format ?? "video");
-  const [youtubeId, setYoutubeId] = useState(lesson?.youtubeId === "REPLACE_ME" ? "" : lesson?.youtubeId ?? "");
   const [duration, setDuration] = useState(String(lesson?.durationMin ?? 20));
   const [section, setSection] = useState(lesson?.section ?? "");
+  // Step 2 — video or reading content
+  // Step 2 decides the lesson format: a YouTube video (pasted, or made by
+  // auto-editing a recording) or a text lesson. Neither is mandatory until publishing.
+  const [videoMode, setVideoMode] = useState<"youtube" | "edit" | "text">(lesson?.format === "reading" ? "text" : "youtube");
+  const [editJobId, setEditJobId] = useState<number | null>(null);
+  const format: "video" | "reading" = videoMode === "text" ? "reading" : "video";
+  const [youtubeId, setYoutubeId] = useState(lesson?.youtubeId === "REPLACE_ME" ? "" : lesson?.youtubeId ?? "");
+  const [body, setBody] = useState(lesson?.body ?? "");
+  const [bodyFileUrl, setBodyFileUrl] = useState(lesson?.bodyFileUrl);
+  // Step 3 — assignment
   const [assignment, setAssignment] = useState(lesson?.assignment ?? "");
   const [requiresSubmission, setRequiresSubmission] = useState(lesson?.requiresSubmission ?? false);
   const [assignmentMarks, setAssignmentMarks] = useState(lesson?.assignmentMarks ? String(lesson.assignmentMarks) : "");
   const [assignmentDueDate, setAssignmentDueDate] = useState(lesson?.assignmentDueDate ?? "");
+  const [rubricOpen, setRubricOpen] = useState(false);
+  // Step 4 — takeaways & resources
   const [takeaways, setTakeaways] = useState(lesson?.keyTakeaways.join("\n") ?? "");
   const [resources, setResources] = useState<Resource[]>(lesson?.resources ?? []);
-  const [body, setBody] = useState(lesson?.body ?? "");
-  const [bodyFileUrl, setBodyFileUrl] = useState(lesson?.bodyFileUrl);
-  const [uploading, setUploading] = useState(false);
   const [resourceError, setResourceError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [rubricOpen, setRubricOpen] = useState(false);
-  const detectedVideoId = format === "video" && youtubeId.trim() ? extractYouTubeId(youtubeId) : null;
 
-  function submit(event: FormEvent) {
-    event.preventDefault();
+  const step: WizardStep = WIZARD_STEPS[stepIndex].key;
+  const detectedVideoId = format === "video" && youtubeId.trim() ? extractYouTubeId(youtubeId) : null;
+  const wasPublished = lesson !== null && lesson.published !== false;
+  // Step 5 — go live now, or at a chosen time (kept in the tutor's local time).
+  const [scheduleOn, setScheduleOn] = useState(() => lesson !== null && isLessonScheduled(lesson));
+  const [scheduleAt, setScheduleAt] = useState(() => (lesson && isLessonScheduled(lesson) ? toLocalInput(new Date(lesson.publishAt!)) : ""));
+  const takeawayList = takeaways.split("\n").map((item) => item.trim()).filter(Boolean);
+
+  // What each step needs; used for the tracker ticks and the publish checklist.
+  const detailsOk = Boolean(title.trim() && description.trim());
+  const contentOk = format === "video" ? Boolean(detectedVideoId) : Boolean(body.trim() || bodyFileUrl);
+  const assignmentOk = !requiresSubmission || Boolean(assignment.trim() && assignmentMarks && assignmentDueDate);
+  const completed = [
+    detailsOk,
+    visited[1] && contentOk,
+    visited[2] && assignmentOk,
+    visited[3],
+    false,
+  ];
+
+  function goTo(index: number) {
+    if (index === stepIndex) return;
+    if (stepIndex === 0 && index > 0 && !detailsOk) { setFormError("Add a title and description first."); return; }
+    setFormError(null);
+    setDirection(index > stepIndex ? 1 : -1);
+    setStepIndex(index);
+    setVisited((v) => v.map((seen, i) => seen || i === index));
+  }
+
+  function buildLesson(published: boolean): Lesson {
+    const finalResources = resources.map((resource) => {
+      const label = resource.label.trim();
+      if (!label) throw new Error("Each resource needs a label (step 4).");
+      if (resource.type === "file") return { ...resource, label };
+      const url = resource.url.trim();
+      if (!url || (url !== "#" && !/^https:\/\//i.test(url))) throw new Error("Each link resource needs an https:// URL (step 4).");
+      return { ...resource, label, url };
+    });
+    if (!detailsOk) throw new Error("Add a title and description (step 1).");
+    if (format === "video" && youtubeId.trim() && !detectedVideoId) throw new Error("Paste a valid YouTube URL or video ID (step 2).");
+    if (requiresSubmission && (!assignmentMarks || !assignmentDueDate)) throw new Error("Set total points and a due date for the submission (step 3).");
+    if (published && !contentOk) {
+      throw new Error("Add a YouTube video or write a text lesson (step 2) before publishing — or save it as a draft.");
+    }
+    let publishAt: string | undefined;
+    if (published && scheduleOn) {
+      const when = scheduleAt ? new Date(scheduleAt) : null;
+      if (!when || Number.isNaN(when.getTime())) throw new Error("Pick the date and time this lesson should go live.");
+      if (when.getTime() <= Date.now()) throw new Error("The go-live time has to be in the future — or choose Right away.");
+      publishAt = when.toISOString();
+    }
+    return {
+      id: lesson?.id ?? `${courseSlug}-${Date.now()}`,
+      title: title.trim(), description: description.trim(), format,
+      youtubeId: format === "reading" ? "" : detectedVideoId ?? PLACEHOLDER_VIDEO,
+      durationMin: Math.min(1440, Math.max(1, Math.round(Number(duration) || 20))),
+      section: section.trim() || undefined, assignment: assignment.trim() || undefined, requiresSubmission,
+      assignmentMarks: requiresSubmission && assignmentMarks ? Number(assignmentMarks) : undefined,
+      assignmentDueDate: requiresSubmission && assignmentDueDate ? assignmentDueDate : undefined,
+      keyTakeaways: takeawayList,
+      resources: finalResources,
+      body: format === "reading" && body.trim() ? body.trim() : undefined,
+      bodyFileUrl: format === "reading" && !body.trim() ? bodyFileUrl : undefined,
+      published,
+      publishAt,
+    };
+  }
+
+  function save(published: boolean) {
     try {
-      const finalResources = resources.map((resource) => {
-        const label = resource.label.trim();
-        if (!label) throw new Error("Each resource needs a label.");
-        if (resource.type === "file") return { ...resource, label };
-        const url = resource.url.trim();
-        if (!url || (url !== "#" && !/^https:\/\//i.test(url))) throw new Error("Each link resource needs an https:// URL.");
-        return { ...resource, label, url };
-      });
-      if (format === "video" && youtubeId.trim() && !detectedVideoId) throw new Error("Paste a valid YouTube URL or 11-character video ID.");
+      const built = buildLesson(published);
       setFormError(null);
-      void onSave({
-        id: lesson?.id ?? `${courseSlug}-${Date.now()}`,
-        title: title.trim(), description: description.trim(), format,
-        youtubeId: format === "reading" ? "" : detectedVideoId ?? PLACEHOLDER_VIDEO,
-        durationMin: Math.min(1440, Math.max(1, Math.round(Number(duration) || 20))),
-        section: section.trim() || undefined, assignment: assignment.trim() || undefined, requiresSubmission,
-        assignmentMarks: requiresSubmission && assignmentMarks ? Number(assignmentMarks) : undefined,
-        assignmentDueDate: requiresSubmission && assignmentDueDate ? assignmentDueDate : undefined,
-        keyTakeaways: takeaways.split("\n").map((item) => item.trim()).filter(Boolean),
-        resources: finalResources,
-        body: format === "reading" && body.trim() ? body.trim() : undefined,
-        bodyFileUrl: format === "reading" && !body.trim() ? bodyFileUrl : undefined,
-      });
+      void onSave(built);
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "Check the lesson details.");
     }
   }
 
-  return <form onSubmit={submit} className="mt-3 grid gap-3 rounded-xl bg-zinc-50 p-3 sm:grid-cols-2">
-    <Field label="Lesson title"><Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={200} /></Field>
-    <Field label="Format"><Select value={format} onChange={(e) => setFormat(e.target.value as "video" | "reading")}><option value="video">Video</option><option value="reading">Reading</option></Select></Field>
-    <Field label="Description"><Textarea value={description} onChange={(e) => setDescription(e.target.value)} required maxLength={2000} /></Field>
-    <Field label="Duration (minutes)"><Input type="number" min="1" max="1440" step="1" value={duration} onChange={(e) => setDuration(e.target.value)} required /></Field>
-    {format === "video" && <Field label="YouTube URL or video ID"><Input value={youtubeId} onChange={(e) => { setYoutubeId(e.target.value); setFormError(null); }} placeholder="Paste a YouTube URL or video ID" maxLength={2048} aria-invalid={Boolean(youtubeId.trim() && !detectedVideoId)} />{youtubeId.trim() && !detectedVideoId && <span className="mt-1 block text-xs text-red-700">Enter a valid YouTube URL or 11-character video ID.</span>}{detectedVideoId && <span className="mt-2 flex items-center gap-2 text-xs text-emerald-800"><img src={youTubeThumb(detectedVideoId)} alt="" className="h-9 w-16 rounded object-cover" />Video detected and ready to embed.</span>}</Field>}
-    <Field label="Section"><Input value={section} onChange={(e) => setSection(e.target.value)} maxLength={200} /></Field>
-    <Field label="Assignment"><Textarea value={assignment} onChange={(e) => setAssignment(e.target.value)} maxLength={5000} /></Field>
-    {requiresSubmission && <Field label="Total marks"><Input type="number" min="1" max="10000" step="1" value={assignmentMarks} onChange={(e) => setAssignmentMarks(e.target.value)} placeholder="e.g. 100" required /></Field>}
-    {requiresSubmission && <Field label="Due date"><Input type="date" value={assignmentDueDate} onChange={(e) => setAssignmentDueDate(e.target.value)} required /></Field>}
-    {format === "reading" && <div className="sm:col-span-2"><LessonContentField body={body} bodyFileUrl={bodyFileUrl} uploading={uploading} setUploading={setUploading} allowUploads={allowUploads} onChange={({ body: nextBody, bodyFileUrl: nextUrl }) => { setBody(nextBody); setBodyFileUrl(nextUrl); }} /></div>}
-    <div className="sm:col-span-2 space-y-2"><label className="flex items-center gap-2 text-sm font-medium text-zinc-800"><input type="checkbox" checked={requiresSubmission} onChange={(e) => setRequiresSubmission(e.target.checked)} className="h-4 w-4 rounded border-zinc-300 accent-primary" />Require a submitted assignment from learners{requiresSubmission && <span className="font-normal text-zinc-500">(the text above shows as their assignment brief)</span>}</label>{requiresSubmission && lesson && <Button type="button" size="sm" variant="outline" onClick={() => setRubricOpen(true)}><ListChecks className="h-3.5 w-3.5" />Grading rubric</Button>}{requiresSubmission && !lesson && <p className="text-xs text-zinc-500">Save this lesson first to set up a grading rubric.</p>}</div>
-    <Field label="Key takeaways (one per line)"><Textarea value={takeaways} onChange={(e) => setTakeaways(e.target.value)} /></Field>
-    <div className="sm:col-span-2"><ResourcesField resources={resources} onChange={setResources} uploading={uploading} setUploading={setUploading} error={resourceError} setError={setResourceError} allowUploads={allowUploads} /></div>
-    {formError && <p role="alert" className="text-sm text-red-700 sm:col-span-2">{formError}</p>}
-    <div className="flex gap-2"><Button type="submit" disabled={saving || uploading || !title.trim() || !description.trim() || Boolean(youtubeId.trim() && !detectedVideoId)} className="min-h-11">{(saving || uploading) && <Loader2 className="h-4 w-4 animate-spin" />}{lesson ? "Save lesson" : "Add lesson"}</Button>{lesson && <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>}</div>
-    {rubricOpen && lesson && <RubricEditorPanel lesson={lesson} onClose={() => setRubricOpen(false)} />}
-  </form>;
+  const busy = saving || uploading;
+  const checklist: { label: string; ok: boolean; optional?: boolean; step: number }[] = [
+    { label: "Title and description", ok: detailsOk, step: 0 },
+    { label: contentOk ? (format === "video" ? "YouTube video" : "Text lesson") : "Video or text content", ok: contentOk, step: 1 },
+    { label: requiresSubmission ? "Graded assignment (points + due date)" : "Assignment", ok: requiresSubmission ? assignmentOk : Boolean(assignment.trim()), optional: !requiresSubmission, step: 2 },
+    { label: `Key takeaways (${takeawayList.length})`, ok: takeawayList.length > 0, optional: true, step: 3 },
+    { label: `Resources (${resources.length})`, ok: resources.length > 0, optional: true, step: 3 },
+  ];
+
+  return (
+    <div className="mt-3 space-y-4 rounded-2xl border border-border bg-zinc-50/70 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-zinc-900">
+          {lesson ? `Edit “${lesson.title}”` : "New lesson"}
+          {lesson && <span className={cn("ml-2 rounded-full px-2 py-0.5 text-[11px] font-semibold", wasPublished ? "bg-emerald-50 text-emerald-700" : "bg-amber-100 text-amber-700")}>{wasPublished ? "Published" : "Draft"}</span>}
+        </p>
+        <Button type="button" size="sm" variant="ghost" onClick={onCancel}><X className="h-4 w-4" />Close</Button>
+      </div>
+
+      <WizardTracker current={stepIndex} completed={completed} onJump={goTo} />
+
+      <div className="relative overflow-hidden">
+          {/* Keyed so each step mounts fresh and slides in from the side it is
+              coming from. (An AnimatePresence "wait" exit here could stall and
+              leave the previous step on screen.) */}
+          <motion.section
+            key={step}
+            initial={{ opacity: 0, x: direction * 48 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+            aria-labelledby={`wizard-step-${step}`}
+            className="rounded-xl border border-border bg-white p-4"
+          >
+            <h3 id={`wizard-step-${step}`} className="mb-3 text-base font-semibold text-zinc-900">
+              Step {stepIndex + 1} of {WIZARD_STEPS.length}: {WIZARD_STEPS[stepIndex].label}
+            </h3>
+
+            {step === "details" && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Lesson title"><Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={200} autoFocus /></Field>
+                <div className="sm:col-span-2"><Field label="Description"><Textarea value={description} onChange={(e) => setDescription(e.target.value)} required maxLength={2000} placeholder="What will learners get out of this lesson?" /></Field></div>
+                <Field label="Duration (minutes)"><Input type="number" min="1" max="1440" step="1" value={duration} onChange={(e) => setDuration(e.target.value)} required /></Field>
+                <Field label="Section (optional)"><Input value={section} onChange={(e) => setSection(e.target.value)} maxLength={200} placeholder="e.g. Module 1" /></Field>
+              </div>
+            )}
+
+            {step === "video" && (
+              <div className="space-y-3">
+                <p className="text-sm text-zinc-600">Paste a YouTube link, have your recording tidied up automatically, or write a text lesson. You only need one.</p>
+                <div className="flex w-fit flex-wrap gap-1 rounded-xl bg-zinc-100 p-1 text-xs font-medium" role="tablist" aria-label="Lesson content type">
+                  <button type="button" role="tab" aria-selected={videoMode === "youtube"} onClick={() => setVideoMode("youtube")} className={cn("flex items-center gap-1.5 rounded-lg px-3 py-1.5", videoMode === "youtube" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}><Video className="h-3.5 w-3.5" />YouTube link</button>
+                  <button type="button" role="tab" aria-selected={videoMode === "edit"} onClick={() => setVideoMode("edit")} className={cn("flex items-center gap-1.5 rounded-lg px-3 py-1.5", videoMode === "edit" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}><Upload className="h-3.5 w-3.5" />Auto-edit my recording</button>
+                  <button type="button" role="tab" aria-selected={videoMode === "text"} onClick={() => setVideoMode("text")} className={cn("flex items-center gap-1.5 rounded-lg px-3 py-1.5", videoMode === "text" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}><BookOpen className="h-3.5 w-3.5" />Text lesson</button>
+                </div>
+                {videoMode === "youtube" && (
+                  <Field label="YouTube URL or video ID (optional)">
+                    <Input value={youtubeId} onChange={(e) => { setYoutubeId(e.target.value); setFormError(null); }} placeholder="Paste a YouTube URL or video ID" maxLength={2048} aria-invalid={Boolean(youtubeId.trim() && !detectedVideoId)} />
+                    {youtubeId.trim() && !detectedVideoId && <span className="mt-1 block text-xs text-red-700">Enter a valid YouTube URL or 11-character video ID.</span>}
+                    {detectedVideoId && <span className="mt-2 flex items-center gap-2 text-xs text-emerald-800"><img src={youTubeThumb(detectedVideoId)} alt="" className="h-9 w-16 rounded object-cover" />Video detected and ready to embed.</span>}
+                    {!youtubeId.trim() && <span className="mt-1 block text-xs font-normal text-zinc-500">Have a recording but no YouTube link yet? Try <strong>Auto-edit my recording</strong>. No video at all? Use <strong>Text lesson</strong>, or save a draft and add it later.</span>}
+                  </Field>
+                )}
+                {videoMode === "edit" && (
+                  <VideoEditStudio
+                    lessonTitle={title}
+                    courseSlug={courseSlug}
+                    jobId={editJobId}
+                    onJobChange={setEditJobId}
+                    onReadyToLink={() => setVideoMode("youtube")}
+                    onVideoPosted={(videoId) => { setYoutubeId(videoId); setVideoMode("youtube"); }}
+                  />
+                )}
+                {videoMode === "text" && (
+                  <LessonContentField body={body} bodyFileUrl={bodyFileUrl} uploading={uploading} setUploading={setUploading} allowUploads={allowUploads} onChange={({ body: nextBody, bodyFileUrl: nextUrl }) => { setBody(nextBody); setBodyFileUrl(nextUrl); }} />
+                )}
+              </div>
+            )}
+
+            {step === "assignment" && (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="sm:col-span-2"><Field label="Assignment"><Textarea value={assignment} onChange={(e) => setAssignment(e.target.value)} maxLength={5000} placeholder="What should learners do after this lesson? (optional)" /></Field></div>
+                <div className="space-y-2 sm:col-span-2">
+                  <label className="flex items-center gap-2 text-sm font-medium text-zinc-800">
+                    <input type="checkbox" checked={requiresSubmission} onChange={(e) => setRequiresSubmission(e.target.checked)} className="h-4 w-4 rounded border-zinc-300 accent-primary" />
+                    Require learners to submit a file for grading
+                  </label>
+                  <p className="text-xs text-zinc-500">
+                    {requiresSubmission ? "Learners see the text above as their assignment brief and upload a PDF or Word file." : "Without this, learners can still generate a personalised AI practice assignment from the lesson."}
+                  </p>
+                </div>
+                {requiresSubmission && <Field label="Total points"><Input type="number" min="1" max="10000" step="1" value={assignmentMarks} onChange={(e) => setAssignmentMarks(e.target.value)} placeholder="e.g. 100" required /></Field>}
+                {requiresSubmission && <Field label="Due date"><Input type="date" value={assignmentDueDate} onChange={(e) => setAssignmentDueDate(e.target.value)} required /></Field>}
+                {requiresSubmission && (
+                  <div className="sm:col-span-2">
+                    {lesson
+                      ? <Button type="button" size="sm" variant="outline" onClick={() => setRubricOpen(true)}><ListChecks className="h-3.5 w-3.5" />Grading rubric</Button>
+                      : <p className="text-xs text-zinc-500">Save the lesson (as a draft is fine) to set up a grading rubric.</p>}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {step === "takeaways" && (
+              <div className="space-y-4">
+                <Field label="Key takeaways (one per line)">
+                  <Textarea value={takeaways} onChange={(e) => setTakeaways(e.target.value)} placeholder={"e.g. Agents pursue goals; automation follows rules\nWhen an agent is overkill"} />
+                  <span className="mt-1 block text-xs font-normal text-zinc-500">Takeaways also help the AI build better practice assignments and quizzes.</span>
+                </Field>
+                <ResourcesField resources={resources} onChange={setResources} uploading={uploading} setUploading={setUploading} error={resourceError} setError={setResourceError} allowUploads={allowUploads} />
+              </div>
+            )}
+
+            {step === "publish" && (
+              <div className="space-y-4">
+                <ul className="space-y-2">
+                  {checklist.map((item) => (
+                    <li key={item.label} className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm">
+                      <span className="flex items-center gap-2">
+                        {item.ok
+                          ? <CheckCircle2 className="h-4 w-4 text-emerald-600" aria-hidden="true" />
+                          : <span aria-hidden="true" className={cn("h-4 w-4 rounded-full border-2", item.optional ? "border-zinc-300" : "border-amber-400")} />}
+                        <span className={item.ok ? "text-zinc-800" : "text-zinc-500"}>{item.label}</span>
+                        {!item.ok && <span className={cn("text-xs", item.optional ? "text-zinc-400" : "text-amber-700")}>{item.optional ? "optional" : "missing"}</span>}
+                      </span>
+                      {!item.ok && <button type="button" onClick={() => goTo(item.step)} className="text-xs font-medium text-primary hover:underline">Add</button>}
+                    </li>
+                  ))}
+                </ul>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl border border-border p-3 text-sm">
+                    <p className="font-semibold text-zinc-900">Save as draft</p>
+                    <p className="mt-1 text-zinc-600">Only you can see it. Keep working on it any time.</p>
+                  </div>
+                  <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm">
+                    <p className="font-semibold text-zinc-900">Publish</p>
+                    <p className="mt-1 text-zinc-600">
+                      {coursePublished ? "Learners see this lesson straight away, or from the time you schedule." : "The course itself is still a draft — learners will see this lesson once the course is published."}
+                    </p>
+                  </div>
+                </div>
+                <fieldset className="rounded-xl border border-border p-3 text-sm">
+                  <legend className="px-1 font-semibold text-zinc-900">When should it go live?</legend>
+                  <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+                    <label className="flex items-center gap-2"><input type="radio" name="lesson-launch" checked={!scheduleOn} onChange={() => setScheduleOn(false)} className="accent-primary" />Right away</label>
+                    <label className="flex items-center gap-2"><input type="radio" name="lesson-launch" checked={scheduleOn} onChange={() => setScheduleOn(true)} className="accent-primary" />Schedule for later</label>
+                    {scheduleOn && (
+                      <input
+                        type="datetime-local" aria-label="Go-live date and time" value={scheduleAt} min={toLocalInput(new Date())}
+                        onChange={(e) => setScheduleAt(e.target.value)}
+                        className="focus-ring h-9 rounded-lg border border-border bg-white px-2 text-sm"
+                      />
+                    )}
+                  </div>
+                  {scheduleOn && <p className="mt-2 text-xs text-zinc-500">Your local time. Students can&apos;t see or open the lesson until then; it appears on its own, with nothing more for you to do.</p>}
+                </fieldset>
+              </div>
+            )}
+          </motion.section>
+      </div>
+
+      {formError && <p role="alert" className="text-sm text-red-700">{formError}</p>}
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Button type="button" variant="outline" onClick={() => goTo(stepIndex - 1)} disabled={stepIndex === 0 || busy}>
+          <ChevronLeft className="h-4 w-4" />Back
+        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" onClick={() => save(false)} disabled={busy || !detailsOk}>
+            {busy && <Loader2 className="h-4 w-4 animate-spin" />}{wasPublished ? "Move to drafts" : "Save as draft"}
+          </Button>
+          {step === "publish" ? (
+            <Button type="button" onClick={() => save(true)} disabled={busy || !detailsOk}>
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : scheduleOn ? <Clock className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              {scheduleOn ? "Schedule lesson" : wasPublished ? "Save changes" : "Publish lesson"}
+            </Button>
+          ) : (
+            <Button type="button" onClick={() => goTo(stepIndex + 1)} disabled={busy}>
+              Next<ChevronRight className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {rubricOpen && lesson && <RubricEditorPanel lesson={lesson} onClose={() => setRubricOpen(false)} />}
+    </div>
+  );
 }
 
 function LessonContentField({ body, bodyFileUrl, uploading, setUploading, onChange, allowUploads }: {
@@ -1204,7 +1556,7 @@ function RubricEditorPanel({ lesson, onClose }: { lesson: Lesson; onClose: () =>
                     <Input type="number" min={1} max={1000} placeholder="Points" value={c.maxPoints} onChange={(e) => updateCriterion(i, { maxPoints: e.target.value })} className="w-24" aria-label="Max points" />
                     <Button type="button" size="sm" variant="ghost" onClick={() => removeCriterion(i)} aria-label={`Remove ${c.title || "criterion"}`}><Trash2 className="h-4 w-4 text-red-600" /></Button>
                   </div>
-                  <Textarea placeholder="What earns full marks here? (optional)" value={c.description} onChange={(e) => updateCriterion(i, { description: e.target.value })} className="min-h-[50px] text-sm" maxLength={1000} />
+                  <Textarea placeholder="What earns full points here? (optional)" value={c.description} onChange={(e) => updateCriterion(i, { description: e.target.value })} className="min-h-[50px] text-sm" maxLength={1000} />
                 </li>
               ))}
             </ul>

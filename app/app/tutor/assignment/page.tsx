@@ -1,14 +1,21 @@
 "use client";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, CheckCircle2, ClipboardList, Clock, FileText, Loader2, Save, Sparkles } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, Clock, FileText, Loader2, Save, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { PageTransition } from "@/components/motion";
+import { cn } from "@/lib/utils";
+import { useStore } from "@/lib/store";
 import { DocumentMarkupViewer } from "@/components/document-markup-viewer";
+import { AssignmentBrief } from "@/components/lesson-assignment";
+import { SubmissionSourceBadge } from "@/components/submission-source-badge";
+import { DATA_CHANGED_EVENT } from "@/components/assistant-action-card";
+import { parseAssignment } from "@/lib/assignment-format";
+import type { SubmissionSource } from "@/lib/submission-source";
 
 interface RubricCriterion {
   id: number;
@@ -23,6 +30,11 @@ interface Detail {
     fileSize: number; submittedAt: string; lessonId: string; lessonTitle: string;
     courseSlug: string; courseTitle: string;
     dueDate: string | null; totalMarks: number | null;
+    source: SubmissionSource;
+    /** The learner's AI-generated brief (AI practice submissions only). */
+    assignmentBrief: string | null;
+    /** The lesson's own assignment text (tutor assignment submissions only). */
+    tutorAssignment: string | null;
   };
   marks: number | null;
   rawScore: number | null;
@@ -47,6 +59,19 @@ function applyGradeResult(prev: Detail, marks: number, rawScore: number | null, 
       : prev.stats,
   };
 }
+/** Optional statuses a tutor can put on a grade. Anything else saved earlier (old quality remarks) reads as none. */
+const GRADE_STATUSES = ["Late", "Missing", "Excused"];
+const savedStatus = (d: Detail) => (d.remark && GRADE_STATUSES.includes(d.remark) ? d.remark : "");
+/** How long the grader waits after the last change before saving on its own. */
+const AUTOSAVE_DELAY_MS = 1500;
+/** What a no-rubric grade is out of: the lesson's total points, or 100 when it sets none. */
+const pointsTotal = (d: Detail) => d.submission.totalMarks ?? 100;
+/** The saved grade as points out of that total ("" when ungraded). Older grades were stored as a percentage only. */
+function savedPoints(d: Detail): string {
+  if (d.marks === null) return "";
+  const total = pointsTotal(d);
+  return String(d.rawScore !== null && d.rawMax === total ? d.rawScore : Math.round((d.marks * total) / 10) / 10);
+}
 interface SubmissionSummary {
   id: number;
   studentName: string;
@@ -55,7 +80,10 @@ interface SubmissionSummary {
   marks: number | null;
   lessonTitle: string;
   courseTitle: string;
+  source: SubmissionSource;
 }
+
+type SourceFilter = "all" | SubmissionSource;
 
 /* ---------- motion presets ---------- */
 const listVariants = {
@@ -81,7 +109,7 @@ function Avatar({ name }: { name: string }) {
   );
 }
 
-function StatusPill({ marks }: { marks: number | null }) {
+function StatusPill({ marks, rawScore, rawMax }: { marks: number | null; rawScore?: number | null; rawMax?: number | null }) {
   if (marks === null) {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
@@ -96,16 +124,16 @@ function StatusPill({ marks }: { marks: number | null }) {
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-600/10">
       <CheckCircle2 className="h-3.5 w-3.5" />
-      {marks}% · Checked
+      {rawScore != null && rawMax ? `${rawScore} / ${rawMax} points` : `${marks}%`} · Checked
     </span>
   );
 }
 
-function BackLink() {
+function BackLink({ href = "/app/tutor/", label = "Back to tutor panel" }: { href?: string; label?: string }) {
   return (
-    <Link href="/app/tutor/" className="group inline-flex items-center gap-1.5 text-sm text-zinc-500 transition-colors hover:text-zinc-800">
+    <Link href={href} className="group inline-flex items-center gap-1.5 text-sm text-zinc-500 transition-colors hover:text-zinc-800">
       <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-0.5" />
-      Back to tutor panel
+      {label}
     </Link>
   );
 }
@@ -171,10 +199,22 @@ function SkeletonRows({ count = 4 }: { count?: number }) {
   );
 }
 
+/** Bumps when the AI assistant changes data (e.g. saves a grade), so lists refetch. */
+function useDataVersion(): number {
+  const [version, setVersion] = useState(0);
+  useEffect(() => {
+    const bump = () => setVersion((v) => v + 1);
+    window.addEventListener(DATA_CHANGED_EVENT, bump);
+    return () => window.removeEventListener(DATA_CHANGED_EVENT, bump);
+  }, []);
+  return version;
+}
+
 /* ---------- inbox ---------- */
 function SubmissionInbox() {
   const [submissions, setSubmissions] = useState<SubmissionSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const dataVersion = useDataVersion();
   useEffect(() => {
     const aborter = new AbortController();
     fetch("/api/tutor/assignment-submissions", { signal: aborter.signal })
@@ -187,10 +227,23 @@ function SubmissionInbox() {
         if (!aborter.signal.aborted) setError(cause instanceof Error ? cause.message : "Couldn't load assignment submissions.");
       });
     return () => aborter.abort();
-  }, []);
+  }, [dataVersion]);
 
+  // Seeded from the URL so "back" from the grader returns to the same tab.
+  const initialFilter = parseFilter(useSearchParams().get("filter"));
+  const [filter, setFilterState] = useState<SourceFilter>(initialFilter);
+  const setFilter = (next: SourceFilter) => {
+    setFilterState(next);
+    window.history.replaceState(null, "", next === "all" ? "/app/tutor/assignment/" : `/app/tutor/assignment/?filter=${next}`);
+  };
   const pending = submissions?.filter((s) => s.marks === null).length ?? 0;
   const checked = (submissions?.length ?? 0) - pending;
+  const visible = submissions && filter !== "all" ? submissions.filter((s) => s.source === filter) : submissions;
+  const filters: { key: SourceFilter; label: string; count: number; Icon: typeof Sparkles }[] = [
+    { key: "all", label: "All", count: submissions?.length ?? 0, Icon: FileText },
+    { key: "tutor", label: "Tutor assignments", count: submissions?.filter((s) => s.source === "tutor").length ?? 0, Icon: ClipboardList },
+    { key: "ai", label: "AI practice", count: submissions?.filter((s) => s.source === "ai").length ?? 0, Icon: Sparkles },
+  ];
 
   return (
     <PageTransition>
@@ -264,15 +317,50 @@ function SubmissionInbox() {
         )}
 
         {submissions && submissions.length > 0 && (
-          <motion.div className="space-y-2" variants={listVariants} initial="hidden" animate="show">
-            {submissions.map((submission) => (
+          <div role="tablist" aria-label="Filter by assignment type" className="flex flex-wrap gap-2">
+            {filters.map(({ key, label, count, Icon }) => {
+              const active = filter === key;
+              return (
+                <button
+                  key={key}
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setFilter(key)}
+                  className={cn(
+                    "focus-ring inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
+                    active && key === "ai" && "border-violet-300 bg-violet-50 text-violet-700",
+                    active && key !== "ai" && "border-primary/40 bg-primary/10 text-primary",
+                    !active && "border-border bg-white text-zinc-600 hover:border-zinc-300 hover:text-zinc-900"
+                  )}
+                >
+                  <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                  {label}
+                  <span className={cn("rounded-full px-1.5 text-xs tabular-nums", active ? "bg-white/70" : "bg-zinc-100")}>{count}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {visible && submissions && submissions.length > 0 && visible.length === 0 && (
+          <Card className="p-6 text-center text-sm text-zinc-500">
+            No {filter === "ai" ? "AI practice" : "tutor assignment"} submissions yet.
+          </Card>
+        )}
+
+        {visible && visible.length > 0 && (
+          <motion.div key={filter} className="space-y-2" variants={listVariants} initial="hidden" animate="show">
+            {visible.map((submission) => (
               <motion.div key={submission.id} variants={itemVariants} whileHover={{ y: -2 }} transition={{ type: "spring", stiffness: 400, damping: 28 }}>
-                <Link href={`/app/tutor/assignment/?submissionId=${submission.id}`} className="group block">
+                <Link href={submissionHref(submission.id, filter)} className="group block">
                   <Card className={`flex flex-col gap-3 border-l-4 p-4 transition-all hover:border-primary/40 hover:shadow-md sm:flex-row sm:items-center sm:justify-between ${submission.marks === null ? "border-l-primary/60" : "border-l-emerald-500/60"}`}>
                     <div className="flex min-w-0 items-center gap-3">
                       <Avatar name={submission.studentName} />
                       <div className="min-w-0">
-                        <p className="font-medium text-zinc-900 transition-colors group-hover:text-primary">{submission.studentName}</p>
+                        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 font-medium text-zinc-900">
+                          <span className="transition-colors group-hover:text-primary">{submission.studentName}</span>
+                          <SubmissionSourceBadge source={submission.source} />
+                        </p>
                         <p className="truncate text-sm text-zinc-600">{submission.lessonTitle} · {submission.courseTitle}</p>
                         <p className="mt-1 flex items-center gap-1 text-xs text-zinc-500">
                           <FileText className="h-3 w-3" />
@@ -297,9 +385,97 @@ function SubmissionInbox() {
   );
 }
 
+/* ---------- speed-grader navigation ---------- */
+const parseFilter = (value: string | null): SourceFilter => (value === "tutor" || value === "ai" ? value : "all");
+const FILTER_LABEL: Record<Exclude<SourceFilter, "all">, string> = { tutor: "tutor assignments", ai: "AI practice" };
+
+function submissionHref(id: number, filter: SourceFilter) {
+  return `/app/tutor/assignment/?submissionId=${id}${filter === "all" ? "" : `&filter=${filter}`}`;
+}
+
+/** Prev / dropdown / next across the same list (and filter) as the inbox, so a
+ *  tutor can grade one submission after another without going back. */
+function SubmissionNavigator({
+  currentId, filter, currentMarks, onNavigate,
+}: {
+  currentId: number;
+  filter: SourceFilter;
+  /** The open submission's latest mark, so its entry updates right after saving. */
+  currentMarks: number | null | undefined;
+  onNavigate: (id: number) => void;
+}) {
+  const [list, setList] = useState<SubmissionSummary[] | null>(null);
+  const dataVersion = useDataVersion();
+  useEffect(() => {
+    const aborter = new AbortController();
+    fetch("/api/tutor/assignment-submissions", { signal: aborter.signal })
+      .then(async (r) => (r.ok ? ((await r.json()) as { submissions?: SubmissionSummary[] }).submissions ?? [] : []))
+      .then((all) => setList(filter === "all" ? all : all.filter((s) => s.source === filter)))
+      .catch(() => { if (!aborter.signal.aborted) setList([]); });
+    return () => aborter.abort();
+  }, [filter, dataVersion]);
+
+  // Fold the open submission's latest mark into the list itself, so a grade
+  // saved here still shows after moving on to the next submission.
+  useEffect(() => {
+    if (currentMarks === undefined) return;
+    setList((prev) => prev?.map((s) => (s.id === currentId && s.marks !== currentMarks ? { ...s, marks: currentMarks } : s)) ?? prev);
+  }, [currentId, currentMarks]);
+
+  const items = list ?? [];
+  const index = items.findIndex((s) => s.id === currentId);
+  const prev = index > 0 ? items[index - 1] : null;
+  const next = index >= 0 && index < items.length - 1 ? items[index + 1] : null;
+  const remaining = items.filter((s) => s.marks === null).length;
+
+  return (
+    <nav
+      aria-label="Move between submissions"
+      className="sticky top-0 z-20 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-white/95 p-2 shadow-sm backdrop-blur"
+    >
+      <Button size="sm" variant="outline" onClick={() => prev && onNavigate(prev.id)} disabled={!prev} aria-label="Previous submission" title={prev ? `Previous: ${prev.studentName}` : "This is the first submission"}>
+        <ChevronLeft className="h-4 w-4" />
+      </Button>
+
+      <label className="sr-only" htmlFor="submission-picker">Jump to submission</label>
+      <select
+        id="submission-picker"
+        value={index >= 0 ? currentId : ""}
+        onChange={(e) => onNavigate(Number(e.target.value))}
+        disabled={!list || items.length === 0}
+        className="focus-ring h-9 min-w-0 flex-1 rounded-lg border border-border bg-white px-3 text-sm text-zinc-800"
+      >
+        {!list && <option value="">Loading submissions…</option>}
+        {list && index < 0 && <option value="">This submission isn't in the current list</option>}
+        {items.map((s, i) => (
+          <option key={s.id} value={s.id}>
+            {i + 1}. {s.studentName} — {s.lessonTitle} · {s.source === "ai" ? "AI practice" : "Tutor"} · {s.marks === null ? "Needs checking" : `✓ ${s.marks}%`}
+          </option>
+        ))}
+      </select>
+
+      <Button size="sm" variant="outline" onClick={() => next && onNavigate(next.id)} disabled={!next} aria-label="Next submission" title={next ? `Next: ${next.studentName}` : "This is the last submission"}>
+        <ChevronRight className="h-4 w-4" />
+      </Button>
+
+      {list && items.length > 0 && (
+        <span className="px-1 text-xs tabular-nums text-zinc-500">
+          {index >= 0 ? `${index + 1} of ${items.length}` : `${items.length} total`}
+          {" · "}
+          {remaining === 0 ? "all checked" : `${remaining} to check`}
+          {filter !== "all" && ` · ${FILTER_LABEL[filter]} only`}
+        </span>
+      )}
+    </nav>
+  );
+}
+
 /* ---------- grade view ---------- */
 function GradeView() {
-  const submissionIdParam = useSearchParams().get("submissionId");
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const submissionIdParam = searchParams.get("submissionId");
+  const filter = parseFilter(searchParams.get("filter"));
   const submissionId = Number(submissionIdParam);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -308,8 +484,23 @@ function GradeView() {
   const [scoreInputs, setScoreInputs] = useState<Record<number, string>>({});
   const [savingGrade, setSavingGrade] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
+  // Grading wants the room: tuck the sidebar away while a submission is open,
+  // and put it back the way the tutor had it when they leave.
+  const { state, setSidebarCollapsed } = useStore();
+  const sidebarWasCollapsed = useRef(state.sidebarCollapsed);
+  const grading = Boolean(submissionIdParam);
+  useEffect(() => {
+    if (!grading) return;
+    const before = sidebarWasCollapsed.current;
+    setSidebarCollapsed(true);
+    return () => setSidebarCollapsed(before);
+  }, [grading, setSidebarCollapsed]);
   useEffect(() => {
     if (!submissionIdParam) return;
+    // Switching submissions (speed-grader): never show the previous one's data.
+    setDetail(null);
+    setError(null);
+    setSavedFlash(false);
     if (!Number.isSafeInteger(submissionId) || submissionId < 1) {
       setError("Invalid submission.");
       return;
@@ -321,21 +512,43 @@ function GradeView() {
         if (!r.ok) throw new Error((data as { error?: string }).error || "Couldn't load this submission.");
         if (!cancelled) {
           setDetail(data);
-          setMarksInput(data.marks !== null && data.rubric.length === 0 ? String(data.marks) : "");
-          setRemark(data.remark ?? "");
+          setMarksInput(data.rubric.length === 0 ? savedPoints(data) : "");
+          setRemark(savedStatus(data));
           setScoreInputs(Object.fromEntries(data.rubric.map((c) => [c.id, c.score !== null ? String(c.score) : ""])));
         }
       })
       .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : "Couldn't load this submission."); });
     return () => { cancelled = true; };
   }, [submissionId, submissionIdParam]);
+  // Autosave: a short pause after the last change saves the grade, as long as
+  // it is complete and valid. The Save button still saves straight away.
+  const autosaveAttempt = useRef("");
+  useEffect(() => {
+    if (!detail || savingGrade || !hasUnsavedGrade()) return;
+    // One automatic try per set of values, so a failed save isn't retried in a loop.
+    const signature = JSON.stringify([detail.submission.id, marksInput, remark, scoreInputs]);
+    if (autosaveAttempt.current === signature) return;
+    const inRange = (value: string, max: number) => value.trim() !== "" && Number.isFinite(Number(value)) && Number(value) >= 0 && Number(value) <= max;
+    const ready = detail.rubric.length === 0
+      ? inRange(marksInput, pointsTotal(detail))
+      : detail.rubric.every((c) => inRange(scoreInputs[c.id] ?? "", c.maxPoints));
+    if (!ready) return;
+    const timer = setTimeout(() => {
+      autosaveAttempt.current = signature;
+      void (detail.rubric.length === 0 ? saveFlatMarks() : saveRubricScores());
+    }, AUTOSAVE_DELAY_MS);
+    return () => clearTimeout(timer);
+    // The save functions read the same state listed here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detail, marksInput, remark, scoreInputs, savingGrade]);
   if (!submissionIdParam) return <SubmissionInbox />;
 
   async function saveFlatMarks() {
     if (!detail) return;
-    const marks = Number(marksInput);
-    if (!Number.isFinite(marks) || marks < 0 || marks > 100) {
-      setError("Marks must be a number between 0 and 100.");
+    const points = Number(marksInput);
+    const total = pointsTotal(detail);
+    if (marksInput.trim() === "" || !Number.isFinite(points) || points < 0 || points > total) {
+      setError(`Points must be a number between 0 and ${total}.`);
       return;
     }
     setSavingGrade(true);
@@ -344,14 +557,17 @@ function GradeView() {
       const res = await fetch("/api/tutor/assignment-submissions/grade", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ submissionId: detail.submission.id, marks, remark }),
+        body: JSON.stringify({ submissionId: detail.submission.id, points, status: remark }),
       });
       const data = (await res.json().catch(() => ({}))) as { marks?: number; gradedAt?: string; error?: string };
-      if (!res.ok) throw new Error(data.error || "Couldn't save marks.");
-      setDetail((prev) => prev && applyGradeResult(prev, data.marks ?? marks, null, null, data.gradedAt ?? new Date().toISOString()));
+      if (!res.ok) throw new Error(data.error || "Couldn't save the points.");
+      const pct = data.marks ?? Math.round((points / total) * 1000) / 10;
+      // Keep the loaded copy in sync so the unsaved-changes check is accurate.
+      setDetail((prev) => prev && { ...applyGradeResult(prev, pct, points, total, data.gradedAt ?? new Date().toISOString()), remark });
+      setMarksInput(String(points));
       flashSaved();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't save marks.");
+      setError(e instanceof Error ? e.message : "Couldn't save the points.");
     } finally {
       setSavingGrade(false);
     }
@@ -376,13 +592,17 @@ function GradeView() {
       const res = await fetch("/api/tutor/assignment-submissions/grade", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ submissionId: detail.submission.id, scores, remark }),
+        body: JSON.stringify({ submissionId: detail.submission.id, scores, status: remark }),
       });
       const data = (await res.json().catch(() => ({}))) as { marks?: number; rawScore?: number; rawMax?: number; gradedAt?: string; error?: string };
       if (!res.ok) throw new Error(data.error || "Couldn't save the grade.");
-      setDetail((prev) => prev && applyGradeResult(
-        prev, data.marks ?? 0, data.rawScore ?? null, data.rawMax ?? null, data.gradedAt ?? new Date().toISOString()
-      ));
+      // Keep the loaded copy in sync so the unsaved-changes check is accurate.
+      setDetail((prev) => prev && {
+        ...applyGradeResult(prev, data.marks ?? 0, data.rawScore ?? null, data.rawMax ?? null, data.gradedAt ?? new Date().toISOString()),
+        remark,
+        rubric: prev.rubric.map((c) => ({ ...c, score: Number(scoreInputs[c.id]) })),
+      });
+      setScoreInputs((inputs) => Object.fromEntries(Object.entries(inputs).map(([k, v]) => [k, String(Number(v))])));
       flashSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't save the grade.");
@@ -395,17 +615,46 @@ function GradeView() {
     setTimeout(() => setSavedFlash(false), 2000);
   }
 
+  /** Points/status changed but not saved yet for the open submission. */
+  function hasUnsavedGrade(): boolean {
+    if (!detail) return false;
+    if (remark !== savedStatus(detail)) return true;
+    if (detail.rubric.length === 0) {
+      return marksInput !== savedPoints(detail);
+    }
+    return detail.rubric.some((c) => (scoreInputs[c.id] ?? "") !== (c.score !== null ? String(c.score) : ""));
+  }
+
+  function goToSubmission(id: number) {
+    if (!Number.isSafeInteger(id) || id === submissionId) return;
+    if (hasUnsavedGrade() && !window.confirm(`You haven't saved the grade for ${detail?.submission.studentName}. Leave without saving?`)) return;
+    router.push(submissionHref(id, filter));
+  }
+
+  const navigator = (
+    <SubmissionNavigator
+      currentId={submissionId}
+      filter={filter}
+      currentMarks={detail?.submission.id === submissionId ? detail.marks : undefined}
+      onNavigate={goToSubmission}
+    />
+  );
+
   if (error && !detail) {
     return (
       <PageTransition>
-        <Card className="p-6"><ErrorNote message={error} /></Card>
+        <div data-wide-page className="mx-auto max-w-3xl space-y-4">
+          {navigator}
+          <Card className="p-6"><ErrorNote message={error} /></Card>
+        </div>
       </PageTransition>
     );
   }
   if (!detail) {
     return (
       <PageTransition>
-        <div className="space-y-4">
+        <div data-wide-page className="mx-auto max-w-3xl space-y-4">
+          {navigator}
           <div className="h-24 animate-pulse rounded-2xl bg-zinc-100" />
           <div className="h-48 animate-pulse rounded-2xl bg-zinc-100" />
           <div className="flex items-center gap-2 px-1 text-sm text-zinc-500"><Loader2 className="h-4 w-4 animate-spin" />Loading submission…</div>
@@ -422,72 +671,110 @@ function GradeView() {
   const runningMax = hasRubric ? rubric.reduce((sum, c) => sum + c.maxPoints, 0) : null;
   const runningPct = runningMax ? Math.round(((runningTotal ?? 0) / runningMax) * 1000) / 10 : 0;
   const checkedPct = stats.total > 0 ? Math.round((stats.checked / stats.total) * 100) : 0;
+  const total = pointsTotal(detail);
+  const typedPoints = Number(marksInput);
+  const typedPct = marksInput.trim() !== "" && Number.isFinite(typedPoints) && typedPoints >= 0 && typedPoints <= total
+    ? Math.round((typedPoints / total) * 1000) / 10 : null;
+  const submitted = new Date(submission.submittedAt);
+  const late = submission.dueDate ? submitted > new Date(`${submission.dueDate}T23:59:59`) : false;
+  const shortDate = (d: Date) => d.toLocaleDateString([], { month: "short", day: "numeric" });
   const filledCount = hasRubric ? rubric.filter((c) => (scoreInputs[c.id] ?? "").trim() !== "").length : 0;
 
   return (
     <PageTransition>
-      <div className="space-y-4">
-        {/* header */}
-        <motion.div variants={fadeUp} initial="hidden" animate="show" className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <BackLink />
-            <div className="mt-3 flex items-center gap-3">
-              <Avatar name={submission.studentName} />
-              <div className="min-w-0">
-                <h1 className="text-lg font-semibold text-zinc-900">{submission.studentName}</h1>
-                <p className="truncate text-sm text-zinc-500">
-                  {submission.lessonTitle} · {submission.courseTitle}
-                </p>
-              </div>
-            </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-              <span className="inline-flex items-center gap-1 rounded-md bg-zinc-100 px-2 py-1"><FileText className="h-3 w-3" />{submission.fileName}</span>
-              <span className="inline-flex items-center gap-1 rounded-md bg-zinc-100 px-2 py-1"><Clock className="h-3 w-3" />{new Date(submission.submittedAt).toLocaleString()}</span>
-              {submission.dueDate && <span className="rounded-md bg-zinc-100 px-2 py-1">Due {new Date(`${submission.dueDate}T00:00:00`).toLocaleDateString()}</span>}
-              {submission.totalMarks && <span className="rounded-md bg-zinc-100 px-2 py-1">{submission.totalMarks} marks</span>}
-              <AnimatePresence>
-                {detail.marks !== null && (
-                  <motion.span key="graded" initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
-                    <StatusPill marks={detail.marks} />
-                  </motion.span>
-                )}
-              </AnimatePresence>
-            </div>
-          </div>
+      {/* Wide screens: the submitted document on the left, everything for
+          grading (switching students, the brief, points, status) in a panel
+          on the right that stays in view. Narrow screens stack as before. */}
+      <div data-wide-page className="gap-4 space-y-4 lg:grid lg:grid-cols-[minmax(0,1fr)_23rem] lg:items-start lg:space-y-0 xl:grid-cols-[minmax(0,1fr)_26rem]">
+      <div className="space-y-4 lg:sticky lg:top-20 lg:col-start-2 lg:row-start-1 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pb-2 lg:pl-1 lg:pr-1">
+        {navigator}
 
-          <Card className="min-w-[15rem] overflow-hidden px-4 py-3">
-            <div className="flex items-center gap-4">
-              <div className="text-right">
-                <p className="text-[10px] uppercase tracking-wider text-zinc-400">Checked</p>
-                <p className="text-base font-semibold tabular-nums text-zinc-900">
-                  <AnimatedNumber value={stats.checked} /> <span className="text-sm font-normal text-zinc-400">/ {stats.total}</span>
-                </p>
-              </div>
-              <div className="h-8 w-px bg-border" />
-              <div className="text-right">
-                <p className="text-[10px] uppercase tracking-wider text-zinc-400">Avg. marks</p>
-                <p className="text-base font-semibold tabular-nums text-zinc-900">{stats.averageMarks !== null ? `${stats.averageMarks}%` : "—"}</p>
-              </div>
+        {/* header: who, what, when — the file itself is on the left, and the total is beside the points box */}
+        <motion.div variants={fadeUp} initial="hidden" animate="show" className="space-y-2">
+          <BackLink
+            href={filter === "all" ? "/app/tutor/assignment/" : `/app/tutor/assignment/?filter=${filter}`}
+            label="Back to all submissions"
+          />
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="flex flex-wrap items-center gap-2 text-lg font-semibold text-zinc-900">
+                {submission.studentName}
+                <SubmissionSourceBadge source={submission.source} className="text-xs" />
+              </h1>
+              <p className="truncate text-sm text-zinc-500">{submission.lessonTitle} · {submission.courseTitle}</p>
             </div>
-            <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-zinc-100">
-              <motion.div
-                className="h-full rounded-full bg-gradient-to-r from-primary/70 to-primary"
-                initial={{ width: 0 }}
-                animate={{ width: `${checkedPct}%` }}
-                transition={{ type: "spring", stiffness: 80, damping: 20 }}
-              />
-            </div>
-          </Card>
+            <span className="shrink-0"><StatusPill marks={detail.marks} rawScore={detail.rawScore} rawMax={detail.rawMax} /></span>
+          </div>
+          <p className="text-xs text-zinc-500" title={`${submission.fileName} · submitted ${submitted.toLocaleString()}`}>
+            Submitted {shortDate(submitted)}
+            {submission.dueDate && <> · Due {shortDate(new Date(`${submission.dueDate}T00:00:00`))}</>}
+            {late && <span className="font-medium text-amber-700"> · Late</span>}
+          </p>
         </motion.div>
+
+        {/* What the learner was asked to do. AI practice briefs are violet and
+            personalized per learner; tutor assignments show the lesson's own text. */}
+        {submission.source === "ai" && submission.assignmentBrief && (
+          <motion.div variants={fadeUp} initial="hidden" animate="show" transition={{ delay: 0.04 }}>
+            <Card className="border-violet-200 bg-violet-50/40 p-4">
+              <details open className="group">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-medium text-zinc-900">
+                  <span className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-violet-600" />
+                    AI-generated practice brief
+                    <span className="font-normal text-zinc-500">· for {submission.studentName}</span>
+                  </span>
+                  <span className="text-xs font-normal text-zinc-500 group-open:hidden">Show</span>
+                  <span className="hidden text-xs font-normal text-zinc-500 group-open:inline">Hide</span>
+                </summary>
+                <p className="mt-1 text-xs text-violet-800/80">
+                  You didn&apos;t write this — AI generated it for this learner from the lesson. Grade against its deliverables and success criteria.
+                </p>
+                <div className="mt-3">
+                  {(() => {
+                    const brief = parseAssignment(submission.assignmentBrief);
+                    return brief ? (
+                      <AssignmentBrief assignment={brief} learnerName={submission.studentName} />
+                    ) : (
+                      <p className="rounded-xl border border-primary/15 bg-white p-4 text-sm leading-relaxed text-zinc-800">
+                        {submission.assignmentBrief}
+                      </p>
+                    );
+                  })()}
+                </div>
+              </details>
+            </Card>
+          </motion.div>
+        )}
+
+        {submission.source === "tutor" && (
+          <motion.div variants={fadeUp} initial="hidden" animate="show" transition={{ delay: 0.04 }}>
+            <Card className="border-primary/20 p-4">
+              <p className="flex items-center gap-2 text-sm font-medium text-zinc-900">
+                <ClipboardList className="h-4 w-4 text-primary" />
+                Your assignment for this lesson
+              </p>
+              {submission.tutorAssignment ? (
+                <p className="mt-2 whitespace-pre-line rounded-xl border border-primary/15 bg-primary/[0.03] p-3 text-sm leading-relaxed text-zinc-800">
+                  {submission.tutorAssignment}
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-zinc-500">
+                  This lesson requires a file submission but has no written assignment text — add one in the lesson editor.
+                </p>
+              )}
+            </Card>
+          </motion.div>
+        )}
 
         {/* grading card */}
         <motion.div variants={fadeUp} initial="hidden" animate="show" transition={{ delay: 0.08 }}>
           <Card className="space-y-3 p-4">
             <label className="block text-sm font-medium text-zinc-800">
-              Remark
-              <select value={remark} onChange={(event) => setRemark(event.target.value)} required className="focus-ring mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm sm:max-w-xs">
-                <option value="">Select a remark</option>
-                <option>Excellent</option><option>Good</option><option>Satisfactory</option><option>Needs improvement</option>
+              Add status
+              <select value={remark} onChange={(event) => setRemark(event.target.value)} className="focus-ring mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm sm:max-w-xs">
+                <option value="">None</option>
+                <option>Excused</option><option>Missing</option><option>Late</option>
               </select>
             </label>
             {hasRubric ? (
@@ -546,20 +833,21 @@ function GradeView() {
                       {runningMax ? <span className="tabular-nums text-zinc-500"> ({runningPct}%)</span> : null}
                     </p>
                   </div>
-                  <SaveButton saving={savingGrade} saved={savedFlash} label="Save grade" onClick={() => void saveRubricScores()} disabled={savingGrade || !remark} />
+                  <SaveButton saving={savingGrade} saved={savedFlash} label="Save grade" onClick={() => void saveRubricScores()} disabled={savingGrade} />
                 </div>
               </>
             ) : (
               <div className="flex flex-wrap items-center gap-3">
                 <label className="flex items-center gap-2 text-sm font-medium text-zinc-800">
-                  Marks (0–100)
+                  Points
                   <Input
-                    type="number" min={0} max={100} value={marksInput}
+                    type="number" min={0} max={total} value={marksInput}
                     onChange={(e) => setMarksInput(e.target.value)}
-                    className="h-9 w-24 tabular-nums transition-shadow focus-visible:ring-primary/40"
+                    className="h-9 w-20 text-right tabular-nums transition-shadow focus-visible:ring-primary/40"
                   />
+                  <span className="font-normal tabular-nums text-zinc-600">/ {total}{typedPct !== null && <span className="text-zinc-400"> ({typedPct}%)</span>}</span>
                 </label>
-                <SaveButton saving={savingGrade} saved={savedFlash} label="Save marks" onClick={() => void saveFlatMarks()} disabled={savingGrade || !marksInput.trim() || !remark} />
+                <SaveButton saving={savingGrade} saved={savedFlash} label="Save points" onClick={() => void saveFlatMarks()} disabled={savingGrade || !marksInput.trim()} />
                 <span className="text-xs text-zinc-500">No rubric set up for this lesson — set one from the lesson editor to grade by criteria instead.</span>
               </div>
             )}
@@ -571,11 +859,20 @@ function GradeView() {
               )}
             </AnimatePresence>
             <ErrorNote message={error} />
+            <p className="text-xs text-zinc-500">
+              {savingGrade ? "Saving…" : hasUnsavedGrade() ? "Unsaved changes — saves automatically when you pause, or use the button." : "Changes save automatically."}
+            </p>
+            <p className="border-t pt-2 text-xs text-zinc-500">
+              This lesson: {stats.checked} of {stats.total} checked{stats.averageMarks !== null && <> · average {stats.averageMarks}%</>}
+            </p>
           </Card>
         </motion.div>
+      </div>
 
-        <motion.div variants={fadeUp} initial="hidden" animate="show" transition={{ delay: 0.16 }}>
-          <DocumentMarkupViewer submissionId={submission.id} mimeType={submission.mimeType} />
+        <motion.div variants={fadeUp} initial="hidden" animate="show" transition={{ delay: 0.16 }} className="min-w-0 lg:col-start-1 lg:row-start-1">
+          {/* Keyed so each submission gets a fresh viewer: its own undo history,
+              tool and page — undo must never touch another student's markup. */}
+          <DocumentMarkupViewer key={submission.id} submissionId={submission.id} mimeType={submission.mimeType} />
         </motion.div>
       </div>
     </PageTransition>

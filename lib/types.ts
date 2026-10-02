@@ -27,6 +27,12 @@ export interface Lesson {
   format?: "video" | "reading";
   body?:string;
   bodyFileUrl?:string;
+  /** false = a draft lesson only the course's tutor can see. Absent/true =
+   *  visible to learners (whenever the course itself is published). */
+  published?: boolean;
+  /** Scheduled launch: a published lesson stays hidden from learners until
+   *  this moment (ISO 8601). Only present while that moment is in the future. */
+  publishAt?: string;
 }
 
 /**

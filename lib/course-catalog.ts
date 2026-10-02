@@ -26,6 +26,7 @@ type LessonRow = {
   duration_min: number | null; resources: Resource[] | null; key_takeaways: string[] | null; assignment: string | null;
   assignment_marks: number | null; assignment_due_date: string | null;
   section: string | null; format: "video" | "reading" | null; requires_submission: boolean | null; body: string | null; body_file_url: string | null;
+  lesson_published: boolean | null; publish_at: Date | string | null;
 };
 
 let seedPromise: Promise<void> | undefined;
@@ -54,7 +55,9 @@ export async function initializeCourseCatalog(client: CatalogClient): Promise<vo
         ADD COLUMN IF NOT EXISTS body_file_url TEXT,
         ADD COLUMN IF NOT EXISTS requires_submission BOOLEAN NOT NULL DEFAULT FALSE,
         ADD COLUMN IF NOT EXISTS assignment_marks INT,
-        ADD COLUMN IF NOT EXISTS assignment_due_date DATE
+        ADD COLUMN IF NOT EXISTS assignment_due_date DATE,
+        ADD COLUMN IF NOT EXISTS published BOOLEAN NOT NULL DEFAULT TRUE,
+        ADD COLUMN IF NOT EXISTS publish_at TIMESTAMPTZ
     `);
     const marker = await client.query("SELECT 1 FROM course_catalog_metadata WHERE key=$1", ["seed-v1"]);
     if (!marker.rows[0]) {
@@ -146,7 +149,7 @@ export async function getCourses(where = "", params: unknown[] = []): Promise<Co
             l.id, l.course_slug, l.title AS lesson_title, l.description AS lesson_description,
              l.youtube_id, l.duration_min, l.resources, l.key_takeaways, l.assignment,
              l.assignment_marks, l.assignment_due_date,
-             l.section, l.format, l.body, l.body_file_url, l.requires_submission
+             l.section, l.format, l.body, l.body_file_url, l.requires_submission, l.published AS lesson_published, l.publish_at
      FROM courses c
      LEFT JOIN course_lessons l ON l.course_slug = c.slug
      LEFT JOIN users u ON u.id = c.owner_user_id
@@ -173,6 +176,10 @@ export async function getCourses(where = "", params: unknown[] = []): Promise<Co
       ...(row.body ? { body: row.body } : {}),
       ...(row.body_file_url ? { bodyFileUrl: row.body_file_url } : {}),
       format: row.format ?? "video", requiresSubmission: Boolean(row.requires_submission),
+      ...(row.lesson_published === false ? { published: false } : {}),
+      // Only a launch that is still ahead matters; once it passes the lesson is simply live.
+      ...(row.lesson_published !== false && row.publish_at && new Date(row.publish_at).getTime() > Date.now()
+        ? { publishAt: new Date(row.publish_at).toISOString() } : {}),
     });
   }
   return [...courses.values()];
@@ -230,7 +237,7 @@ export function validateCourse(value: unknown, expectedSlug?: string, requireRev
   for (const raw of c.lessons) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ok: false, error: "Invalid lesson." };
     const l = raw as Record<string, unknown>;
-    const lessonKeys = new Set(["id", "title", "description", "youtubeId", "durationMin", "resources", "keyTakeaways", "assignment", "assignmentMarks", "assignmentDueDate", "section", "format", "body", "bodyFileUrl", "requiresSubmission"]);
+    const lessonKeys = new Set(["id", "title", "description", "youtubeId", "durationMin", "resources", "keyTakeaways", "assignment", "assignmentMarks", "assignmentDueDate", "section", "format", "body", "bodyFileUrl", "requiresSubmission", "published", "publishAt"]);
     const format = l.format ?? "video";
     const rawYoutubeId = typeof l.youtubeId === "string" ? l.youtubeId.trim() : "";
     const youtubeId = format === "reading"
@@ -253,6 +260,8 @@ export function validateCourse(value: unknown, expectedSlug?: string, requireRev
       (l.bodyFileUrl !== undefined && (format !== "reading" || !string(l.bodyFileUrl, 200) || !isResourceFileUrl(l.bodyFileUrl as string))) ||
       (l.body !== undefined && l.bodyFileUrl !== undefined) ||
       (l.requiresSubmission !== undefined && typeof l.requiresSubmission !== "boolean") ||
+      (l.published !== undefined && typeof l.published !== "boolean") ||
+      (l.publishAt !== undefined && (!string(l.publishAt, 40) || Number.isNaN(Date.parse(l.publishAt as string)))) ||
       ids.has(l.id as string) ||
       !(l.id as string).startsWith(`${c.slug}-`)) return { ok: false, error: "Invalid lesson fields." };
     ids.add(l.id as string);
@@ -291,9 +300,9 @@ export async function replaceCourse(
     await client.query("DELETE FROM course_lessons WHERE course_slug=$1", [course.slug]);
     for (let i = 0; i < course.lessons.length; i++) {
       const l = course.lessons[i];
-      await client.query(`INSERT INTO course_lessons (id,course_slug,title,description,youtube_id,duration_min,resources,key_takeaways,assignment,section,format,position,requires_submission,body,body_file_url,assignment_marks,assignment_due_date)
-        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
-      [l.id, course.slug, l.title, l.description, l.youtubeId, l.durationMin, JSON.stringify(l.resources), JSON.stringify(l.keyTakeaways), l.assignment ?? null, l.section ?? null, l.format ?? "video", i, l.requiresSubmission ?? false, l.body ?? null, l.bodyFileUrl ?? null, l.assignmentMarks ?? null, l.assignmentDueDate ?? null]);
+      await client.query(`INSERT INTO course_lessons (id,course_slug,title,description,youtube_id,duration_min,resources,key_takeaways,assignment,section,format,position,requires_submission,body,body_file_url,assignment_marks,assignment_due_date,published,publish_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+      [l.id, course.slug, l.title, l.description, l.youtubeId, l.durationMin, JSON.stringify(l.resources), JSON.stringify(l.keyTakeaways), l.assignment ?? null, l.section ?? null, l.format ?? "video", i, l.requiresSubmission ?? false, l.body ?? null, l.bodyFileUrl ?? null, l.assignmentMarks ?? null, l.assignmentDueDate ?? null, l.published ?? true, l.published !== false && l.publishAt ? new Date(l.publishAt).toISOString() : null]);
 
     }
     await client.query("COMMIT");
@@ -341,9 +350,9 @@ export async function updateOwnedCourse(course: Course, userId: number, isAdmin:
     await client.query("DELETE FROM course_lessons WHERE course_slug=$1", [course.slug]);
     for (let i = 0; i < course.lessons.length; i++) {
       const l = course.lessons[i];
-      await client.query(`INSERT INTO course_lessons (id,course_slug,title,description,youtube_id,duration_min,resources,key_takeaways,assignment,section,format,position,requires_submission,body,body_file_url,assignment_marks,assignment_due_date)
-        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
-      [l.id, course.slug, l.title, l.description, l.youtubeId, l.durationMin, JSON.stringify(l.resources), JSON.stringify(l.keyTakeaways), l.assignment ?? null, l.section ?? null, l.format ?? "video", i, l.requiresSubmission ?? false, l.body ?? null, l.bodyFileUrl ?? null, l.assignmentMarks ?? null, l.assignmentDueDate ?? null]);
+      await client.query(`INSERT INTO course_lessons (id,course_slug,title,description,youtube_id,duration_min,resources,key_takeaways,assignment,section,format,position,requires_submission,body,body_file_url,assignment_marks,assignment_due_date,published,publish_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+      [l.id, course.slug, l.title, l.description, l.youtubeId, l.durationMin, JSON.stringify(l.resources), JSON.stringify(l.keyTakeaways), l.assignment ?? null, l.section ?? null, l.format ?? "video", i, l.requiresSubmission ?? false, l.body ?? null, l.bodyFileUrl ?? null, l.assignmentMarks ?? null, l.assignmentDueDate ?? null, l.published ?? true, l.published !== false && l.publishAt ? new Date(l.publishAt).toISOString() : null]);
     }
     await client.query("COMMIT");
     course.revision = next;
@@ -381,6 +390,8 @@ export type LessonLocation = {
   courseSlug: string;
   courseTitle: string;
   ownerUserId: number | null;
+  /** Course and lesson are both published and any scheduled launch has passed, i.e. learners can see it. */
+  visibleToLearners: boolean;
 };
 
 const lessonIdPattern = /^[a-z0-9-]{3,120}$/i;
@@ -389,18 +400,19 @@ const lessonIdPattern = /^[a-z0-9-]{3,120}$/i;
  * Resolves a lesson against the live, DB-backed catalog — unlike
  * lib/personalized-learning.ts's findTrustedLesson (which only searches the
  * static launch-time seed array), this also finds lessons in courses a
- * tutor created after launch. Callers that need lesson content as untrusted
- * AI prompt input should keep using findTrustedLesson; this is for
- * ownership/ID resolution, where every course must work, not just the four
- * seed ones.
+ * tutor created after launch. This is for ownership/ID resolution, where
+ * every course must work, not just the four seed ones. Callers that need
+ * lesson content as AI prompt input should use findLessonForAi instead, which
+ * only admits published courses and lessons, and flags tutor-authored text as untrusted.
  */
 export async function findLessonLocation(lessonId: unknown): Promise<LessonLocation | null> {
   if (typeof lessonId !== "string" || !lessonIdPattern.test(lessonId)) return null;
   const { rows } = await db.query<{
     id: string; title: string; requires_submission: boolean;
-    course_slug: string; course_title: string; owner_user_id: number | null;
+    course_slug: string; course_title: string; owner_user_id: number | null; visible: boolean;
   }>(
-    `SELECT l.id, l.title, l.requires_submission, c.slug AS course_slug, c.title AS course_title, c.owner_user_id
+    `SELECT l.id, l.title, l.requires_submission, c.slug AS course_slug, c.title AS course_title, c.owner_user_id,
+            (c.published AND l.published AND (l.publish_at IS NULL OR l.publish_at <= NOW())) AS visible
      FROM course_lessons l JOIN courses c ON c.slug = l.course_slug
      WHERE l.id = $1`,
     [lessonId]
@@ -410,5 +422,6 @@ export async function findLessonLocation(lessonId: unknown): Promise<LessonLocat
   return {
     lessonId: row.id, lessonTitle: row.title, requiresSubmission: row.requires_submission,
     courseSlug: row.course_slug, courseTitle: row.course_title, ownerUserId: row.owner_user_id,
+    visibleToLearners: Boolean(row.visible),
   };
 }

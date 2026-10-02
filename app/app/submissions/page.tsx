@@ -90,9 +90,9 @@ export default function SubmissionsPage() {
                   </p>
                   {(s.dueDate || s.totalMarks) && <p className="mt-1 text-xs text-zinc-600">
                     {s.dueDate ? `Due ${new Date(`${s.dueDate}T00:00:00`).toLocaleDateString(undefined, { dateStyle: "medium" })}` : ""}
-                    {s.dueDate && s.totalMarks ? " · " : ""}{s.totalMarks ? `${s.totalMarks} marks` : ""}
+                    {s.dueDate && s.totalMarks ? " · " : ""}{s.totalMarks ? `${s.totalMarks} points` : ""}
                   </p>}
-                  {s.remark && <p className="mt-1 text-sm font-medium text-zinc-700">Tutor remark: {s.remark}</p>}
+                  {s.remark && ["Late", "Missing", "Excused"].includes(s.remark) && <p className="mt-1 text-sm font-medium text-zinc-700">Status: {s.remark}</p>}
                   {s.checked && s.gradedAt && (
                     <p className="mt-0.5 text-xs text-zinc-400">
                       Graded {new Date(s.gradedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}

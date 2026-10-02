@@ -5,8 +5,11 @@ import { authOptions } from "@/lib/auth";
 import { db, type DbUser } from "@/lib/db";
 import {
   buildLearnerPersonaLine,
-  findTrustedLesson,
+  findLessonForAi,
+  insufficientContentResponse,
   lessonConcepts,
+  lessonHasEnoughContent,
+  lessonPromptLines,
 } from "@/lib/personalized-learning";
 import {
   InvalidJsonBodyError,
@@ -110,8 +113,10 @@ export async function POST(req: Request) {
   const parsed = await readLessonId(req);
   if (parsed instanceof Response) return parsed;
 
-  const lesson = findTrustedLesson(parsed.lessonId);
+  const lesson = await findLessonForAi(parsed.lessonId);
   if (!lesson) return Response.json({ error: "Lesson not found." }, { status: 404 });
+  // Don't spend tokens on a placeholder lesson.
+  if (!lessonHasEnoughContent(lesson)) return insufficientContentResponse("quiz");
 
   const { rows: userRows } = await db.query<LearnerRow>(
     "SELECT id, date_of_birth, qualification, learning_goal FROM users WHERE email = $1",
@@ -145,9 +150,7 @@ export async function POST(req: Request) {
     `Generate exactly ${QUIZ_QUESTION_COUNT} multiple-choice questions to check understanding of this lesson.`,
     personaLine || "",
     "",
-    `Lesson title: ${lesson.title}`,
-    `Lesson description: ${lesson.description}`,
-    `Key takeaways: ${lesson.keyTakeaways.join("; ")}`,
+    ...lessonPromptLines(lesson),
     `Allowed concept tags (use one exact tag per question): ${concepts.join(" | ")}`,
     "",
     "Return only valid JSON with this shape:",

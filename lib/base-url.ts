@@ -6,7 +6,9 @@ export function getBaseUrl(): string {
   if (process.env.REPLIT_DEPLOYMENT && prod) return `https://${prod}`;
   if (dev) return `https://${dev}`;
   if (prod) return `https://${prod}`;
-  return "http://localhost:5000";
+  // Local dev: follow the port the server was actually started on, so auth
+  // redirects work even when 3000 is taken and the dev server gets another port.
+  return `http://localhost:${process.env.PORT || 3000}`;
 }
 
 // NextAuth v4 requires NEXTAUTH_URL to build callback URLs.

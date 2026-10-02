@@ -63,6 +63,18 @@ export function isPlaceholder(id: string): boolean {
   return !id || id === PLACEHOLDER_VIDEO;
 }
 
+type LessonVisibility = { published?: boolean; publishAt?: string };
+
+/** A published lesson whose go-live time hasn't arrived yet. */
+export function isLessonScheduled(lesson: LessonVisibility, now = Date.now()): boolean {
+  return lesson.published !== false && Boolean(lesson.publishAt) && Date.parse(lesson.publishAt!) > now;
+}
+
+/** Learners can see the lesson (given its course is published): not a draft, not waiting for its go-live time. */
+export function isLessonLive(lesson: LessonVisibility, now = Date.now()): boolean {
+  return lesson.published !== false && !isLessonScheduled(lesson, now);
+}
+
 export function todayKey(): string {
   return new Date().toISOString().slice(0, 10);
 }

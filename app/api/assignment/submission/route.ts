@@ -8,6 +8,7 @@ import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
 import { notifyUser } from "@/lib/notifications";
 import { sendAssignmentSubmittedEmail } from "@/lib/email";
 import { getBaseUrl } from "@/lib/base-url";
+import type { SubmissionSource } from "@/lib/submission-source";
 
 // A learner's upload for a tutor-required assignment or a personalized
 // practice assignment already generated for that learner. GET returns the
@@ -45,7 +46,8 @@ export async function GET(req: Request) {
 
   const lessonId = new URL(req.url).searchParams.get("lessonId")?.trim();
   const location = await findLessonLocation(lessonId);
-  if (!location) return Response.json({ error: "Lesson not found." }, { status: 404 });
+  // Learners can only submit to lessons they can see (not drafts).
+  if (!location || !location.visibleToLearners) return Response.json({ error: "Lesson not found." }, { status: 404 });
 
   const { rows: userRows } = await db.query<{ id: number }>(
     "SELECT id FROM users WHERE email = $1",
@@ -119,7 +121,8 @@ export async function POST(req: Request) {
   }
 
   const location = await findLessonLocation(lessonId);
-  if (!location) return Response.json({ error: "Lesson not found." }, { status: 404 });
+  // Learners can only submit to lessons they can see (not drafts).
+  if (!location || !location.visibleToLearners) return Response.json({ error: "Lesson not found." }, { status: 404 });
 
   const { rows: userRows } = await db.query<{ id: number; name: string | null }>(
     "SELECT id, name FROM users WHERE email = $1",
@@ -131,14 +134,19 @@ export async function POST(req: Request) {
     return Response.json({ error: "Generate or receive an assignment before submitting work." }, { status: 409 });
   }
 
+  // A lesson that requires a submission is the tutor's own assignment;
+  // otherwise the learner is answering their AI-generated practice brief
+  // (canSubmitAssignment above guarantees one exists).
+  const source: SubmissionSource = location.requiresSubmission ? "tutor" : "ai";
+
   const { rows } = await db.query<{ id: number; submitted_at: string }>(
     `WITH saved AS (
-       INSERT INTO assignment_submissions (user_id, lesson_id, course_slug, file_name, mime_type, file_size, content, submitted_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+       INSERT INTO assignment_submissions (user_id, lesson_id, course_slug, file_name, mime_type, file_size, content, source, submitted_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
        ON CONFLICT (user_id, lesson_id) DO UPDATE SET
          course_slug = EXCLUDED.course_slug, file_name = EXCLUDED.file_name,
          mime_type = EXCLUDED.mime_type, file_size = EXCLUDED.file_size,
-         content = EXCLUDED.content, submitted_at = NOW()
+         content = EXCLUDED.content, source = EXCLUDED.source, submitted_at = NOW()
        RETURNING id, submitted_at
      ),
      cleared_scores AS (
@@ -151,7 +159,7 @@ export async function POST(req: Request) {
        DELETE FROM assignment_grades WHERE submission_id IN (SELECT id FROM saved)
      )
      SELECT id, submitted_at FROM saved`,
-    [user.id, location.lessonId, location.courseSlug, fileName, file.type, bytes.byteLength, bytes]
+    [user.id, location.lessonId, location.courseSlug, fileName, file.type, bytes.byteLength, bytes, source]
   );
   const submission = rows[0];
 
@@ -169,8 +177,10 @@ export async function POST(req: Request) {
       const tutor = tutorRows[0];
       await notifyUser(location.ownerUserId, {
         kind: "assignment",
-        title: "New assignment submission",
-        body: `${studentName} submitted "${location.lessonTitle}" in ${location.courseTitle}.`,
+        title: source === "ai" ? "New AI practice submission" : "New assignment submission",
+        body: source === "ai"
+          ? `${studentName} submitted their AI practice assignment for "${location.lessonTitle}" in ${location.courseTitle}.`
+          : `${studentName} submitted "${location.lessonTitle}" in ${location.courseTitle}.`,
         link: `/app/tutor/assignment/?submissionId=${submission.id}`,
       });
       if (tutor) await sendAssignmentSubmittedEmail(tutor.email, tutor.name ?? "", {

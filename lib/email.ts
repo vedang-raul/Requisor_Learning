@@ -7,8 +7,19 @@ function base64Url(input: string): string {
   return Buffer.from(input).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+/** The Gmail connector only works inside a Repl, which provides one of these tokens. */
+const hasReplitIdentity = Boolean(process.env.REPL_IDENTITY || process.env.WEB_REPL_RENEWAL);
+
 /** Send an HTML email from support@requisor.io via the connected Gmail account. */
 export async function sendEmail(to: string, subject: string, html: string): Promise<void> {
+  // Local development outside Replit: there is no mail transport, so print the
+  // email (and its links, e.g. verification/reset) to the server console instead.
+  if (process.env.NODE_ENV !== "production" && !hasReplitIdentity) {
+    const links = Array.from(html.matchAll(/href="([^"]+)"/g), (m) => m[1]);
+    console.info(`[email:dev] To: ${to} | Subject: ${subject}${links.length ? `\n  ${links.join("\n  ")}` : ""}`);
+    return;
+  }
+
   const connectors = new ReplitConnectors();
   const mime = [
     `From: ${FROM}`,

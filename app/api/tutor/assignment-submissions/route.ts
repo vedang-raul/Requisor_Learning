@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { toSubmissionSource } from "@/lib/submission-source";
 
 /**
  * Lists learner submissions for one lesson so a tutor can review who has
@@ -38,11 +39,11 @@ export async function GET(req: Request) {
       id: number; student_name: string | null; student_email: string;
       file_name: string; file_size: number; submitted_at: string;
       marks: number | null; graded_at: string | null;
-      lesson_title: string | null; course_title: string;
+      lesson_title: string | null; course_title: string; source: string;
     }>(
       `SELECT s.id, u.name AS student_name, u.email AS student_email,
               s.file_name, s.file_size, s.submitted_at, g.marks, g.graded_at,
-              l.title AS lesson_title, c.title AS course_title
+              l.title AS lesson_title, c.title AS course_title, s.source
        FROM assignment_submissions s
        JOIN users u ON u.id = s.user_id
        JOIN courses c ON c.slug = s.course_slug
@@ -69,6 +70,7 @@ export async function GET(req: Request) {
         gradedAt: submission.graded_at,
         lessonTitle: submission.lesson_title ?? "Untitled lesson",
         courseTitle: submission.course_title,
+        source: toSubmissionSource(submission.source),
       })),
       stats: { total: submissions.length, checked: graded.length, averageMarks },
     });
@@ -86,10 +88,10 @@ export async function GET(req: Request) {
   const { rows: submissions } = await db.query<{
     id: number; student_name: string | null; student_email: string;
     file_name: string; file_size: number; submitted_at: string;
-    marks: number | null; graded_at: string | null;
+    marks: number | null; graded_at: string | null; source: string;
   }>(
     `SELECT s.id, u.name AS student_name, u.email AS student_email, s.file_name, s.file_size, s.submitted_at,
-            g.marks, g.graded_at
+            g.marks, g.graded_at, s.source
      FROM assignment_submissions s
      JOIN users u ON u.id = s.user_id
      LEFT JOIN assignment_grades g ON g.submission_id = s.id
@@ -113,6 +115,7 @@ export async function GET(req: Request) {
       submittedAt: s.submitted_at,
       marks: s.marks,
       gradedAt: s.graded_at,
+      source: toSubmissionSource(s.source),
     })),
     stats: { total: submissions.length, checked: graded.length, averageMarks },
   });

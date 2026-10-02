@@ -82,6 +82,11 @@ function LearnView() {
   const [celebrate, setCelebrate] = useState(false);
   const [courseDone, setCourseDone] = useState(false);
   const [quizOpen, setQuizOpen] = useState(false);
+  // "?quiz=1" (e.g. from the AI assistant) opens this lesson's quiz straight away.
+  const quizRequested = params.get("quiz") === "1";
+  useEffect(() => {
+    if (quizRequested) setQuizOpen(true);
+  }, [quizRequested, lessonId]);
   // Auto-advance countdown (seconds remaining, null = not counting)
   const [autoAdvance, setAutoAdvance] = useState<number | null>(null);
 

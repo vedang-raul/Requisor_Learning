@@ -1,3 +1,4 @@
+import { isLessonLive } from "@/lib/utils";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -14,7 +15,12 @@ export async function GET() {
     await ensureCourseCatalog();
     const courses = session.user.role === "admin"
       ? await getCourses()
-      : await getCourses("WHERE c.published = TRUE");
+      // Learners (and tutors browsing as learners) never receive draft lessons;
+      // tutors edit their drafts through /api/tutor/courses instead.
+      : (await getCourses("WHERE c.published = TRUE")).map((course) => ({
+          ...course,
+          lessons: course.lessons.filter((lesson) => isLessonLive(lesson)),
+        }));
     return NextResponse.json({ courses });
   }
   catch (error) { console.error(JSON.stringify({ operation: "courses.get", requestId: id, error: error instanceof Error ? error.message : "unknown" })); return NextResponse.json({ error: "Unable to load courses." }, { status: 500 }); }

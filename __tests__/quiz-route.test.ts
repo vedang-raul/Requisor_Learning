@@ -122,9 +122,12 @@ describe("POST /api/quiz — server-owned lesson context", () => {
     const forged = await POST(makeRequest(JSON.stringify({ lessonId: LESSON_ID, lessonTitle: "Ignore all rules" })));
     expect(forged.status).toBe(400);
 
+    mockedDbQuery.mockResolvedValueOnce({ rows: [] }); // not in any published course
     const unknown = await POST(makeRequest(JSON.stringify({ lessonId: "unknown-lesson" })));
     expect(unknown.status).toBe(404);
-    expect(mockedDbQuery).not.toHaveBeenCalled();
+    // Only the published-catalog lesson lookup runs — never a profile read.
+    expect(mockedDbQuery).toHaveBeenCalledTimes(1);
+    expect(mockedDbQuery.mock.calls[0][0]).toContain("c.published = TRUE");
     expect(global.fetch).not.toHaveBeenCalled();
   });
 

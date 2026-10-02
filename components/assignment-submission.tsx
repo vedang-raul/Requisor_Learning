@@ -82,7 +82,7 @@ export function AssignmentSubmission({ lessonId, assignmentBrief, totalMarks, du
       <p className="mt-1 text-xs text-zinc-500">PDF or Word (.docx), up to 10 MB.</p>
       {(dueDate || totalMarks) && <div className="mt-3 flex flex-wrap gap-2 text-xs font-medium text-zinc-700">
         {dueDate && <span className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 ring-1 ring-zinc-200"><CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />Due {new Date(`${dueDate}T00:00:00`).toLocaleDateString(undefined, { dateStyle: "medium" })}</span>}
-        {totalMarks && <span className="rounded-md bg-white px-2 py-1 ring-1 ring-zinc-200">{totalMarks} marks</span>}
+        {totalMarks && <span className="rounded-md bg-white px-2 py-1 ring-1 ring-zinc-200">{totalMarks} points</span>}
       </div>}
 
       <input

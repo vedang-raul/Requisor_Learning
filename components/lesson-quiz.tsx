@@ -6,6 +6,7 @@ import { CheckCircle2, Loader2, RotateCcw, X, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { trackEvent } from "@/lib/analytics";
+import { INSUFFICIENT_CONTENT_CODE } from "@/lib/assignment-format";
 
 interface QuizQuestion {
   id: string;
@@ -23,7 +24,7 @@ interface GradeResult {
 
 type QuizState =
   | { status: "loading" }
-  | { status: "error"; message: string }
+  | { status: "error"; message: string; retryable: boolean }
   | { status: "ready"; quizId: number; questions: QuizQuestion[] }
   | { status: "grade-error"; quizId: number; questions: QuizQuestion[]; message: string }
   | { status: "submitting"; quizId: number; questions: QuizQuestion[] }
@@ -57,7 +58,12 @@ export function LessonQuiz({
         quizId?: number;
         questions?: QuizQuestion[];
         error?: string;
+        code?: string;
       };
+      if (data.code === INSUFFICIENT_CONTENT_CODE && data.error) {
+        setState({ status: "error", message: data.error, retryable: false });
+        return;
+      }
       if (!response.ok || !Number.isInteger(data.quizId) || !Array.isArray(data.questions)) {
         throw new Error(data.error || "Failed to generate quiz.");
       }
@@ -70,6 +76,7 @@ export function LessonQuiz({
       setState({
         status: "error",
         message: error instanceof Error ? error.message : "Couldn't generate a quiz right now. Please try again.",
+        retryable: true,
       });
     }
   }
@@ -222,10 +229,12 @@ export function LessonQuiz({
           {state.status === "error" && (
             <div className="flex flex-col items-center gap-3 py-10 text-center">
               <p role="alert" className="text-sm text-zinc-600">{state.message}</p>
-              <Button size="sm" variant="outline" onClick={generate}>
-                <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
-                Try another quiz
-              </Button>
+              {state.retryable && (
+                <Button size="sm" variant="outline" onClick={generate}>
+                  <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                  Try another quiz
+                </Button>
+              )}
             </div>
           )}
 

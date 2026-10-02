@@ -90,7 +90,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <div className="relative flex min-w-0 flex-1 flex-col">
         <Topbar />
-        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 md:px-8">{children}</main>
+        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 has-[[data-wide-page]]:max-w-none md:px-8 has-[[data-wide-page]]:md:px-5">{children}</main>
       </div>
       <InactivityGuard />
       <AiAssistant />

@@ -62,11 +62,7 @@ export function PersonaAvatar({
         aria-hidden="true"
       />
       <div
-        className={cn(
-          "relative h-full w-full overflow-hidden rounded-full ring-1 ring-inset ring-white/40 transition-transform duration-200",
-          state === "speaking" && "animate-persona-pulse-fast",
-          state === "listening" && "animate-persona-pulse"
-        )}
+        className="relative h-full w-full overflow-hidden rounded-full ring-1 ring-inset ring-white/40"
         style={{ background: `linear-gradient(135deg, ${c1}, ${c2})` }}
       >
         {failed ? (

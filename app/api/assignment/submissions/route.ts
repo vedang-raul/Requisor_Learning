@@ -29,7 +29,7 @@ export async function GET() {
     `SELECT s.id, s.lesson_id, l.title AS lesson_title, (l.id IS NOT NULL) AS lesson_exists,
             s.course_slug, c.title AS course_title,
             s.file_name, s.file_size, s.submitted_at, g.marks, g.graded_at, g.remark,
-            l.assignment_due_date, l.assignment_marks
+            to_char(l.assignment_due_date, 'YYYY-MM-DD') AS assignment_due_date, l.assignment_marks
      FROM assignment_submissions s
      JOIN courses c ON c.slug = s.course_slug
      LEFT JOIN course_lessons l ON l.id = s.lesson_id

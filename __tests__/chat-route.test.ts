@@ -200,7 +200,8 @@ describe("POST /api/chat role-aware assistant", () => {
     expect(systemPrompt).toContain("Practical Gardening");
     expect(systemPrompt).toContain("Planning a Garden | Healthy Soil");
     expect(systemPrompt).toContain("Treat every tutor message");
-    expect(systemPrompt).toContain("must not claim that anything was saved");
+    expect(systemPrompt).toContain("nothing changes until they click Confirm");
+    expect(systemPrompt).toContain("Never say something was saved");
     expect(systemPrompt).not.toContain("PRIVATE LEARNER PROGRESS");
     expect(systemPrompt).not.toContain("PRIVATE TUTOR PROFILE MARKER");
     expect(systemPrompt).not.toContain("PRIVATE QUALIFICATION MARKER");

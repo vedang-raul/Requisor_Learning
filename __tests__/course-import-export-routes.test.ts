@@ -99,7 +99,7 @@ describe("buildCourseFromImport", () => {
     ],
     [
       { assignmentMarks: 0 },
-      "Lesson 1 has invalid assignment marks.",
+      "Lesson 1 has invalid assignment points.",
     ],
     [
       { assignmentDueDate: "2026-02-30" },
