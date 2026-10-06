@@ -5,6 +5,7 @@ jest.mock("@/lib/db", () => ({
 }));
 
 jest.mock("@/lib/email", () => ({
+  skipEmailVerification: () => process.env.SKIP_EMAIL_VERIFICATION === "on",
   sendWelcomeEmail: jest.fn(() => Promise.resolve()),
 }));
 

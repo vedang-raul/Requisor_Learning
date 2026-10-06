@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { db, roleForEmail } from "@/lib/db";
-import { sendVerificationEmail } from "@/lib/email";
+import { sendVerificationEmail, skipEmailVerification } from "@/lib/email";
 import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
 import { verifyTurnstile } from "@/lib/turnstile";
 import {
@@ -148,14 +148,33 @@ export async function POST(req: Request) {
       name: string | null;
       email_verified: boolean;
       verification_expires: string | null;
+      password_hash: string | null;
     }>(
-      "SELECT id, name, email_verified, verification_expires FROM users WHERE email = $1",
+      "SELECT id, name, email_verified, verification_expires, password_hash FROM users WHERE email = $1",
       [cleanEmail]
     );
     const existingRow = existing.rows[0];
 
     if (existingRow?.email_verified) {
       return NextResponse.json({ error: "An account with this email already exists. Try logging in." }, { status: 409 });
+    }
+
+    // Testing switch (see lib/email.ts): no email, the account is usable at once.
+    if (skipEmailVerification()) {
+      if (existingRow) {
+        // A half-finished registration: only its own password may finish it,
+        // so nobody can take over someone else's pending account.
+        const same = existingRow.password_hash ? await bcrypt.compare(password, existingRow.password_hash) : false;
+        if (!same) return NextResponse.json({ error: "An account with this email already exists. Try logging in." }, { status: 409 });
+        await db.query("UPDATE users SET email_verified = TRUE, verification_token = NULL, verification_expires = NULL WHERE id = $1", [existingRow.id]);
+      } else {
+        await db.query(
+          `INSERT INTO users (email, name, password_hash, role, employment_type, position, email_verified)
+           VALUES ($1, $2, $3, $4, $5, $6, TRUE)`,
+          [cleanEmail, cleanName, await bcrypt.hash(password, 12), roleForEmail(cleanEmail) === "admin" ? "admin" : "employee", cleanType, cleanPosition]
+        );
+      }
+      return NextResponse.json({ ok: true, verified: true });
     }
 
     const token = crypto.randomBytes(32).toString("hex");

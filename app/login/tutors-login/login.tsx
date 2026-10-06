@@ -243,10 +243,9 @@ export default function TutorAuth() {
         return;
       }
       setSubmitting(false);
-      setSuccessCopy({
-        title: "Check your email",
-        body: "Your tutor account was created. Verify your email before logging in.",
-      });
+      setSuccessCopy(data?.verified
+        ? { title: "Account created", body: "Your account was created. You can log in now with your email and password." }
+        : { title: "Check your email", body: "Your tutor account was created. Verify your email before logging in." });
       go("success");
     } catch {
       setFormError("Network error. Please try again.");

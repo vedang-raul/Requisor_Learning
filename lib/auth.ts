@@ -4,6 +4,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
 import { db, roleForEmail, ADMIN_EMAIL, type DbUser } from "./db";
+import { skipEmailVerification } from "./email";
 import { sendWelcomeEmail } from "./email";
 
 const GOOGLE_SIGNIN_FAILED_ERROR = "/?error=GoogleSignInFailed";
@@ -144,7 +145,11 @@ export const authOptions: NextAuthOptions = {
         if (!user || !user.password_hash) throw new Error("Invalid email or password.");
         const ok = await bcrypt.compare(password, user.password_hash);
         if (!ok) throw new Error("Invalid email or password.");
-        if (!user.email_verified) throw new Error("EMAIL_NOT_VERIFIED");
+        if (!user.email_verified) {
+          // Testing switch (see lib/email.ts): the right password is enough.
+          if (!skipEmailVerification()) throw new Error("EMAIL_NOT_VERIFIED");
+          await db.query("UPDATE users SET email_verified = TRUE, verification_token = NULL, verification_expires = NULL WHERE id = $1", [user.id]);
+        }
         // Record login time
         db.query("UPDATE users SET last_login_at = NOW() WHERE id = $1", [user.id]).catch(() => {});
         return { id: String(user.id), email: user.email, name: user.name ?? undefined };

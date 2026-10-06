@@ -18,6 +18,14 @@ function base64Url(input: string): string {
 /** The Gmail connector only works inside a Repl, which provides one of these tokens. */
 const hasReplitIdentity = Boolean(process.env.REPL_IDENTITY || process.env.WEB_REPL_RENEWAL);
 
+/**
+ * Testing switch: with SKIP_EMAIL_VERIFICATION=on, new accounts can log in
+ * straight away with their email and password, and no verification email is
+ * sent. Anyone can then register with an address they don't own, so remove it
+ * before real users arrive.
+ */
+export const skipEmailVerification = () => (process.env.SKIP_EMAIL_VERIFICATION ?? "").toLowerCase() === "on";
+
 /** "Requisor Learning <support@requisor.io>" → its name and address. */
 export function parseSender(from: string): { name?: string; email: string } {
   const match = from.match(/^\s*"?([^"<]*?)"?\s*<\s*([^<>\s]+)\s*>\s*$/);

@@ -58,6 +58,7 @@ jest.mock("@/lib/db", () => ({
 }));
 
 jest.mock("@/lib/email", () => ({
+  skipEmailVerification: () => process.env.SKIP_EMAIL_VERIFICATION === "on",
   sendVerificationEmail: jest.fn().mockResolvedValue(undefined),
   sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
 }));
@@ -232,6 +233,46 @@ describe("POST /api/signup — CAPTCHA enforcement", () => {
 
     expect(res.status).toBe(200);
     expect(insertCall?.[1]?.[3]).toBe("employee");
+  });
+
+  describe("with the skip-verification testing switch on", () => {
+    const signup = (password = "securepassword") => signupPost(new Request("http://localhost/api/signup", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Tester", email: "tester@example.com", password, employmentType: "student", turnstileToken: "good-token" }),
+    }));
+    beforeEach(() => { process.env.SKIP_EMAIL_VERIFICATION = "on"; });
+    afterEach(() => { delete process.env.SKIP_EMAIL_VERIFICATION; });
+
+    it("creates the account already verified and sends no email", async () => {
+      const { db } = jest.requireMock("@/lib/db") as { db: { query: jest.Mock } };
+      const { sendVerificationEmail } = jest.requireMock("@/lib/email") as { sendVerificationEmail: jest.Mock };
+      sendVerificationEmail.mockClear();
+
+      const res = await signup();
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: true, verified: true });
+      const insert = db.query.mock.calls.find(([sql]) => String(sql).includes("INSERT INTO users"));
+      expect(String(insert?.[0])).toContain("email_verified");
+      expect(insert?.[1]?.[3]).toBe("employee"); // still never a privileged role
+      expect(sendVerificationEmail).not.toHaveBeenCalled();
+    });
+
+    it("won't let a different password take over a half-finished registration", async () => {
+      const { db } = jest.requireMock("@/lib/db") as { db: { query: jest.Mock } };
+      const bcrypt = jest.requireActual("bcryptjs") as typeof import("bcryptjs");
+      const pending = { id: 9, name: "Tester", email_verified: false, verification_expires: null, password_hash: await bcrypt.hash("securepassword", 4) };
+      const original = db.query.getMockImplementation();
+      db.query.mockImplementation(async (sql: string) => (String(sql).includes("FROM users WHERE email") ? { rows: [pending] } : { rows: [], rowCount: 1 }));
+      try {
+        expect((await signup("someone-elses-guess")).status).toBe(409);
+        const res = await signup("securepassword");
+        expect(res.status).toBe(200);
+        expect(db.query.mock.calls.some(([sql, args]) => String(sql).includes("SET email_verified = TRUE") && args?.[0] === 9)).toBe(true);
+      } finally {
+        db.query.mockImplementation(original as never);
+      }
+    });
   });
 });
 

@@ -30,6 +30,7 @@ jest.mock("@/lib/db", () => ({
 }));
 
 jest.mock("@/lib/email", () => ({
+  skipEmailVerification: () => process.env.SKIP_EMAIL_VERIFICATION === "on",
   sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
   sendWelcomeEmail: jest.fn().mockResolvedValue(undefined),
 }));

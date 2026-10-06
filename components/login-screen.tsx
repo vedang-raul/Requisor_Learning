@@ -234,7 +234,9 @@ export function LoginScreen() {
           );
         }
         else {
-          setNotice("Account created! Check your inbox — we sent a verification link from support@requisor.io.");
+          setNotice(data?.verified
+            ? "Account created! You can log in now with your email and password."
+            : "Account created! Check your inbox — we sent a verification link from support@requisor.io.");
           setMode("login");
           setPassword("");
           setConfirmPassword("");
