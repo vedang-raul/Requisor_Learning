@@ -37,7 +37,9 @@ function makePool(): Pool {
     idleTimeoutMillis: 30_000,
     // Fail fast if every slot is busy rather than queuing indefinitely —
     // surfaces overload as a 500 instead of a silent hang.
-    connectionTimeoutMillis: 3_000,
+    // Longer on serverless hosts, where the first request after a quiet spell
+    // has to open a fresh TLS connection to the database before it can do anything.
+    connectionTimeoutMillis: process.env.VERCEL ? 10_000 : 3_000,
   });
 
   // Cap individual queries at 8 s; long-running queries hold slots and
