@@ -1,12 +1,13 @@
 import { getBaseUrl } from "./base-url";
 
 /**
- * Outgoing email. Three transports, picked in this order:
- *  1. Resend (https://resend.com) when RESEND_API_KEY is set — use this on
- *     Render or any host other than Replit. EMAIL_FROM must be an address on
- *     a domain verified in Resend.
- *  2. The Gmail connector, inside a Repl.
- *  3. Local development: nothing is sent; the email's links are logged.
+ * Outgoing email. Transports, picked in this order:
+ *  1. Brevo (https://www.brevo.com) when BREVO_API_KEY is set.
+ *  2. Resend (https://resend.com) when RESEND_API_KEY is set.
+ *     Either works on any host. EMAIL_FROM must be a sender that service has
+ *     verified, written as "Name <address>" or just the address.
+ *  3. The Gmail connector, inside a Repl.
+ *  4. Local development: nothing is sent; the email's links are logged.
  */
 const FROM = process.env.EMAIL_FROM || `Requisor Learning <support@requisor.io>`;
 
@@ -16,6 +17,25 @@ function base64Url(input: string): string {
 
 /** The Gmail connector only works inside a Repl, which provides one of these tokens. */
 const hasReplitIdentity = Boolean(process.env.REPL_IDENTITY || process.env.WEB_REPL_RENEWAL);
+
+/** "Requisor Learning <support@requisor.io>" → its name and address. */
+export function parseSender(from: string): { name?: string; email: string } {
+  const match = from.match(/^\s*"?([^"<]*?)"?\s*<\s*([^<>\s]+)\s*>\s*$/);
+  if (!match) return { email: from.trim() };
+  return { ...(match[1].trim() ? { name: match[1].trim() } : {}), email: match[2] };
+}
+
+async function sendWithBrevo(to: string, subject: string, html: string): Promise<void> {
+  const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: { "api-key": process.env.BREVO_API_KEY ?? "", "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({ sender: parseSender(FROM), to: [{ email: to }], subject, htmlContent: html }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Brevo send failed (${res.status}): ${text.slice(0, 500)}`);
+  }
+}
 
 async function sendWithResend(to: string, subject: string, html: string): Promise<void> {
   const res = await fetch("https://api.resend.com/emails", {
@@ -31,6 +51,7 @@ async function sendWithResend(to: string, subject: string, html: string): Promis
 
 /** Send an HTML email (see the transports above). */
 export async function sendEmail(to: string, subject: string, html: string): Promise<void> {
+  if (process.env.BREVO_API_KEY) return sendWithBrevo(to, subject, html);
   if (process.env.RESEND_API_KEY) return sendWithResend(to, subject, html);
 
   // Local development outside Replit: there is no mail transport, so print the
@@ -42,7 +63,7 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
   }
 
   if (!hasReplitIdentity) {
-    throw new Error("No email transport is configured: set RESEND_API_KEY (and EMAIL_FROM).");
+    throw new Error("No email transport is configured: set BREVO_API_KEY or RESEND_API_KEY (and EMAIL_FROM).");
   }
   // Loaded on demand so hosts other than Replit never touch the connector SDK.
   const { ReplitConnectors } = await import("@replit/connectors-sdk");

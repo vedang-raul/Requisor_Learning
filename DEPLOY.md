@@ -16,16 +16,20 @@ the app needs no disk of its own.
 
 You do not need to create any tables. The first deploy does it.
 
-## 2. Resend (email)
+## 2. Email (Brevo or Resend)
 
 Sign-up verification, password reset and notification emails go through
-[Resend](https://resend.com) outside Replit.
+[Brevo](https://www.brevo.com) or [Resend](https://resend.com) outside Replit.
+Set one of them:
 
-1. Create an account, add and verify your sending domain.
-2. Create an API key.
+- **Brevo:** create an API key (SMTP & API → API keys) and set `BREVO_API_KEY`.
+- **Resend:** create an API key and set `RESEND_API_KEY`.
 
-Without `RESEND_API_KEY`, sign-up in production fails at the "send
-verification email" step.
+`EMAIL_FROM` must be a sender that service has verified, for example
+`Requisor Learning <support@your-domain.com>`.
+
+Without an email key, sign-up in production fails at the "send verification
+email" step.
 
 ## 3. Render
 
@@ -36,7 +40,7 @@ verification email" step.
    | --- | --- |
    | `DATABASE_URL` | the Supabase Session pooler string |
    | `XAI_API_KEY` | your xAI key |
-   | `RESEND_API_KEY` | your Resend key |
+   | `BREVO_API_KEY` | your Brevo key (or `RESEND_API_KEY` for Resend) |
    | `EMAIL_FROM` | e.g. `Requisor Learning <support@your-domain.com>` |
    | `AUPHONIC_API_KEY` | optional; without it auto-edit runs in demo mode |
 

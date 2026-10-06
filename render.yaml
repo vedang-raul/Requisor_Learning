@@ -24,7 +24,7 @@ services:
         generateValue: true
       - key: XAI_API_KEY
         sync: false
-      - key: RESEND_API_KEY
+      - key: BREVO_API_KEY # or RESEND_API_KEY, if you use Resend instead
         sync: false
       - key: EMAIL_FROM # e.g. Requisor Learning <support@your-verified-domain>
         sync: false
