@@ -1,6 +1,8 @@
 export const runtime = "nodejs";
-// Long recordings take a while to pass through.
-export const maxDuration = 3600;
+// Long recordings take a while to pass through. 300 seconds is the most Vercel's
+// free plan accepts (a larger value fails the whole deployment); hosts that run
+// the app as an ordinary server, like Render, ignore this.
+export const maxDuration = 300;
 
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
