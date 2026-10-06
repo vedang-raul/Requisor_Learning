@@ -30,6 +30,21 @@ const cookieName = isSecure
   ? "__Secure-next-auth.session-token"
   : "next-auth.session-token";
 
+/**
+ * One-click test logins (a test student and a test tutor, no password).
+ * On in local development, and on a Vercel deployment until TEST_LOGINS=off is
+ * set, so a test site can be tried without email or SQL. They let ANYONE in
+ * as those two accounts, so set TEST_LOGINS=off before real users arrive.
+ * (TEST_LOGINS=on turns them on elsewhere.) The admin shortcut stays
+ * development-only.
+ */
+export function testLoginsEnabled(): boolean {
+  const setting = (process.env.TEST_LOGINS ?? "").toLowerCase();
+  if (setting === "off") return false;
+  if (setting === "on") return true;
+  return process.env.NODE_ENV !== "production" || Boolean(process.env.VERCEL);
+}
+
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET || process.env.SESSION_SECRET,
   session: {
@@ -88,13 +103,17 @@ export const authOptions: NextAuthOptions = {
               return { id: String(rows[0].id), email: rows[0].email, name: rows[0].name ?? "Admin" };
             },
           }),
+        ]
+      : []),
+    // ─── Test logins (see testLoginsEnabled above) ──────────────────────
+    ...(testLoginsEnabled()
+      ? [
           CredentialsProvider({
             id: "dev-tutor",
             name: "Dev Tutor",
             credentials: {},
             async authorize() {
-              // Reserved synthetic account for local and preview-only tutor checks.
-              // This provider is never registered when NODE_ENV is production.
+              // Reserved synthetic account for trying the tutor side.
               const { rows } = await db.query<DbUser>(
                 `INSERT INTO users (email, name, email_verified, role)
                  VALUES ('dev-tutor@requisor.local', 'Development Tutor', TRUE, 'tutor')
@@ -111,11 +130,11 @@ export const authOptions: NextAuthOptions = {
             name: "Dev Student",
             credentials: {},
             async authorize() {
-              // Signs in as the local test learner named in .env.local
-              // (DEV_STUDENT_EMAIL), creating it as a verified learner on a fresh
-              // database. Never registered when NODE_ENV is production.
-              const email = process.env.DEV_STUDENT_EMAIL?.trim().toLowerCase();
-              if (!email || email === ADMIN_EMAIL) return null;
+              // Signs in as the test learner (DEV_STUDENT_EMAIL if set, else a
+              // reserved synthetic address), creating it as a verified learner
+              // on a fresh database.
+              const email = process.env.DEV_STUDENT_EMAIL?.trim().toLowerCase() || "dev-student@requisor.local";
+              if (email === ADMIN_EMAIL) return null;
               const password = process.env.DEV_STUDENT_PASSWORD;
               const hash = password ? await bcrypt.hash(password, 10) : null;
               const { rows } = await db.query<DbUser>(
