@@ -41,14 +41,25 @@ export type VideoEditResult = {
 /** How long a demo job stays "processing". Matches the UI's stage list. */
 export const DEMO_EDIT_SECONDS = 26;
 
-/** Demo is on until a real processing service is configured, unless switched off. */
+/**
+ * Demo (simulated tidy-up with sample results) is for presenting and local
+ * work: on by default in development until Auphonic is connected, and only
+ * shown on a live site when VIDEO_EDIT_DEMO=on asks for it.
+ */
 export function videoEditDemoEnabled(): boolean {
-  return !videoEditConfigured() && (process.env.VIDEO_EDIT_DEMO ?? "").toLowerCase() !== "off";
+  if (videoEditConfigured()) return false;
+  const setting = (process.env.VIDEO_EDIT_DEMO ?? "").toLowerCase();
+  return setting === "on" || (setting !== "off" && process.env.NODE_ENV !== "production");
 }
 
-/** Real editing runs on Auphonic and only needs its API key. */
+/**
+ * Real tidy-up needs the Auphonic key, and somewhere that can take a large
+ * upload. Vercel can't (about 4.5 MB per request), so there it also needs
+ * RECORDING_UPLOAD_URL, the address of a copy of this app that can.
+ */
 export function videoEditConfigured(): boolean {
-  return auphonicConfigured();
+  if (!auphonicConfigured()) return false;
+  return !process.env.VERCEL || Boolean((process.env.RECORDING_UPLOAD_URL ?? "").trim());
 }
 
 const SAMPLE_LINES = [

@@ -35,6 +35,9 @@ export async function middleware(req: NextRequest) {
   //  React JSX style={{}} props produce HTML style= attributes which cannot
   //  carry a nonce.  Removing 'unsafe-inline' from style-src would block every
   //  inline-styled element in the app; that refactor is tracked separately.
+  const uploadOrigin = /^https:\/\/[a-z0-9.-]+(:\d+)?\/?$/i.test((process.env.RECORDING_UPLOAD_URL ?? "").trim())
+    ? (process.env.RECORDING_UPLOAD_URL ?? "").trim().replace(/\/+$/, "")
+    : null;
   const csp = [
     "default-src 'self'",
     // The Cloudflare host is needed for the browser-loaded Turnstile API.
@@ -43,7 +46,8 @@ export async function middleware(req: NextRequest) {
     "img-src 'self' data: blob: https:",
     // challenges.cloudflare.com: Turnstile widget makes API calls from the page
     // to Cloudflare to validate challenge responses.
-    "connect-src 'self' https://accounts.google.com https://oauth2.googleapis.com https://challenges.cloudflare.com",
+    // Plus, when set, the copy of this app that takes large recording uploads.
+    `connect-src 'self' https://accounts.google.com https://oauth2.googleapis.com https://challenges.cloudflare.com${uploadOrigin ? ` ${uploadOrigin}` : ""}`,
     // Edited lesson videos preview from this app's own download route. blob:
     // lets a tutor preview their recording locally and carries subtitle tracks.
     "media-src 'self' blob:",

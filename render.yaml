@@ -20,8 +20,8 @@ services:
         value: require
       - key: PG_POOL_MAX # stay under the Supabase pooler's client limit
         value: "10"
-      - key: NEXTAUTH_SECRET
-        generateValue: true
+      - key: NEXTAUTH_SECRET # if the site itself is on Vercel, use exactly the same value as there
+        sync: false
       - key: XAI_API_KEY
         sync: false
       - key: BREVO_API_KEY # or RESEND_API_KEY, if you use Resend instead

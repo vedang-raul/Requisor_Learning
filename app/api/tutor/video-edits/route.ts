@@ -8,6 +8,7 @@ import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
 import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/request-body";
 import { AuphonicError, auphonicSubtitlesEnabled, createProduction } from "@/lib/auphonic";
 import { videoEditConfigured, videoEditDemoEnabled } from "@/lib/video-edit";
+import { createUploadToken, recordingUploadBase } from "@/lib/upload-token";
 import { toVideoEditJob, type VideoEditJobRow } from "@/lib/video-edit-jobs";
 import { getConnection, videoDelivery, youtubeConfigured } from "@/lib/youtube";
 
@@ -112,5 +113,11 @@ export async function POST(req: NextRequest) {
      VALUES ($1, $2, $3, $4, $5, 'auphonic', $6) RETURNING *`,
     [userId, slug, cleanTitle, cleanFile, seconds, productionId]
   );
-  return NextResponse.json({ job: toVideoEditJob(rows[0]), upload: `/api/tutor/video-edits/${rows[0].id}/upload/` }, { status: 201 });
+  // The recording goes to this app, or to the copy that can take large uploads (see lib/upload-token.ts).
+  const uploadBase = recordingUploadBase();
+  return NextResponse.json({
+    job: toVideoEditJob(rows[0]),
+    upload: `${uploadBase ?? ""}/api/tutor/video-edits/${rows[0].id}/upload/`,
+    ...(uploadBase ? { uploadToken: createUploadToken(rows[0].id, userId) } : {}),
+  }, { status: 201 });
 }

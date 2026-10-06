@@ -85,12 +85,14 @@ function simulateUpload(onProgress: (fraction: number) => void): Promise<void> {
 }
 
 /** Sends the recording to this app (which passes it on to the editing service), reporting progress. */
-function uploadRecording(url: string, file: File, onProgress: (fraction: number) => void): Promise<void> {
+function uploadRecording(url: string, file: File, onProgress: (fraction: number) => void, token?: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const form = new FormData();
     form.append("input_file", file, file.name);
     const xhr = new XMLHttpRequest();
     xhr.open("POST", url);
+    // Set when the upload goes to the app's large-upload copy on another address.
+    if (token) xhr.setRequestHeader("x-upload-token", token);
     xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) return resolve();
@@ -278,9 +280,9 @@ export function VideoEditStudio({
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: lessonTitle.trim(), fileName: file.name, courseSlug, ...(sourceSeconds ? { sourceSeconds } : {}) }),
       });
-      const data = (await r.json().catch(() => ({}))) as { job?: Job; upload?: string; error?: string };
+      const data = (await r.json().catch(() => ({}))) as { job?: Job; upload?: string; uploadToken?: string; error?: string };
       if (!r.ok || !data.job) throw new Error(data.error || "Couldn't start the edit.");
-      if (data.upload) await uploadRecording(data.upload, file, setUploadPct);
+      if (data.upload) await uploadRecording(data.upload, file, setUploadPct, data.uploadToken);
       seenAtRef.current.set(data.job.id, Date.now());
       setRecent((list) => [data.job!, ...list.filter((j) => j.id !== data.job!.id)].slice(0, 10));
       setJob(data.job);

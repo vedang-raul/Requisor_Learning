@@ -793,7 +793,7 @@ export function VideoRecorder({
             <div className="flex flex-wrap items-center gap-2">
               <Button type="button" size="sm" variant="outline" onClick={closeTab}><ArrowLeft className="h-3.5 w-3.5" />Back to the lesson</Button>
               <Button type="button" size="sm" variant="ghost" onClick={recordAgain}><RotateCcw className="h-3.5 w-3.5" />Record again</Button>
-              <span className="text-xs text-zinc-500">{sessionId ? "The lesson's tab has this recording too, in case you want it tidied up (pauses cut, audio evened out). " : ""}If this tab doesn&apos;t close, close it yourself after downloading.</span>
+              <span className="text-xs text-zinc-500">{sessionId ? "The lesson's tab has this recording too, where you can trim it and add titles. " : ""}If this tab doesn&apos;t close, close it yourself after downloading.</span>
             </div>
           </div>
         </div>
@@ -826,6 +826,16 @@ export function RecordStudio({
   const [tidy, setTidy] = useState<{ file: File | null; seconds: number | null } | null>(jobId ? { file: null, seconds: null } : null);
   // The editor (trim, cuts, titles) covers the page while it is open.
   const [editing, setEditing] = useState<EditorSource | null>(null);
+  // Tidy-up needs the editing service; where it isn't available, the buttons for it are left out.
+  const [tidyAvailable, setTidyAvailable] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/tutor/video-edits")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { config?: { configured?: boolean; demo?: boolean } } | null) => { if (!cancelled) setTidyAvailable(Boolean(data?.config?.configured || data?.config?.demo)); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
   const editor = editing ? <VideoEditor source={editing} onClose={() => setEditing(null)} /> : null;
 
   useEffect(() => {
@@ -892,18 +902,18 @@ export function RecordStudio({
           <p className="font-semibold">Recording received <span className="font-normal">· {clock(received.seconds)} · {formatBytes(received.file.size)}</span></p>
           <div className="flex flex-wrap items-center gap-2">
             <a href={received.url} download={received.file.name} className="focus-ring inline-flex h-8 items-center gap-1.5 rounded-lg border border-emerald-300 bg-white px-3 text-xs font-medium text-emerald-900 hover:bg-emerald-100"><Download className="h-3.5 w-3.5" />Download</a>
-            <Button type="button" size="sm" variant="outline" onClick={() => setTidy({ file: received.file, seconds: received.seconds })}><Wand2 className="h-3.5 w-3.5" />Tidy it up first (optional)</Button>
+            {tidyAvailable && <Button type="button" size="sm" variant="outline" onClick={() => setTidy({ file: received.file, seconds: received.seconds })}><Wand2 className="h-3.5 w-3.5" />Tidy it up first (optional)</Button>}
             <Button type="button" size="sm" variant="outline" onClick={() => setEditing({ file: received.file, title: lessonTitle })}><Scissors className="h-3.5 w-3.5" />Trim &amp; add titles</Button>
-            <span className="w-full text-xs">Tidy-up cleans the audio and cuts long pauses. Trim &amp; add titles opens a simple editor; you can do it after tidy-up too.</span>
+            <span className="w-full text-xs">{tidyAvailable ? "Tidy-up cleans the audio and cuts long pauses. Trim & add titles opens a simple editor; you can do it after tidy-up too." : "Trim & add titles opens a simple editor: trim the ends, cut pauses, add a title card and captions."}</span>
           </div>
         </div>
       )}
 
-      <p className="text-xs text-zinc-500">
+      {tidyAvailable && <p className="text-xs text-zinc-500">
         Already have a video file?{" "}
         <button type="button" onClick={() => setTidy({ file: null, seconds: null })} className="font-medium text-primary hover:underline">Tidy it up</button>
         {" "}(cut long pauses, even out the audio) before uploading to YouTube.
-      </p>
+      </p>}
       {editor}
     </div>
   );

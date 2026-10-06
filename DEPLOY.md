@@ -64,6 +64,27 @@ domain, set `NEXTAUTH_URL` to it (for example `https://learning.example.com`).
 - **Courses:** the four built-in courses are added the first time the app
   reads the catalogue.
 
+## Vercel for the site, Render for recording uploads
+
+The site can run on Vercel instead (import the repository there; `vercel.json`
+runs the migration before the build). Set the same variables as in the table
+above, with `DATABASE_SSL=require` and `PG_POOL_MAX=3`.
+
+Vercel accepts request bodies of about 4.5 MB at most, so it cannot receive a
+lesson recording for the optional "Tidy it up" step. For that step only, the
+browser uploads to a second copy of this app on Render:
+
+1. Deploy the repository to Render as above (the free plan works; it sleeps
+   when idle, so the first upload after a quiet spell waits for it to wake).
+   Give it **the same** `DATABASE_URL`, `NEXTAUTH_SECRET` and
+   `AUPHONIC_API_KEY` as the Vercel project.
+2. In Vercel, set `AUPHONIC_API_KEY` and
+   `RECORDING_UPLOAD_URL=https://<your-render-service>.onrender.com`, then redeploy.
+
+The Render copy never serves pages to users; it only receives those uploads,
+authorised by a short-lived signed token (`lib/upload-token.ts`). Without
+`RECORDING_UPLOAD_URL`, the Vercel site simply doesn't offer "Tidy it up".
+
 ## Things to know
 
 - **One instance.** Rate limits and the AI request queue are kept in memory,
