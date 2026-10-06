@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft, Camera, CircleDot, Download, ExternalLink, Loader2, MonitorUp, Pause, Play, RotateCcw, Scissors, ScrollText, Square, Wand2, X, Youtube } from "lucide-react";
+import { ArrowLeft, Camera, CircleDot, Sparkles, Download, ExternalLink, Loader2, MonitorUp, Pause, Play, RotateCcw, Scissors, ScrollText, Square, Wand2, X, Youtube } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { VideoEditStudio } from "@/components/video-edit-studio";
 import { VideoEditor, type EditorSource } from "@/components/video-editor";
-import { followSpeech, normalizeWord, parseScript } from "@/lib/teleprompter";
+import { defaultScriptMinutes, followSpeech, lessonBriefKey, normalizeWord, parseScript, SCRIPT_MINUTES, type LessonBrief } from "@/lib/teleprompter";
 import { cn } from "@/lib/utils";
 
 /**
@@ -371,6 +371,42 @@ export function VideoRecorder({
   const [error, setError] = useState<string | null>(null);
   const [canShareScreen, setCanShareScreen] = useState(true);
   const [script, setScript] = useState("");
+  // AI script: written from what the tutor entered in step 1 of the lesson wizard.
+  const [brief, setBrief] = useState<LessonBrief | null>(null);
+  const [scriptMinutes, setScriptMinutes] = useState<number>(SCRIPT_MINUTES[2]);
+  const [scriptNotes, setScriptNotes] = useState("");
+  const [writing, setWriting] = useState(false);
+  const [scriptError, setScriptError] = useState<string | null>(null);
+  useEffect(() => {
+    let found: LessonBrief | null = null;
+    try {
+      const saved = sessionId ? window.localStorage.getItem(lessonBriefKey(sessionId)) : null;
+      if (saved) found = JSON.parse(saved) as LessonBrief;
+    } catch { /* no brief: fall back to the title alone */ }
+    setBrief(found);
+    setScriptMinutes(defaultScriptMinutes(found?.lessonMinutes));
+  }, [sessionId]);
+
+  async function writeScript() {
+    const title = (brief?.title || lessonTitle).trim();
+    setScriptError(null);
+    if (!title) { setScriptError("Add a lesson title in step 1 of the lesson first."); return; }
+    if (script.trim() && !window.confirm("Replace the script you have with a new one?")) return;
+    setWriting(true);
+    try {
+      const res = await fetch("/api/tutor/teleprompter-script", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, description: brief?.description ?? "", courseTitle: brief?.courseTitle ?? "", section: brief?.section ?? "", notes: scriptNotes, minutes: scriptMinutes }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { script?: string; error?: string };
+      if (!res.ok || !data.script) throw new Error(data.error || "Couldn't write a script right now.");
+      setScript(data.script);
+    } catch (e) {
+      setScriptError(e instanceof Error ? e.message : "Couldn't write a script right now.");
+    } finally {
+      setWriting(false);
+    }
+  }
   const [prompter, setPrompter] = useState<Window | null>(null);
   /** The pop-out floats above other windows (Chrome/Edge); otherwise it is an ordinary pop-up. */
   const [prompterOnTop, setPrompterOnTop] = useState(false);
@@ -635,10 +671,32 @@ export function VideoRecorder({
                 </button>
               ))}
             </div>
+            <div className="space-y-2 rounded-xl border border-primary/20 bg-primary/5 p-3">
+              <p className="flex items-center gap-1.5 text-sm font-semibold text-zinc-900"><Sparkles className="h-4 w-4 text-primary" />Write the script with AI</p>
+              <p className="text-xs text-zinc-600">
+                {brief?.description
+                  ? <>Drafted from this lesson&apos;s title and description{brief.section ? ", in " + brief.section : ""}. Read it through and make it yours before recording.</>
+                  : <>Drafted from the lesson title only, so it will be general. Add a description in step 1 of the lesson, or a note below, for a better script.</>}
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  value={scriptNotes} onChange={(e) => setScriptNotes(e.target.value)} maxLength={500} disabled={writing}
+                  aria-label="Anything to include in the script" placeholder="Anything to include? e.g. start with the bakery example"
+                  className="focus-ring h-9 min-w-0 flex-1 rounded-lg border border-border bg-white px-3 text-sm font-normal text-zinc-800"
+                />
+                <select value={scriptMinutes} onChange={(e) => setScriptMinutes(Number(e.target.value))} disabled={writing} aria-label="Script length" className="focus-ring h-9 rounded-lg border border-border bg-white px-2 text-sm">
+                  {SCRIPT_MINUTES.map((m) => <option key={m} value={m}>About {m} min</option>)}
+                </select>
+                <Button type="button" size="sm" onClick={() => void writeScript()} disabled={writing || phase === "starting"}>
+                  {writing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}{writing ? "Writing…" : script.trim() ? "Write again" : "Write script"}
+                </Button>
+              </div>
+              {scriptError && <p role="alert" className="text-xs text-red-700">{scriptError}</p>}
+            </div>
             <label className="block text-sm font-medium text-zinc-800">
               Teleprompter script <span className="font-normal text-zinc-500">(optional)</span>
               <textarea
-                value={script} onChange={(e) => setScript(e.target.value)} maxLength={20000} rows={5}
+                value={script} onChange={(e) => setScript(e.target.value)} maxLength={20000} rows={script.trim() ? 10 : 5}
                 placeholder="Paste or type what you want to say. It scrolls near the top of the screen, close to your camera, while you record."
                 className="focus-ring mt-1 block w-full rounded-xl border border-border bg-white px-3 py-2 text-sm font-normal text-zinc-800"
               />
@@ -746,10 +804,15 @@ export function VideoRecorder({
 
 /** The wizard's Record tab: opens the recorder in its own tab, and offers the optional tidy-up for what comes back. */
 export function RecordStudio({
-  lessonTitle, courseSlug, jobId, onJobChange, onReadyToLink, onVideoPosted,
+  lessonTitle, courseSlug, jobId, onJobChange, onReadyToLink, onVideoPosted, lessonDescription = "", lessonSection = "", lessonMinutes = null, courseTitle = "",
 }: {
   lessonTitle: string;
   courseSlug: string;
+  /** Step 1 of the wizard, passed on so the recorder can draft a teleprompter script from it. */
+  lessonDescription?: string;
+  lessonSection?: string;
+  lessonMinutes?: number | null;
+  courseTitle?: string;
   /** A tidy-up job in progress; kept by the wizard so returning to this step resumes it. */
   jobId: number | null;
   onJobChange: (id: number | null) => void;
@@ -777,6 +840,13 @@ export function RecordStudio({
   }, [sessionId]);
   useEffect(() => () => { if (received) URL.revokeObjectURL(received.url); }, [received]);
 
+  // The recorder opens in another tab; leave it the lesson's details (same browser only, nothing is sent anywhere).
+  useEffect(() => {
+    const brief: LessonBrief = { title: lessonTitle.trim(), description: lessonDescription.trim(), courseTitle: courseTitle.trim(), section: lessonSection.trim(), lessonMinutes };
+    try { window.localStorage.setItem(lessonBriefKey(sessionId), JSON.stringify(brief)); } catch { /* storage unavailable: the recorder falls back to the title */ }
+  }, [sessionId, lessonTitle, lessonDescription, lessonSection, lessonMinutes, courseTitle]);
+  useEffect(() => () => { try { window.localStorage.removeItem(lessonBriefKey(sessionId)); } catch { /* nothing to clear */ } }, [sessionId]);
+
   const recorderHref = `/app/tutor/record/?rid=${sessionId}&title=${encodeURIComponent(lessonTitle.trim().slice(0, 120))}`;
 
   if (tidy) {
@@ -801,7 +871,7 @@ export function RecordStudio({
       <div className="space-y-3 rounded-xl border border-border bg-white p-4">
         <p className="text-sm text-zinc-600">
           Record your lesson in a full-screen recorder that opens in a new tab: just you on camera, or your screen with you in a corner bubble.
-          You can add a teleprompter script there too.
+          You can add a teleprompter script there too, or have AI draft one from this lesson&apos;s title and description.
         </p>
         <a
           href={recorderHref} target="_blank" rel="opener"

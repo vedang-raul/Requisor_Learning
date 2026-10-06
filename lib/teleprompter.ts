@@ -149,3 +149,57 @@ export function followSpeech(script: string[], position: number, tail: string[])
   }
   return spokenIndexes[here];
 }
+
+/* ── AI-drafted scripts ────────────────────────────────────────────────── */
+
+/** A comfortable pace for reading aloud to camera. */
+export const SCRIPT_WORDS_PER_MINUTE = 140;
+/** Lengths a tutor can ask for. Longer scripts are better written (and recorded) in parts. */
+export const SCRIPT_MINUTES = [1, 2, 3, 5, 8, 10] as const;
+
+/** What the lesson wizard knows about the lesson when the recorder opens (its step 1). */
+export type LessonBrief = { title: string; description: string; courseTitle: string; section: string; lessonMinutes: number | null };
+export type ScriptBrief = { title: string; description: string; courseTitle: string; section: string; notes: string; minutes: number };
+
+/** Where the wizard leaves the lesson brief for the recorder tab it opens (same browser, keyed by session id). */
+export const lessonBriefKey = (sessionId: string) => "requisor-recorder-brief:" + sessionId;
+
+const briefText = (value: unknown, max: number) =>
+  (typeof value === "string" ? value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, " ").trim().slice(0, max) : "");
+
+/** The longest offered length that fits the lesson, and 5 minutes at most unless the tutor picks more. */
+export function defaultScriptMinutes(lessonMinutes: number | null | undefined): number {
+  const cap = Math.min(5, typeof lessonMinutes === "number" && Number.isFinite(lessonMinutes) && lessonMinutes > 0 ? lessonMinutes : 5);
+  return [...SCRIPT_MINUTES].reverse().find((m) => m <= cap) ?? SCRIPT_MINUTES[0];
+}
+
+/** Cleans a request for a script. Null when there is no lesson title to write about. */
+export function scriptBrief(value: unknown): ScriptBrief | null {
+  const raw = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  const title = briefText(raw.title, 200);
+  if (!title) return null;
+  const asked = Number(raw.minutes);
+  return {
+    title,
+    description: briefText(raw.description, 2000),
+    courseTitle: briefText(raw.courseTitle, 160),
+    section: briefText(raw.section, 200),
+    notes: briefText(raw.notes, 500),
+    minutes: (SCRIPT_MINUTES as readonly number[]).includes(asked) ? asked : defaultScriptMinutes(Number(raw.lessonMinutes)),
+  };
+}
+
+/**
+ * Tidies what the model returns into the teleprompter's plain format: code
+ * fences, bold marks and bullet symbols are removed, "##" headings become "#".
+ */
+export function cleanGeneratedScript(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const lines = value.replace(/\r/g, "").replace(/```[a-z]*\n?/gi, "").split("\n").map((line) => {
+    let text = line.trim().replace(/\*\*|__/g, "").replace(/^[-*•]\s+/, "");
+    if (/^#+/.test(text)) text = "# " + text.replace(/^#+\s*/, "");
+    else if (/^>+/.test(text)) text = "> " + text.replace(/^>+\s*/, "");
+    return text;
+  });
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim().slice(0, 12000);
+}

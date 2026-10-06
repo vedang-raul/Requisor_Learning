@@ -1020,6 +1020,7 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, allowUplo
             <LessonWizard
               key={`${editing?.id ?? "new"}-${lessonFormVersion}`}
               courseSlug={course.slug}
+              courseTitle={course.title}
               coursePublished={course.published !== false}
               lesson={editing}
               saving={saving}
@@ -1100,8 +1101,8 @@ function WizardTracker({ current, completed, onJump }: { current: number; comple
   );
 }
 
-function LessonWizard({ courseSlug, coursePublished, lesson, saving, onCancel, onSave, allowUploads }: {
-  courseSlug: string; coursePublished: boolean; lesson: Lesson | null; saving: boolean;
+function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving, onCancel, onSave, allowUploads }: {
+  courseSlug: string; courseTitle: string; coursePublished: boolean; lesson: Lesson | null; saving: boolean;
   onCancel: () => void; onSave: (lesson: Lesson) => Promise<void>; allowUploads: boolean;
 }) {
   const [stepIndex, setStepIndex] = useState(0);
@@ -1277,6 +1278,10 @@ function LessonWizard({ courseSlug, coursePublished, lesson, saving, onCancel, o
                 {videoMode === "edit" && (
                   <RecordStudio
                     lessonTitle={title}
+                    lessonDescription={description}
+                    lessonSection={section}
+                    lessonMinutes={Number(duration) || null}
+                    courseTitle={courseTitle}
                     courseSlug={courseSlug}
                     jobId={editJobId}
                     onJobChange={setEditJobId}
