@@ -59,6 +59,12 @@ function clientIp(req: Request): string {
 }
 
 export async function POST(req: Request) {
+  // Without Google credentials the sign-in would only bounce back with an
+  // error; tell the person plainly instead.
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    return NextResponse.json({ error: "Google sign-in isn't set up on this site yet. Use your email and password instead.", code: "google_unavailable" }, { status: 503 });
+  }
+
   // Rate-limit by IP before any body parsing or CAPTCHA verification.
   const { limited, retryAfterMs } = googleInitiateLimiter.check(clientIp(req));
   if (limited) return rateLimitResponse(retryAfterMs, { json: true });

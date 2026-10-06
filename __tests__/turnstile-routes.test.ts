@@ -1,3 +1,7 @@
+// Google sign-in is only attempted when it is configured; these tests exercise that configured path.
+process.env.GOOGLE_CLIENT_ID = "client-1";
+process.env.GOOGLE_CLIENT_SECRET = "secret-1";
+
 /**
  * __tests__/turnstile-routes.test.ts
  *
@@ -330,6 +334,7 @@ describe("POST /api/auth/callback/credentials — CAPTCHA enforcement", () => {
 // ── POST /api/auth/google-initiate ────────────────────────────────────────────
 
 describe("POST /api/auth/google-initiate — CAPTCHA gate", () => {
+
   it("returns 413 for a body over the endpoint limit", async () => {
     mockReadJsonBody.mockRejectedValueOnce(new MockRequestBodyTooLargeError());
 

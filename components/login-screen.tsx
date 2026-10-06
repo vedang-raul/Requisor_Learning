@@ -294,7 +294,8 @@ export function LoginScreen() {
       if (!res.ok) {
         const data = await safeJson(res);
         setError(
-          data?.error && /configuration|config error/i.test(data.error)
+          data?.code === "google_unavailable" ? data.error
+          : data?.error && /configuration|config error/i.test(data.error)
             ? CAPTCHA_UNAVAILABLE_MESSAGE
             : CAPTCHA_FAILED_MESSAGE
         );

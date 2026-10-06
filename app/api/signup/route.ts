@@ -107,6 +107,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
 
+  let emailStep = false; // true once the account is saved and only the email is left
   try {
     // Turnstile CAPTCHA — verify before any DB access or email dispatch.
     const { success: captchaOk } = await verifyTurnstile(
@@ -171,6 +172,7 @@ export async function POST(req: Request) {
          WHERE id = $3`,
         [sha256(token), expires, existingRow.id]
       );
+      emailStep = true;
       await sendVerificationEmail(cleanEmail, existingRow.name ?? cleanName, token);
     } else {
       // Brand-new registration.
@@ -189,10 +191,21 @@ export async function POST(req: Request) {
           expires,
         ]
       );
+      emailStep = true;
       await sendVerificationEmail(cleanEmail, cleanName, token);
     }
     return NextResponse.json({ ok: true });
   } catch (e) {
+    if (emailStep) {
+      // The account is saved; only the email didn't go. Say so, so the person
+      // doesn't think nothing happened, and so the log names the real cause
+      // (wrong key, unverified sender, blocked IP…).
+      console.error("Signup email failed:", e instanceof Error ? e.message : e);
+      return NextResponse.json(
+        { error: "Your account was created, but we couldn't send the verification email. Please try again in a few minutes, or contact support." },
+        { status: 502 }
+      );
+    }
     console.error("Signup failed:", e);
     return NextResponse.json({ error: "Signup failed. Please try again." }, { status: 500 });
   }

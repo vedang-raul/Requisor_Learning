@@ -135,7 +135,8 @@ export default function TutorAuth() {
       });
 
       if (!response.ok) {
-        setGoogleError("Security check could not be completed. Please try again.");
+        const data = (await response.json().catch(() => null)) as { error?: string; code?: string } | null;
+        setGoogleError(data?.code === "google_unavailable" && data.error ? data.error : "Security check could not be completed. Please try again.");
         setSubmitting(false);
         return;
       }
