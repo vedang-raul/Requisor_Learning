@@ -8,8 +8,9 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /**
- * The lesson wizard's "auto-edit a recording" panel. The tutor adds a long
- * recording and — with nothing to configure — gets it back with subtitles,
+ * The optional tidy-up behind the lesson wizard's Record tab (see
+ * video-recorder.tsx). The tutor adds a recording — one just made in the
+ * recorder, or a file — and — with nothing to configure — gets it back with subtitles,
  * long pauses cut and the audio evened out.
  *
  * The finished video reaches learners one of two ways (server-decided):
@@ -183,7 +184,7 @@ function SubtitledPreview({ src, cues }: { src: string; cues: Cue[] }) {
 }
 
 export function VideoEditStudio({
-  lessonTitle, courseSlug, jobId, onJobChange, onReadyToLink, onVideoPosted,
+  lessonTitle, courseSlug, jobId, onJobChange, onReadyToLink, onVideoPosted, presetFile, presetSeconds, onEdit,
 }: {
   lessonTitle: string;
   courseSlug: string;
@@ -194,6 +195,12 @@ export function VideoEditStudio({
   onReadyToLink: () => void;
   /** The app posted the video to YouTube; use this id as the lesson's video. */
   onVideoPosted: (videoId: string) => void;
+  /** A recording made in the recorder, ready to tidy up without choosing a file. */
+  presetFile?: File | null;
+  /** Its length, which browsers can't read back from a fresh WebM recording. */
+  presetSeconds?: number | null;
+  /** Open the tidied-up video in the editor (trim, titles, captions). */
+  onEdit?: (video: { url: string; vtt: string }) => void;
 }) {
   const [config, setConfig] = useState<Config | null>(null);
   const [recent, setRecent] = useState<Job[]>([]);
@@ -246,6 +253,9 @@ export function VideoEditStudio({
     setFile(next);
     setLocalUrl(next ? URL.createObjectURL(next) : null);
   }
+  useEffect(() => {
+    if (presetFile) { setJob(null); chooseFile(presetFile); }
+  }, [presetFile]);
 
   function openJob(next: Job | null) {
     setJob(next);
@@ -260,7 +270,7 @@ export function VideoEditStudio({
     if (!lessonTitle.trim()) { setError("Add a lesson title in step 1 first."); return; }
     setStarting(true);
     try {
-      const sourceSeconds = await readDuration(file);
+      const sourceSeconds = (file === presetFile ? presetSeconds : null) ?? await readDuration(file);
       setUploadPct(0);
       // Demo: the upload bar is simulated and the file stays on this device.
       if (config?.demo) await simulateUpload(setUploadPct);
@@ -473,6 +483,9 @@ export function VideoEditStudio({
                     <a href={result.downloadUrl} className="focus-ring inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-white px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50"><Download className="h-3.5 w-3.5" />Download edited video</a>
                   ) : (
                     <span title="Sample result — there is no edited file in demo mode" className="inline-flex h-8 cursor-not-allowed items-center gap-1.5 rounded-lg border border-dashed border-zinc-300 bg-white px-3 text-xs font-medium text-zinc-400"><Download className="h-3.5 w-3.5" />Download edited video</span>
+                  )}
+                  {onEdit && !result.demo && result.downloadUrl && (
+                    <Button type="button" size="sm" variant="outline" onClick={() => onEdit({ url: `${result.downloadUrl}?inline=1`, vtt: result.vtt })}><Scissors className="h-3.5 w-3.5" />Trim &amp; add titles</Button>
                   )}
                   {result.vtt && <Button type="button" size="sm" variant="outline" onClick={() => downloadSubtitles(result)}><Captions className="h-3.5 w-3.5" />{result.demo ? "Download sample subtitles" : "Download subtitles"}</Button>}
                   {!job.youtubeVideoId && !youtubeMode && <Button type="button" size="sm" onClick={onReadyToLink}><Youtube className="h-4 w-4" />Paste the YouTube link</Button>}

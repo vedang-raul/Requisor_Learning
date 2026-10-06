@@ -41,11 +41,12 @@ const nextConfig = {
             value: "max-age=63072000; includeSubDomains",
           },
 
-          // Permissions — allow the AI assistant's voice input only for this
-          // site; keep unrelated device features disabled.
+          // Permissions — the microphone (AI assistant voice input, lesson
+          // recorder) and camera/screen capture (lesson recorder) for this site
+          // only; keep unrelated device features disabled.
           {
             key: "Permissions-Policy",
-            value: "camera=(), microphone=(self), geolocation=()",
+            value: "camera=(self), microphone=(self), display-capture=(self), geolocation=()",
           },
         ],
       },

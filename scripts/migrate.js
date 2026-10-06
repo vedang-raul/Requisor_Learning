@@ -165,6 +165,10 @@ p.query(`
   $$;
   ALTER TABLE courses ALTER COLUMN category TYPE TEXT;
 
+  -- The course syllabus: a filled-in template or a reference to an uploaded
+  -- Word/PDF file (lib/syllabus.ts).
+  ALTER TABLE courses ADD COLUMN IF NOT EXISTS syllabus JSONB;
+
   CREATE TABLE IF NOT EXISTS course_catalog_metadata (
     key VARCHAR(80) PRIMARY KEY,
     seeded_at TIMESTAMP NOT NULL DEFAULT NOW()

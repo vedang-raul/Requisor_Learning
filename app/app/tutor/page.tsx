@@ -6,9 +6,10 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Activity, BarChart3, BookPlus, Check, CheckCircle2, Download, Eye, EyeOff, FileText, GraduationCap, Inbox, LayoutGrid, Paperclip, Upload,
-  ListChecks, Loader2, Pencil, Plus, Send, Star, Trash2, TrendingUp, Users, X,BookOpen, ChevronDown, ChevronLeft, ChevronRight, Clock, Layers, Sparkles, Video
+  ListChecks, Loader2, Pencil, Plus, Send, Star, Trash2, TrendingUp, Users, X,BookOpen, ChevronDown, ChevronLeft, ChevronRight, Clock, Layers, Sparkles, Video, Youtube
 } from "lucide-react";
-import { VideoEditStudio } from "@/components/video-edit-studio";
+import { RecordStudio } from "@/components/video-recorder";
+import { SyllabusPanel } from "@/components/syllabus-editor";
 import { isLessonScheduled } from "@/lib/utils";
 import { DATA_CHANGED_EVENT } from "@/components/assistant-action-card";
 import { useStore } from "@/lib/store";
@@ -386,6 +387,17 @@ export default function TutorPage() {
                     course={selected}
                     saving={saving}
                     onChange={(published) => void saveCourse({ ...selected, published })}
+                  />
+                )}
+                {!aiDraft && (
+                  <SyllabusPanel
+                    key={`syllabus-${selected.slug}`}
+                    course={selected}
+                    onSaved={(syllabus) => {
+                      // Keep the open course and the course list in step, without a reload.
+                      setSelected((current) => (current && current.slug === selected.slug ? { ...current, syllabus } : current));
+                      setItems((list) => list.map((item) => (item.course.slug === selected.slug ? { ...item, course: { ...item.course, syllabus } } : item)));
+                    }}
                   />
                 )}
                 <CourseEditor
@@ -1102,7 +1114,7 @@ function LessonWizard({ courseSlug, coursePublished, lesson, saving, onCancel, o
   const [section, setSection] = useState(lesson?.section ?? "");
   // Step 2 — video or reading content
   // Step 2 decides the lesson format: a YouTube video (pasted, or made by
-  // auto-editing a recording) or a text lesson. Neither is mandatory until publishing.
+  // recorded in the Record tab) or a text lesson. Neither is mandatory until publishing.
   const [videoMode, setVideoMode] = useState<"youtube" | "edit" | "text">(lesson?.format === "reading" ? "text" : "youtube");
   const [editJobId, setEditJobId] = useState<number | null>(null);
   const format: "video" | "reading" = videoMode === "text" ? "reading" : "video";
@@ -1248,10 +1260,10 @@ function LessonWizard({ courseSlug, coursePublished, lesson, saving, onCancel, o
 
             {step === "video" && (
               <div className="space-y-3">
-                <p className="text-sm text-zinc-600">Paste a YouTube link, have your recording tidied up automatically, or write a text lesson. You only need one.</p>
+                <p className="text-sm text-zinc-600">Paste a YouTube link, record your video here, or write a text lesson. You only need one.</p>
                 <div className="flex w-fit flex-wrap gap-1 rounded-xl bg-zinc-100 p-1 text-xs font-medium" role="tablist" aria-label="Lesson content type">
-                  <button type="button" role="tab" aria-selected={videoMode === "youtube"} onClick={() => setVideoMode("youtube")} className={cn("flex items-center gap-1.5 rounded-lg px-3 py-1.5", videoMode === "youtube" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}><Video className="h-3.5 w-3.5" />YouTube link</button>
-                  <button type="button" role="tab" aria-selected={videoMode === "edit"} onClick={() => setVideoMode("edit")} className={cn("flex items-center gap-1.5 rounded-lg px-3 py-1.5", videoMode === "edit" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}><Upload className="h-3.5 w-3.5" />Auto-edit my recording</button>
+                  <button type="button" role="tab" aria-selected={videoMode === "youtube"} onClick={() => setVideoMode("youtube")} className={cn("flex items-center gap-1.5 rounded-lg px-3 py-1.5", videoMode === "youtube" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}><Youtube className="h-3.5 w-3.5" />YouTube link</button>
+                  <button type="button" role="tab" aria-selected={videoMode === "edit"} onClick={() => setVideoMode("edit")} className={cn("flex items-center gap-1.5 rounded-lg px-3 py-1.5", videoMode === "edit" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}><Video className="h-3.5 w-3.5" />Record</button>
                   <button type="button" role="tab" aria-selected={videoMode === "text"} onClick={() => setVideoMode("text")} className={cn("flex items-center gap-1.5 rounded-lg px-3 py-1.5", videoMode === "text" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}><BookOpen className="h-3.5 w-3.5" />Text lesson</button>
                 </div>
                 {videoMode === "youtube" && (
@@ -1259,11 +1271,11 @@ function LessonWizard({ courseSlug, coursePublished, lesson, saving, onCancel, o
                     <Input value={youtubeId} onChange={(e) => { setYoutubeId(e.target.value); setFormError(null); }} placeholder="Paste a YouTube URL or video ID" maxLength={2048} aria-invalid={Boolean(youtubeId.trim() && !detectedVideoId)} />
                     {youtubeId.trim() && !detectedVideoId && <span className="mt-1 block text-xs text-red-700">Enter a valid YouTube URL or 11-character video ID.</span>}
                     {detectedVideoId && <span className="mt-2 flex items-center gap-2 text-xs text-emerald-800"><img src={youTubeThumb(detectedVideoId)} alt="" className="h-9 w-16 rounded object-cover" />Video detected and ready to embed.</span>}
-                    {!youtubeId.trim() && <span className="mt-1 block text-xs font-normal text-zinc-500">Have a recording but no YouTube link yet? Try <strong>Auto-edit my recording</strong>. No video at all? Use <strong>Text lesson</strong>, or save a draft and add it later.</span>}
+                    {!youtubeId.trim() && <span className="mt-1 block text-xs font-normal text-zinc-500">No video yet? <strong>Record</strong> one right here. No video at all? Use <strong>Text lesson</strong>, or save a draft and add it later.</span>}
                   </Field>
                 )}
                 {videoMode === "edit" && (
-                  <VideoEditStudio
+                  <RecordStudio
                     lessonTitle={title}
                     courseSlug={courseSlug}
                     jobId={editJobId}

@@ -42,6 +42,9 @@ function GoogleIcon() {
   );
 }
 
+/** Local development only: one-click sign-in as the test learner from .env.local. */
+const DEV_BYPASS_ENABLED = process.env.NODE_ENV !== "production";
+
 export function LoginScreen() {
   const { state, hydrated } = useStore();
   const router = useRouter();
@@ -459,6 +462,31 @@ export function LoginScreen() {
               <GoogleIcon />
               Continue with Google
             </button>
+            {DEV_BYPASS_ENABLED && (
+              <div className="mt-3 rounded-xl border border-dashed border-amber-300 bg-amber-50 p-3">
+                <p className="text-center text-[11px] leading-4 text-amber-800">Development-only shortcut</p>
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={async () => {
+                    setError("");
+                    setLoading(true);
+                    try {
+                      const res = await signIn("dev-student", { redirect: false });
+                      if (res?.error) { setError("Development student access is unavailable. Set DEV_STUDENT_EMAIL in .env.local and restart the server."); return; }
+                      window.location.assign("/app/dashboard/");
+                    } catch {
+                      setError("Development student access is unavailable.");
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  className="focus-ring mt-2 w-full rounded-lg border border-amber-400 bg-white px-3 py-2 text-xs font-semibold text-amber-900 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Use development student access
+                </button>
+              </div>
+            )}
           </>
         )}
 

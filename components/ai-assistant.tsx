@@ -33,12 +33,12 @@ const COURSE_INTERVIEW_QUESTIONS = [
   "How many lessons should the course have? Choose between 3 and 12.",
 ] as const;
 const LEARNER_QUICK_PROMPTS = [
-  { icon: Compass, label: "What should I learn next?" },
-  { icon: ListChecks, label: "Summarize my progress" },
-  { icon: Sparkles, label: "Give me a practice assignment" },
+  { icon: Sparkles, label: "Explain this lesson simply" },
+  { icon: ListChecks, label: "Help me with my assignment" },
   { icon: Check, label: "Quiz me on a lesson" },
+  { icon: Compass, label: "What should I learn next?" },
   { icon: TrendingUp, label: "What grades did I get?" },
-  { icon: Compass, label: "Recommend a course for my background" },
+  { icon: Sparkles, label: "Give me a practice assignment" },
 ];
 const TUTOR_QUICK_PROMPTS = [
   { icon: Sparkles, label: "Design a course from my topic" },
@@ -576,6 +576,8 @@ export function AiAssistant() {
         headers: { "Content-Type": "application/json" },
         signal: requestController.signal,
         body: JSON.stringify({
+          // On a lesson page, tell the assistant which lesson is open.
+          ...(window.location.pathname.startsWith("/app/learn") ? { viewingLessonId: new URLSearchParams(window.location.search).get("lesson") ?? undefined } : {}),
           messages: next.map((m) => ({
             role: m.role,
             content: m.actions?.length

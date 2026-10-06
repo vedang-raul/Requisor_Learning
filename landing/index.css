@@ -1,3 +1,5 @@
+/* Instrument Sans: the Alma landing page (landing/AlmaLanding.jsx). */
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400..700&display=swap");
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

@@ -14,6 +14,7 @@ import { PageTransition, Reveal } from "@/components/motion";
 import { getCategoryMeta } from "@/components/category-icon";
 import { Button } from "@/components/ui/button";
 import { CourseReviews } from "@/components/course-reviews";
+import { SyllabusButton } from "@/components/syllabus-view";
 
 type LessonFilter = "all" | "completed" | "in-progress" | "not-started";
 
@@ -166,6 +167,7 @@ function CourseView() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <SyllabusButton syllabus={course.syllabus} courseTitle={course.title} className="focus-ring inline-flex items-center gap-2 rounded-xl bg-black/25 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-black/45" />
             <button
               onClick={() => toggleBookmark(course.slug)}
               aria-label={bookmarked ? "Remove bookmark" : "Bookmark course"}

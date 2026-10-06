@@ -43,6 +43,7 @@ export interface Lesson {
  * fallback rather than being rejected.
  */
 export type CategoryKey = string;
+import type { Syllabus } from "@/lib/syllabus";
 
 export interface Course {
   slug: string;
@@ -65,6 +66,9 @@ export interface Course {
    *  data never sent through the DB) is treated as published — only an
    *  explicit `false` hides a course. */
   published?: boolean;
+  /** The course syllabus (see lib/syllabus.ts). Read-only here: it is saved
+   *  through /api/tutor/courses/syllabus and ignored by the course save. */
+  syllabus?: Syllabus | null;
 }
 
 export interface LessonProgress {

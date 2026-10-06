@@ -39,6 +39,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
          WHERE (l.body_file_url=$4
             OR l.resources @> jsonb_build_array(jsonb_build_object('url', $4)))
            AND (c.published OR c.owner_user_id=$3)
+       ) OR EXISTS (
+         -- an uploaded course syllabus
+         SELECT 1 FROM courses c
+         WHERE c.syllabus->>'fileUrl'=$4 AND (c.published OR c.owner_user_id=$3)
        )
      )`,
     [id, isAdmin, userId, url]

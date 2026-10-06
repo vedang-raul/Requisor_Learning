@@ -105,6 +105,31 @@ export const authOptions: NextAuthOptions = {
               return { id: String(rows[0].id), email: rows[0].email, name: rows[0].name ?? "Development Tutor" };
             },
           }),
+          CredentialsProvider({
+            id: "dev-student",
+            name: "Dev Student",
+            credentials: {},
+            async authorize() {
+              // Signs in as the local test learner named in .env.local
+              // (DEV_STUDENT_EMAIL), creating it as a verified learner on a fresh
+              // database. Never registered when NODE_ENV is production.
+              const email = process.env.DEV_STUDENT_EMAIL?.trim().toLowerCase();
+              if (!email || email === ADMIN_EMAIL) return null;
+              const password = process.env.DEV_STUDENT_PASSWORD;
+              const hash = password ? await bcrypt.hash(password, 10) : null;
+              const { rows } = await db.query<DbUser>(
+                `INSERT INTO users (email, name, email_verified, role, password_hash)
+                 VALUES ($1, 'Development Student', TRUE, 'employee', $2)
+                 ON CONFLICT (email) DO UPDATE SET email_verified = TRUE
+                 RETURNING *`,
+                [email, hash]
+              );
+              // Only ever a learner: this shortcut must not open a tutor or admin account.
+              if (rows[0].role !== "employee") return null;
+              db.query("UPDATE users SET last_login_at = NOW() WHERE id = $1", [rows[0].id]).catch(() => {});
+              return { id: String(rows[0].id), email: rows[0].email, name: rows[0].name ?? "Development Student" };
+            },
+          }),
         ]
       : []),
     CredentialsProvider({
