@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Mail, ArrowRight, User, CheckCircle2, AlertCircle } from "lucide-react";
+import { Mail, ArrowRight, User, CheckCircle2, AlertCircle, Briefcase } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { PasswordStrength } from "@/components/ui/password-strength";
 import { cn } from "@/lib/utils";
+import { checkJobTitle, JOB_TITLE_HINT, JOB_TITLE_MAX_LENGTH, stripJobTitle } from "@/lib/job-title";
 
 type Mode = "login" | "signup" | "forgot";
 
@@ -51,7 +52,6 @@ export function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [employmentType, setEmploymentType] = useState("");
   const [position, setPosition] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -217,8 +217,9 @@ export function LoginScreen() {
           setLoading(false);
           return;
         }
-        if (!employmentType) {
-          setError("Select your employment type.");
+        const jobTitle = checkJobTitle(position);
+        if (!jobTitle.ok || !jobTitle.value) {
+          setError(jobTitle.ok ? "Enter your job title, for example Student or Software Engineer." : jobTitle.error);
           setLoading(false);
           return;
         }
@@ -230,7 +231,7 @@ export function LoginScreen() {
         const res = await fetch("/api/signup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, email, password, employmentType, position, turnstileToken: tok }),
+          body: JSON.stringify({ name, email, password, position: position.trim(), turnstileToken: tok }),
         });
         const data = await safeJson(res);
         if (!res.ok) {
@@ -368,19 +369,16 @@ export function LoginScreen() {
                 </div>
               </div>
               <div className="space-y-1.5">
-                <label htmlFor="employmentType" className="text-xs font-medium text-zinc-700">Type</label>
-                <select
-                  id="employmentType"
-                  value={employmentType}
-                  onChange={(e) => setEmploymentType(e.target.value)}
-                  className="w-full rounded-lg border border-zinc-200 bg-white px-3.5 py-2.5 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-primary/40"
-                >
-                  <option value="">Select type…</option>
-                  <option value="intern">Intern</option>
-                  <option value="job">Employee</option>
-                  <option value="student">Student</option>
-                  <option value="faculty">Faculty</option>
-                </select>
+                <label htmlFor="jobTitle" className="text-xs font-medium text-zinc-700">Job title</label>
+                <div className="relative">
+                  <Briefcase className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                  <Input
+                    id="jobTitle" autoComplete="organization-title" placeholder="e.g. Student, Software Engineer"
+                    value={position} maxLength={JOB_TITLE_MAX_LENGTH} aria-describedby="jobTitleHint"
+                    onChange={(e) => setPosition(stripJobTitle(e.target.value))} className="pl-10"
+                  />
+                </div>
+                <p id="jobTitleHint" className="text-[11px] text-zinc-500">{JOB_TITLE_HINT}</p>
               </div>
             </>
           )}

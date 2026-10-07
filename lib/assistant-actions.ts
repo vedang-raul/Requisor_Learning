@@ -1,4 +1,4 @@
-import type { Lesson } from "@/lib/types";
+import type { Course, Lesson } from "@/lib/types";
 
 /**
  * Actions the AI assistant can *propose* in chat. The model never changes
@@ -16,6 +16,12 @@ export type AssistantAction =
   | { kind: "grade_submission"; id: string; submissionId: number; studentName: string; lessonTitle: string; points: number; maxPoints: number; /** "None", "Late", "Missing" or "Excused". */ status: string }
   | { kind: "set_course_published"; id: string; courseSlug: string; courseTitle: string; published: boolean }
   | { kind: "create_lesson"; id: string; courseSlug: string; courseTitle: string; lesson: Lesson }
+  /** A whole new course, with any drafted lessons. Always starts as a private draft. */
+  | { kind: "create_course"; id: string; course: Course }
+  /** Changed course details only; lessons are untouched. */
+  | { kind: "update_course"; id: string; courseSlug: string; courseTitle: string; changes: Partial<Pick<Course, "title" | "tagline" | "category" | "level" | "tags" | "baseAssessment" | "cover">>; summary: string[] }
+  /** An existing lesson with edits applied (same id). */
+  | { kind: "update_lesson"; id: string; courseSlug: string; courseTitle: string; lesson: Lesson; summary: string[] }
   | { kind: "set_lesson_published"; id: string; courseSlug: string; courseTitle: string; lessonId: string; lessonTitle: string; published: boolean; /** Scheduled launch (ISO); absent = right away. */ publishAt?: string };
 
 /** ASCII record separator: frames an action inside the streamed reply. Model
@@ -28,7 +34,7 @@ export function encodeActionFrame(action: AssistantAction): string {
 
 const KINDS = new Set<AssistantAction["kind"]>([
   "generate_assignment", "open_quiz", "open_page", "grade_submission",
-  "set_course_published", "create_lesson", "set_lesson_published",
+  "set_course_published", "create_lesson", "set_lesson_published", "create_course", "update_course", "update_lesson",
 ]);
 
 /**

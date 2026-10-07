@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth";
 import { db, type DbUser } from "@/lib/db";
 import { PERSONAS, LANGUAGES, COUNTRIES } from "@/lib/personas";
+import { checkJobTitle } from "@/lib/job-title";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -173,10 +174,14 @@ export async function PATCH(req: Request) {
     });
   }
 
+  const jobTitle = checkJobTitle(body.position);
+  if (!jobTitle.ok) return NextResponse.json({ error: jobTitle.error }, { status: 400 });
+
   const { rows } = await db.query<DbUser>(
+    // employment_type is no longer on the profile form: keep whatever is stored unless a value is sent.
     `UPDATE users
      SET name = $1,
-         employment_type = $2,
+         employment_type = COALESCE($2, employment_type),
          position = $3,
          date_of_birth = $4,
          gender = $5,
@@ -189,7 +194,7 @@ export async function PATCH(req: Request) {
     [
       body.name!.trim(),
       body.employmentType?.trim() || null,
-      body.position?.trim() || null,
+      jobTitle.value || null,
       body.dateOfBirth || null,
       body.gender?.trim() || null,
       body.qualification?.trim() || null,

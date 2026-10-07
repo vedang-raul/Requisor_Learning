@@ -274,6 +274,15 @@ p.query(`
     refresh_token_enc TEXT NOT NULL,
     connected_at TIMESTAMP NOT NULL DEFAULT NOW()
   );
+  -- What is said in a lesson's video, for the learner's assistant. Keyed by
+  -- lesson id with no foreign key: saving a course rewrites its lesson rows.
+  CREATE TABLE IF NOT EXISTS lesson_transcripts (
+    lesson_id TEXT PRIMARY KEY,
+    transcript TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'manual',
+    updated_by INT,
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
   CREATE INDEX IF NOT EXISTS courses_owner_idx ON courses (owner_user_id, added_at DESC);
   CREATE INDEX IF NOT EXISTS course_lessons_course_position_idx ON course_lessons (course_slug, position, id);
   CREATE INDEX IF NOT EXISTS course_reviews_slug_rating_idx ON course_reviews (course_slug, rating);

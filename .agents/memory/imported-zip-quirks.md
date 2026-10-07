@@ -8,6 +8,12 @@ description: Environment quirks of this zip-imported Next.js project that break 
 
 ## Next.js generated output
 
+Authorized Git operations that modify Git metadata may require the sandbox's `DANGEROUSLY_ALLOW_GIT=1` command prefix.
+
+**Why:** The workspace guard rejects even an ordinary fetch when it updates FETCH_HEAD.
+
+**How to apply:** Use the prefix only for the specific Git operation the user authorized. It does not authorize force pushes, deleting local work, or changing protected Replit remotes.
+
 **Rule:** Stop the development workflow before running `npm run build` or a standalone TypeScript check after a build.
 
 **Why:** The production build clears `.next` while the development server can regenerate `.next/dev/types` at the same time, leaving transient malformed route declarations.

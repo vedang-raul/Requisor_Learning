@@ -5,6 +5,7 @@ import { db, roleForEmail } from "@/lib/db";
 import { sendVerificationEmail, skipEmailVerification } from "@/lib/email";
 import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
 import { verifyTurnstile } from "@/lib/turnstile";
+import { checkJobTitle, stripJobTitle } from "@/lib/job-title";
 import {
   InvalidJsonBodyError,
   readJsonBody,
@@ -124,7 +125,13 @@ export async function POST(req: Request) {
     const cleanName = typeof name === "string" ? name.trim() : "";
     const validTypes = ["intern", "job", "student", "faculty"];
     const cleanType = typeof employmentType === "string" && validTypes.includes(employmentType.toLowerCase()) ? employmentType.toLowerCase() : "";
-    const cleanPosition = typeof position === "string" ? position.trim() : "";
+    // Employment type is no longer asked for; older clients may still send it.
+    // Job title: letters only. The tutor form builds it from "subject — university",
+    // so that one is tidied instead of refused.
+    const isTutorForm = typeof accountType === "string" && accountType.toLowerCase() === "tutor";
+    const jobTitle = checkJobTitle(isTutorForm && typeof position === "string" ? stripJobTitle(position) : position);
+    if (!jobTitle.ok) return NextResponse.json({ error: jobTitle.error }, { status: 400 });
+    const cleanPosition = jobTitle.value;
     // Public registration never grants a privileged role. Keep accepting the
     // legacy accountType field so older clients continue to register, but
     // treat it only as presentation metadata and never as authorization.
@@ -138,7 +145,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
     }
     if (!cleanName) return NextResponse.json({ error: "Enter your name." }, { status: 400 });
-    if (!cleanType) return NextResponse.json({ error: "Select a valid employment type." }, { status: 400 });
     if (typeof password !== "string" || password.length < 8) {
       return NextResponse.json({ error: "Password must be at least 8 characters." }, { status: 400 });
     }
@@ -171,7 +177,7 @@ export async function POST(req: Request) {
         await db.query(
           `INSERT INTO users (email, name, password_hash, role, employment_type, position, email_verified)
            VALUES ($1, $2, $3, $4, $5, $6, TRUE)`,
-          [cleanEmail, cleanName, await bcrypt.hash(password, 12), roleForEmail(cleanEmail) === "admin" ? "admin" : "employee", cleanType, cleanPosition]
+          [cleanEmail, cleanName, await bcrypt.hash(password, 12), roleForEmail(cleanEmail) === "admin" ? "admin" : "employee", cleanType || null, cleanPosition || null]
         );
       }
       return NextResponse.json({ ok: true, verified: true });
@@ -204,8 +210,8 @@ export async function POST(req: Request) {
           cleanName,
           hash,
           roleForEmail(cleanEmail) === "admin" ? "admin" : "employee",
-          cleanType,
-          cleanPosition,
+          cleanType || null,
+          cleanPosition || null,
           sha256(token),
           expires,
         ]

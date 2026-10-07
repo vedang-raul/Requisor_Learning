@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ArrowRight, BookOpen, CheckCircle2, ClipboardCheck, Eye, EyeOff, FileText, GraduationCap, Loader2, Sparkles, X, XCircle,
+  ArrowRight, BookOpen, BookPlus, CheckCircle2, Pencil, ClipboardCheck, Eye, EyeOff, FileText, GraduationCap, Loader2, Sparkles, X, XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -105,6 +105,29 @@ function describe(action: AssistantAction): { icon: typeof Sparkles; title: stri
         confirm: l.published === false ? "Save draft" : l.publishAt ? "Add & schedule" : "Add & publish",
       };
     }
+    case "create_course": {
+      const c = action.course;
+      const written = c.lessons.filter((l) => l.format === "reading").length;
+      return {
+        icon: BookPlus,
+        title: "Create course",
+        lines: [
+          c.title,
+          `${c.level} · ${c.category}${c.tags.length ? ` · ${c.tags.slice(0, 4).join(", ")}` : ""}`,
+          c.lessons.length
+            ? `${c.lessons.length} lesson${c.lessons.length === 1 ? "" : "s"}: ${written} written${c.lessons.length - written ? `, ${c.lessons.length - written} waiting for a video` : ""}`
+            : "No lessons yet",
+          ...c.lessons.slice(0, 6).map((l, i) => `${i + 1}. ${l.title}`),
+          ...(c.lessons.length > 6 ? [`…and ${c.lessons.length - 6} more`] : []),
+          "Saved as a private draft until you publish it",
+        ],
+        confirm: "Create course",
+      };
+    }
+    case "update_course":
+      return { icon: Pencil, title: `Update ${action.courseTitle}`, lines: action.summary.slice(0, 8), confirm: "Save changes" };
+    case "update_lesson":
+      return { icon: Pencil, title: `Update lesson in ${action.courseTitle}`, lines: [action.lesson.title, ...action.summary.slice(0, 8)], confirm: "Save changes" };
   }
 }
 
@@ -177,6 +200,29 @@ export function AssistantActionCard({ action, onOutcome }: { action: AssistantAc
           finish(`Added "${action.lesson.title}" to ${action.courseTitle}${action.lesson.published === false ? " as a draft" : ""}.`, {
             href: "/app/tutor/", hrefLabel: "Open Tutor Workspace",
           }, true);
+          return;
+        case "create_course": {
+          const res = await fetch("/api/courses", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(action.course) });
+          const data = await readJson(res);
+          if (!res.ok) throw new Error(res.status === 409 ? "A course with this name already exists." : String(data.error ?? "Couldn't create the course."));
+          finish(`Created "${action.course.title}" as a draft${action.course.lessons.length ? ` with ${action.course.lessons.length} lesson${action.course.lessons.length === 1 ? "" : "s"}` : ""}.`, {
+            href: "/app/tutor/", hrefLabel: "Open Tutor Workspace",
+          }, true);
+          return;
+        }
+        case "update_course":
+          await updateCourse(action.courseSlug, (c) => ({ ...c, ...action.changes }));
+          finish(`Updated "${action.changes.title ?? action.courseTitle}".`, { href: "/app/tutor/", hrefLabel: "Open Tutor Workspace" }, true);
+          return;
+        case "update_lesson":
+          await updateCourse(action.courseSlug, (c) => {
+            const current = c.lessons.find((l) => l.id === action.lesson.id);
+            if (!current) throw new Error("That lesson no longer exists.");
+            // Whether it is live is not part of this edit: keep whatever it is now.
+            const lesson = { ...action.lesson, published: current.published, publishAt: current.publishAt };
+            return { ...c, lessons: c.lessons.map((l) => (l.id === lesson.id ? lesson : l)) };
+          });
+          finish(`Updated "${action.lesson.title}".`, { href: "/app/tutor/", hrefLabel: "Open Tutor Workspace" }, true);
           return;
       }
     } catch (error) {

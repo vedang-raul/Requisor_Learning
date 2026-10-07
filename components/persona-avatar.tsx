@@ -33,8 +33,13 @@ export function PersonaAvatar({
   size = "md",
   state = "idle",
   className,
+  imageSrc,
+  imageAlt,
 }: {
   personaId?: string | null;
+  /** A portrait to show instead of the persona's, e.g. the chosen voice character's. Falls back to the persona if it can't load. */
+  imageSrc?: string;
+  imageAlt?: string;
   size?: "xs" | "sm" | "md" | "lg" | "xl" | "xxl";
   state?: PersonaAvatarState;
   className?: string;
@@ -44,6 +49,9 @@ export function PersonaAvatar({
   const [c1, c2] = persona.accentHex;
   const [failed, setFailed] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  // Remembers which override portrait failed, so a different one is still tried.
+  const [failedOverride, setFailedOverride] = useState<string | null>(null);
+  const override = imageSrc && imageSrc !== failedOverride ? imageSrc : null;
 
   return (
     <div
@@ -65,7 +73,18 @@ export function PersonaAvatar({
         className="relative h-full w-full overflow-hidden rounded-full ring-1 ring-inset ring-white/40"
         style={{ background: `linear-gradient(135deg, ${c1}, ${c2})` }}
       >
-        {failed ? (
+        {override ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            key={override}
+            src={override}
+            alt={imageAlt ?? persona.name}
+            width={px}
+            height={px}
+            className="h-full w-full object-cover"
+            onError={() => setFailedOverride(override)}
+          />
+        ) : failed ? (
           <span
             className="flex h-full w-full items-center justify-center text-white"
             style={{ fontSize: px * 0.4, fontWeight: 700 }}
