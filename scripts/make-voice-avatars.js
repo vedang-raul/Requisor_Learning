@@ -19,15 +19,15 @@ const LOOKS = {
   "english-america-female": ["#5eead4", "#0f766e", "light", "#b9793a", "bob", "#f8fafc"],
   "africa-male": ["#86efac", "#15803d", "deep", "#14100e", "buzz", "#fde047", "beard"],
   "africa-female": ["#fcd34d", "#b45309", "deep", "#14100e", "curly", "#f8fafc", "earrings"],
-  "spanish-male": ["#fca5a5", "#b91c1c", "tan", "#2a1a12", "curly", "#f8fafc", "beard"],
+  "spanish-male": ["#bae6fd", "#0284c7", "fair", "#5b3a22", "short", "#f8fafc", "beard"],
   "spanish-female": ["#fdba74", "#be123c", "fair", "#3a2114", "long", "#fff7ed"],
-  "arabic-male": ["#a7f3d0", "#047857", "tan", "#1c1512", "short", "#f8fafc", "beard"],
+  "arabic-male": ["#a7f3d0", "#047857", "tan", "#1c1512", "fluffy", "#f8fafc", "beard"],
   "arabic-female": ["#bae6fd", "#0369a1", "tan", "#1c1512", "long", "#ecfeff", "earrings"],
   "chinese-male": ["#fecaca", "#dc2626", "light", "#111111", "short", "#1f2937", "glasses"],
   "chinese-female": ["#fbcfe8", "#db2777", "light", "#111111", "bob", "#f8fafc"],
   "english-british-male": ["#cbd5e1", "#334155", "light", "#17120f", "medium", "#1f2937", "beard"],
   "english-british-female": ["#ddd6fe", "#4338ca", "light", "#ece9e2", "long", "#f1f5f9", "brows:#a89f92"],
-  "portuguese-male": ["#bbf7d0", "#166534", "tan", "#2a1a12", "side", "#fef9c3"],
+  "portuguese-male": ["#bbf7d0", "#166534", "tan", "#17120f", "quiff", "#f8fafc"],
   "portuguese-female": ["#fde68a", "#15803d", "brown", "#2a1a12", "curly", "#f0fdf4", "earrings"],
 };
 
@@ -54,6 +54,10 @@ function hairFront(style, female, c) {
   if (style === "buzz") return `<path d="M31 41c-1-13 6-20 17-20s18 7 17 20c-2-6-5-9-9-10-5 1-11 1-16 0-4 1-7 4-9 10z" fill="${c}" opacity=".85"/>`;
   if (style === "curly") return [[34, 28, 7], [42, 23, 8], [52, 22, 8], [61, 27, 7], [31, 36, 5], [65, 36, 5]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${c}"/>`).join("");
   if (style === "medium") return `<path d="M29 47c-3-19 6-29 19-29 12 0 21 9 18 28-2-8-5-13-9-15-3 3-8 4-12 2-5 3-11 5-16 14z" fill="${c}"/>`;
+  // Big, soft curls standing well clear of the head.
+  if (style === "fluffy") return [[30, 30, 9], [37, 21, 10], [48, 16, 11], [59, 21, 10], [66, 30, 9], [27, 40, 7], [69, 40, 7], [41, 28, 8], [55, 28, 8], [48, 26, 8]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${c}"/>`).join("");
+  // Short at the sides, brushed up at the front.
+  if (style === "quiff") return `<path d="M31 42c-2-9 1-17 6-21 4-5 13-7 20-4 6 2 10 9 9 24-2-6-4-9-7-10-7 1-15 0-21-3-3 3-5 7-7 14z" fill="${c}"/>`;
   if (style === "side") return `<path d="M30 45c-3-18 7-27 19-27 11 0 19 8 17 25-3-8-8-12-19-12-7 0-13 4-17 14z" fill="${c}"/>`;
   return `<path d="M30 43c-2-16 6-25 18-25s20 9 18 25c-2-7-5-11-9-12-6 2-14 2-20 0-3 2-5 6-7 12z" fill="${c}"/>`;
 }

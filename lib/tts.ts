@@ -60,14 +60,20 @@ const BUILT_IN_VOICES: Voice[] = [
   { key: "marathi-female", name: "Mrunal", description: "Marathi · Female", voiceId: "InNx4AiWe8WRB9Cskv9F", language: "Marathi", model: "eleven_v3" },
   { key: "marathi-male", name: "Sameer", description: "Marathi · Male", voiceId: "DMH3HSvjBBxypdmxNDkw", language: "Marathi", model: "eleven_v3" },
   { key: "spanish-female", name: "Lucía", description: "Spanish · Female", voiceId: "rEVYTKPqwSMhytFPayIb", language: "Spanish" },
-  { key: "spanish-male", name: "Mateo", description: "Spanish · Male", voiceId: "G4IAP30yc6c1gK0csDfu", language: "Spanish" },
+  { key: "spanish-male", name: "Leo", description: "Spanish · Male", voiceId: "G4IAP30yc6c1gK0csDfu", language: "Spanish" },
   { key: "portuguese-female", name: "Beatriz", description: "Portuguese · Female", voiceId: "iScHbNW8K33gNo3lGgbo", language: "Portuguese" },
-  { key: "portuguese-male", name: "Tiago", description: "Portuguese · Male", voiceId: "0YziWIrqiRTHCxeg1lyc", language: "Portuguese" },
+  { key: "portuguese-male", name: "Chris", description: "Portuguese · Male", voiceId: "0YziWIrqiRTHCxeg1lyc", language: "Portuguese" },
   { key: "arabic-female", name: "Layla", description: "Arabic · Female", voiceId: "FZeLZd39ejvLgzR2gY0t", language: "Arabic" },
-  { key: "arabic-male", name: "Omar", description: "Arabic · Male", voiceId: "rpGHcNQJvO8dFNNFNj1v", language: "Arabic" },
+  { key: "arabic-male", name: "Mohammed", description: "Arabic · Male", voiceId: "rpGHcNQJvO8dFNNFNj1v", language: "Arabic" },
   { key: "chinese-female", name: "Mei", description: "Chinese · Female", voiceId: "9lHjugDhwqoxA5MhX0az", language: "Chinese (Simplified, Mandarin)" },
   { key: "chinese-male", name: "Wei", description: "Chinese · Male", voiceId: "ZJsn5HnrE3eUbep2ia8D", language: "Chinese (Simplified, Mandarin)" },
 ];
+
+/** Picker descriptions for voices that are added through the environment rather than built in. */
+const EXTRA_DESCRIPTIONS: Record<string, string> = {
+  arthur: "English (Southern US) · Male",
+  ivanna: "English (Eastern European) · Female",
+};
 
 const VOICE_ID = /^[A-Za-z0-9]{10,40}$/;
 const VOICE_VAR = /^ELEVENLABS_VOICE_ID_([A-Z0-9]+(?:_[A-Z0-9]+)*)$/;
@@ -81,7 +87,8 @@ function voices(): Voice[] {
     const voiceId = (value ?? "").trim();
     if (!match || !VOICE_ID.test(voiceId)) continue;
     const words = match[1].toLowerCase().split("_");
-    extra.push({ key: words.join("-"), name: words.map((word) => word[0].toUpperCase() + word.slice(1)).join(" "), voiceId });
+    const key = words.join("-");
+    extra.push({ key, name: words.map((word) => word[0].toUpperCase() + word.slice(1)).join(" "), voiceId, ...(EXTRA_DESCRIPTIONS[key] ? { description: EXTRA_DESCRIPTIONS[key] } : {}) });
   }
   extra.sort((a, b) => a.name.localeCompare(b.name));
   const single = (process.env.ELEVENLABS_VOICE_ID ?? "").trim();
