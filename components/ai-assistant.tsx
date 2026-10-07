@@ -308,6 +308,7 @@ export function AiAssistant() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.target instanceof HTMLSelectElement) return;
+      if (e.target instanceof Element && e.target.closest('[data-chatbot-voice-dropdown][data-open="true"]')) return;
       closePanel();
     };
     window.addEventListener("keydown", onKey);
