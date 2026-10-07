@@ -117,6 +117,13 @@ export async function middleware(req: NextRequest) {
   });
 
   response.headers.set("Content-Security-Policy", csp);
+  // Do not expose account screens or API responses as search results.
+  const path = req.nextUrl.pathname;
+  if (["/app", "/api", "/login", "/reset-password"].some(
+    (prefix) => path === prefix || path.startsWith(`${prefix}/`),
+  )) {
+    response.headers.set("X-Robots-Tag", "noindex, nofollow");
+  }
 
   return response;
 }

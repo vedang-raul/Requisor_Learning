@@ -76,3 +76,22 @@ describe("content security policy", () => {
     expect(csp).toContain("frame-src 'self' blob: https://www.youtube.com");
   });
 });
+
+describe("search indexing headers", () => {
+  it.each(["/app/dashboard/", "/api/speech/", "/login/", "/reset-password/"])(
+    "marks %s as non-indexable without changing the CSP",
+    async path => {
+      const response = await middleware(request(path));
+      expect(response.headers.get("x-robots-tag")).toBe("noindex, nofollow");
+      expect(response.headers.get("content-security-policy")).toContain("'strict-dynamic'");
+    },
+  );
+
+  it.each(["/", "/robots.txt", "/sitemap.xml", "/social-image/"])(
+    "does not exclude public SEO resource %s",
+    async path => {
+      const response = await middleware(request(path));
+      expect(response.headers.get("x-robots-tag")).toBeNull();
+    },
+  );
+});

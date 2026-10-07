@@ -105,12 +105,12 @@ const HIGHLIGHTS = [
   { title: 'Mastery-gated', text: 'Advance by proving it, not by watching it.', icon: <><circle cx="12" cy="12" r="9" /><path d="M8 12.4l2.7 2.7L16.2 9.6" /></> },
   { title: 'Fresh exams', text: 'New questions, every attempt. Nothing to cram.', icon: <><path d="M19.5 10.5A7.5 7.5 0 0 0 6.2 7.2L4.5 9" /><path d="M4.5 4.8V9h4.2" /><path d="M4.5 13.5a7.5 7.5 0 0 0 13.3 3.3l1.7-1.8" /><path d="M19.5 19.2V15h-4.2" /></> },
   { title: 'Your industry', text: 'Assignments built from your real work.', icon: <><rect x="3.5" y="7.5" width="17" height="12" rx="2.5" /><path d="M9 7.5V6a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v1.5" /><path d="M3.5 12.5h17" /></> },
-  { title: 'Always on', text: 'Voice & chat tutoring at 2 PM or 2 AM.', icon: <><circle cx="12" cy="12" r="9" /><path d="M12 7.2V12l3.2 2" /></> },
+  { title: 'Multilingual voice', text: 'AI replies narrated by ElevenLabs in your selected voice and language.', icon: <><circle cx="12" cy="12" r="9" /><path d="M12 7.2V12l3.2 2" /></> },
 ]
 
 const STEPS = [
   { label: 'Diagnose', title: 'Alma maps what you already know.', body: 'A placement conversation finds your true starting point. Prove a unit up front and you skip it — your time is respected from minute one.' },
-  { label: 'Learn', title: 'Lessons taught in the language of your work.', body: 'Courses authored by practitioners, delivered by a tutor that swaps every example for your industry and answers your actual questions.' },
+  { label: 'Learn', title: 'AI support for your courses and lessons.', body: 'Ask the learning assistant about your courses, get learning recommendations and use lesson transcript context when a transcript is provided. Hear replies in English, Marathi, Hindi, Spanish, Arabic, Chinese, Portuguese or Afrikaans while the written reply stays unchanged.' },
   { label: 'Prove', title: 'Mastery exams gate every unit.', body: "Fresh questions each attempt. There's nothing to cram — only things to genuinely know." },
   { label: 'Keep', title: "Spaced review before you'd forget.", body: 'Mastered skills resurface at precisely the right moment. Your transcript reflects what you can still do — not what you once sat through.' },
 ]
@@ -551,7 +551,7 @@ export default function AlmaLanding() {
           <div className={`${s.wrap} ${s.uniCols}`}>
             <div className={s.uniLeft}>
               <h2 id="universities-title" className={s.h2}>Give every one of your students a personal tutor.</h2>
-              <p className={s.lead}>Alma doesn&apos;t replace your institution — it&apos;s your faculty&apos;s course, amplified. Your curriculum, your credit, delivered through an intelligence that meets each student where they are and hands you the evidence.</p>
+              <p className={s.lead}>Alma supports your faculty&apos;s courses with AI-assisted teaching tools. Tutors can create courses and edit courses and lessons through the assistant, reviewing and confirming changes before they are applied. Add lesson transcripts to give the learner&apos;s assistant relevant lesson context.</p>
               <div className={s.uniCta}><a className={`${s.btn} ${s.btnSolid}`} href="mailto:naveen@requisor.io?subject=Alma%20university%20pilot">Book a pilot call</a></div>
               <p className={s.uniNote}>Built in association with the Milwaukee School of Engineering, where Alma&apos;s founder teaches AI engineering.</p>
             </div>
