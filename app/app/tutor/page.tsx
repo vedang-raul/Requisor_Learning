@@ -1122,6 +1122,27 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
   const [youtubeId, setYoutubeId] = useState(lesson?.youtubeId === "REPLACE_ME" ? "" : lesson?.youtubeId ?? "");
   const [body, setBody] = useState(lesson?.body ?? "");
   const [bodyFileUrl, setBodyFileUrl] = useState(lesson?.bodyFileUrl);
+  // The video's transcript: what the learner's assistant answers from. Saved separately, after the lesson itself.
+  const [transcript, setTranscript] = useState("");
+  const [savedTranscript, setSavedTranscript] = useState("");
+  const [transcriptSource, setTranscriptSource] = useState<"manual" | "youtube">("manual");
+  const [transcriptBusy, setTranscriptBusy] = useState(false);
+  const [transcriptNote, setTranscriptNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const lessonId = lesson?.id;
+  useEffect(() => {
+    if (!lessonId) return;
+    let cancelled = false;
+    fetch(`/api/tutor/lessons/transcript/?lessonId=${encodeURIComponent(lessonId)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { transcript?: string; source?: string } | null) => {
+        if (cancelled || !data?.transcript) return;
+        setTranscript(data.transcript);
+        setSavedTranscript(data.transcript);
+        if (data.source === "youtube") setTranscriptSource("youtube");
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [lessonId]);
   // Step 3 — assignment
   const [assignment, setAssignment] = useState(lesson?.assignment ?? "");
   const [requiresSubmission, setRequiresSubmission] = useState(lesson?.requiresSubmission ?? false);
@@ -1203,11 +1224,37 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
     };
   }
 
+  async function fetchTranscript() {
+    setTranscriptBusy(true);
+    setTranscriptNote(null);
+    try {
+      const res = await fetch("/api/tutor/lessons/transcript/", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ videoId: detectedVideoId }) });
+      const data = (await res.json().catch(() => ({}))) as { transcript?: string; error?: string };
+      if (!res.ok || !data.transcript) { setTranscriptNote({ ok: false, text: data.error ?? "Couldn't get the captions from YouTube. Paste the transcript instead." }); return; }
+      setTranscript(data.transcript);
+      setTranscriptSource("youtube");
+      setTranscriptNote({ ok: true, text: "Captions fetched. They are saved when you save the lesson." });
+    } catch {
+      setTranscriptNote({ ok: false, text: "Couldn't reach the server. Try again, or paste the transcript." });
+    } finally {
+      setTranscriptBusy(false);
+    }
+  }
+
   function save(published: boolean) {
     try {
       const built = buildLesson(published);
       setFormError(null);
-      void onSave(built);
+      // The transcript is stored by lesson id, so it goes up once the lesson exists.
+      const nextTranscript = built.format === "video" ? transcript.trim() : "";
+      const transcriptChanged = nextTranscript !== savedTranscript.trim();
+      void onSave(built).then(() => {
+        if (!transcriptChanged) return;
+        return fetch("/api/tutor/lessons/transcript/", {
+          method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lessonId: built.id, transcript: nextTranscript, source: transcriptSource }),
+        }).then(() => undefined);
+      }).catch(() => {});
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "Check the lesson details.");
     }
@@ -1273,6 +1320,22 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
                     {youtubeId.trim() && !detectedVideoId && <span className="mt-1 block text-xs text-red-700">Enter a valid YouTube URL or 11-character video ID.</span>}
                     {detectedVideoId && <span className="mt-2 flex items-center gap-2 text-xs text-emerald-800"><img src={youTubeThumb(detectedVideoId)} alt="" className="h-9 w-16 rounded object-cover" />Video detected and ready to embed.</span>}
                     {!youtubeId.trim() && <span className="mt-1 block text-xs font-normal text-zinc-500">No video yet? <strong>Record</strong> one right here. No video at all? Use <strong>Text lesson</strong>, or save a draft and add it later.</span>}
+                  </Field>
+                )}
+                {videoMode === "youtube" && (
+                  <Field label="Video transcript (optional, recommended)">
+                    <span className="mb-2 block text-xs font-normal text-zinc-500">
+                      The learner&apos;s AI assistant answers from this. Without it, the assistant only knows the description and key takeaways, not what is said in the video.
+                      Paste the text from YouTube&apos;s <strong>Show transcript</strong>, or a .vtt / .srt file; timestamps are kept.
+                    </span>
+                    <Textarea value={transcript} onChange={(e) => { setTranscript(e.target.value); setTranscriptSource("manual"); setTranscriptNote(null); }} maxLength={480000} rows={7} placeholder={"0:00\nWelcome back. Today we look at…\n0:32\nAutomation follows rules that…"} className="font-mono text-xs" />
+                    <span className="mt-2 flex flex-wrap items-center gap-3">
+                      <Button type="button" size="sm" variant="outline" disabled={!detectedVideoId || transcriptBusy} onClick={() => void fetchTranscript()}>
+                        {transcriptBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Youtube className="h-3.5 w-3.5" />}Fetch from YouTube
+                      </Button>
+                      <span className="text-xs font-normal text-zinc-500">Works for videos on your own connected channel.{transcript.trim() ? ` ${transcript.trim().length.toLocaleString()} characters.` : ""}</span>
+                    </span>
+                    {transcriptNote && <span role="status" className={cn("mt-1 block text-xs", transcriptNote.ok ? "text-emerald-800" : "text-red-700")}>{transcriptNote.text}</span>}
                   </Field>
                 )}
                 {videoMode === "edit" && (

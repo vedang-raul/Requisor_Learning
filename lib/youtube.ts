@@ -203,6 +203,27 @@ export async function uploadVideo(
   return data.id;
 }
 
+/**
+ * Reads a video's captions as WebVTT. YouTube only allows this for videos on
+ * the signed-in channel (403 otherwise). Prefers captions someone wrote over
+ * automatic ones, and English over other languages. Returns "" when the video
+ * has no caption track.
+ */
+export async function fetchOwnCaptions(accessToken: string, videoId: string): Promise<string> {
+  const headers = { Authorization: `Bearer ${accessToken}` };
+  const list = await fetch(`${API}/captions?part=snippet&videoId=${encodeURIComponent(videoId)}`, { headers });
+  if (!list.ok) throw new YouTubeError(`YouTube wouldn't list this video's captions (${list.status}).`, list.status);
+  const data = (await list.json()) as { items?: { id: string; snippet?: { language?: string; trackKind?: string } }[] };
+  const tracks = data.items ?? [];
+  if (!tracks.length) return "";
+  const rank = (track: (typeof tracks)[number]) =>
+    (track.snippet?.trackKind === "asr" ? 0 : 2) + (track.snippet?.language?.toLowerCase().startsWith("en") ? 1 : 0);
+  const best = [...tracks].sort((a, b) => rank(b) - rank(a))[0];
+  const res = await fetch(`${API}/captions/${encodeURIComponent(best.id)}?tfmt=vtt`, { headers });
+  if (!res.ok) throw new YouTubeError(`YouTube wouldn't share this video's captions (${res.status}).`, res.status);
+  return res.text();
+}
+
 /** Adds a subtitle track (WebVTT) to an uploaded video via captions.insert. */
 export async function uploadCaptions(accessToken: string, videoId: string, vtt: string, language = "en"): Promise<void> {
   const boundary = `requisor-${crypto.randomBytes(8).toString("hex")}`;
