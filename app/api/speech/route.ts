@@ -2,7 +2,7 @@ export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-import { getSpeechCatalog, resolveSpeechContent } from "@/lib/speech-catalog";
+import { getSpeechCatalog, getSpeechLanguage, resolveSpeechContent } from "@/lib/speech-catalog";
 import { readJsonBody, RequestBodyTooLargeError } from "@/lib/request-body";
 import { createRateLimiter } from "@/lib/rate-limit";
 
@@ -62,12 +62,14 @@ export async function POST(req: Request) {
   // Extra fields are rejected, not ignored: text/eligibility/history cannot sneak in.
   if (Object.keys(b).length !== 2 || !Object.keys(b).every(k => k === "voiceKey" || k === "contentKey")
     || typeof b.voiceKey !== "string" || typeof b.contentKey !== "string") return error("Only approved voice and content keys are accepted.", 400);
-  const text = resolveSpeechContent(b.contentKey);
   const catalog = getSpeechCatalog();
   const voice = catalog.configured.find(v => v.key === b.voiceKey);
   const publicVoice = catalog.voices.find(v => v.key === b.voiceKey);
-  if (!text || !voice) return error("Unapproved voice or speech content.", 400);
+  if (!resolveSpeechContent(b.contentKey) || !voice) return error("Unapproved voice or speech content.", 400);
   if (!publicVoice?.enabled || !voice.voiceId || !process.env.ELEVENLABS_API_KEY) return error(publicVoice?.unavailableReason ?? "Speech is not configured.", 503);
+  const language = getSpeechLanguage(voice.languages);
+  const text = language ? resolveSpeechContent(b.contentKey, language) : null;
+  if (!text) return error("Approved speech is unavailable in this language.", 503);
   if (active.has(uid) || active.size >= 4) return error("Speech is busy. Stop playback or try again shortly.", 429, { "Retry-After": "2" });
   if (req.signal.aborted) return error("Speech cancelled.", 499);
   active.add(uid);
@@ -86,7 +88,7 @@ export async function POST(req: Request) {
       method: "POST",
       headers: { "xi-api-key": process.env.ELEVENLABS_API_KEY, "Content-Type": "application/json", Accept: "audio/mpeg" },
       // No identity, previous_text, request stitching, history, or model output.
-      body: JSON.stringify({ text, model_id: "eleven_multilingual_v2" }),
+      body: JSON.stringify({ text, model_id: language === "mr" ? "eleven_v3" : "eleven_multilingual_v2" }),
       signal: controller.signal,
       redirect: "error",
     });

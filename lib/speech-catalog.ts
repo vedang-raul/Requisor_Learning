@@ -1,16 +1,30 @@
 import type { ApprovedSpeechKey, PublicSpeechVoice, SpeechCatalogResponse } from "./speech-types";
 
-// Reviewed, fixed, non-personal English platform phrases. Never resolve chat,
+// Fixed, non-personal platform phrases. Never resolve chat,
 // course content, model output, tools or user-authored text into this catalog.
 const CONTENT: Readonly<Record<ApprovedSpeechKey, string>> = Object.freeze({
   preview: "Hello. This is a sample of the platform guide voice.",
   platform_help: "Open My Learning to browse courses. Select a lesson to read its material and view available activities.",
   study_tip: "Take a short break between study sessions. Review key ideas, then practise explaining them in your own words.",
 });
+const MARATHI_CONTENT: Readonly<Record<ApprovedSpeechKey, string>> = Object.freeze({
+  preview: "नमस्कार. हा तुमच्या शिक्षण सहाय्यकाच्या आवाजाचा नमुना आहे.",
+  platform_help: "अभ्यासक्रम पाहण्यासाठी माय लर्निंग उघडा. अभ्यास साहित्य वाचण्यासाठी आणि उपलब्ध उपक्रम पाहण्यासाठी एखादा धडा निवडा.",
+  study_tip: "अभ्यास करताना अधूनमधून थोडी विश्रांती घ्या. महत्त्वाच्या मुद्द्यांची उजळणी करा आणि ते स्वतःच्या शब्दांत समजावून सांगण्याचा सराव करा.",
+});
 
-export function resolveSpeechContent(key: unknown): string | null {
-  return typeof key === "string" && Object.prototype.hasOwnProperty.call(CONTENT, key)
-    ? CONTENT[key as ApprovedSpeechKey] : null;
+export function getSpeechLanguage(languages: string[]): "en" | "mr" | null {
+  for (const language of languages) {
+    const base = language.split("-")[0];
+    if (base === "en" || base === "mr") return base;
+  }
+  return null;
+}
+
+export function resolveSpeechContent(key: unknown, language: string = "en"): string | null {
+  const content = language === "en" ? CONTENT : language === "mr" ? MARATHI_CONTENT : null;
+  return content && typeof key === "string" && Object.prototype.hasOwnProperty.call(content, key)
+    ? content[key as ApprovedSpeechKey] : null;
 }
 
 interface ConfigVoice {
@@ -65,7 +79,7 @@ export function getSpeechCatalog(): SpeechCatalogResponse & { configured: Config
     const unavailableReason = !v.enabled ? "Disabled by the platform owner."
       : !v.voiceId ? "Voice ID not configured."
       : !process.env.ELEVENLABS_API_KEY ? "Speech credentials not configured."
-      : !v.languages.some(l => l === "en" || l.startsWith("en-")) ? "Approved speech is currently available in English only."
+      : !getSpeechLanguage(v.languages) ? "Approved speech is currently available in English and Marathi only."
       : null;
     return {
       key: v.key, name: v.name, gender: v.gender, languages: v.languages,

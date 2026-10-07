@@ -134,7 +134,27 @@ describe("approved ElevenLabs speech boundary", () => {
     expect(getSpeechCatalog().voices.every(v => !v.enabled)).toBe(true);
     expect(fetch).not.toHaveBeenCalled();
   });
-  it("rejects disabled or non-English-only voices", async () => {
+  it.each(["preview", "platform_help", "study_tip"])("speaks only fixed Marathi text for approved %s", async contentKey => {
+    process.env.ELEVENLABS_VOICES = JSON.stringify([
+      { key: "marathi-male", name: "Marathi male", gender: "male", languages: ["mr-IN"], voiceId, enabled: true, default: true },
+    ]);
+    const catalog = await (await GET()).json();
+    expect(catalog.voices[0]).toMatchObject({ key: "marathi-male", enabled: true, gender: "male" });
+    const response = await POST(request({ voiceKey: "marathi-male", contentKey }));
+    expect(response.status).toBe(200);
+    const payload = JSON.parse((fetch as jest.Mock).mock.calls[0][1].body);
+    expect(payload).toEqual({ text: resolveSpeechContent(contentKey, "mr"), model_id: "eleven_v3" });
+    expect(payload.text).toMatch(/[\u0900-\u097f]/);
+    expect(payload.text).not.toContain("protected@example.test");
+  });
+  it("keeps arbitrary Marathi messages and client language overrides out of provider requests", async () => {
+    expect((await POST(request({ ...valid, text: "माझे गुण" }))).status).toBe(400);
+    expect((await POST(request({ ...valid, language: "mr" }))).status).toBe(400);
+    expect(resolveSpeechContent("preview", "hi")).toBeNull();
+    expect(resolveSpeechContent("__proto__", "mr")).toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("rejects disabled or unsupported-language voices", async () => {
     const c = JSON.parse(process.env.ELEVENLABS_VOICES!);
     c[0].enabled = false;
     c[1].languages = ["hi"];
