@@ -20,6 +20,7 @@ import { extractYouTubeId, isLessonLive, isLessonScheduled, PLACEHOLDER_VIDEO } 
 import type { AssistantAction } from "@/lib/assistant-actions";
 import type { Course, Lesson } from "@/lib/types";
 import { getLessonTranscript } from "@/lib/lesson-transcript";
+import { getCategoryCover } from "@/components/category-icon";
 import { transcriptForAi } from "@/lib/transcript";
 
 export type AssistantRole = "employee" | "tutor" | "admin";
@@ -60,6 +61,36 @@ const proposed = (action: AssistantAction, note: string): ToolOutcome => ({
   action,
   content: json({ status: "proposed", note: `${note} It has NOT happened yet: the user must click Confirm on the card shown in chat. Tell them briefly what it will do.` }),
 });
+
+const LEVELS = ["Beginner", "Intermediate", "Advanced"] as const;
+const level = (v: unknown) => LEVELS.find((l) => l.toLowerCase() === str(v, 20).toLowerCase());
+const tagList = (v: unknown) => (Array.isArray(v) ? [...new Set(v.map((t) => str(t, 50)).filter(Boolean))].slice(0, 20) : null);
+const slugify = (text: string) => text.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 60).replace(/-$/, "");
+/** Categories are short lowercase keys ("ai", "product"); a new one is allowed. */
+const categoryKey = (v: unknown) => str(v, 40).toLowerCase().replace(/\s+/g, " ");
+
+/** A drafted lesson inside a new course: a text lesson when it has a body, otherwise a draft waiting for a video. */
+function outlineLesson(raw: unknown, id: string): Lesson | null {
+  const o = (raw && typeof raw === "object" ? raw : {}) as Args;
+  const title = str(o.title, 200);
+  if (!title) return null;
+  const body = multiline(o.text_body, 20000);
+  const minutes = int(o.duration_min);
+  return {
+    id, title,
+    description: str(o.description, 2000) || (body ? body.replace(/\s+/g, " ").slice(0, 200) : `A lesson on ${title}.`),
+    format: body ? "reading" : "video",
+    youtubeId: body ? "" : PLACEHOLDER_VIDEO,
+    durationMin: Math.min(1440, Math.max(1, Number.isSafeInteger(minutes) ? minutes : 20)),
+    keyTakeaways: Array.isArray(o.key_takeaways) ? o.key_takeaways.map((t) => str(t, 500)).filter(Boolean).slice(0, 20) : [],
+    resources: [],
+    // A lesson with nothing to show can't be published; the tutor adds a video or text later.
+    published: Boolean(body),
+    ...(str(o.section, 200) ? { section: str(o.section, 200) } : {}),
+    ...(multiline(o.assignment, 5000) ? { assignment: multiline(o.assignment, 5000) } : {}),
+    ...(body ? { body } : {}),
+  };
+}
 
 // ── tools ────────────────────────────────────────────────────────────────────
 const TOOLS: ToolDef[] = [
@@ -478,6 +509,181 @@ const TOOLS: ToolDef[] = [
         { kind: "create_lesson", id: newId(), courseSlug: course.slug, courseTitle: course.title, lesson },
         `New ${schedule ? `scheduled (goes live ${schedule.publishAt} UTC)` : publish ? "published" : "draft"} lesson "${title}" in "${course.title}".`
       );
+    },
+  },
+  {
+    name: "propose_create_course",
+    description: "Propose creating a NEW course, optionally with its lessons drafted. The course is saved as a private draft the tutor can review and publish. Use this when the tutor asks to create, make, build or set up a course. Give each lesson a text_body to make it a ready-to-read text lesson; without one it is saved as a draft waiting for a video.",
+    parameters: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        tagline: { type: "string", description: "One sentence on what the learner gets; written for you if omitted" },
+        category: { type: "string", description: "Short lowercase key. Existing ones: product, data, ai, security. A new one is allowed, e.g. history, design." },
+        level: { type: "string", enum: ["Beginner", "Intermediate", "Advanced"] },
+        tags: { type: "array", items: { type: "string" } },
+        base_assessment: { type: "string", description: "Optional final assessment brief for the whole course" },
+        lessons: {
+          type: "array",
+          description: "Optional. The lessons in order.",
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string" }, description: { type: "string" }, section: { type: "string", description: "Module name" },
+              duration_min: { type: "integer" }, key_takeaways: { type: "array", items: { type: "string" } },
+              text_body: { type: "string", description: "The lesson's written content, if it is a text lesson" },
+              assignment: { type: "string" },
+            },
+            required: ["title"],
+          },
+        },
+      },
+      required: ["title", "category", "level"],
+    },
+    roles: MANAGERS,
+    async run(args, ctx) {
+      const title = str(args.title, 160);
+      const category = categoryKey(args.category);
+      const courseLevel = level(args.level);
+      if (!title) return fail("A course title is required.");
+      if (!category) return fail("A category is required, e.g. ai, data, product, security, or a new short one.");
+      if (!courseLevel) return fail("level must be Beginner, Intermediate or Advanced.");
+      const base = slugify(title) || "course";
+      const mine = ctx.role === "admin" ? await getCourses() : await getCourses("WHERE c.owner_user_id = $1", [ctx.userId]);
+      if (mine.some((c) => c.title.trim().toLowerCase() === title.toLowerCase())) return fail(`You already have a course called "${title}". Add lessons to it, or choose a different title.`);
+      let slug = base;
+      for (let n = 2; (await getCourses("WHERE c.slug = $1", [slug])).length; n++) {
+        if (n > 50) return fail("Couldn't find a free address for that title. Try a different title.");
+        slug = `${base.slice(0, 56)}-${n}`;
+      }
+      const stamp = Date.now();
+      const lessons = (Array.isArray(args.lessons) ? args.lessons.slice(0, 40) : [])
+        .map((raw, i) => outlineLesson(raw, `${slug}-${stamp + i}`))
+        .filter((l): l is Lesson => l !== null);
+      const assessment = multiline(args.base_assessment, 5000);
+      const course: Course = {
+        slug, title,
+        tagline: str(args.tagline, 400) || `Learn ${title} step by step.`,
+        category, level: courseLevel,
+        tags: tagList(args.tags) ?? [],
+        cover: getCategoryCover(category),
+        addedAt: new Date().toISOString().slice(0, 10),
+        lessons,
+        published: false,
+        ...(assessment ? { baseAssessment: assessment } : {}),
+      };
+      const check = validateCourse(course);
+      if (!check.ok) return fail(`The course isn't valid: ${check.error}`);
+      const ready = lessons.filter((l) => l.format === "reading").length;
+      return proposed(
+        { kind: "create_course", id: newId(), course },
+        `New draft course "${title}" with ${lessons.length} lesson${lessons.length === 1 ? "" : "s"}${lessons.length ? ` (${ready} written, ${lessons.length - ready} waiting for a video)` : ""}. It stays private until they publish it.`
+      );
+    },
+  },
+  {
+    name: "propose_update_course",
+    description: "Propose changing a course's details: title, tagline, category, level, tags or final assessment. Give only the fields that change. Lessons are not touched (use propose_update_lesson); publishing is propose_set_course_published.",
+    parameters: {
+      type: "object",
+      properties: {
+        course_slug: { type: "string" }, title: { type: "string" }, tagline: { type: "string" }, category: { type: "string" },
+        level: { type: "string", enum: ["Beginner", "Intermediate", "Advanced"] }, tags: { type: "array", items: { type: "string" } },
+        base_assessment: { type: "string" },
+      },
+      required: ["course_slug"],
+    },
+    roles: MANAGERS,
+    async run(args, ctx) {
+      const course = await managedCourse(str(args.course_slug, 80), ctx);
+      if (!course) return fail("Course not found among the courses you manage. Use list_my_courses.");
+      const changes: Extract<AssistantAction, { kind: "update_course" }>["changes"] = {};
+      const summary: string[] = [];
+      const title = str(args.title, 160), tagline = str(args.tagline, 400), category = categoryKey(args.category);
+      if (title && title !== course.title) { changes.title = title; summary.push(`Title: ${title}`); }
+      if (tagline && tagline !== course.tagline) { changes.tagline = tagline; summary.push(`Tagline: ${tagline}`); }
+      if (category && category !== course.category) { changes.category = category; changes.cover = getCategoryCover(category); summary.push(`Category: ${category}`); }
+      if (args.level !== undefined) {
+        const next = level(args.level);
+        if (!next) return fail("level must be Beginner, Intermediate or Advanced.");
+        if (next !== course.level) { changes.level = next; summary.push(`Level: ${next}`); }
+      }
+      const tags = tagList(args.tags);
+      if (tags && tags.join("|") !== course.tags.join("|")) { changes.tags = tags; summary.push(`Tags: ${tags.join(", ") || "none"}`); }
+      const assessment = multiline(args.base_assessment, 5000);
+      if (assessment && assessment !== course.baseAssessment) { changes.baseAssessment = assessment; summary.push("Final assessment updated"); }
+      if (!summary.length) return { content: json({ status: "no_change", note: "Nothing would change: the course already has those details." }) };
+      const check = validateCourse({ ...course, ...changes }, course.slug, true);
+      if (!check.ok) return fail(`Those details aren't valid: ${check.error}`);
+      return proposed({ kind: "update_course", id: newId(), courseSlug: course.slug, courseTitle: course.title, changes, summary }, `Update "${course.title}": ${summary.join("; ")}.`);
+    },
+  },
+  {
+    name: "propose_update_lesson",
+    description: "Propose editing an existing lesson: title, description, length, section, its YouTube video or written text, assignment (and graded submission settings), or key takeaways. Give only the fields that change. Publishing and scheduling are propose_set_lesson_published.",
+    parameters: {
+      type: "object",
+      properties: {
+        course_slug: { type: "string" }, lesson_id: { type: "string" },
+        title: { type: "string" }, description: { type: "string" }, duration_min: { type: "integer" }, section: { type: "string" },
+        youtube_url: { type: "string", description: "Makes it a video lesson with this video" },
+        text_body: { type: "string", description: "Makes it a text lesson with this content" },
+        assignment: { type: "string" },
+        requires_submission: { type: "boolean" }, total_marks: { type: "integer" }, due_date: { type: "string", description: "YYYY-MM-DD" },
+        key_takeaways: { type: "array", items: { type: "string" }, description: "Replaces the whole list" },
+      },
+      required: ["course_slug", "lesson_id"],
+    },
+    roles: MANAGERS,
+    async run(args, ctx) {
+      const course = await managedCourse(str(args.course_slug, 80), ctx);
+      const current = course?.lessons.find((l) => l.id === str(args.lesson_id, 120));
+      if (!course || !current) return fail("Lesson not found in the courses you manage. Use list_my_courses.");
+      const next: Lesson = { ...current };
+      const summary: string[] = [];
+      const title = str(args.title, 200), description = str(args.description, 2000), section = str(args.section, 200);
+      if (title && title !== current.title) { next.title = title; summary.push(`Title: ${title}`); }
+      if (description && description !== current.description) { next.description = description; summary.push("Description updated"); }
+      if (section && section !== current.section) { next.section = section; summary.push(`Section: ${section}`); }
+      const minutes = int(args.duration_min);
+      if (Number.isSafeInteger(minutes) && minutes !== current.durationMin) {
+        if (minutes < 1 || minutes > 1440) return fail("duration_min must be between 1 and 1440.");
+        next.durationMin = minutes; summary.push(`Length: ${minutes} min`);
+      }
+      const url = str(args.youtube_url, 2048), body = multiline(args.text_body, 20000);
+      if (url && body) return fail("Give either youtube_url or text_body, not both.");
+      if (url) {
+        const videoId = extractYouTubeId(url);
+        if (!videoId) return fail("That isn't a valid YouTube URL or video ID.");
+        next.format = "video"; next.youtubeId = videoId; delete next.body; delete next.bodyFileUrl;
+        summary.push("Video replaced with the YouTube link");
+      } else if (body) {
+        next.format = "reading"; next.youtubeId = ""; next.body = body; delete next.bodyFileUrl;
+        summary.push("Lesson text replaced");
+      }
+      const assignment = multiline(args.assignment, 5000);
+      if (assignment && assignment !== current.assignment) { next.assignment = assignment; summary.push("Assignment updated"); }
+      if (args.requires_submission === false && current.requiresSubmission) {
+        delete next.requiresSubmission; delete next.assignmentMarks; delete next.assignmentDueDate;
+        summary.push("No longer needs a graded submission");
+      } else if (args.requires_submission === true || args.total_marks !== undefined || args.due_date !== undefined) {
+        const marks = args.total_marks !== undefined ? int(args.total_marks) : current.assignmentMarks ?? NaN;
+        const due = args.due_date !== undefined ? str(args.due_date, 10) : current.assignmentDueDate ?? "";
+        if (!Number.isSafeInteger(marks) || marks < 1 || !/^\d{4}-\d{2}-\d{2}$/.test(due)) return fail("A graded submission needs its total points (total_marks, a whole number) and due_date (YYYY-MM-DD).");
+        if (!next.assignment) return fail("A graded submission needs assignment text describing what to hand in.");
+        if (!current.requiresSubmission || marks !== current.assignmentMarks || due !== current.assignmentDueDate) {
+          next.requiresSubmission = true; next.assignmentMarks = marks; next.assignmentDueDate = due;
+          summary.push(`Graded submission · ${marks} points · due ${due}`);
+        }
+      }
+      if (Array.isArray(args.key_takeaways)) {
+        const takeaways = args.key_takeaways.map((t) => str(t, 500)).filter(Boolean).slice(0, 20);
+        if (takeaways.join("|") !== current.keyTakeaways.join("|")) { next.keyTakeaways = takeaways; summary.push(`${takeaways.length} key takeaway${takeaways.length === 1 ? "" : "s"}`); }
+      }
+      if (!summary.length) return { content: json({ status: "no_change", note: "Nothing would change: the lesson already has those details." }) };
+      const check = validateCourse({ ...course, lessons: course.lessons.map((l) => (l.id === current.id ? next : l)) }, course.slug, true);
+      if (!check.ok) return fail(`Those changes aren't valid: ${check.error}`);
+      return proposed({ kind: "update_lesson", id: newId(), courseSlug: course.slug, courseTitle: course.title, lesson: next, summary }, `Update the lesson "${current.title}": ${summary.join("; ")}.`);
     },
   },
   {
