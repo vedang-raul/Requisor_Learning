@@ -50,8 +50,8 @@ type Voice = TtsCharacter & {
 const BUILT_IN_VOICES: Voice[] = [
   { key: "english-america-female", name: "Grace", description: "English (US) · Female", voiceId: "PStJ2DzQnh8zxG5PDf1s" },
   { key: "english-america-male", name: "Ethan", description: "English (US) · Male", voiceId: "a4CnuaYbALRvW39mDitg" },
-  { key: "english-british-female", name: "Charlotte", description: "English (UK) · Female", voiceId: "NtS6nEHDYMQC9QczMQuq", dialect: "British" },
-  { key: "english-british-male", name: "Oliver", description: "English (UK) · Male", voiceId: "UaYTS0wayjmO9KD1LR4R", dialect: "British" },
+  { key: "english-british-female", name: "Dany", description: "English (UK) · Female", voiceId: "NtS6nEHDYMQC9QczMQuq", dialect: "British" },
+  { key: "english-british-male", name: "Jhon", description: "English (UK) · Male", voiceId: "UaYTS0wayjmO9KD1LR4R", dialect: "British" },
   { key: "africa-female", name: "Amara", description: "English (African) · Female", voiceId: "xh29gsY39TqVRlmqY4AU" },
   { key: "africa-male", name: "Kwame", description: "English (African) · Male", voiceId: "OfkBFhvt6pBj8jdX4jo0" },
   { key: "hindi-female", name: "Priya", description: "Hindi · Female", voiceId: "RDWdsTU6N02BFftbIEAp", language: "Hindi" },

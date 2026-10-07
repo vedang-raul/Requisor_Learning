@@ -25,8 +25,8 @@ const LOOKS = {
   "arabic-female": ["#bae6fd", "#0369a1", "tan", "#1c1512", "long", "#ecfeff", "earrings"],
   "chinese-male": ["#fecaca", "#dc2626", "light", "#111111", "short", "#1f2937", "glasses"],
   "chinese-female": ["#fbcfe8", "#db2777", "light", "#111111", "bob", "#f8fafc"],
-  "english-british-male": ["#cbd5e1", "#334155", "light", "#c08a4a", "side", "#0f172a", "glasses"],
-  "english-british-female": ["#ddd6fe", "#4338ca", "fair", "#8a3b1e", "bun", "#f1f5f9"],
+  "english-british-male": ["#cbd5e1", "#334155", "light", "#17120f", "medium", "#1f2937", "beard"],
+  "english-british-female": ["#ddd6fe", "#4338ca", "light", "#ece9e2", "long", "#f1f5f9", "brows:#a89f92"],
   "portuguese-male": ["#bbf7d0", "#166534", "tan", "#2a1a12", "side", "#fef9c3"],
   "portuguese-female": ["#fde68a", "#15803d", "brown", "#2a1a12", "curly", "#f0fdf4", "earrings"],
 };
@@ -34,6 +34,8 @@ const LOOKS = {
 const FEMALE_STYLES = new Set(["long", "bob", "bun"]);
 
 function hairBehind(style, female, c) {
+  // A man's longer hair: falls past the ears to the collar, with a loose wave.
+  if (style === "medium") return `<path d="M25 44c0-18 10-28 23-28s23 10 23 28c0 9 1 16 3 21-4 2-8 2-11 0l-2-14H33l-2 14c-3 2-7 2-11 0 3-5 5-12 5-21z" fill="${c}"/>`;
   if (!female) return "";
   if (style === "long") return `<path d="M22 46c0-20 11-32 26-32s26 12 26 32c0 16 3 28 6 38H16c3-10 6-22 6-38z" fill="${c}"/>`;
   if (style === "bob") return `<path d="M24 44c0-18 10-29 24-29s24 11 24 29c0 9 1 15 2 21H22c1-6 2-12 2-21z" fill="${c}"/>`;
@@ -51,6 +53,7 @@ function hairFront(style, female, c) {
   }
   if (style === "buzz") return `<path d="M31 41c-1-13 6-20 17-20s18 7 17 20c-2-6-5-9-9-10-5 1-11 1-16 0-4 1-7 4-9 10z" fill="${c}" opacity=".85"/>`;
   if (style === "curly") return [[34, 28, 7], [42, 23, 8], [52, 22, 8], [61, 27, 7], [31, 36, 5], [65, 36, 5]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${c}"/>`).join("");
+  if (style === "medium") return `<path d="M29 47c-3-19 6-29 19-29 12 0 21 9 18 28-2-8-5-13-9-15-3 3-8 4-12 2-5 3-11 5-16 14z" fill="${c}"/>`;
   if (style === "side") return `<path d="M30 45c-3-18 7-27 19-27 11 0 19 8 17 25-3-8-8-12-19-12-7 0-13 4-17 14z" fill="${c}"/>`;
   return `<path d="M30 43c-2-16 6-25 18-25s20 9 18 25c-2-7-5-11-9-12-6 2-14 2-20 0-3 2-5 6-7 12z" fill="${c}"/>`;
 }
@@ -59,6 +62,8 @@ function draw(key, [bg1, bg2, skinKey, hair, style, shirt, ...extras]) {
   const female = FEMALE_STYLES.has(style) || key.endsWith("-female");
   const [skin, shade] = SKIN[skinKey];
   const has = (x) => extras.includes(x);
+  // Very light hair needs darker eyebrows to read.
+  const brows = (extras.find((x) => x.startsWith("brows:")) || "").slice(6) || hair;
   const label = key.split("-").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="${label} voice portrait">
   <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${bg1}"/><stop offset="1" stop-color="${bg2}"/></linearGradient></defs>
@@ -71,7 +76,7 @@ function draw(key, [bg1, bg2, skinKey, hair, style, shirt, ...extras]) {
   <path d="M31 42c0-12 7-19 17-19s17 7 17 19v6c0 12-8 21-17 21s-17-9-17-21z" fill="${skin}"/>
   ${has("beard") ? `<path d="M31 50c1 12 8 19 17 19s16-7 17-19c-2 7-5 10-8 11-3-3-15-3-18 0-3-1-6-4-8-11z" fill="${hair}" opacity=".8"/>` : ""}
   ${hairFront(style, female, hair)}
-  <path d="M35.5 44c2-1.500 5-1.500 7 0M53.500 44c2-1.500 5-1.500 7 0" fill="none" stroke="${hair}" stroke-width="${female ? 1.6 : 2}" stroke-linecap="round"/>
+  <path d="M35.5 44c2-1.500 5-1.500 7 0M53.500 44c2-1.500 5-1.500 7 0" fill="none" stroke="${brows}" stroke-width="${female ? 1.6 : 2}" stroke-linecap="round"/>
   <ellipse cx="39" cy="48.500" rx="2" ry="2.200" fill="#221a15"/><ellipse cx="57" cy="48.500" rx="2" ry="2.200" fill="#221a15"/>
   ${has("glasses") ? `<g fill="none" stroke="#1f2937" stroke-width="1.6"><rect x="33" y="44" width="12" height="9" rx="3.500"/><rect x="51" y="44" width="12" height="9" rx="3.500"/><path d="M45 47.500h6"/></g>` : ""}
   <path d="M48 50v5.500l-2 1.500h4" fill="none" stroke="${shade}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>

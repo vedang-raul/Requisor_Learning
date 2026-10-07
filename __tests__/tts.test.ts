@@ -48,7 +48,7 @@ describe("assistant voice", () => {
   it("says how replies should be worded for a voice: its language, dialect or manner", () => {
     expect(ttsCharacterStyle("english-america-female")).toBeNull();
     expect(ttsCharacterStyle("hindi-female")).toEqual({ name: "Priya", language: "Hindi", gender: "female" });
-    expect(ttsCharacterStyle("english-british-male")).toEqual({ name: "Oliver", dialect: "British" });
+    expect(ttsCharacterStyle("english-british-male")).toEqual({ name: "Jhon", dialect: "British" });
     expect(ttsCharacterStyle("arthur")).toBeNull();
     expect(ttsCharacterStyle({})).toBeNull();
     process.env.ELEVENLABS_VOICE_ID_ARTHUR = "ArthurVoice12345";
