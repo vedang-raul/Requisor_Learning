@@ -852,9 +852,6 @@ export function AiAssistant() {
                       ? "Start the guided course interview and I’ll collect everything I need, one question at a time."
                       : "Ask which course fits your background, or what to learn next based on your progress."}
                   </p>
-                  <p className="rounded-lg border border-primary/15 bg-primary/[0.04] px-2.5 py-2 text-[11px] leading-relaxed text-zinc-600">
-                    Replies are read aloud when unmuted in the selected voice's language. Non-English voices translate replies before playback. Reply text is sent to the AI translation service when needed and to ElevenLabs for speech.
-                  </p>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {quickPrompts.map(({ icon: Icon, label }, i) => (
                       <motion.button
