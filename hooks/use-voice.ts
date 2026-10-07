@@ -32,6 +32,8 @@ export interface UseVoiceReturn {
   transcript: string;
   sttSupported: boolean;
   ttsSupported: boolean;
+  /** True when replies are spoken by the server's ElevenLabs voice rather than the browser's. */
+  premiumVoice: boolean;
   voices: SpeechSynthesisVoice[];
   selectedVoiceName: string;
   setSelectedVoiceName: (name: string) => void;
@@ -55,15 +57,44 @@ export function useVoice(): UseVoiceReturn {
   const sttSupported =
     typeof window !== "undefined" &&
     !!(window.SpeechRecognition || window.webkitSpeechRecognition);
-  const ttsSupported =
+  const browserTts =
     typeof window !== "undefined" && !!window.speechSynthesis;
+  // The server's ElevenLabs voice, when one is set up. The browser's voice stays as the fallback.
+  const [premiumVoice, setPremiumVoice] = useState(false);
+  const ttsSupported = browserTts || premiumVoice;
 
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
+  // Counts speak/stop calls, so audio that arrives after a newer call is dropped.
+  const speakTurnRef = useRef(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/tts/")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { enabled?: boolean } | null) => { if (!cancelled && data?.enabled) setPremiumVoice(true); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const stopAudio = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.onended = null;
+      audioRef.current.onerror = null;
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
+    }
+  }, []);
 
   // Load voices — browsers fire voiceschanged once the list is ready
   useEffect(() => {
-    if (!ttsSupported) return;
+    if (!browserTts) return;
     const load = () => {
       const v = window.speechSynthesis.getVoices();
       if (v.length) setVoices(v);
@@ -71,7 +102,7 @@ export function useVoice(): UseVoiceReturn {
     load();
     window.speechSynthesis.addEventListener("voiceschanged", load);
     return () => window.speechSynthesis.removeEventListener("voiceschanged", load);
-  }, [ttsSupported]);
+  }, [browserTts]);
 
   const setSelectedVoiceName = useCallback((name: string) => {
     setSelectedVoiceNameState(name);
@@ -120,11 +151,13 @@ export function useVoice(): UseVoiceReturn {
   // Stop speech synthesis on unmount
   useEffect(() => {
     return () => {
-      if (ttsSupported) {
+      speakTurnRef.current++;
+      stopAudio();
+      if (browserTts) {
         window.speechSynthesis.cancel();
       }
     };
-  }, [ttsSupported]);
+  }, [browserTts, stopAudio]);
 
   const startListening = useCallback(() => {
     if (!recognitionRef.current || isListening) return;
@@ -147,9 +180,9 @@ export function useVoice(): UseVoiceReturn {
     setIsListening(false);
   }, []);
 
-  const speak = useCallback(
+  const speakWithBrowser = useCallback(
     (text: string) => {
-      if (!ttsSupported || !text.trim()) return;
+      if (!browserTts || !text.trim()) return;
       window.speechSynthesis.cancel();
 
       const utterance = new SpeechSynthesisUtterance(text);
@@ -171,14 +204,43 @@ export function useVoice(): UseVoiceReturn {
       utteranceRef.current = utterance;
       window.speechSynthesis.speak(utterance);
     },
-    [ttsSupported, selectedVoiceName]
+    [browserTts, selectedVoiceName]
+  );
+
+  const speak = useCallback(
+    (text: string) => {
+      if (!text.trim()) return;
+      const turn = ++speakTurnRef.current;
+      stopAudio();
+      if (browserTts) window.speechSynthesis.cancel();
+      if (!premiumVoice) { speakWithBrowser(text); return; }
+
+      // Anything that goes wrong (no credits, network, autoplay blocked) falls back to the browser's voice.
+      const fallBack = () => { if (turn === speakTurnRef.current) { stopAudio(); setIsSpeaking(false); speakWithBrowser(text); } };
+      setIsSpeaking(true);
+      fetch("/api/tts/", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) })
+        .then((res) => { if (!res.ok) throw new Error("tts"); return res.blob(); })
+        .then((blob) => {
+          if (turn !== speakTurnRef.current) return;
+          const url = URL.createObjectURL(blob);
+          const audio = new Audio(url);
+          audioRef.current = audio;
+          audioUrlRef.current = url;
+          audio.onended = () => { if (turn === speakTurnRef.current) { stopAudio(); setIsSpeaking(false); } };
+          audio.onerror = fallBack;
+          return audio.play();
+        })
+        .catch(fallBack);
+    },
+    [browserTts, premiumVoice, speakWithBrowser, stopAudio]
   );
 
   const stopSpeaking = useCallback(() => {
-    if (!ttsSupported) return;
-    window.speechSynthesis.cancel();
+    speakTurnRef.current++;
+    stopAudio();
+    if (browserTts) window.speechSynthesis.cancel();
     setIsSpeaking(false);
-  }, [ttsSupported]);
+  }, [browserTts, stopAudio]);
 
   return {
     isListening,
@@ -186,6 +248,7 @@ export function useVoice(): UseVoiceReturn {
     transcript,
     sttSupported,
     ttsSupported,
+    premiumVoice,
     voices,
     selectedVoiceName,
     setSelectedVoiceName,
