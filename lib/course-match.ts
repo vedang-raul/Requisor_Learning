@@ -4,6 +4,8 @@ export type MatchProfile = {
   position?: string | null;
   qualification?: string | null;
   learningGoal?: string | null;
+  /** What the learner has said in the current chat. Counts for more than the saved profile, which may be out of date. */
+  conversation?: string | null;
 };
 
 export type CourseMatch = {
@@ -12,11 +14,16 @@ export type CourseMatch = {
   progressPercent: number;
   completed: boolean;
   matchedTerms: string[];
+  /** The matched terms that came from what the learner said in the chat. */
+  saidTerms: string[];
 };
 
 const STOP_WORDS = new Set([
   "about", "after", "and", "are", "but", "from", "have", "into", "learn",
   "more", "that", "the", "their", "this", "with", "your",
+  // chat filler: these appear in course text too, and must not count as a match
+  "course", "courses", "lesson", "lessons", "what", "which", "should", "want", "take", "next", "for", "you", "can", "how",
+  "get", "start", "work", "need", "would", "like", "best", "good", "new", "any", "some", "there", "here", "who", "why",
 ]);
 
 function terms(value: string): string[] {
@@ -65,7 +72,12 @@ export function scoreCourses(
     .map((course) => {
       const availableTerms = courseTerms(course);
       const matched = new Set<string>();
+      const said = new Set<string>();
       let score = 0;
+
+      new Set(terms(profile.conversation ?? "")).forEach((term) => {
+        if (availableTerms.has(term)) { matched.add(term); said.add(term); score += 6; }
+      });
 
       profileFields.forEach((value, fieldIndex) => {
         const weight = fieldIndex === 2 ? 3 : 2;
@@ -88,6 +100,7 @@ export function scoreCourses(
         progressPercent: courseProgress.progressPercent,
         completed: courseProgress.completed,
         matchedTerms: Array.from(matched),
+        saidTerms: Array.from(said),
       };
     })
     .sort((a, b) =>
@@ -100,21 +113,28 @@ export function scoreCourses(
 export function formatRecommendationContext(matches: CourseMatch[]): string {
   if (matches.length === 0) return "";
 
-  const rows = matches.slice(0, 4).map((match, index) => {
+  // Every course is listed, so none looks unavailable just because it ranked low.
+  const rows = matches.slice(0, 12).map((match, index) => {
     const status = match.completed
       ? "completed"
       : match.progressPercent > 0
         ? `${match.progressPercent}% complete`
         : "not started";
-    const reason = match.matchedTerms.length
-      ? `profile matches: ${match.matchedTerms.slice(0, 3).join(", ")}`
-      : "available starting point";
+    const profileTerms = match.matchedTerms.filter((term) => !match.saidTerms.includes(term));
+    const reason = match.saidTerms.length
+      ? `matches what they said in this chat: ${match.saidTerms.slice(0, 4).join(", ")}`
+      : profileTerms.length
+        ? `saved profile matches: ${profileTerms.slice(0, 3).join(", ")}`
+        : "no specific match";
     return `${index + 1}. ${match.course.title} (slug: ${match.course.slug}) — ${status}; ${reason}`;
   });
 
+  const anySignal = matches.some((match) => match.matchedTerms.length > 0 || match.progressPercent > 0);
   return [
-    "Computed course ranking for the learner's next recommendation:",
+    anySignal
+      ? "Default course order from keyword matches and progress (a rough guide, not a verdict):"
+      : "Nothing in the saved profile, the chat or their progress points to a particular course. The order below is alphabetical and is NOT a recommendation; ask what they do or want to learn:",
     ...rows,
-    "Use this ranking as guidance and avoid recommending a completed course unless the learner asks for it.",
+    "Keyword matching is crude: judge fit yourself from the catalog and from what the learner says. Avoid recommending a completed course unless they ask for it.",
   ].join("\n");
 }
