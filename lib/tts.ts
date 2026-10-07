@@ -3,9 +3,14 @@
  * server (app/api/tts); the browser only ever receives audio. Without a key
  * the assistant falls back to the browser's built-in voice.
  *
- *   ELEVENLABS_API_KEY   turns it on
- *   ELEVENLABS_VOICE_ID  which voice speaks (from the ElevenLabs voice library)
- *   ELEVENLABS_MODEL     defaults to the fast multilingual model
+ *   ELEVENLABS_API_KEY             turns it on
+ *   ELEVENLABS_VOICE_ID_<NAME>     one line per character the learner can pick, e.g.
+ *                                  ELEVENLABS_VOICE_ID_IVANNA, ELEVENLABS_VOICE_ID_UNCLE_SAM.
+ *                                  The value is a voice ID from the ElevenLabs voice library;
+ *                                  the name is what the picker shows ("Ivanna", "Uncle Sam").
+ *   ELEVENLABS_VOICE_ID            a single voice, shown as "Default" (optional)
+ *   ELEVENLABS_DEFAULT_VOICE       which character speaks until the learner picks one (optional)
+ *   ELEVENLABS_MODEL               defaults to the fast multilingual model
  */
 /** ElevenLabs bills per character, so one reply is capped. Replies are normally well under this. */
 export const TTS_MAX_CHARS = 1500;
@@ -16,9 +21,41 @@ export function ttsConfigured(): boolean {
   return Boolean(process.env.ELEVENLABS_API_KEY);
 }
 
-export function ttsVoiceId(): string {
-  const id = (process.env.ELEVENLABS_VOICE_ID ?? "").trim();
-  return /^[A-Za-z0-9]{10,40}$/.test(id) ? id : DEFAULT_VOICE_ID;
+export type TtsCharacter = { key: string; name: string };
+const VOICE_ID = /^[A-Za-z0-9]{10,40}$/;
+const VOICE_VAR = /^ELEVENLABS_VOICE_ID_([A-Z0-9]+(?:_[A-Z0-9]+)*)$/;
+const MAX_CHARACTERS = 24;
+
+/** Every voice set up in the environment, with its voice ID. Server-side only. */
+function voices(): (TtsCharacter & { voiceId: string })[] {
+  const found: (TtsCharacter & { voiceId: string })[] = [];
+  for (const [variable, value] of Object.entries(process.env)) {
+    const match = VOICE_VAR.exec(variable);
+    const voiceId = (value ?? "").trim();
+    if (!match || !VOICE_ID.test(voiceId)) continue;
+    const words = match[1].toLowerCase().split("_");
+    found.push({ key: words.join("-"), name: words.map((word) => word[0].toUpperCase() + word.slice(1)).join(" "), voiceId });
+  }
+  found.sort((a, b) => a.name.localeCompare(b.name));
+  const single = (process.env.ELEVENLABS_VOICE_ID ?? "").trim();
+  if (VOICE_ID.test(single)) found.unshift({ key: "default", name: "Default", voiceId: single });
+  if (!found.length) found.push({ key: "default", name: "Default", voiceId: DEFAULT_VOICE_ID });
+
+  const preferred = (process.env.ELEVENLABS_DEFAULT_VOICE ?? "").trim().toLowerCase().replace(/[\s_]+/g, "-");
+  const first = found.findIndex((voice) => voice.key === preferred);
+  if (first > 0) found.unshift(...found.splice(first, 1));
+  return found.slice(0, MAX_CHARACTERS);
+}
+
+/** The characters a learner can choose between, first one being the default. Never includes voice IDs. */
+export function ttsCharacters(): TtsCharacter[] {
+  return voices().map(({ key, name }) => ({ key, name }));
+}
+
+/** The voice ID for a character; an unknown or missing one gets the default character. */
+export function ttsVoiceId(character?: unknown): string {
+  const all = voices();
+  return (all.find((voice) => voice.key === character) ?? all[0]).voiceId;
 }
 
 export function ttsModel(): string {

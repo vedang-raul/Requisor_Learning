@@ -25,6 +25,8 @@ declare global {
 }
 
 const VOICE_STORAGE_KEY = "requisor-tts-voice";
+const CHARACTER_STORAGE_KEY = "requisor-tts-character";
+export type VoiceCharacter = { key: string; name: string };
 
 export interface UseVoiceReturn {
   isListening: boolean;
@@ -34,6 +36,10 @@ export interface UseVoiceReturn {
   ttsSupported: boolean;
   /** True when replies are spoken by the server's ElevenLabs voice rather than the browser's. */
   premiumVoice: boolean;
+  /** The ElevenLabs characters the learner can choose between (empty without a premium voice). */
+  characters: VoiceCharacter[];
+  selectedCharacter: string;
+  setSelectedCharacter: (key: string) => void;
   voices: SpeechSynthesisVoice[];
   selectedVoiceName: string;
   setSelectedVoiceName: (name: string) => void;
@@ -62,6 +68,17 @@ export function useVoice(): UseVoiceReturn {
   // The server's ElevenLabs voice, when one is set up. The browser's voice stays as the fallback.
   const [premiumVoice, setPremiumVoice] = useState(false);
   const ttsSupported = browserTts || premiumVoice;
+  const [characters, setCharacters] = useState<VoiceCharacter[]>([]);
+  const [storedCharacter, setStoredCharacter] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    try { return localStorage.getItem(CHARACTER_STORAGE_KEY) ?? ""; } catch { return ""; }
+  });
+  // A saved choice that no longer exists falls back to the first character.
+  const selectedCharacter = characters.some((c) => c.key === storedCharacter) ? storedCharacter : characters[0]?.key ?? "";
+  const setSelectedCharacter = useCallback((key: string) => {
+    setStoredCharacter(key);
+    try { localStorage.setItem(CHARACTER_STORAGE_KEY, key); } catch { /* private window */ }
+  }, []);
 
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -74,7 +91,11 @@ export function useVoice(): UseVoiceReturn {
     let cancelled = false;
     fetch("/api/tts/")
       .then((res) => (res.ok ? res.json() : null))
-      .then((data: { enabled?: boolean } | null) => { if (!cancelled && data?.enabled) setPremiumVoice(true); })
+      .then((data: { enabled?: boolean; voices?: VoiceCharacter[] } | null) => {
+        if (cancelled || !data?.enabled) return;
+        setPremiumVoice(true);
+        if (Array.isArray(data.voices)) setCharacters(data.voices.filter((v) => typeof v?.key === "string" && typeof v?.name === "string"));
+      })
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
@@ -218,7 +239,7 @@ export function useVoice(): UseVoiceReturn {
       // Anything that goes wrong (no credits, network, autoplay blocked) falls back to the browser's voice.
       const fallBack = () => { if (turn === speakTurnRef.current) { stopAudio(); setIsSpeaking(false); speakWithBrowser(text); } };
       setIsSpeaking(true);
-      fetch("/api/tts/", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) })
+      fetch("/api/tts/", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, voice: selectedCharacter }) })
         .then((res) => { if (!res.ok) throw new Error("tts"); return res.blob(); })
         .then((blob) => {
           if (turn !== speakTurnRef.current) return;
@@ -232,7 +253,7 @@ export function useVoice(): UseVoiceReturn {
         })
         .catch(fallBack);
     },
-    [browserTts, premiumVoice, speakWithBrowser, stopAudio]
+    [browserTts, premiumVoice, selectedCharacter, speakWithBrowser, stopAudio]
   );
 
   const stopSpeaking = useCallback(() => {
@@ -249,6 +270,9 @@ export function useVoice(): UseVoiceReturn {
     sttSupported,
     ttsSupported,
     premiumVoice,
+    characters,
+    selectedCharacter,
+    setSelectedCharacter,
     voices,
     selectedVoiceName,
     setSelectedVoiceName,

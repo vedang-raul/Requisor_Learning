@@ -5,12 +5,12 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
 import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/request-body";
-import { speechText, ttsConfigured, ttsModel, ttsVoiceId } from "@/lib/tts";
+import { speechText, ttsCharacters, ttsConfigured, ttsModel, ttsVoiceId } from "@/lib/tts";
 
 /**
  * Speaks the assistant's replies with an ElevenLabs voice.
- *   GET   { enabled }   whether a voice is set up, so the browser knows to ask
- *   POST  { text }      the reply as MP3 audio
+ *   GET   { enabled, voices }  whether a voice is set up, and the characters to pick from
+ *   POST  { text, voice? }     the reply as MP3 audio, in that character's voice
  * Signed-in users only, and rate limited, because every character is billed.
  */
 const MAX_REQUEST_BYTES = 16 * 1024;
@@ -20,7 +20,8 @@ const speakLimiter = createRateLimiter(20, 60_000);
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) return Response.json({ enabled: false }, { status: 401 });
-  return Response.json({ enabled: ttsConfigured() });
+  const enabled = ttsConfigured();
+  return Response.json({ enabled, voices: enabled ? ttsCharacters() : [] });
 }
 
 export async function POST(req: Request) {
@@ -44,7 +45,7 @@ export async function POST(req: Request) {
 
   let upstream: Response;
   try {
-    upstream = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ttsVoiceId()}/stream?output_format=mp3_44100_128`, {
+    upstream = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ttsVoiceId((body as { voice?: unknown } | null)?.voice)}/stream?output_format=mp3_44100_128`, {
       method: "POST",
       headers: { "xi-api-key": process.env.ELEVENLABS_API_KEY!, "Content-Type": "application/json", Accept: "audio/mpeg" },
       body: JSON.stringify({ text, model_id: ttsModel() }),

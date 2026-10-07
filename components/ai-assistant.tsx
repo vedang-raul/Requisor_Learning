@@ -861,7 +861,7 @@ export function AiAssistant() {
                     )}
                   </button>
                   {/* Voice picker — chevron only; dropdown rendered as top-level sibling */}
-                  {voice.voices.length > 0 && !voice.premiumVoice && (
+                  {(voice.premiumVoice ? voice.characters.length > 1 : voice.voices.length > 0) && (
                     <button
                       ref={voiceChevronRef}
                       onClick={() => {
@@ -1203,8 +1203,40 @@ export function AiAssistant() {
         )}
       </AnimatePresence>
 
+      {/* Character picker — the ElevenLabs voices set up on the server */}
+      {showVoicePicker && voice.premiumVoice && (
+        <>
+          <div className="fixed inset-0 z-[49]" onClick={() => setShowVoicePicker(false)} />
+          <div
+            className="fixed z-50 w-56 rounded-xl border border-border bg-white p-2 shadow-lg"
+            style={{ top: voicePickerPos.top, right: voicePickerPos.right }}
+          >
+            <p className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">AI voice</p>
+            <div className="max-h-52 overflow-y-auto">
+              {voice.characters.map((character) => (
+                <button
+                  key={character.key}
+                  onClick={() => {
+                    voice.setSelectedCharacter(character.key);
+                    setShowVoicePicker(false);
+                  }}
+                  aria-pressed={voice.selectedCharacter === character.key}
+                  className={cn(
+                    "flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition",
+                    voice.selectedCharacter === character.key ? "bg-primary/10 font-medium text-primary" : "text-zinc-700 hover:bg-zinc-100"
+                  )}
+                >
+                  {character.name}
+                  {voice.selectedCharacter === character.key && <Check className="h-3.5 w-3.5" />}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
       {/* Voice picker dropdown — rendered outside the overflow-hidden panel */}
-      {showVoicePicker && (
+      {showVoicePicker && !voice.premiumVoice && (
         <>
           <div
             className="fixed inset-0 z-[49]"
