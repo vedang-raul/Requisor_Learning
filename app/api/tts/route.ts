@@ -15,7 +15,8 @@ import { speechText, ttsCharacters, ttsConfigured, ttsModel, ttsVoiceId } from "
  */
 const MAX_REQUEST_BYTES = 16 * 1024;
 const UPSTREAM_TIMEOUT_MS = 20_000;
-const speakLimiter = createRateLimiter(20, 60_000);
+// A reply is spoken in a few passages, each its own request.
+const speakLimiter = createRateLimiter(60, 60_000);
 
 export async function GET() {
   const session = await getServerSession(authOptions);

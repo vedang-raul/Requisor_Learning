@@ -195,6 +195,13 @@ function RecordingWaveform({ bars }: { bars: number[] }) {
     </div>
   );
 }
+// Speaking a reply as it streams: the first passage is one sentence so the voice starts
+// quickly; later passages are longer so there are fewer joins. The text waits this long
+// at most for the voice, and only this much of one reply is spoken (it is billed per character).
+const FIRST_PASSAGE_MIN_CHARS = 20;
+const PASSAGE_MIN_CHARS = 160;
+const TEXT_WAITS_FOR_VOICE_MS = 2500;
+const SPOKEN_REPLY_MAX_CHARS = 1500;
 /** Strip {{course|...}} / {{lesson|...}} tags and markdown symbols for clean TTS text. */
 function stripForSpeech(text: string): string {
   return text
@@ -421,7 +428,45 @@ export function AiAssistant() {
     const next = !voiceMuted;
     setVoiceMuted(next);
     localStorage.setItem(MUTE_KEY, String(next));
-    if (next) voice.stopSpeaking();
+    if (next) { voice.stopSpeaking(); speakingReplyRef.current = false; textGateUntilRef.current = 0; }
+  }
+  // ── Speaking a reply while it streams, so voice and text arrive together ────
+  // How far into the reply has been handed to the voice, and how much in total.
+  const speakingReplyRef = useRef(false);
+  const spokenUpToRef = useRef(0);
+  const spokenCharsRef = useRef(0);
+  // The text is held back until the voice starts, but never past this moment.
+  const textGateUntilRef = useRef(0);
+  const speechStartedRef = voice.speechStartedRef;
+  const queueSpeech = voice.queueSpeech;
+  /** Hands the voice every finished passage of the reply so far. The first one is a single sentence, to start quickly. */
+  function pumpSpeech(done: boolean) {
+    if (!speakingReplyRef.current) return;
+    const text = fullTextRef.current;
+    for (;;) {
+      const from = spokenUpToRef.current;
+      if (spokenCharsRef.current >= SPOKEN_REPLY_MAX_CHARS) break;
+      const rest = text.slice(from);
+      const wanted = from === 0 ? FIRST_PASSAGE_MIN_CHARS : PASSAGE_MIN_CHARS;
+      let cut = -1;
+      const ends = /[.!?。।](?=\s)|\n/g;
+      for (let m = ends.exec(rest); m; m = ends.exec(rest)) {
+        const end = m.index + 1;
+        if (end >= wanted && !endsInOpenTag(text.slice(0, from + end))) { cut = end; break; }
+      }
+      if (cut < 0) {
+        if (!done || !rest.trim()) break;
+        cut = rest.length;
+      }
+      const passage = stripForSpeech(rest.slice(0, cut));
+      spokenUpToRef.current = from + cut;
+      if (!passage) continue;
+      if (spokenCharsRef.current === 0) textGateUntilRef.current = performance.now() + TEXT_WAITS_FOR_VOICE_MS;
+      spokenCharsRef.current += passage.length;
+      queueSpeech(passage);
+    }
+    // Nothing to say after all: don't keep the text waiting.
+    if (done && spokenCharsRef.current === 0) textGateUntilRef.current = 0;
   }
   function cancelActiveRequest() {
     requestAbortRef.current?.abort();
@@ -449,7 +494,9 @@ export function AiAssistant() {
       const dt = (now - last) / 1000;
       last = now;
       const target = fullTextRef.current.length;
-      if (revealedRef.current < target && now >= pauseUntilRef.current) {
+      // With voice on, the text waits (briefly) for the voice to start, so they arrive together.
+      const waitingForVoice = speakingReplyRef.current && !speechStartedRef.current && now < textGateUntilRef.current;
+      if (revealedRef.current < target && now >= pauseUntilRef.current && !waitingForVoice) {
         const jitter = 0.75 + Math.sin(now / 137) * 0.25 + Math.random() * 0.15;
         revealedRef.current = Math.min(target, revealedRef.current + BASE_CPS * jitter * dt);
         let count = Math.floor(revealedRef.current);
@@ -477,11 +524,8 @@ export function AiAssistant() {
           duration_ms: Math.max(0, Math.round(performance.now() - requestStartedAtRef.current)),
           success: !requestFailedRef.current,
         });
-        // Auto-speak the completed reply (unless muted)
-        if (!didSpeakRef.current && !voiceMuted && voice.ttsSupported) {
-          didSpeakRef.current = true;
-          voice.speak(stripForSpeech(finalText));
-        }
+        // The reply was spoken passage by passage while it streamed (see pumpSpeech).
+        didSpeakRef.current = true;
         // Auto-navigate to the first course/lesson tag in the reply
         if (!isTutorMode && !didNavigateRef.current && replyActionsRef.current.length === 0) {
           didNavigateRef.current = true;
@@ -570,6 +614,12 @@ export function AiAssistant() {
       mode: isTutorMode ? "tutor" : "learner",
       message_length: trimmed.length,
     });
+    speakingReplyRef.current = !voiceMuted && voice.ttsSupported;
+    spokenUpToRef.current = 0;
+    spokenCharsRef.current = 0;
+    // Until the first sentence exists there is nothing to wait for; pumpSpeech sets the real deadline.
+    textGateUntilRef.current = speakingReplyRef.current ? Number.POSITIVE_INFINITY : 0;
+    if (speakingReplyRef.current) voice.beginSpeech();
     startRevealLoop();
     const requestController = new AbortController();
     requestAbortRef.current = requestController;
@@ -602,6 +652,7 @@ export function AiAssistant() {
         rawTextRef.current += decoder.decode(value, { stream: true });
         const split = splitActionFrames(rawTextRef.current);
         fullTextRef.current = split.text;
+        pumpSpeech(false);
         if (split.actions.length !== replyActionsRef.current.length) {
           replyActionsRef.current = split.actions;
           const actions = split.actions;
@@ -625,7 +676,9 @@ export function AiAssistant() {
         requestAbortRef.current = null;
         streamReaderRef.current = null;
         networkDoneRef.current = true;
+        pumpSpeech(true);
       }
+      if (textGateUntilRef.current === Number.POSITIVE_INFINITY) textGateUntilRef.current = 0;
     }
   }
   function openPanel() {

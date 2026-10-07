@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 
 // Browser type declarations for Web Speech API (not in standard TS lib)
 interface SpeechRecognitionInstance extends EventTarget {
@@ -47,6 +47,16 @@ export interface UseVoiceReturn {
   stopListening: () => void;
   speak: (text: string) => void;
   stopSpeaking: () => void;
+  /**
+   * Speaking a reply while it is still being written: call beginSpeech once, then
+   * queueSpeech with each finished passage. Passages are fetched straight away
+   * and played in order, so the voice starts after the first sentence, not after
+   * the whole reply.
+   */
+  beginSpeech: () => void;
+  queueSpeech: (text: string) => void;
+  /** True once the current reply's voice has actually started (or given up), so the text can appear with it. */
+  speechStartedRef: MutableRefObject<boolean>;
 }
 
 export function useVoice(): UseVoiceReturn {
@@ -256,12 +266,90 @@ export function useVoice(): UseVoiceReturn {
     [browserTts, premiumVoice, selectedCharacter, speakWithBrowser, stopAudio]
   );
 
+  // ── A reply spoken passage by passage, as it streams in ────────────────────
+  const speechQueueRef = useRef<{ text: string; audio: Promise<Blob | null> }[]>([]);
+  const queuePlayingRef = useRef(false);
+  const speechStartedRef = useRef(false);
+
   const stopSpeaking = useCallback(() => {
     speakTurnRef.current++;
+    speechQueueRef.current = [];
+    queuePlayingRef.current = false;
+    speechStartedRef.current = true;
     stopAudio();
     if (browserTts) window.speechSynthesis.cancel();
     setIsSpeaking(false);
   }, [browserTts, stopAudio]);
+
+  const beginSpeech = useCallback(() => {
+    speakTurnRef.current++;
+    speechQueueRef.current = [];
+    queuePlayingRef.current = false;
+    speechStartedRef.current = false;
+    stopAudio();
+    if (browserTts) window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+  }, [browserTts, stopAudio]);
+
+  /** The browser's own voice queues by itself: each utterance waits for the one before. */
+  const queueWithBrowser = useCallback(
+    (text: string, turn: number) => {
+      speechStartedRef.current = true;
+      if (!browserTts) return;
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.05;
+      const match = selectedVoiceName ? window.speechSynthesis.getVoices().find((v) => v.name === selectedVoiceName) : undefined;
+      if (match) utterance.voice = match;
+      utterance.onstart = () => { if (turn === speakTurnRef.current) setIsSpeaking(true); };
+      utterance.onend = utterance.onerror = () => { if (turn === speakTurnRef.current && !window.speechSynthesis.pending) setIsSpeaking(false); };
+      window.speechSynthesis.speak(utterance);
+    },
+    [browserTts, selectedVoiceName]
+  );
+
+  const playQueued = useCallback(
+    (turn: number) => {
+      if (turn !== speakTurnRef.current || queuePlayingRef.current) return;
+      const next = speechQueueRef.current.shift();
+      if (!next) { setIsSpeaking(false); return; }
+      queuePlayingRef.current = true;
+      const advance = () => {
+        if (turn !== speakTurnRef.current) return;
+        stopAudio();
+        queuePlayingRef.current = false;
+        playQueued(turn);
+      };
+      void next.audio.then((blob) => {
+        if (turn !== speakTurnRef.current) return;
+        // No audio for this passage (out of credits, network, rate limit): say it with the browser's voice instead.
+        if (!blob) { queueWithBrowser(next.text, turn); advance(); return; }
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audioRef.current = audio;
+        audioUrlRef.current = url;
+        audio.onplaying = () => { speechStartedRef.current = true; setIsSpeaking(true); };
+        audio.onended = advance;
+        audio.onerror = () => { queueWithBrowser(next.text, turn); advance(); };
+        audio.play().catch(() => { queueWithBrowser(next.text, turn); advance(); });
+      });
+    },
+    [queueWithBrowser, stopAudio]
+  );
+
+  const queueSpeech = useCallback(
+    (text: string) => {
+      if (!text.trim()) return;
+      const turn = speakTurnRef.current;
+      if (!premiumVoice) { queueWithBrowser(text, turn); return; }
+      // Fetched now, played in turn: later passages are ready by the time the earlier ones finish.
+      const audio = fetch("/api/tts/", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, voice: selectedCharacter }) })
+        .then((res) => (res.ok ? res.blob() : null))
+        .catch(() => null);
+      speechQueueRef.current.push({ text, audio });
+      playQueued(turn);
+    },
+    [premiumVoice, selectedCharacter, queueWithBrowser, playQueued]
+  );
 
   return {
     isListening,
@@ -280,5 +368,8 @@ export function useVoice(): UseVoiceReturn {
     stopListening,
     speak,
     stopSpeaking,
+    beginSpeech,
+    queueSpeech,
+    speechStartedRef,
   };
 }
