@@ -3,12 +3,18 @@ jest.mock("@/lib/auth", () => ({ authOptions: {} }));
 jest.mock("@/lib/rate-limit", () => ({
   createRateLimiter: () => ({ check: () => mockLimit() }),
 }));
+jest.mock("@/lib/speech-translation", () => ({
+  ...jest.requireActual("@/lib/speech-translation"),
+  translateMarathiSpeech: jest.fn(),
+}));
 const mockLimit = jest.fn(() => ({ limited: false, retryAfterMs: 0 }));
 import { GET, POST } from "@/app/api/speech/route";
 import { getServerSession } from "next-auth/next";
 import { getSpeechCatalog, resolveSpeechContent } from "@/lib/speech-catalog";
+import { SpeechTranslationError, translateMarathiSpeech } from "@/lib/speech-translation";
 
 const session = getServerSession as jest.Mock;
+const translate = translateMarathiSpeech as jest.Mock;
 const voiceId = "a".repeat(20);
 const originalKey = process.env.ELEVENLABS_API_KEY;
 const originalCatalog = process.env.ELEVENLABS_VOICES;
@@ -34,6 +40,7 @@ describe("authenticated ElevenLabs speech boundary", () => {
       { key: "other", name: "Other guide", gender: "male", languages: ["en", "hi"], voiceId: "b".repeat(20), enabled: true, default: false },
     ]);
     global.fetch = jest.fn(async () => audio());
+    translate.mockResolvedValue("या धड्यात अपूर्णांकांची ओळख करून दिली आहे.");
     jest.spyOn(console, "info").mockImplementation(() => undefined);
   });
   afterEach(() => jest.restoreAllMocks());
@@ -83,9 +90,26 @@ describe("authenticated ElevenLabs speech boundary", () => {
     process.env.ELEVENLABS_VOICES = JSON.stringify([
       { key: "marathi-male", name: "Marathi male", gender: "male", languages: ["mr"], voiceId, enabled: true, default: true },
     ]);
-    const text = "या धड्यात अपूर्णांकांची ओळख करून दिली आहे.";
+    const text = "This lesson introduces fractions.";
+    const marathi = "या धड्यात अपूर्णांकांची ओळख करून दिली आहे.";
     expect((await POST(request({ voiceKey: "marathi-male", text }))).status).toBe(200);
-    expect(JSON.parse((fetch as jest.Mock).mock.calls[0][1].body)).toEqual({ text, model_id: "eleven_v3" });
+    expect(translate).toHaveBeenCalledWith(text, expect.any(AbortSignal));
+    expect(JSON.parse((fetch as jest.Mock).mock.calls[0][1].body)).toEqual({
+      text: marathi, model_id: "eleven_v3", language_code: "mr",
+    });
+  });
+  it("does not speak English as a fallback when Marathi translation fails", async () => {
+    process.env.ELEVENLABS_VOICES = JSON.stringify([
+      { key: "marathi-male", name: "Marathi male", gender: "male", languages: ["mr"], voiceId, enabled: true, default: true },
+    ]);
+    translate.mockRejectedValue(new SpeechTranslationError());
+    const response = await POST(request({ voiceKey: "marathi-male", text: "Explain this in English." }));
+    expect(response.status).toBe(502);
+    expect(await response.text()).toContain("Marathi speech translation is unavailable");
+    expect(fetch).not.toHaveBeenCalled();
+    // Translation failure releases the account's concurrency slot.
+    translate.mockResolvedValue("हा धडा वाचा.");
+    expect((await POST(request({ voiceKey: "marathi-male", text: "Read this lesson." }))).status).toBe(200);
   });
   it.each([
     { ...valid, text: "Student Alice scored 72" },
@@ -164,7 +188,8 @@ describe("authenticated ElevenLabs speech boundary", () => {
     const response = await POST(request({ voiceKey: "marathi-male", contentKey }));
     expect(response.status).toBe(200);
     const payload = JSON.parse((fetch as jest.Mock).mock.calls[0][1].body);
-    expect(payload).toEqual({ text: resolveSpeechContent(contentKey, "mr"), model_id: "eleven_v3" });
+    expect(payload).toEqual({ text: resolveSpeechContent(contentKey, "mr"), model_id: "eleven_v3", language_code: "mr" });
+    expect(translate).not.toHaveBeenCalled();
     expect(payload.text).toMatch(/[\u0900-\u097f]/);
     expect(payload.text).not.toContain("protected@example.test");
   });

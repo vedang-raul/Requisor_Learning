@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth";
 import { getSpeechCatalog, getSpeechLanguage, resolveSpeechContent } from "@/lib/speech-catalog";
 import { readJsonBody, RequestBodyTooLargeError } from "@/lib/request-body";
 import { createRateLimiter } from "@/lib/rate-limit";
+import { SpeechTranslationError, translateMarathiSpeech } from "@/lib/speech-translation";
 
 const limiter = createRateLimiter(12, 60_000);
 const active = new Set<string>();
@@ -87,14 +88,22 @@ export async function POST(req: Request) {
     void reader?.cancel().catch(() => undefined);
   };
   req.signal.addEventListener("abort", cancel, { once: true });
-  const timeout = setTimeout(() => { timedOut = true; cancel(); }, TIMEOUT_MS);
+  const timeout = setTimeout(() => { timedOut = true; cancel(); }, isReply && language === "mr" ? 60_000 : TIMEOUT_MS);
   let outcome = "provider_error";
   try {
+    const spokenText = isReply && language === "mr"
+      ? await translateMarathiSpeech(text, controller.signal)
+      : text;
+    if (controller.signal.aborted) throw new Error("cancelled");
     const upstream = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice.voiceId}?output_format=mp3_44100_128`, {
       method: "POST",
       headers: { "xi-api-key": process.env.ELEVENLABS_API_KEY, "Content-Type": "application/json", Accept: "audio/mpeg" },
       // Only narration text and model: no account metadata, history or credentials in the body.
-      body: JSON.stringify({ text, model_id: language === "mr" ? "eleven_v3" : "eleven_multilingual_v2" }),
+      body: JSON.stringify({
+        text: spokenText,
+        model_id: language === "mr" ? "eleven_v3" : "eleven_multilingual_v2",
+        ...(language === "mr" ? { language_code: "mr" } : {}),
+      }),
       signal: controller.signal,
       redirect: "error",
     });
@@ -119,9 +128,10 @@ export async function POST(req: Request) {
     for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
     outcome = "success";
     return new Response(bytes, { headers: { ...headers, "Content-Type": "audio/mpeg" } });
-  } catch {
-    outcome = timedOut ? "timeout" : req.signal.aborted ? "cancelled" : "provider_error";
-    return error(timedOut ? "Speech took too long. Please try again." : req.signal.aborted ? "Speech cancelled." : "Speech could not be generated. Please try again.", timedOut ? 504 : req.signal.aborted ? 499 : 502);
+  } catch (cause) {
+    const translationFailed = cause instanceof SpeechTranslationError;
+    outcome = timedOut ? "timeout" : req.signal.aborted ? "cancelled" : translationFailed ? "translation_error" : "provider_error";
+    return error(timedOut ? "Speech took too long. Please try again." : req.signal.aborted ? "Speech cancelled." : translationFailed ? "Marathi speech translation is unavailable. Please try again." : "Speech could not be generated. Please try again.", timedOut ? 504 : req.signal.aborted ? 499 : 502);
   } finally {
     clearTimeout(timeout);
     req.signal.removeEventListener("abort", cancel);

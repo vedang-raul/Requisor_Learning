@@ -45,13 +45,13 @@ export class SpeechPlayer {
     await this.playRequest({ contentKey, voiceKey });
   }
 
-  async speak(text: string, voiceKey: string) {
+  async speak(text: string, voiceKey: string, chunkSize = 500) {
     this.stop();
     if (text.length > 50_000) {
       this.onState({ ...IDLE, error: "This reply is too long to read aloud." });
       return;
     }
-    this.queue = speechChunks(narrationText(text));
+    this.queue = speechChunks(narrationText(text), chunkSize);
     const first = this.queue.shift();
     if (first) await this.playRequest({ text: first, voiceKey });
   }
@@ -66,7 +66,7 @@ export class SpeechPlayer {
       if (!current()) return;
       this.stop();
       this.onState({ ...IDLE, error: "Speech took too long. Please try again." });
-    }, 20_000);
+    }, "text" in payload ? 65_000 : 20_000);
     try {
       const response = await this.deps.fetch("/api/speech/", {
         method: "POST", credentials: "same-origin",

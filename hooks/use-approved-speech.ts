@@ -100,9 +100,11 @@ export function useApprovedSpeech(accountId: string | null) {
     await player.current?.play(contentKey, voiceKey);
   }, [accountId, catalog.voices]);
   const speak = useCallback(async (text: string) => {
+    const voice = catalog.voices.find(v => v.key === prefs.current.voiceKey && v.enabled);
     if (!accountId || owner.current !== accountId || loadedFor.current !== accountId || prefs.current.muted
-      || !catalog.voices.some(v => v.key === prefs.current.voiceKey && v.enabled)) return;
-    await player.current?.speak(text, prefs.current.voiceKey);
+      || !voice) return;
+    const marathi = voice.languages[0]?.split("-")[0] === "mr";
+    await player.current?.speak(text, prefs.current.voiceKey, marathi ? 300 : 500);
   }, [accountId, catalog.voices]);
 
   const ready = owner.current === loadedFor.current && !!accountId;

@@ -17,7 +17,7 @@ export class InvalidJsonBodyError extends Error {
  * chunk-by-chunk so callers are protected even when Content-Length is absent
  * or does not match the actual body.
  */
-export async function readJsonBody(req: Request, maxBytes: number): Promise<unknown> {
+export async function readJsonBody(req: Pick<Request, "headers" | "body">, maxBytes: number): Promise<unknown> {
   const contentLength = req.headers.get("content-length");
   if (contentLength) {
     const declaredLength = Number(contentLength);

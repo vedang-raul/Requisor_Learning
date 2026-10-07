@@ -908,7 +908,7 @@ export function AiAssistant() {
                       : "Ask which course fits your background, or what to learn next based on your progress."}
                   </p>
                   <p className="rounded-lg border border-primary/15 bg-primary/[0.04] px-2.5 py-2 text-[11px] leading-relaxed text-zinc-600">
-                    Replies are read aloud with your selected ElevenLabs voice when unmuted. Reply text is sent to ElevenLabs to generate speech.
+                    Replies are read aloud when unmuted. Marathi voices translate replies into Marathi before playback. Reply text is sent to the AI translation service when needed and to ElevenLabs for speech.
                   </p>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {quickPrompts.map(({ icon: Icon, label }, i) => (
@@ -1225,7 +1225,7 @@ export function AiAssistant() {
                 <div className="min-w-0 flex-1">
                   <h2 id="approved-voice-title" className="text-sm font-semibold text-zinc-900">Chatbot voice</h2>
                   <p id="approved-voice-privacy" className="mt-1 text-xs leading-relaxed text-zinc-600">
-                    Full assistant replies use your selected ElevenLabs voice when unmuted. The reply text is sent to ElevenLabs for speech generation.
+                    Full replies use your selected voice when unmuted. Marathi voices speak a Marathi translation; written replies stay unchanged. Reply text is sent to the AI translation service when needed and to ElevenLabs for speech.
                   </p>
                 </div>
                 <button
