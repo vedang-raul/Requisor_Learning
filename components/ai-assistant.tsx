@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { BookPlus, Check, Compass, ListChecks, Loader2, RotateCcw, Send, Sparkles, TrendingUp, Volume2, VolumeX, X, ChevronDown, Square, Play } from "lucide-react";
+import { BookPlus, Check, Compass, ListChecks, Loader2, RotateCcw, Send, Sparkles, TrendingUp, Volume2, VolumeX, X, Square } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { getNudge, markNudgeSeen, type Nudge } from "@/lib/nudges";
@@ -10,7 +10,7 @@ import { parseCourseLessonCount } from "@/lib/course-interview";
 import { renderMarkdownLite, endsInOpenTag } from "@/components/markdown-lite";
 import { useVoice } from "@/hooks/use-voice";
 import { useApprovedSpeech } from "@/hooks/use-approved-speech";
-import type { ApprovedSpeechKey, PublicSpeechVoice } from "@/lib/speech-types";
+import { ChatbotVoiceSelect } from "@/components/chatbot-voice-select";
 import { PersonaAvatar } from "@/components/persona-avatar";
 import { AI_GUIDE_PREFERENCES_UPDATED, getPersona } from "@/lib/personas";
 import { trackEvent } from "@/lib/analytics";
@@ -50,19 +50,6 @@ const TUTOR_QUICK_PROMPTS = [
   { icon: TrendingUp, label: "Create activities and assessments" },
   { icon: Check, label: "Check my video edits" },
 ];
-const APPROVED_SPEECH_PHRASES: Array<{ key: ApprovedSpeechKey; label: string; transcript: string }> = [
-  {
-    key: "platform_help",
-    label: "Platform help",
-    transcript: "Open My Learning to browse courses. Select a lesson to read its material and view available activities.",
-  },
-  {
-    key: "study_tip",
-    label: "Study tip",
-    transcript: "Take a short break between study sessions. Review key ideas, then practise explaining them in your own words.",
-  },
-];
-const PREVIEW_TRANSCRIPT = "Hello. This is a sample of the platform guide voice.";
 const dotTransition = (delay: number) => ({
   duration: 0.9,
   repeat: Infinity,
@@ -239,9 +226,6 @@ export function AiAssistant() {
     return () => { clearTimeout(show); clearTimeout(hide); };
   }, []);
   const [assistantPersona, setAssistantPersona] = useState<string>("");
-  const [showVoicePicker, setShowVoicePicker] = useState(false);
-  const voiceChevronRef = useRef<HTMLButtonElement>(null);
-  const voicePickerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // Typewriter reveal
@@ -323,43 +307,14 @@ export function AiAssistant() {
   }, [messages, streaming, draftLoading, courseDraft, draftError]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      if (showVoicePicker) {
-        speech.stop();
-        setShowVoicePicker(false);
-        voiceChevronRef.current?.focus();
-      } else {
-        closePanel();
-      }
+      if (e.key !== "Escape" || e.target instanceof HTMLSelectElement) return;
+      closePanel();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [showVoicePicker]);
-  useEffect(() => {
-    if (!showVoicePicker) return;
-    const panel = voicePickerRef.current;
-    const firstControl = panel?.querySelector<HTMLElement>("button:not(:disabled)");
-    firstControl?.focus();
-    const onTab = (event: KeyboardEvent) => {
-      if (event.key !== "Tab" || !panel) return;
-      const controls = Array.from(panel.querySelectorAll<HTMLElement>("button:not(:disabled)"));
-      if (!controls.length) return;
-      const first = controls[0];
-      const last = controls[controls.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", onTab);
-    return () => document.removeEventListener("keydown", onTab);
-  }, [showVoicePicker]);
+  }, []);
   useEffect(() => {
     speech.stop();
-    setShowVoicePicker(false);
   }, [pathname, searchKey]);
   useEffect(() => () => {
     requestAbortRef.current?.abort();
@@ -405,7 +360,6 @@ export function AiAssistant() {
     prevListeningRef.current = false;
     voice.stopListening();
     speech.stop();
-    setShowVoicePicker(false);
     setOpen(false);
   }
   function startRevealLoop() {
@@ -602,7 +556,6 @@ export function AiAssistant() {
     prevListeningRef.current = false;
     voice.stopListening();
     speech.stop();
-    setShowVoicePicker(false);
     setMessages([]);
     setActionOutcomes({});
     setRetryText(null);
@@ -619,7 +572,6 @@ export function AiAssistant() {
     prevListeningRef.current = false;
     voice.stopListening();
     speech.stop();
-    setShowVoicePicker(false);
     setCourseDraft(null);
     setDraftError(null);
     setCourseInterviewAnswers([]);
@@ -706,11 +658,6 @@ export function AiAssistant() {
       speech.stop();
       voice.startListening();
     }
-  }
-  function closeVoicePicker(returnFocus = true) {
-    speech.stop();
-    setShowVoicePicker(false);
-    if (returnFocus) requestAnimationFrame(() => voiceChevronRef.current?.focus());
   }
   return (
     <>
@@ -841,18 +788,11 @@ export function AiAssistant() {
                     <Square className="h-3.5 w-3.5" />
                   </button>
                 )}
-                <button
-                  ref={voiceChevronRef}
-                  type="button"
-                  onClick={() => setShowVoicePicker((v) => !v)}
-                  title="Choose guide voice"
-                  aria-label="Choose guide voice"
-                  aria-haspopup="dialog"
-                  aria-expanded={showVoicePicker}
-                  className="focus-ring flex items-center gap-0.5 rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800"
-                >
-                  {speech.loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                </button>
+                <ChatbotVoiceSelect
+                  voices={speech.voices}
+                  selectedVoiceKey={speech.selectedVoiceKey}
+                  onSelectVoice={speech.selectVoice}
+                />
               </div>
               {messages.length > 0 && (
                 <button
@@ -873,6 +813,11 @@ export function AiAssistant() {
               </button>
             </div>
             {/* Messages */}
+            {speech.setupMessage && (
+              <p role="status" className="border-b border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-900">
+                {speech.setupMessage}
+              </p>
+            )}
             {speech.error && (
               <p role="alert" className="border-b border-red-100 bg-red-50 px-4 py-2 text-xs text-red-800">
                 {speech.error} You can retry with the reply’s Read aloud button.
@@ -1195,198 +1140,6 @@ export function AiAssistant() {
         )}
       </AnimatePresence>
 
-      {/* Voice settings and fixed sample phrases. */}
-      <AnimatePresence>
-        {showVoicePicker && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] grid place-items-center p-3 sm:p-5"
-          >
-            <button
-              type="button"
-              aria-label="Close guide voice settings"
-              className="absolute inset-0 cursor-default bg-zinc-950/35"
-              onClick={() => closeVoicePicker()}
-            />
-            <motion.div
-              ref={voicePickerRef}
-              initial={{ opacity: 0, y: 10, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 6, scale: 0.98 }}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="approved-voice-title"
-              aria-describedby="approved-voice-privacy"
-              className="relative z-10 flex max-h-[min(84dvh,42rem)] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl"
-            >
-              <div className="flex items-start gap-3 border-b border-zinc-100 px-4 py-3.5">
-                <div className="min-w-0 flex-1">
-                  <h2 id="approved-voice-title" className="text-sm font-semibold text-zinc-900">Chatbot voice</h2>
-                  <p id="approved-voice-privacy" className="mt-1 text-xs leading-relaxed text-zinc-600">
-                    Full replies use your selected voice and language when unmuted. Non-English voices speak a translation; written replies stay unchanged. Reply text is sent to the AI translation service when needed and to ElevenLabs for speech.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => closeVoicePicker()}
-                  aria-label="Close guide voice settings"
-                  className="focus-ring -mr-1 -mt-1 rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-
-              <div className="min-h-0 space-y-4 overflow-y-auto p-4">
-                {(speech.error || speech.setupMessage) && (
-                  <div
-                    role={speech.error ? "alert" : "status"}
-                    className={cn(
-                      "rounded-xl border px-3 py-2.5 text-xs leading-relaxed",
-                      speech.error
-                        ? "border-red-200 bg-red-50 text-red-800"
-                        : "border-amber-200 bg-amber-50 text-amber-900"
-                    )}
-                  >
-                    {speech.error ?? speech.setupMessage}
-                  </div>
-                )}
-                {speech.loading && (
-                  <div role="status" aria-live="polite" className="flex items-center gap-2 rounded-lg bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Preparing speech…
-                  </div>
-                )}
-
-                <section aria-labelledby="voice-options-heading">
-                  <h3 id="voice-options-heading" className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Available voices</h3>
-                  <ul className="space-y-2">
-                    {speech.voices.map((voiceOption: PublicSpeechVoice) => {
-                      const languageLabel = voiceOption.languages.length ? voiceOption.languages.join(" · ") : "Language not specified";
-                      const selected = speech.selectedVoiceKey === voiceOption.key;
-                      return (
-                        <li key={voiceOption.key} className={cn("rounded-xl border p-2.5", selected ? "border-primary/35 bg-primary/[0.04]" : "border-zinc-200")}>
-                          <div className="flex items-start gap-2">
-                            <button
-                              type="button"
-                              disabled={!voiceOption.enabled}
-                              aria-pressed={selected}
-                              onClick={() => {
-                                speech.stop();
-                                speech.selectVoice(voiceOption.key);
-                              }}
-                              className={cn(
-                                "focus-ring min-w-0 flex-1 rounded-lg text-left disabled:cursor-not-allowed disabled:opacity-70",
-                                voiceOption.enabled && "hover:text-primary"
-                              )}
-                            >
-                              <span className="flex items-center gap-1.5 text-sm font-medium text-zinc-800">
-                                <span className="truncate">{voiceOption.name}</span>
-                                {voiceOption.default && <span className="shrink-0 rounded-full bg-zinc-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-zinc-500">Default</span>}
-                                {selected && <Check aria-label="Selected" className="h-3.5 w-3.5 shrink-0 text-primary" />}
-                              </span>
-                              <span className="mt-0.5 block text-[11px] text-zinc-500">
-                                {voiceOption.gender === "female" ? "Female" : "Male"} voice · {languageLabel}
-                              </span>
-                              {!voiceOption.enabled && voiceOption.unavailableReason && (
-                                <span className="mt-1 block text-[11px] leading-relaxed text-amber-800">
-                                  Unavailable: {voiceOption.unavailableReason}
-                                </span>
-                              )}
-                              {!voiceOption.enabled && !voiceOption.unavailableReason && (
-                                <span className="mt-1 block text-[11px] leading-relaxed text-amber-800">
-                                  Unavailable: this voice is not currently available.
-                                </span>
-                              )}
-                            </button>
-                            {voiceOption.enabled && (
-                              <button
-                                type="button"
-                                disabled={speech.loading || speech.muted}
-                                onClick={() => void speech.play("preview", voiceOption.key)}
-                                aria-label={`Preview ${voiceOption.name} voice`}
-                                title={speech.muted ? "Unmute voice playback to preview" : `Preview ${voiceOption.name}`}
-                                className="focus-ring flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[11px] font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-45"
-                              >
-                                <Play className="h-3 w-3" />
-                                Preview
-                              </button>
-                            )}
-                          </div>
-                        </li>
-                      );
-                    })}
-                    {!speech.loading && speech.voices.length === 0 && (
-                      <li className="rounded-xl border border-dashed border-zinc-300 px-3 py-4 text-center text-xs text-zinc-600">
-                        No configured voices are available right now.
-                      </li>
-                    )}
-                  </ul>
-                </section>
-
-                <section aria-labelledby="fixed-phrases-heading">
-                  <h3 id="fixed-phrases-heading" className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Fixed phrase playback</h3>
-                  <div className="space-y-2">
-                    {APPROVED_SPEECH_PHRASES.map((phrase) => (
-                      <div key={phrase.key} className="rounded-xl border border-zinc-200 p-2.5">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-xs font-semibold text-zinc-800">{phrase.label}</span>
-                          <button
-                            type="button"
-                            disabled={speech.loading || speech.muted || !speech.voices.some((v) => v.enabled)}
-                            onClick={() => void speech.play(phrase.key)}
-                            aria-label={`Play approved ${phrase.label.toLowerCase()} phrase`}
-                            className="focus-ring flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-[11px] font-semibold text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-45"
-                          >
-                            <Volume2 className="h-3 w-3" />
-                            Play phrase
-                          </button>
-                        </div>
-                        <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-600">{phrase.transcript}</p>
-                      </div>
-                    ))}
-                    <div className="rounded-xl border border-zinc-200 p-2.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-semibold text-zinc-800">Voice preview</span>
-                        <button
-                          type="button"
-                          disabled={speech.loading || speech.muted || !speech.voices.some((v) => v.enabled)}
-                          onClick={() => void speech.play("preview")}
-                          className="focus-ring flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[11px] font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-45"
-                        >
-                          <Play className="h-3 w-3" /> Play preview
-                        </button>
-                      </div>
-                      <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-600">{PREVIEW_TRANSCRIPT}</p>
-                    </div>
-                  </div>
-                </section>
-              </div>
-              <div className="flex items-center justify-between gap-3 border-t border-zinc-100 px-4 py-3">
-                <span className="text-[11px] text-zinc-500">{speech.muted ? "Playback muted" : "Fixed phrases only"}</span>
-                <button
-                  type="button"
-                  onClick={toggleMute}
-                  aria-pressed={speech.muted}
-                  aria-label={speech.muted ? "Unmute chatbot voice" : "Mute chatbot voice"}
-                  className="focus-ring min-h-9 rounded-lg border border-zinc-300 px-3 text-xs text-zinc-700 hover:bg-zinc-50"
-                >
-                  {speech.muted ? "Unmute" : "Mute"}
-                </button>
-                {(speech.isSpeaking || speech.loading) && (
-                  <button
-                    type="button"
-                    onClick={speech.stop}
-                    className="focus-ring flex min-h-9 items-center gap-1.5 rounded-lg border border-zinc-300 px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
-                  >
-                    <Square className="h-3 w-3" /> Stop playback
-                  </button>
-                )}
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </>
   );
 }
