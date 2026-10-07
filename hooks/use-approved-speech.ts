@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SpeechPlayer, type SpeechPlaybackState } from "@/lib/speech-player";
 import { readSpeechPreferences, writeSpeechPreferences } from "@/lib/speech-preferences";
+import { getSpeechLanguage } from "@/lib/speech-languages";
 import type { ApprovedSpeechKey, SpeechCatalogResponse, PublicSpeechVoice } from "@/lib/speech-types";
 
 export function useApprovedSpeech(accountId: string | null) {
@@ -103,8 +104,8 @@ export function useApprovedSpeech(accountId: string | null) {
     const voice = catalog.voices.find(v => v.key === prefs.current.voiceKey && v.enabled);
     if (!accountId || owner.current !== accountId || loadedFor.current !== accountId || prefs.current.muted
       || !voice) return;
-    const marathi = voice.languages[0]?.split("-")[0] === "mr";
-    await player.current?.speak(text, prefs.current.voiceKey, marathi ? 300 : 500);
+    const english = getSpeechLanguage(voice.languages) === "en";
+    await player.current?.speak(text, prefs.current.voiceKey, english ? 500 : 300);
   }, [accountId, catalog.voices]);
 
   const ready = owner.current === loadedFor.current && !!accountId;

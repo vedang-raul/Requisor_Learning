@@ -149,7 +149,7 @@ describe("speech playback lifecycle", () => {
       const h = harness(); const pending = deferred<Response>();
       h.deps.fetch.mockReturnValueOnce(pending.promise);
       const play = h.player.play("preview", "guide");
-      await jest.advanceTimersByTimeAsync(20_001);
+      await jest.advanceTimersByTimeAsync(65_001);
       expect(h.states.at(-1)?.error).toContain("too long");
       pending.resolve(audioResponse()); await play;
       expect(h.deps.createAudio).not.toHaveBeenCalled();

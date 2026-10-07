@@ -5,16 +5,17 @@ jest.mock("@/lib/rate-limit", () => ({
 }));
 jest.mock("@/lib/speech-translation", () => ({
   ...jest.requireActual("@/lib/speech-translation"),
-  translateMarathiSpeech: jest.fn(),
+  translateSpeech: jest.fn(),
 }));
 const mockLimit = jest.fn(() => ({ limited: false, retryAfterMs: 0 }));
 import { GET, POST } from "@/app/api/speech/route";
 import { getServerSession } from "next-auth/next";
 import { getSpeechCatalog, resolveSpeechContent } from "@/lib/speech-catalog";
-import { SpeechTranslationError, translateMarathiSpeech } from "@/lib/speech-translation";
+import { SpeechTranslationError, translateSpeech } from "@/lib/speech-translation";
+import { SPEECH_LANGUAGES } from "@/lib/speech-languages";
 
 const session = getServerSession as jest.Mock;
-const translate = translateMarathiSpeech as jest.Mock;
+const translate = translateSpeech as jest.Mock;
 const voiceId = "a".repeat(20);
 const originalKey = process.env.ELEVENLABS_API_KEY;
 const originalCatalog = process.env.ELEVENLABS_VOICES;
@@ -93,7 +94,7 @@ describe("authenticated ElevenLabs speech boundary", () => {
     const text = "This lesson introduces fractions.";
     const marathi = "या धड्यात अपूर्णांकांची ओळख करून दिली आहे.";
     expect((await POST(request({ voiceKey: "marathi-male", text }))).status).toBe(200);
-    expect(translate).toHaveBeenCalledWith(text, expect.any(AbortSignal));
+    expect(translate).toHaveBeenCalledWith(text, "mr", expect.any(AbortSignal));
     expect(JSON.parse((fetch as jest.Mock).mock.calls[0][1].body)).toEqual({
       text: marathi, model_id: "eleven_v3", language_code: "mr",
     });
@@ -196,18 +197,35 @@ describe("authenticated ElevenLabs speech boundary", () => {
   it("keeps arbitrary Marathi messages and client language overrides out of provider requests", async () => {
     expect((await POST(request({ ...valid, text: "माझे गुण" }))).status).toBe(400);
     expect((await POST(request({ ...valid, language: "mr" }))).status).toBe(400);
-    expect(resolveSpeechContent("preview", "hi")).toBeNull();
+    expect(resolveSpeechContent("preview", "xx")).toBeNull();
     expect(resolveSpeechContent("__proto__", "mr")).toBeNull();
     expect(fetch).not.toHaveBeenCalled();
   });
   it("rejects disabled or unsupported-language voices", async () => {
     const c = JSON.parse(process.env.ELEVENLABS_VOICES!);
     c[0].enabled = false;
-    c[1].languages = ["hi"];
+    c[1].languages = ["xx"];
     process.env.ELEVENLABS_VOICES = JSON.stringify(c);
     expect((await POST(request(valid))).status).toBe(503);
     expect((await POST(request({ ...valid, voiceKey: "other" }))).status).toBe(503);
     expect(fetch).not.toHaveBeenCalled();
+  });
+  it.each(["hi", "es", "ar", "zh", "pt", "af"] as const)("enables %s previews and translated replies with the selected voice", async language => {
+    process.env.ELEVENLABS_VOICES = JSON.stringify([
+      { key: "guide", name: "Guide", gender: "female", languages: [language], voiceId, enabled: true, default: true },
+    ]);
+    expect(getSpeechCatalog().voices[0].enabled).toBe(true);
+    expect((await POST(request(valid))).status).toBe(200);
+    expect(JSON.parse((fetch as jest.Mock).mock.calls[0][1].body)).toEqual({
+      text: SPEECH_LANGUAGES[language].preview, model_id: "eleven_v3", language_code: language,
+    });
+    expect(translate).not.toHaveBeenCalled();
+    translate.mockResolvedValue(SPEECH_LANGUAGES[language].study_tip);
+    expect((await POST(request({ voiceKey: "guide", text: "Take a short break." }))).status).toBe(200);
+    expect(translate).toHaveBeenCalledWith("Take a short break.", language, expect.any(AbortSignal));
+    expect(JSON.parse((fetch as jest.Mock).mock.calls[1][1].body)).toEqual({
+      text: SPEECH_LANGUAGES[language].study_tip, model_id: "eleven_v3", language_code: language,
+    });
   });
   it.each([
     "not-json", "[]",
@@ -263,5 +281,23 @@ describe("authenticated ElevenLabs speech boundary", () => {
     const c = new AbortController(); c.abort();
     expect((await POST(request(valid, { signal: c.signal }))).status).toBe(499);
     expect(fetch).not.toHaveBeenCalled();
+  });
+  it("gives non-English previews time to generate, then cancels and releases the slot", async () => {
+    process.env.ELEVENLABS_VOICES = JSON.stringify([
+      { key: "guide", name: "Guide", gender: "female", languages: ["hi"], voiceId, enabled: true, default: true },
+    ]);
+    jest.useFakeTimers();
+    try {
+      global.fetch = jest.fn(async () => new Response(new ReadableStream(), { headers: { "content-type": "audio/mpeg" } }));
+      let complete = false;
+      const pending = POST(request(valid)).then(response => { complete = true; return response; });
+      await jest.advanceTimersByTimeAsync(20_001);
+      expect(complete).toBe(false);
+      await jest.advanceTimersByTimeAsync(40_000);
+      expect((await pending).status).toBe(504);
+      expect(translate).not.toHaveBeenCalled();
+    } finally { jest.useRealTimers(); }
+    global.fetch = jest.fn(async () => audio());
+    expect((await POST(request(valid))).status).toBe(200);
   });
 });

@@ -5,7 +5,8 @@ import { authOptions } from "@/lib/auth";
 import { getSpeechCatalog, getSpeechLanguage, resolveSpeechContent } from "@/lib/speech-catalog";
 import { readJsonBody, RequestBodyTooLargeError } from "@/lib/request-body";
 import { createRateLimiter } from "@/lib/rate-limit";
-import { SpeechTranslationError, translateMarathiSpeech } from "@/lib/speech-translation";
+import { SpeechTranslationError, translateSpeech } from "@/lib/speech-translation";
+import { SPEECH_LANGUAGES } from "@/lib/speech-languages";
 
 const limiter = createRateLimiter(12, 60_000);
 const active = new Set<string>();
@@ -76,7 +77,7 @@ export async function POST(req: Request) {
   if (!publicVoice?.enabled || !voice.voiceId || !process.env.ELEVENLABS_API_KEY) return error(publicVoice?.unavailableReason ?? "Speech is not configured.", 503);
   const language = getSpeechLanguage(voice.languages);
   const text = isReply ? b.text as string : language ? resolveSpeechContent(b.contentKey, language) : null;
-  if (!text) return error("Approved speech is unavailable in this language.", 503);
+  if (!text || !language) return error("Speech is unavailable in this language.", 503);
   if (active.has(uid) || active.size >= 4) return error("Speech is busy. Stop playback or try again shortly.", 429, { "Retry-After": "2" });
   if (req.signal.aborted) return error("Speech cancelled.", 499);
   active.add(uid);
@@ -88,11 +89,11 @@ export async function POST(req: Request) {
     void reader?.cancel().catch(() => undefined);
   };
   req.signal.addEventListener("abort", cancel, { once: true });
-  const timeout = setTimeout(() => { timedOut = true; cancel(); }, isReply && language === "mr" ? 60_000 : TIMEOUT_MS);
+  const timeout = setTimeout(() => { timedOut = true; cancel(); }, language !== "en" ? 60_000 : TIMEOUT_MS);
   let outcome = "provider_error";
   try {
-    const spokenText = isReply && language === "mr"
-      ? await translateMarathiSpeech(text, controller.signal)
+    const spokenText = isReply && language !== "en"
+      ? await translateSpeech(text, language, controller.signal)
       : text;
     if (controller.signal.aborted) throw new Error("cancelled");
     const upstream = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice.voiceId}?output_format=mp3_44100_128`, {
@@ -101,8 +102,8 @@ export async function POST(req: Request) {
       // Only narration text and model: no account metadata, history or credentials in the body.
       body: JSON.stringify({
         text: spokenText,
-        model_id: language === "mr" ? "eleven_v3" : "eleven_multilingual_v2",
-        ...(language === "mr" ? { language_code: "mr" } : {}),
+        model_id: language !== "en" ? "eleven_v3" : "eleven_multilingual_v2",
+        ...(language !== "en" ? { language_code: language } : {}),
       }),
       signal: controller.signal,
       redirect: "error",
@@ -131,7 +132,7 @@ export async function POST(req: Request) {
   } catch (cause) {
     const translationFailed = cause instanceof SpeechTranslationError;
     outcome = timedOut ? "timeout" : req.signal.aborted ? "cancelled" : translationFailed ? "translation_error" : "provider_error";
-    return error(timedOut ? "Speech took too long. Please try again." : req.signal.aborted ? "Speech cancelled." : translationFailed ? "Marathi speech translation is unavailable. Please try again." : "Speech could not be generated. Please try again.", timedOut ? 504 : req.signal.aborted ? 499 : 502);
+    return error(timedOut ? "Speech took too long. Please try again." : req.signal.aborted ? "Speech cancelled." : translationFailed ? `${SPEECH_LANGUAGES[language].name} speech translation is unavailable. Please try again.` : "Speech could not be generated. Please try again.", timedOut ? 504 : req.signal.aborted ? 499 : 502);
   } finally {
     clearTimeout(timeout);
     req.signal.removeEventListener("abort", cancel);

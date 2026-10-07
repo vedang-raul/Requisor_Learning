@@ -66,7 +66,7 @@ export class SpeechPlayer {
       if (!current()) return;
       this.stop();
       this.onState({ ...IDLE, error: "Speech took too long. Please try again." });
-    }, "text" in payload ? 65_000 : 20_000);
+    }, 65_000);
     try {
       const response = await this.deps.fetch("/api/speech/", {
         method: "POST", credentials: "same-origin",

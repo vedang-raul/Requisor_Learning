@@ -11,6 +11,6 @@ Automatically read full assistant replies with the selected ElevenLabs voice whe
 
 A selected voice's language determines the spoken language, not just its accent or gender.
 
-**Why:** The user explicitly expects the Marathi male voice to speak Marathi rather than read English in that voice.
+**Why:** The user explicitly expects the Marathi male voice to speak Marathi rather than read English in that voice, and approved extending narration to the other languages in their voice list.
 
-**How to apply:** Match narration to the selected voice's language, including playback of earlier written replies. Do not silently fall back to English when Marathi translation fails.
+**How to apply:** Match narration to the selected voice's language, including playback of earlier written replies. Changing a voice ID alone does not translate its text. Keep written replies unchanged and do not silently fall back to English when translation fails.
