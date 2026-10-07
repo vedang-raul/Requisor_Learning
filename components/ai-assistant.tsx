@@ -580,6 +580,8 @@ export function AiAssistant() {
         signal: requestController.signal,
         body: JSON.stringify({
           // On a lesson page, tell the assistant which lesson is open.
+          // The voice the reply will be spoken in, so the wording can match it (not sent while muted).
+          ...(voiceCharacter && !voiceMuted ? { voiceCharacter: voiceCharacter.key } : {}),
           ...(window.location.pathname.startsWith("/app/learn") ? { viewingLessonId: new URLSearchParams(window.location.search).get("lesson") ?? undefined } : {}),
           messages: next.map((m) => ({
             role: m.role,

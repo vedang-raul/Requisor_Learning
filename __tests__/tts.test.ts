@@ -1,4 +1,4 @@
-import { speechText, ttsCharacters, ttsConfigured, ttsModel, ttsVoiceId, TTS_MAX_CHARS } from "@/lib/tts";
+import { speechText, ttsCharacterStyle, ttsCharacters, ttsConfigured, ttsModel, ttsVoiceId, TTS_MAX_CHARS } from "@/lib/tts";
 
 describe("assistant voice", () => {
   const env = { ...process.env };
@@ -31,6 +31,18 @@ describe("assistant voice", () => {
     process.env.ELEVENLABS_DEFAULT_VOICE = "Uncle Sam";
     expect(ttsCharacters()[0]).toEqual({ key: "uncle-sam", name: "Uncle Sam" });
     expect(ttsVoiceId()).toBe("UncleSamVoice123");
+  });
+
+  it("gives a character a speaking style only when it is set up and has one", () => {
+    for (const name of Object.keys(process.env)) if (name.startsWith("ELEVENLABS_VOICE_")) delete process.env[name];
+    expect(ttsCharacterStyle("arthur")).toBeNull();
+    process.env.ELEVENLABS_VOICE_ID_ARTHUR = "ArthurVoice12345";
+    process.env.ELEVENLABS_VOICE_ID_IVANNA = "IvannaVoice12345";
+    expect(ttsCharacterStyle("arthur")?.style).toMatch(/howdy/);
+    expect(ttsCharacterStyle("ivanna")).toBeNull();
+    expect(ttsCharacterStyle({})).toBeNull();
+    process.env.ELEVENLABS_VOICE_STYLE_IVANNA = "  a calm <b>teacher</b>\nfrom Kyiv  ";
+    expect(ttsCharacterStyle("ivanna")).toEqual({ name: "Ivanna", style: "a calm b teacher /b from Kyiv" });
   });
 
   it("speaks plain text and cuts a long reply at the end of a sentence", () => {

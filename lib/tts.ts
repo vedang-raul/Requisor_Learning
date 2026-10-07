@@ -8,6 +8,9 @@
  *                                  ELEVENLABS_VOICE_ID_IVANNA, ELEVENLABS_VOICE_ID_UNCLE_SAM.
  *                                  The value is a voice ID from the ElevenLabs voice library;
  *                                  the name is what the picker shows ("Ivanna", "Uncle Sam").
+ *   ELEVENLABS_VOICE_STYLE_<NAME>  how that character talks, in a sentence or two (optional). The
+ *                                  assistant then writes its replies that way, so the words match
+ *                                  the voice. Arthur has a built-in style; this overrides it.
  *   ELEVENLABS_VOICE_ID            a single voice, shown as "Default" (optional)
  *   ELEVENLABS_DEFAULT_VOICE       which character speaks until the learner picks one (optional)
  *   ELEVENLABS_MODEL               defaults to the fast multilingual model
@@ -56,6 +59,24 @@ export function ttsCharacters(): TtsCharacter[] {
 export function ttsVoiceId(character?: unknown): string {
   const all = voices();
   return (all.find((voice) => voice.key === character) ?? all[0]).voiceId;
+}
+
+/** How a character talks, when it has a manner of its own. Kept short: it is added to every chat request. */
+const BUILT_IN_STYLES: Record<string, string> = {
+  arthur:
+    "a plain-spoken cowboy of the old American West, warm and unhurried. Sprinkle in a little Western and Southern US vocabulary: \"howdy\", \"partner\", \"reckon\", \"y'all\", \"much obliged\", \"ain't\", and the odd trail or ranch comparison",
+};
+const STYLE_MAX_CHARS = 400;
+
+/** The speaking style for a chosen character, or "" when it has none or isn't a character on this server. */
+export function ttsCharacterStyle(character: unknown): { name: string; style: string } | null {
+  const found = voices().find((voice) => voice.key === character);
+  if (!found) return null;
+  const custom = (process.env[`ELEVENLABS_VOICE_STYLE_${found.key.toUpperCase().replace(/-/g, "_")}`] ?? "")
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, STYLE_MAX_CHARS);
+  const style = custom || BUILT_IN_STYLES[found.key] || "";
+  return style ? { name: found.name, style } : null;
 }
 
 export function ttsModel(): string {
