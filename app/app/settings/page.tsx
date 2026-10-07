@@ -13,6 +13,7 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/motion";
 import { cn, REPLAY_TOUR_KEY } from "@/lib/utils";
+import { checkJobTitle, JOB_TITLE_HINT, stripJobTitle } from "@/lib/job-title";
 import { PersonaAvatar } from "@/components/persona-avatar";
 import { PERSONAS, LANGUAGES, COUNTRIES } from "@/lib/personas";
 
@@ -33,11 +34,6 @@ const springHover = { type: "spring" as const, stiffness: 320, damping: 22 };
 const springSwitch = { type: "spring" as const, stiffness: 500, damping: 30 };
 
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
-const EMPLOYMENT_OPTIONS = [
-  { value: "", label: "Select…" },
-  { value: "job", label: "Full-time Employee" },
-  { value: "intern", label: "Intern" },
-];
 const GENDER_OPTIONS = [
   { value: "", label: "Select…" },
   { value: "male", label: "Male" },
@@ -46,9 +42,6 @@ const GENDER_OPTIONS = [
   { value: "prefer-not-to-say", label: "Prefer not to say" },
 ];
 
-function displayEmploymentType(v: string) {
-  return EMPLOYMENT_OPTIONS.find((o) => o.value === v)?.label ?? v;
-}
 function displayGender(v: string) {
   return GENDER_OPTIONS.find((o) => o.value === v)?.label ?? v;
 }
@@ -174,6 +167,8 @@ function ProfileCard() {
     if (!form) return;
     const name = form.name.trim();
     if (!name) { setError("Name is required."); return; }
+    const jobTitle = checkJobTitle(form.position);
+    if (!jobTitle.ok) { setError(jobTitle.error); return; }
     if (form.dateOfBirth) {
       const d = new Date(form.dateOfBirth);
       if (isNaN(d.getTime()) || d >= new Date()) { setError("Date of birth must be a valid past date."); return; }
@@ -186,7 +181,6 @@ function ProfileCard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: form.name.trim(),
-          employmentType: form.employmentType,
           position: form.position.trim(),
           dateOfBirth: form.dateOfBirth,
           gender: form.gender,
@@ -283,13 +277,9 @@ function ProfileCard() {
                   icon={User} label="Full name" value={form.name} required
                   onChange={(v) => setForm((f) => f ? { ...f, name: v } : f)}
                 />
-                <SelectField
-                  icon={Briefcase} label="Employment type" value={form.employmentType} options={EMPLOYMENT_OPTIONS}
-                  onChange={(v) => setForm((f) => f ? { ...f, employmentType: v } : f)}
-                />
                 <InputField
-                  icon={Briefcase} label="Position / Job title" value={form.position}
-                  onChange={(v) => setForm((f) => f ? { ...f, position: v } : f)}
+                  icon={Briefcase} label="Job title" value={form.position} hint={JOB_TITLE_HINT} placeholder="e.g. Student, Software Engineer"
+                  onChange={(v) => setForm((f) => f ? { ...f, position: stripJobTitle(v) } : f)}
                 />
                 <SelectField
                   icon={UserCircle2} label="Gender" value={form.gender} options={GENDER_OPTIONS}
@@ -374,8 +364,7 @@ function ProfileCard() {
 
               <div className="divide-y divide-zinc-100 rounded-xl border border-zinc-100 bg-zinc-50/50">
                 {[
-                  { icon: Briefcase, label: "Employment type", value: displayEmploymentType(profile?.employmentType ?? "") },
-                  { icon: Briefcase, label: "Position", value: profile?.position ?? "" },
+                  { icon: Briefcase, label: "Job title", value: profile?.position ?? "" },
                   { icon: UserCircle2, label: "Gender", value: displayGender(profile?.gender ?? "") },
                   { icon: Calendar, label: "Date of birth", value: formatDOB(profile?.dateOfBirth ?? "") },
                   { icon: GraduationCap, label: "Qualification", value: profile?.qualification ?? "" },
