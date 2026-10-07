@@ -21,7 +21,7 @@ const LOOKS = {
   "africa-female": ["#fcd34d", "#b45309", "deep", "#14100e", "curly", "#f8fafc", "earrings"],
   "spanish-male": ["#bae6fd", "#0284c7", "fair", "#5b3a22", "short", "#f8fafc", "beard"],
   "spanish-female": ["#fdba74", "#be123c", "fair", "#3a2114", "long", "#fff7ed"],
-  "arabic-male": ["#a7f3d0", "#047857", "tan", "#1c1512", "fluffy", "#f8fafc", "beard"],
+  "arabic-male": ["#f0626e", "#c8102e", "tan", "#1c1512", "fluffy", "#f8fafc", "beard"],
   "arabic-female": ["#bae6fd", "#0369a1", "tan", "#1c1512", "long", "#ecfeff", "earrings"],
   "chinese-male": ["#fecaca", "#dc2626", "light", "#111111", "short", "#1f2937", "glasses"],
   "chinese-female": ["#fbcfe8", "#db2777", "light", "#111111", "bob", "#f8fafc"],
