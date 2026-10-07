@@ -1,5 +1,6 @@
 import { SpeechPlayer, type SpeechPlaybackState } from "@/lib/speech-player";
 import { readSpeechPreferences, writeSpeechPreferences, speechPreferenceKey } from "@/lib/speech-preferences";
+import { narrationText, speechChunks } from "@/lib/speech-text";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -35,6 +36,49 @@ describe("speech playback lifecycle", () => {
     h.audios[0].onended?.(new Event("ended"));
     expect(h.states.at(-1)?.isSpeaking).toBe(false);
     expect(h.deps.revokeUrl).toHaveBeenCalledWith("blob:test");
+  });
+  it("reads an entire long reply in sequence and clears the remaining queue on stop", async () => {
+    const h = harness();
+    const text = "A helpful lesson explanation. ".repeat(50).trim();
+    const chunks = speechChunks(text);
+    expect(chunks.join("")).toBe(text);
+    await h.player.speak(text, "marathi-male");
+    for (let i = 0; i < chunks.length; i++) {
+      expect(JSON.parse(h.deps.fetch.mock.calls[i][1].body)).toEqual({ voiceKey: "marathi-male", text: chunks[i] });
+      h.audios[i].onended?.(new Event("ended"));
+      await new Promise(r => setTimeout(r, 0));
+    }
+    expect(h.deps.fetch).toHaveBeenCalledTimes(chunks.length);
+    expect(h.states.at(-1)?.isSpeaking).toBe(false);
+    await h.player.speak(text, "marathi-male");
+    const oldEnded = h.audios.at(-1)!.onended;
+    const count = h.deps.fetch.mock.calls.length;
+    h.player.stop();
+    oldEnded?.call(h.audios.at(-1)!, new Event("ended"));
+    expect(h.deps.fetch).toHaveBeenCalledTimes(count);
+  });
+  it("discards a late reply audio request when stopped", async () => {
+    const h = harness(); const pending = deferred<Response>();
+    h.deps.fetch.mockReturnValueOnce(pending.promise);
+    const speaking = h.player.speak("Reply text. ".repeat(100), "guide");
+    h.player.stop();
+    pending.resolve(audioResponse());
+    await speaking;
+    expect(h.deps.createAudio).not.toHaveBeenCalled();
+  });
+  it("removes presentation markup and never splits Unicode surrogate pairs", () => {
+    expect(narrationText("**Read** {{course|demo|Demo course}} and [the lesson](https://example.test)."))
+      .toBe("Read Demo course and the lesson.");
+    const text = "x".repeat(499) + "😀" + "y".repeat(20);
+    const chunks = speechChunks(text);
+    expect(chunks.join("")).toBe(text);
+    expect(chunks[0]).toHaveLength(499);
+  });
+  it("reports overlong replies instead of silently truncating them", async () => {
+    const h = harness();
+    await h.player.speak("x".repeat(50001), "guide");
+    expect(h.deps.fetch).not.toHaveBeenCalled();
+    expect(h.states.at(-1)?.error).toContain("too long");
   });
   it.each(["stop", "mute", "switch voice", "close chat", "navigate", "account change", "unmount"])("never starts stale audio after %s cancellation", async () => {
     const h = harness(); const pending = deferred<Response>();

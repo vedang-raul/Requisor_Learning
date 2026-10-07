@@ -53,22 +53,28 @@ export async function POST(req: Request) {
   if (limit.limited) return error("Too many speech requests. Try again shortly.", 429, { "Retry-After": String(Math.ceil(limit.retryAfterMs / 1000)) });
   let body: unknown;
   try {
-    body = await readJsonBody(req, 512);
+    body = await readJsonBody(req, 4096);
   } catch (e) {
     return error("Invalid speech request.", e instanceof RequestBodyTooLargeError ? 413 : 400);
   }
   if (!body || typeof body !== "object" || Array.isArray(body)) return error("Invalid speech request.", 400);
   const b = body as Record<string, unknown>;
-  // Extra fields are rejected, not ignored: text/eligibility/history cannot sneak in.
-  if (Object.keys(b).length !== 2 || !Object.keys(b).every(k => k === "voiceKey" || k === "contentKey")
-    || typeof b.voiceKey !== "string" || typeof b.contentKey !== "string") return error("Only approved voice and content keys are accepted.", 400);
+  // Send either a fixed preview key or one bounded reply chunk, never history or metadata.
+  const isReply = Object.prototype.hasOwnProperty.call(b, "text");
+  if (Object.keys(b).length !== 2 || !Object.keys(b).every(k => k === "voiceKey" || k === (isReply ? "text" : "contentKey"))
+    || typeof b.voiceKey !== "string"
+    || (isReply
+      ? typeof b.text !== "string" || !b.text.trim() || b.text.length > 1000 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(b.text)
+      : typeof b.contentKey !== "string" || !resolveSpeechContent(b.contentKey))) {
+    return error("Provide an allowed voice and either a preview key or a reply of up to 1000 characters.", 400);
+  }
   const catalog = getSpeechCatalog();
   const voice = catalog.configured.find(v => v.key === b.voiceKey);
   const publicVoice = catalog.voices.find(v => v.key === b.voiceKey);
-  if (!resolveSpeechContent(b.contentKey) || !voice) return error("Unapproved voice or speech content.", 400);
+  if (!voice) return error("Unapproved voice.", 400);
   if (!publicVoice?.enabled || !voice.voiceId || !process.env.ELEVENLABS_API_KEY) return error(publicVoice?.unavailableReason ?? "Speech is not configured.", 503);
   const language = getSpeechLanguage(voice.languages);
-  const text = language ? resolveSpeechContent(b.contentKey, language) : null;
+  const text = isReply ? b.text as string : language ? resolveSpeechContent(b.contentKey, language) : null;
   if (!text) return error("Approved speech is unavailable in this language.", 503);
   if (active.has(uid) || active.size >= 4) return error("Speech is busy. Stop playback or try again shortly.", 429, { "Retry-After": "2" });
   if (req.signal.aborted) return error("Speech cancelled.", 499);
@@ -87,7 +93,7 @@ export async function POST(req: Request) {
     const upstream = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice.voiceId}?output_format=mp3_44100_128`, {
       method: "POST",
       headers: { "xi-api-key": process.env.ELEVENLABS_API_KEY, "Content-Type": "application/json", Accept: "audio/mpeg" },
-      // No identity, previous_text, request stitching, history, or model output.
+      // Only narration text and model: no account metadata, history or credentials in the body.
       body: JSON.stringify({ text, model_id: language === "mr" ? "eleven_v3" : "eleven_multilingual_v2" }),
       signal: controller.signal,
       redirect: "error",

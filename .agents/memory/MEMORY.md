@@ -2,14 +2,14 @@
 - [Auth trust boundaries](auth-decisions.md) — identity verification is not tutor approval; require explicit account linking and shared-browser isolation.
 - [Video auto-complete](video-auto-complete.md) — YouTube IFrame API used (not plain iframe) so onEnded fires; onEnded stored in ref to avoid player recreation on re-renders.
 - [Session uid resolution](session-uid-resolution.md) — missing users row → empty token.uid → silent 401s on all APIs; authorize paths must upsert the row, jwt retries lookup.
-- [Student AI privacy](student-ai-privacy.md) — university prohibits sending student information to external AI; imported features do not override this restriction.
-- [Onboarding & personalization](onboarding-personalization.md) — optional profile answers do not determine completion; learner personalization must remain private.
+- [Chatbot speech](chatbot-speech.md) — full assistant replies should be read through the selected ElevenLabs voice, not browser voices.
+- [Onboarding & personalization](onboarding-personalization.md) — optional profile answers do not determine completion.
 - [Bounded JSON request bodies](bounded-json-request-bodies.md) — resource limits must be enforced while streaming request bytes, before JSON parsing.
 - [Database index verification](db-indexes.md) — fresh writes can cause heap fetches despite index-only scans; interpret plans with vacuum activity in mind.
 - [Turnstile activation](turnstile-activation.md) — CAPTCHA is paused by user choice; only enable after matching real keys and approved production domain.
 - [Turnstile hostname authorization](turnstile-hostname-authorization.md) — Cloudflare must authorize every production and development hostname before widget tokens can be issued.
 - [Tutor-owned catalogs](tutor-owned-catalogs.md) — ownership checks are transactional, edits are revisioned, tutor ratings are aggregate-only, and seed import must never resurrect deletions.
-- [Assistant trust boundaries](role-aware-ai-assistant.md) — server-owned roles, explicit approval, and independent authorization; tool results must respect student privacy.
+- [Assistant trust boundaries](role-aware-ai-assistant.md) — server-owned roles, explicit approval, and independent authorization.
 - [Tutor insights privacy](tutor-insights-privacy.md) — suppress every small metric cohort, and retain logical lesson activity across catalog row replacement.
 - [Protected file previews](protected-file-previews.md) — same-origin PDF iframe routes need aligned CSP/X-Frame exceptions, including Next.js trailing-slash paths.
 - [Deployment boundaries](deployment-boundaries.md) — imported external-hosting configs are not evidence of live hosting or permission to change database providers.

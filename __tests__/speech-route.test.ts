@@ -23,7 +23,7 @@ function audio(bytes = new Uint8Array([1, 2, 3])) {
   return new Response(bytes, { headers: { "content-type": "audio/mpeg" } });
 }
 const valid = { voiceKey: "guide", contentKey: "preview" };
-describe("approved ElevenLabs speech boundary", () => {
+describe("authenticated ElevenLabs speech boundary", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockLimit.mockReturnValue({ limited: false, retryAfterMs: 0 });
@@ -66,6 +66,27 @@ describe("approved ElevenLabs speech boundary", () => {
     expect(r.status).toBe(200);
     expect(JSON.parse((fetch as jest.Mock).mock.calls[0][1].body).text).toBe(resolveSpeechContent(contentKey));
   });
+  it("narrates bounded chatbot reply text without adding account data or logging the text", async () => {
+    const text = "This lesson explains fractions using everyday examples.";
+    const response = await POST(request({ voiceKey: "guide", text }));
+    expect(response.status).toBe(200);
+    expect(JSON.parse((fetch as jest.Mock).mock.calls[0][1].body)).toEqual({
+      text, model_id: "eleven_multilingual_v2",
+    });
+    expect(JSON.stringify((console.info as jest.Mock).mock.calls)).not.toContain(text);
+  });
+  it.each(["", " ", "x".repeat(1001), "invalid\u0000text", 42, null])("rejects invalid narration before provider calls", async text => {
+    expect((await POST(request({ voiceKey: "guide", text }))).status).toBe(400);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("uses the selected Marathi voice and model for full replies", async () => {
+    process.env.ELEVENLABS_VOICES = JSON.stringify([
+      { key: "marathi-male", name: "Marathi male", gender: "male", languages: ["mr"], voiceId, enabled: true, default: true },
+    ]);
+    const text = "या धड्यात अपूर्णांकांची ओळख करून दिली आहे.";
+    expect((await POST(request({ voiceKey: "marathi-male", text }))).status).toBe(200);
+    expect(JSON.parse((fetch as jest.Mock).mock.calls[0][1].body)).toEqual({ text, model_id: "eleven_v3" });
+  });
   it.each([
     { ...valid, text: "Student Alice scored 72" },
     { ...valid, messages: [{ role: "user", content: "Private message" }] },
@@ -81,7 +102,7 @@ describe("approved ElevenLabs speech boundary", () => {
     { ...valid, voiceKey: "not-approved" },
     { ...valid, contentKey: { text: "Secret", approved: true } },
     { ...valid, voiceKey: "../evil" },
-  ])("rejects protected text, forged eligibility and unknown keys before provider calls: %j", async body => {
+  ])("rejects mixed payloads, forged eligibility and unknown keys before provider calls: %j", async body => {
     expect((await POST(request(body))).status).toBe(400);
     expect(fetch).not.toHaveBeenCalled();
   });
@@ -100,7 +121,7 @@ describe("approved ElevenLabs speech boundary", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
   it("bounds undeclared payloads before parsing", async () => {
-    expect((await POST(request({ ...valid, text: "x".repeat(600) }))).status).toBe(413);
+    expect((await POST(request({ ...valid, text: "x".repeat(6000) }))).status).toBe(413);
     expect(fetch).not.toHaveBeenCalled();
   });
   it("rejects malformed JSON and unexpected types", async () => {

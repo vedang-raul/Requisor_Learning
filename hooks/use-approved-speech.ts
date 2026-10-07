@@ -99,6 +99,11 @@ export function useApprovedSpeech(accountId: string | null) {
       || !catalog.voices.some(v => v.key === voiceKey && v.enabled)) return;
     await player.current?.play(contentKey, voiceKey);
   }, [accountId, catalog.voices]);
+  const speak = useCallback(async (text: string) => {
+    if (!accountId || owner.current !== accountId || loadedFor.current !== accountId || prefs.current.muted
+      || !catalog.voices.some(v => v.key === prefs.current.voiceKey && v.enabled)) return;
+    await player.current?.speak(text, prefs.current.voiceKey);
+  }, [accountId, catalog.voices]);
 
   const ready = owner.current === loadedFor.current && !!accountId;
   return {
@@ -109,6 +114,7 @@ export function useApprovedSpeech(accountId: string | null) {
     isSpeaking: ready && playback.isSpeaking,
     error: ready ? playback.error : null,
     setupMessage: catalog.setupMessage,
-    selectVoice, setMuted, play, stop,
+    canSpeak: ready && !muted && catalog.voices.some(v => v.key === selectedVoiceKey && v.enabled),
+    selectVoice, setMuted, play, speak, stop,
   };
 }

@@ -1,4 +1,5 @@
 import type { ApprovedSpeechKey } from "./speech-types";
+import { narrationText, speechChunks } from "./speech-text";
 
 export interface SpeechPlaybackState {
   loading: boolean;
@@ -13,16 +14,18 @@ export interface SpeechPlayerDependencies {
 }
 const IDLE: SpeechPlaybackState = { loading: false, isSpeaking: false, error: null };
 
-/** One owner of all preview and phrase audio; epochs protect even against late, aborted fetches. */
+/** One owner of reply, preview and phrase audio; epochs reject stale requests. */
 export class SpeechPlayer {
   private epoch = 0;
   private controller: AbortController | null = null;
   private audio: HTMLAudioElement | null = null;
   private url: string | null = null;
+  private queue: string[] = [];
   constructor(private deps: SpeechPlayerDependencies, private onState: (state: SpeechPlaybackState) => void) {}
 
   stop() {
     ++this.epoch;
+    this.queue = [];
     this.controller?.abort();
     this.controller = null;
     if (this.audio) {
@@ -39,6 +42,21 @@ export class SpeechPlayer {
 
   async play(contentKey: ApprovedSpeechKey, voiceKey: string) {
     this.stop();
+    await this.playRequest({ contentKey, voiceKey });
+  }
+
+  async speak(text: string, voiceKey: string) {
+    this.stop();
+    if (text.length > 50_000) {
+      this.onState({ ...IDLE, error: "This reply is too long to read aloud." });
+      return;
+    }
+    this.queue = speechChunks(narrationText(text));
+    const first = this.queue.shift();
+    if (first) await this.playRequest({ text: first, voiceKey });
+  }
+
+  private async playRequest(payload: { voiceKey: string; contentKey: ApprovedSpeechKey } | { voiceKey: string; text: string }) {
     const epoch = this.epoch;
     const controller = new AbortController();
     this.controller = controller;
@@ -53,7 +71,7 @@ export class SpeechPlayer {
       const response = await this.deps.fetch("/api/speech/", {
         method: "POST", credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ voiceKey, contentKey }), signal: controller.signal,
+        body: JSON.stringify(payload), signal: controller.signal,
       });
       if (!current()) return;
       if (!response.ok) throw new Error("speech_response");
@@ -70,7 +88,16 @@ export class SpeechPlayer {
       audio.onpause = () => {
         if (current()) this.onState({ ...IDLE });
       };
-      audio.onended = () => { if (current()) this.stop(); };
+      audio.onended = () => {
+        if (!current()) return;
+        const next = this.queue.shift();
+        const remaining = this.queue;
+        this.stop();
+        if (next) {
+          this.queue = remaining;
+          void this.playRequest({ text: next, voiceKey: payload.voiceKey });
+        }
+      };
       audio.onerror = () => {
         if (!current()) return;
         this.stop();

@@ -436,10 +436,9 @@ export function AiAssistant() {
       } else {
         rafRef.current = null;
         setStreaming(false);
-        // If a fixed guide phrase was started during generation, stop it as
-        // soon as a fresh personalized reply is ready. Replies stay text-only.
         speech.stop();
         const finalText = fullTextRef.current;
+        if (!requestFailedRef.current && finalText.trim()) void speech.speak(finalText);
         trackEvent("ai_response_completed", {
           mode: isTutorMode ? "tutor" : "learner",
           response_length: finalText.length,
@@ -447,7 +446,7 @@ export function AiAssistant() {
           success: !requestFailedRef.current,
         });
         // Auto-navigate to the first course/lesson tag in the reply
-        if (!isTutorMode && !didNavigateRef.current && replyActionsRef.current.length === 0) {
+        if (!isTutorMode && !speech.canSpeak && !didNavigateRef.current && replyActionsRef.current.length === 0) {
           didNavigateRef.current = true;
           const navUrl = extractFirstNavUrl(finalText, resolveLesson);
           if (navUrl) {
@@ -501,17 +500,20 @@ export function AiAssistant() {
         const question = COURSE_INTERVIEW_QUESTIONS[nextStep];
         setCourseInterviewStep(nextStep);
         setMessages([...answeredMessages, { role: "assistant", content: question }]);
+        void speech.speak(question);
       } else {
         const summary = `Thanks — I have everything I need:\n\n• Topic: ${answers[0]}\n• Audience: ${answers[1]}\n• Level: ${answers[2]}\n• Outcomes: ${answers[3]}\n• Lesson format: ${answers[4]}\n• Lessons: ${answers[5]}\n\nI’m creating your editable, unpublished course draft now.`;
         const completedMessages = [...answeredMessages, { role: "assistant" as const, content: summary }];
         setCourseInterviewStep(COURSE_INTERVIEW_QUESTIONS.length);
         setMessages(completedMessages);
+        void speech.speak(summary);
         await generateCourseDraft(answers);
       }
       interviewSubmittingRef.current = false;
       return;
     }
     // Stop any ongoing speech before sending
+    speech.stop();
     setRetryText(null);
     const next: ChatMessage[] = [...messages, { role: "user", content: trimmed }];
     setMessages([...next, { role: "assistant", content: "" }]);
@@ -623,6 +625,7 @@ export function AiAssistant() {
     setCourseInterviewAnswers([]);
     setCourseInterviewStep(0);
     setMessages([{ role: "assistant", content: COURSE_INTERVIEW_QUESTIONS[0] }]);
+    void speech.speak(COURSE_INTERVIEW_QUESTIONS[0]);
     setInput("");
     textareaRef.current?.focus();
   }
@@ -820,9 +823,9 @@ export function AiAssistant() {
                 <button
                   type="button"
                   onClick={toggleMute}
-                  aria-label={speech.muted ? "Unmute approved voice playback" : "Mute approved voice playback"}
+                  aria-label={speech.muted ? "Unmute chatbot voice" : "Mute chatbot voice"}
                   aria-pressed={speech.muted}
-                  title={speech.muted ? "Unmute approved voice playback" : "Mute approved voice playback"}
+                  title={speech.muted ? "Unmute chatbot voice" : "Mute chatbot voice"}
                   className="focus-ring rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800"
                 >
                   {speech.muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className={cn("h-4 w-4", speech.isSpeaking && "text-primary")} />}
@@ -870,6 +873,11 @@ export function AiAssistant() {
               </button>
             </div>
             {/* Messages */}
+            {speech.error && (
+              <p role="alert" className="border-b border-red-100 bg-red-50 px-4 py-2 text-xs text-red-800">
+                {speech.error} You can retry with the reply’s Read aloud button.
+              </p>
+            )}
             <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
               {isTutorMode && (
                 <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
@@ -900,7 +908,7 @@ export function AiAssistant() {
                       : "Ask which course fits your background, or what to learn next based on your progress."}
                   </p>
                   <p className="rounded-lg border border-primary/15 bg-primary/[0.04] px-2.5 py-2 text-[11px] leading-relaxed text-zinc-600">
-                    For privacy, personalized chat replies stay text-only. Voice playback is limited to approved, non-personal platform guidance.
+                    Replies are read aloud with your selected ElevenLabs voice when unmuted. Reply text is sent to ElevenLabs to generate speech.
                   </p>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {quickPrompts.map(({ icon: Icon, label }, i) => (
@@ -979,6 +987,19 @@ export function AiAssistant() {
                         )
                       ) : (
                         m.content
+                      )}
+                      {!isUser && !isLastAssistant && m.content.trim() && (
+                        <button
+                          type="button"
+                          onClick={() => void speech.speak(m.content)}
+                          disabled={!speech.canSpeak}
+                          aria-label="Read this reply aloud"
+                          title={speech.muted ? "Unmute the chatbot to read aloud" : "Read this reply aloud"}
+                          className="focus-ring mt-2 flex min-h-9 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-zinc-600 hover:bg-zinc-100 disabled:opacity-50"
+                        >
+                          <Volume2 className="h-3.5 w-3.5" />
+                          Read aloud
+                        </button>
                       )}
                     </motion.div>
                     {isUser && (
@@ -1174,7 +1195,7 @@ export function AiAssistant() {
         )}
       </AnimatePresence>
 
-      {/* Only these approved fixed phrases may be sent to external speech. */}
+      {/* Voice settings and fixed sample phrases. */}
       <AnimatePresence>
         {showVoicePicker && (
           <motion.div
@@ -1202,9 +1223,9 @@ export function AiAssistant() {
             >
               <div className="flex items-start gap-3 border-b border-zinc-100 px-4 py-3.5">
                 <div className="min-w-0 flex-1">
-                  <h2 id="approved-voice-title" className="text-sm font-semibold text-zinc-900">Guide voice</h2>
+                  <h2 id="approved-voice-title" className="text-sm font-semibold text-zinc-900">Chatbot voice</h2>
                   <p id="approved-voice-privacy" className="mt-1 text-xs leading-relaxed text-zinc-600">
-                    Personalized AI replies, learner details, and chat messages are never spoken. Only these fixed platform phrases can use external speech.
+                    Full assistant replies use your selected ElevenLabs voice when unmuted. The reply text is sent to ElevenLabs for speech generation.
                   </p>
                 </div>
                 <button
@@ -1233,7 +1254,7 @@ export function AiAssistant() {
                 )}
                 {speech.loading && (
                   <div role="status" aria-live="polite" className="flex items-center gap-2 rounded-lg bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Preparing approved speech…
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Preparing speech…
                   </div>
                 )}
 
@@ -1297,7 +1318,7 @@ export function AiAssistant() {
                     })}
                     {!speech.loading && speech.voices.length === 0 && (
                       <li className="rounded-xl border border-dashed border-zinc-300 px-3 py-4 text-center text-xs text-zinc-600">
-                        No approved voices are available right now.
+                        No configured voices are available right now.
                       </li>
                     )}
                   </ul>
@@ -1347,7 +1368,7 @@ export function AiAssistant() {
                   type="button"
                   onClick={toggleMute}
                   aria-pressed={speech.muted}
-                  aria-label={speech.muted ? "Unmute approved voice playback" : "Mute approved voice playback"}
+                  aria-label={speech.muted ? "Unmute chatbot voice" : "Mute chatbot voice"}
                   className="focus-ring min-h-9 rounded-lg border border-zinc-300 px-3 text-xs text-zinc-700 hover:bg-zinc-50"
                 >
                   {speech.muted ? "Unmute" : "Mute"}
