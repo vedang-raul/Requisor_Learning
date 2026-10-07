@@ -1,26 +1,16 @@
 ---
-name: Onboarding & personalisation system
-description: Post-login survey, profile signals, personalised quiz/assignment generation
+name: Onboarding and local personalization
+description: Why onboarding completion is independent of profile answers and how personalization is constrained.
 ---
 
-# Onboarding & Personalisation
+Onboarding completion must be independent of whether optional profile fields were filled in.
 
-## What was built
-- `qualification`, `learning_goal`, `onboarding_done` columns added to `users` table (in `post-merge.sh`)
-- `GET/PATCH /api/me` — lightweight endpoint returning `{ onboardingDone, dateOfBirth, ageYears, qualification, learningGoal }`
-- `GET/PATCH /api/profile` extended to include the three new fields
-- `components/onboarding-survey.tsx` — full-screen modal; appears once after first login via `app/app/layout.tsx`
-- `POST /api/quiz` accepts optional `userProfile: { qualification, learningGoal, ageYears }` and injects a persona line into the xAI prompt
-- `POST /api/assignment` — new route that generates a personalised assignment text via xAI; falls back gracefully
-- `app/app/learn/page.tsx` has a `PersonalisedAssignment` component that calls `/api/me` then `/api/assignment` on first open of the Assignment tab
-- `app/app/settings/page.tsx` — qualification and learningGoal fields added to both edit form and view mode
+**Why:** A learner may legitimately leave qualification or learning goals blank; missing optional answers do not mean onboarding was never completed.
 
-## Key decisions
-**Why onboarding_done flag instead of checking if qualification is set:**
-Simple boolean is unambiguous — a user might legitimately leave qualification blank.
+**How to apply:** Keep an explicit completion decision and avoid requiring unrelated profile fields during onboarding-only saves.
 
-**Why fetch profile per-request in quiz/assignment rather than store in session:**
-Avoids session token bloat; profile rarely changes; one extra fast DB read per quiz is acceptable.
+Keep learner profile information out of external AI requests, even when personalization is useful.
 
-**Why PATCH /api/profile handles onboarding-only saves differently:**
-Onboarding save must not require `name` (which is already set from auth); the route detects `onboardingDone: true && !name` and runs a targeted UPDATE that only touches the three onboarding fields.
+**Why:** The university prohibits sharing student information with the chatbot's AI provider. Earlier personalization plans do not override that restriction.
+
+**How to apply:** Personalize using private in-app logic; do not reintroduce outbound profile prompts or trust caller-supplied educational records.

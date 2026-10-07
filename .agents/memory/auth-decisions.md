@@ -1,16 +1,22 @@
 ---
-name: Auth decisions
-description: Non-obvious decisions in the real auth system to stay consistent with
+name: Authentication trust boundaries
+description: Privilege approval, provider linking, and shared-browser isolation rules.
 ---
 
-- Admin role is **derived from the email at session time** (`roleForEmail`, support@requisor.io), never trusted from the DB row — prevents privilege escalation via DB edits and keeps Google/credentials paths consistent.
-- Verification & password-reset tokens are stored **SHA-256 hashed**; the raw token exists only in the emailed link. **Why:** DB exposure must not allow account takeover.
-- Unverified accounts may re-sign-up (token rotates); only `email_verified = TRUE` blocks signup.
-- Client learning state stays in localStorage but is **namespaced per user email**. **Why:** shared browsers must not leak one user's progress/notes to another.
-- `NEXTAUTH_URL` is derived at runtime in `lib/base-url.ts` from REPLIT_DEV_DOMAIN / REPLIT_DOMAINS — don't hardcode domains.
-- Emails send via the Replit Gmail connector proxy (`POST /gmail/v1/users/me/messages/send` with base64url MIME); the connected account must remain support@requisor.io.
-- Google OAuth accepts any account with an explicitly verified Google email, but binds it permanently to the provider subject; never auto-link by email. **Why:** prevent takeover and account enumeration. **How to apply:** add linking only through an authenticated, explicit consent flow.
+Public registration must not grant privileged tutor access merely because a user selects a tutor account type, passes CAPTCHA, verifies an email, or presents an application-issued intent cookie. Preserve legitimately approved tutor roles when signing in.
 
-- Public registration must assign every non-canonical-admin account the employee role, regardless of client-selected account type or signed cookies.
-  **Why:** CAPTCHA, email verification, and an application-issued intent cookie prove identity or user presence, not organizational approval for privileged tutor access.
-  **How to apply:** preserve established tutor roles from the database at sign-in, but require any future tutor promotion path to be separately authenticated and authorized as an administrative action.
+**Why:** Identity verification is not organizational approval for privileged access.
+
+**How to apply:** Require a separately authenticated and authorized promotion path; re-check server-side permissions for sensitive actions. Imported test-login or verification-bypass features are not evidence that their use is approved for real students.
+
+Do not automatically link Google identities to existing accounts by email alone.
+
+**Why:** Implicit linking can permit account takeover and expose account existence.
+
+**How to apply:** Any future linking flow must require an authenticated user and explicit consent.
+
+Keep any browser-held learning state isolated between users, and never treat it as authoritative for protected operations.
+
+**Why:** Shared browsers must not reveal one learner's notes or progress to another, and browser state can be forged.
+
+**How to apply:** Review account switching, logout, and server authorization together when changing persistence.
