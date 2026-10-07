@@ -861,7 +861,7 @@ export function AiAssistant() {
                     )}
                   </button>
                   {/* Voice picker — chevron only; dropdown rendered as top-level sibling */}
-                  {(voice.premiumVoice ? voice.characters.length > 1 : voice.voices.length > 0) && (
+                  {(voice.premiumVoice ? voice.characters.length > 0 : voice.voices.length > 0) && (
                     <button
                       ref={voiceChevronRef}
                       onClick={() => {
