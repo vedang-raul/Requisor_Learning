@@ -26,7 +26,7 @@ declare global {
 
 const VOICE_STORAGE_KEY = "requisor-tts-voice";
 const CHARACTER_STORAGE_KEY = "requisor-tts-character";
-export type VoiceCharacter = { key: string; name: string };
+export type VoiceCharacter = { key: string; name: string; description?: string };
 
 export interface UseVoiceReturn {
   isListening: boolean;

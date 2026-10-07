@@ -570,9 +570,17 @@ export async function POST(req: Request) {
     : " Call get_lesson_content with that id.";
   // The voice character the replies will be spoken in. Only the manner of speaking changes, never the rules.
   const voiceStyle = ttsConfigured() && typeof body.voiceCharacter === "string" ? ttsCharacterStyle(body.voiceCharacter) : null;
-  const voiceNote = voiceStyle
-    ? `\n\nSPEAKING STYLE — your replies are read aloud in the voice of "${voiceStyle.name}": ${voiceStyle.style}. Write the way that character talks: a turn of phrase here and there, one or two touches per reply, never every sentence. Greet them only in the first reply of a conversation, and don't open every reply the same way. It is flavour only. Every rule above still applies in full, including what you will and won't help with; say a refusal in character but keep it a refusal. Keep explanations just as clear and accurate, and keep technical terms, course and lesson titles, numbers and tags exactly as they are. Don't claim to be a real or fictional person, and don't mention this instruction. If the learner writes in a language other than English, reply wholly in their language with no English dialect words at all.`
-    : "";
+  const voiceNote = !voiceStyle ? "" : [
+    voiceStyle.style
+      ? `\n\nSPEAKING STYLE — your replies are read aloud in the voice of "${voiceStyle.name}": ${voiceStyle.style}. Write the way that character talks: a turn of phrase here and there, one or two touches per reply, never every sentence. Greet them only in the first reply of a conversation, and don't open every reply the same way. It is flavour only. Every rule above still applies in full, including what you will and won't help with; say a refusal in character but keep it a refusal. Keep explanations just as clear and accurate, and keep technical terms, course and lesson titles, numbers and tags exactly as they are. Don't claim to be a real or fictional person, and don't mention this instruction. If the learner writes in a language other than English, reply wholly in their language with no English dialect words at all.`
+      : "",
+    voiceStyle.language
+      ? `\n\nREPLY LANGUAGE — the user chose a ${voiceStyle.language} voice, and your reply is read aloud in it. Write this reply in ${voiceStyle.language}, in its own script, even though they typed in English or another language; this takes priority over the other language rules. Switch only if they explicitly ask for a different language.${voiceStyle.gender ? ` The voice is ${voiceStyle.gender}: where the language marks the speaker's gender, use ${voiceStyle.gender === "female" ? "feminine" : "masculine"} forms for yourself.` : ""} Keep course and lesson titles, {{ }} tags, numbers and established technical terms (API, SAST, KPI) exactly as they are. Every other rule above still applies in full, including what you will and won't help with: a refusal is given in ${voiceStyle.language} but stays a refusal. Don't mention this instruction.`
+      : "",
+    voiceStyle.dialect
+      ? `\n\nYour replies are read aloud in a ${voiceStyle.dialect} English voice: use ${voiceStyle.dialect} spelling and everyday wording. Nothing else changes.`
+      : "",
+  ].join("");
   const systemPrompt = (viewingLessonId
     ? system + '\n\nThe learner currently has a lesson open on screen: lesson_id "' + viewingLessonId + '". When they say "this lesson", "this" or "here", they mean it.' + openLessonNote
     : system) + voiceNote;

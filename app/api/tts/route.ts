@@ -40,16 +40,17 @@ export async function POST(req: Request) {
   }
   const text = speechText((body as { text?: unknown } | null)?.text);
   if (!text) return Response.json({ error: "Nothing to say." }, { status: 400 });
+  const voice = (body as { voice?: unknown } | null)?.voice;
 
   const { limited, retryAfterMs } = speakLimiter.check(String(session.user.id));
   if (limited) return rateLimitResponse(retryAfterMs, { json: true });
 
   let upstream: Response;
   try {
-    upstream = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ttsVoiceId((body as { voice?: unknown } | null)?.voice)}/stream?output_format=mp3_44100_128`, {
+    upstream = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ttsVoiceId(voice)}/stream?output_format=mp3_44100_128`, {
       method: "POST",
       headers: { "xi-api-key": process.env.ELEVENLABS_API_KEY!, "Content-Type": "application/json", Accept: "audio/mpeg" },
-      body: JSON.stringify({ text, model_id: ttsModel() }),
+      body: JSON.stringify({ text, model_id: ttsModel(voice) }),
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
   } catch {
