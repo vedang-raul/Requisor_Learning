@@ -1272,7 +1272,7 @@ export function AiAssistant() {
             style={{ top: voicePickerPos.top, right: voicePickerPos.right }}
           >
             <p className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">AI voice</p>
-            <div className="max-h-52 overflow-y-auto">
+            <div className="max-h-72 overflow-y-auto">
               {voice.characters.map((character) => (
                 <button
                   key={character.key}
@@ -1288,7 +1288,10 @@ export function AiAssistant() {
                 >
                   <span className="flex items-center gap-2">
                     <PersonaAvatar personaId={assistantPersona} size="xs" imageSrc={`/voices/${character.key}.svg`} imageAlt="" />
-                    {character.name}
+                    <span className="min-w-0">
+                      <span className="block truncate">{character.name}</span>
+                      {character.description && <span className="block truncate text-[10px] font-normal text-zinc-500">{character.description}</span>}
+                    </span>
                   </span>
                   {voice.selectedCharacter === character.key && <Check className="h-3.5 w-3.5" />}
                 </button>
