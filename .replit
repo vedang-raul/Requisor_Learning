@@ -49,7 +49,7 @@ ELEVENLABS_VOICES = "[{\"key\":\"marathi-male\",\"name\":\"Marathi male\",\"gend
 
 
 [userenv.production]
-NEXTAUTH_URL = "https://alma.requisor.io"
+NEXTAUTH_URL = "https://learning.requisor.io"
 
 [postMerge]
 path = "scripts/post-merge.sh"
