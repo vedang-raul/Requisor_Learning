@@ -20,3 +20,9 @@ Keep voice selection as a compact dropdown in the chatbot, not a separate voice-
 **Why:** The user explicitly asked to remove the large voice-selection UI and restore a dropdown.
 
 **How to apply:** Preserve narration and mute/stop behavior when changing the selector; do not reintroduce a separate voice settings panel without being asked.
+
+Do not show a per-reply "Read aloud" button.
+
+**Why:** The user explicitly requested its removal and reiterated that it was still visible.
+
+**How to apply:** Keep automatic narration when unmuted and the header voice/mute/stop controls. Error messages must not direct users to the removed button.

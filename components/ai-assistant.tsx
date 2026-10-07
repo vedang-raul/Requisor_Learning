@@ -821,7 +821,7 @@ export function AiAssistant() {
             )}
             {speech.error && (
               <p role="alert" className="border-b border-red-100 bg-red-50 px-4 py-2 text-xs text-red-800">
-                {speech.error} You can retry with the reply’s Read aloud button.
+                {speech.error}
               </p>
             )}
             <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
@@ -930,19 +930,6 @@ export function AiAssistant() {
                         )
                       ) : (
                         m.content
-                      )}
-                      {!isUser && !isLastAssistant && m.content.trim() && (
-                        <button
-                          type="button"
-                          onClick={() => void speech.speak(m.content)}
-                          disabled={!speech.canSpeak}
-                          aria-label="Read this reply aloud"
-                          title={speech.muted ? "Unmute the chatbot to read aloud" : "Read this reply aloud"}
-                          className="focus-ring mt-2 flex min-h-9 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-zinc-600 hover:bg-zinc-100 disabled:opacity-50"
-                        >
-                          <Volume2 className="h-3.5 w-3.5" />
-                          Read aloud
-                        </button>
                       )}
                     </motion.div>
                     {isUser && (
