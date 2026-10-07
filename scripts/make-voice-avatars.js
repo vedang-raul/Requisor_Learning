@@ -27,7 +27,7 @@ const LOOKS = {
   "chinese-female": ["#fbcfe8", "#db2777", "light", "#111111", "bob", "#f8fafc"],
   "english-british-male": ["#cbd5e1", "#334155", "light", "#17120f", "medium", "#1f2937", "beard"],
   "english-british-female": ["#ddd6fe", "#4338ca", "light", "#ece9e2", "long", "#f1f5f9", "brows:#a89f92"],
-  "portuguese-male": ["#bbf7d0", "#166534", "tan", "#17120f", "quiff", "#f8fafc"],
+  "portuguese-male": ["#fca5a5", "#b91c1c", "tan", "#17120f", "quiff", "#f8fafc"],
   "portuguese-female": ["#fde68a", "#15803d", "brown", "#2a1a12", "curly", "#f0fdf4", "earrings"],
 };
 
