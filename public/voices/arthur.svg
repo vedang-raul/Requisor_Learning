@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="Man in a cowboy hat">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f6b26b"/>
+      <stop offset="1" stop-color="#b4532a"/>
+    </linearGradient>
+    <linearGradient id="hat" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6b4a2f"/>
+      <stop offset="1" stop-color="#3f2a1a"/>
+    </linearGradient>
+  </defs>
+  <rect width="96" height="96" fill="url(#sky)"/>
+  <!-- shoulders: coat, shirt and neckerchief -->
+  <path d="M10 96c2-17 15-25 38-25s36 8 38 25z" fill="#4a3526"/>
+  <path d="M36 73l12 12 12-12-4-5H40z" fill="#d9c9a8"/>
+  <path d="M38 71c3 5 7 7 10 7s7-2 10-7l-3 13-7 5-7-5z" fill="#9c2f24"/>
+  <!-- neck and head -->
+  <path d="M40 58h16v13c-3 4-13 4-16 0z" fill="#c98d63"/>
+  <path d="M30 40c0-4 36-4 36 0v9c0 12-8 20-18 20s-18-8-18-20z" fill="#dba274"/>
+  <!-- ears -->
+  <ellipse cx="29.5" cy="48" rx="3" ry="5" fill="#cf9567"/>
+  <ellipse cx="66.5" cy="48" rx="3" ry="5" fill="#cf9567"/>
+  <!-- stubble and jaw shadow -->
+  <path d="M30 50c1 12 8 19 18 19s17-7 18-19c-2 7-5 10-8 11-3-3-17-3-20 0-3-1-6-4-8-11z" fill="#6e4a32" opacity=".55"/>
+  <!-- eyes, brows, nose, mouth -->
+  <path d="M35 44.500l8-1.500M53 43l8 1.5" stroke="#4a2f1d" stroke-width="2.2" stroke-linecap="round"/>
+  <ellipse cx="39.5" cy="48" rx="2" ry="1.6" fill="#2b2118"/>
+  <ellipse cx="56.5" cy="48" rx="2" ry="1.6" fill="#2b2118"/>
+  <path d="M48 48v6l-2.5 2h5" fill="none" stroke="#b77b52" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M42.5 61.500c3 1.5 8 1.5 11 0" fill="none" stroke="#5a3323" stroke-width="1.8" stroke-linecap="round"/>
+  <!-- cowboy hat: brim, crown, band -->
+  <path d="M4 40c10-7 24-9 44-9s34 2 44 9c-9 5-25 7-44 7S13 45 4 40z" fill="url(#hat)"/>
+  <path d="M27 36c0-13 3-24 9-25 4-.700 7 3 12 3s8-3.7 12-3c6 1 9 12 9 25-9 3-33 3-42 0z" fill="url(#hat)"/>
+  <path d="M27 32c9 3 33 3 42 0l.200 5c-9 3-33.4 3-42.4 0z" fill="#1f140c"/>
+  <path d="M8 40c11 4 25 5.5 40 5.500S77 44 88 40" fill="none" stroke="#2b1c11" stroke-width="1.2" opacity=".6"/>
+</svg>

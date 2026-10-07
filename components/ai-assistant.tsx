@@ -304,6 +304,9 @@ export function AiAssistant() {
   const voice = useVoice();
   const waveBars = useMicWaveform(voice.isListening);
   const avatarState = voice.isSpeaking ? "speaking" : voice.isListening ? "listening" : "idle";
+  // The chosen voice character's portrait (public/voices/<key>.svg); without one the persona's portrait shows.
+  const voiceCharacter = voice.premiumVoice ? voice.characters.find((c) => c.key === voice.selectedCharacter) : undefined;
+  const voiceAvatar = voiceCharacter ? `/voices/${voiceCharacter.key}.svg` : undefined;
   // Load persisted preferences and also react immediately when Settings or
   // onboarding changes them while this shared assistant remains mounted.
   useEffect(() => {
@@ -831,7 +834,7 @@ export function AiAssistant() {
                 style={{ backgroundSize: "200% 100%" }}
               />
               <div className="relative shrink-0">
-                <PersonaAvatar personaId={assistantPersona} size="sm" state={avatarState} className="shadow-glow-sm" />
+                <PersonaAvatar personaId={assistantPersona} size="sm" state={avatarState} className="shadow-glow-sm" imageSrc={voiceAvatar} imageAlt={voiceCharacter?.name} />
                 <span className="absolute -bottom-0.5 -right-0.5 flex h-2.5 w-2.5">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                   <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
@@ -983,6 +986,8 @@ export function AiAssistant() {
                     {!isUser && (
                       <PersonaAvatar
                         personaId={assistantPersona}
+                        imageSrc={voiceAvatar}
+                        imageAlt={voiceCharacter?.name}
                         size="xs"
                         state={isLastAssistant && streaming ? "speaking" : "idle"}
                         className="mb-0.5"
@@ -1226,7 +1231,10 @@ export function AiAssistant() {
                     voice.selectedCharacter === character.key ? "bg-primary/10 font-medium text-primary" : "text-zinc-700 hover:bg-zinc-100"
                   )}
                 >
-                  {character.name}
+                  <span className="flex items-center gap-2">
+                    <PersonaAvatar personaId={assistantPersona} size="xs" imageSrc={`/voices/${character.key}.svg`} imageAlt="" />
+                    {character.name}
+                  </span>
                   {voice.selectedCharacter === character.key && <Check className="h-3.5 w-3.5" />}
                 </button>
               ))}
