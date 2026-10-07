@@ -1,14 +1,16 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { BookPlus, Check, Compass, ListChecks, Loader2, RotateCcw, Send, Sparkles, TrendingUp, Volume2, VolumeX, X, ChevronDown } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { BookPlus, Check, Compass, ListChecks, Loader2, RotateCcw, Send, Sparkles, TrendingUp, Volume2, VolumeX, X, ChevronDown, Square, Play } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { getNudge, markNudgeSeen, type Nudge } from "@/lib/nudges";
 import { cn } from "@/lib/utils";
 import { parseCourseLessonCount } from "@/lib/course-interview";
 import { renderMarkdownLite, endsInOpenTag } from "@/components/markdown-lite";
 import { useVoice } from "@/hooks/use-voice";
+import { useApprovedSpeech } from "@/hooks/use-approved-speech";
+import type { ApprovedSpeechKey, PublicSpeechVoice } from "@/lib/speech-types";
 import { PersonaAvatar } from "@/components/persona-avatar";
 import { AI_GUIDE_PREFERENCES_UPDATED, getPersona } from "@/lib/personas";
 import { trackEvent } from "@/lib/analytics";
@@ -48,37 +50,19 @@ const TUTOR_QUICK_PROMPTS = [
   { icon: TrendingUp, label: "Create activities and assessments" },
   { icon: Check, label: "Check my video edits" },
 ];
-/** Best-effort match from a preferred language code to a Web Speech voice lang prefix. */
-const LANGUAGE_VOICE_PREFIXES: Record<string, string[]> = {
-  en: ["en-US", "en-"],
-  es: ["es-"],
-  fr: ["fr-"],
-  de: ["de-"],
-  pt: ["pt-BR", "pt-"],
-  hi: ["hi-", "en-IN"],
-  ar: ["ar-"],
-  zh: ["zh-CN", "zh-"],
-  ja: ["ja-"],
-  ko: ["ko-"],
-  it: ["it-"],
-  nl: ["nl-"],
-  ru: ["ru-"],
-  pl: ["pl-"],
-  id: ["id-"],
-};
-// Web Speech API exposes no explicit "quality" flag, so this scores by
-// naming patterns browsers commonly use for their newer, more natural-
-// sounding voices (vs. older, more robotic-sounding ones) — used to auto-pick
-// a good-sounding default instead of leaving it to whatever order the
-// browser happens to list voices in.
-const NATURAL_VOICE_HINTS = ["natural", "neural", "online", "premium", "enhanced", "google", "aria", "jenny", "guy"];
-function voiceQualityScore(v: SpeechSynthesisVoice): number {
-  const name = v.name.toLowerCase();
-  return NATURAL_VOICE_HINTS.some((hint) => name.includes(hint)) ? 1 : 0;
-}
-function bestVoice(candidates: SpeechSynthesisVoice[]): SpeechSynthesisVoice | undefined {
-  return [...candidates].sort((a, b) => voiceQualityScore(b) - voiceQualityScore(a))[0];
-}
+const APPROVED_SPEECH_PHRASES: Array<{ key: ApprovedSpeechKey; label: string; transcript: string }> = [
+  {
+    key: "platform_help",
+    label: "Platform help",
+    transcript: "Open My Learning to browse courses. Select a lesson to read its material and view available activities.",
+  },
+  {
+    key: "study_tip",
+    label: "Study tip",
+    transcript: "Take a short break between study sessions. Review key ideas, then practise explaining them in your own words.",
+  },
+];
+const PREVIEW_TRANSCRIPT = "Hello. This is a sample of the platform guide voice.";
 const dotTransition = (delay: number) => ({
   duration: 0.9,
   repeat: Infinity,
@@ -195,22 +179,6 @@ function RecordingWaveform({ bars }: { bars: number[] }) {
     </div>
   );
 }
-/** Strip {{course|...}} / {{lesson|...}} tags and markdown symbols for clean TTS text. */
-function stripForSpeech(text: string): string {
-  return text
-    // Replace lesson tags with just the lesson title
-    .replace(/\{\{lesson\|[^|]+\|([^}]+)\}\}/g, "$1")
-    // Replace course tags with just the course title
-    .replace(/\{\{course\|[^|]+\|([^}]+)\}\}/g, "$1")
-    // Strip bold / italic markers
-    .replace(/\*\*/g, "")
-    .replace(/\*/g, "")
-    // Strip markdown headings
-    .replace(/^#{1,6}\s/gm, "")
-    // Collapse excess whitespace
-    .replace(/\s+/g, " ")
-    .trim();
-}
 /** Extract the first navigable URL from a message. Returns null if none found. */
 function extractFirstNavUrl(
   text: string,
@@ -230,12 +198,14 @@ function extractFirstNavUrl(
   }
   return null;
 }
-const MUTE_KEY = "ai-assistant-muted";
 const COURSE_DRAFT_KEY = "requisor-ai-course-draft";
 const COURSE_DRAFT_EVENT = "requisor:open-ai-course-draft";
 export function AiAssistant() {
   const { state, hydrated } = useStore();
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const searchKey = searchParams.toString();
   const isTutorMode = state.user?.role === "tutor" || state.user?.role === "admin";
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -269,14 +239,9 @@ export function AiAssistant() {
     return () => { clearTimeout(show); clearTimeout(hide); };
   }, []);
   const [assistantPersona, setAssistantPersona] = useState<string>("");
-  const [preferredLanguage, setPreferredLanguage] = useState<string>("");
-  const [voiceMuted, setVoiceMuted] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    return localStorage.getItem(MUTE_KEY) === "true";
-  });
   const [showVoicePicker, setShowVoicePicker] = useState(false);
   const voiceChevronRef = useRef<HTMLButtonElement>(null);
-  const [voicePickerPos, setVoicePickerPos] = useState({ top: 0, right: 0 });
+  const voicePickerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // Typewriter reveal
@@ -294,31 +259,28 @@ export function AiAssistant() {
   const streamReaderRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
   const networkDoneRef = useRef(false);
   const pauseUntilRef = useRef(0);
-  // Track whether we've already spoken / navigated for the current AI reply
-  const didSpeakRef = useRef(false);
+  // Track whether we've already navigated for the current AI reply.
   const didNavigateRef = useRef(false);
   const requestStartedAtRef = useRef(0);
   const requestFailedRef = useRef(false);
   const quickPrompts = isTutorMode ? TUTOR_QUICK_PROMPTS : LEARNER_QUICK_PROMPTS;
   const initials = (state.user?.name ?? "U").slice(0, 1).toUpperCase();
   const voice = useVoice();
+  const speech = useApprovedSpeech(state.user?.id != null ? String(state.user.id) : null);
   const waveBars = useMicWaveform(voice.isListening);
-  const avatarState = voice.isSpeaking ? "speaking" : voice.isListening ? "listening" : "idle";
+  const avatarState = speech.isSpeaking ? "speaking" : voice.isListening ? "listening" : "idle";
   // Load persisted preferences and also react immediately when Settings or
   // onboarding changes them while this shared assistant remains mounted.
   useEffect(() => {
     if (!hydrated || !state.user) return;
     function applyPreferences(data: {
       assistantPersona?: string;
-      preferredLanguage?: string;
     }) {
       if (data.assistantPersona !== undefined) setAssistantPersona(data.assistantPersona);
-      if (data.preferredLanguage !== undefined) setPreferredLanguage(data.preferredLanguage);
     }
     function handlePreferenceUpdate(event: Event) {
       applyPreferences((event as CustomEvent<{
         assistantPersona?: string;
-        preferredLanguage?: string;
       }>).detail ?? {});
     }
     window.addEventListener(AI_GUIDE_PREFERENCES_UPDATED, handlePreferenceUpdate);
@@ -330,32 +292,6 @@ export function AiAssistant() {
       window.removeEventListener(AI_GUIDE_PREFERENCES_UPDATED, handlePreferenceUpdate);
     };
   }, [hydrated, state.user]);
-  // Once voices are known, pick one automatically — but only if the user
-  // hasn't manually chosen one. Prefers a language match if the user set one,
-  // and within any set of candidates prefers the most natural-sounding voice
-  // available rather than just the first one the browser happens to list.
-  useEffect(() => {
-    if (voice.voices.length === 0) return;
-    // Keep a real manual choice, but recover when a stored browser-specific
-    // voice name is no longer available on this device.
-    if (voice.selectedVoiceName && voice.voices.some((v) => v.name === voice.selectedVoiceName)) return;
-    const prefixes = preferredLanguage ? LANGUAGE_VOICE_PREFIXES[preferredLanguage] : undefined;
-    if (prefixes) {
-      for (const prefix of prefixes) {
-        const candidates = voice.voices.filter((v) => v.lang.startsWith(prefix));
-        const match = bestVoice(candidates);
-        if (match) {
-          voice.setSelectedVoiceName(match.name);
-          return;
-        }
-      }
-    }
-    // No language preference set (or no matching voice for it) — still pick
-    // a good default English voice rather than leaving it to the browser.
-    const englishCandidates = voice.voices.filter((v) => v.lang.startsWith("en-"));
-    const fallback = bestVoice(englishCandidates.length ? englishCandidates : voice.voices);
-    if (fallback) voice.setSelectedVoiceName(fallback.name);
-  }, [preferredLanguage, voice.voices, voice.selectedVoiceName, voice.setSelectedVoiceName]);
   // When a transcript arrives from STT, put it in the input box so the user
   // can see what was heard before it's sent.
   useEffect(() => {
@@ -387,16 +323,50 @@ export function AiAssistant() {
   }, [messages, streaming, draftLoading, courseDraft, draftError]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closePanel();
+      if (e.key !== "Escape") return;
+      if (showVoicePicker) {
+        speech.stop();
+        setShowVoicePicker(false);
+        voiceChevronRef.current?.focus();
+      } else {
+        closePanel();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [showVoicePicker]);
+  useEffect(() => {
+    if (!showVoicePicker) return;
+    const panel = voicePickerRef.current;
+    const firstControl = panel?.querySelector<HTMLElement>("button:not(:disabled)");
+    firstControl?.focus();
+    const onTab = (event: KeyboardEvent) => {
+      if (event.key !== "Tab" || !panel) return;
+      const controls = Array.from(panel.querySelectorAll<HTMLElement>("button:not(:disabled)"));
+      if (!controls.length) return;
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onTab);
+    return () => document.removeEventListener("keydown", onTab);
+  }, [showVoicePicker]);
+  useEffect(() => {
+    speech.stop();
+    setShowVoicePicker(false);
+  }, [pathname, searchKey]);
   useEffect(() => () => {
     requestAbortRef.current?.abort();
     draftAbortRef.current?.abort();
     void streamReaderRef.current?.cancel("component_unmount").catch(() => undefined);
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    speech.stop();
   }, []);
   // Auto-grow the composer textarea up to ~4 lines.
   useEffect(() => {
@@ -413,12 +383,10 @@ export function AiAssistant() {
     }
     setNudge(getNudge(state));
   }, [hydrated, isTutorMode, state]);
-  // Persist mute preference
   function toggleMute() {
-    const next = !voiceMuted;
-    setVoiceMuted(next);
-    localStorage.setItem(MUTE_KEY, String(next));
-    if (next) voice.stopSpeaking();
+    const next = !speech.muted;
+    speech.setMuted(next);
+    if (next) speech.stop();
   }
   function cancelActiveRequest() {
     requestAbortRef.current?.abort();
@@ -436,7 +404,8 @@ export function AiAssistant() {
     cancelActiveRequest();
     prevListeningRef.current = false;
     voice.stopListening();
-    voice.stopSpeaking();
+    speech.stop();
+    setShowVoicePicker(false);
     setOpen(false);
   }
   function startRevealLoop() {
@@ -467,6 +436,9 @@ export function AiAssistant() {
       } else {
         rafRef.current = null;
         setStreaming(false);
+        // If a fixed guide phrase was started during generation, stop it as
+        // soon as a fresh personalized reply is ready. Replies stay text-only.
+        speech.stop();
         const finalText = fullTextRef.current;
         trackEvent("ai_response_completed", {
           mode: isTutorMode ? "tutor" : "learner",
@@ -474,11 +446,6 @@ export function AiAssistant() {
           duration_ms: Math.max(0, Math.round(performance.now() - requestStartedAtRef.current)),
           success: !requestFailedRef.current,
         });
-        // Auto-speak the completed reply (unless muted)
-        if (!didSpeakRef.current && !voiceMuted && voice.ttsSupported) {
-          didSpeakRef.current = true;
-          voice.speak(stripForSpeech(finalText));
-        }
         // Auto-navigate to the first course/lesson tag in the reply
         if (!isTutorMode && !didNavigateRef.current && replyActionsRef.current.length === 0) {
           didNavigateRef.current = true;
@@ -495,6 +462,7 @@ export function AiAssistant() {
   async function send(text: string) {
     const trimmed = text.trim();
     if (!trimmed || streaming || interviewSubmittingRef.current) return;
+    speech.stop();
     if (courseInterviewStep !== null && courseInterviewStep < COURSE_INTERVIEW_QUESTIONS.length) {
       interviewSubmittingRef.current = true;
       if (courseInterviewStep === COURSE_INTERVIEW_QUESTIONS.length - 2) {
@@ -523,7 +491,6 @@ export function AiAssistant() {
           return;
         }
       }
-      voice.stopSpeaking();
       setInput("");
       setDraftError(null);
       const answers = [...courseInterviewAnswers, trimmed];
@@ -534,20 +501,17 @@ export function AiAssistant() {
         const question = COURSE_INTERVIEW_QUESTIONS[nextStep];
         setCourseInterviewStep(nextStep);
         setMessages([...answeredMessages, { role: "assistant", content: question }]);
-        if (!voiceMuted && voice.ttsSupported) voice.speak(question);
       } else {
         const summary = `Thanks — I have everything I need:\n\n• Topic: ${answers[0]}\n• Audience: ${answers[1]}\n• Level: ${answers[2]}\n• Outcomes: ${answers[3]}\n• Lesson format: ${answers[4]}\n• Lessons: ${answers[5]}\n\nI’m creating your editable, unpublished course draft now.`;
         const completedMessages = [...answeredMessages, { role: "assistant" as const, content: summary }];
         setCourseInterviewStep(COURSE_INTERVIEW_QUESTIONS.length);
         setMessages(completedMessages);
-        if (!voiceMuted && voice.ttsSupported) voice.speak(summary);
         await generateCourseDraft(answers);
       }
       interviewSubmittingRef.current = false;
       return;
     }
     // Stop any ongoing speech before sending
-    voice.stopSpeaking();
     setRetryText(null);
     const next: ChatMessage[] = [...messages, { role: "user", content: trimmed }];
     setMessages([...next, { role: "assistant", content: "" }]);
@@ -559,7 +523,6 @@ export function AiAssistant() {
     revealedRef.current = 0;
     networkDoneRef.current = false;
     pauseUntilRef.current = 0;
-    didSpeakRef.current = false;
     didNavigateRef.current = false;
     requestStartedAtRef.current = performance.now();
     requestFailedRef.current = false;
@@ -636,7 +599,8 @@ export function AiAssistant() {
     cancelDraftGeneration();
     prevListeningRef.current = false;
     voice.stopListening();
-    voice.stopSpeaking();
+    speech.stop();
+    setShowVoicePicker(false);
     setMessages([]);
     setActionOutcomes({});
     setRetryText(null);
@@ -652,7 +616,8 @@ export function AiAssistant() {
     interviewSubmittingRef.current = false;
     prevListeningRef.current = false;
     voice.stopListening();
-    voice.stopSpeaking();
+    speech.stop();
+    setShowVoicePicker(false);
     setCourseDraft(null);
     setDraftError(null);
     setCourseInterviewAnswers([]);
@@ -735,8 +700,14 @@ export function AiAssistant() {
     if (voice.isListening) {
       voice.stopListening();
     } else {
+      speech.stop();
       voice.startListening();
     }
+  }
+  function closeVoicePicker(returnFocus = true) {
+    speech.stop();
+    setShowVoicePicker(false);
+    if (returnFocus) requestAnimationFrame(() => voiceChevronRef.current?.focus());
   }
   return (
     <>
@@ -845,44 +816,41 @@ export function AiAssistant() {
                   {isTutorMode ? "Design courses, add lessons, grade and publish" : "Guidance, practice assignments, quizzes and grades"}
                 </p>
               </div>
-              {/* Mute/unmute TTS button — only shown when TTS is supported */}
-              {voice.ttsSupported && (
-                <div className="relative flex items-center">
+              <div className="relative flex shrink-0 items-center">
+                <button
+                  type="button"
+                  onClick={toggleMute}
+                  aria-label={speech.muted ? "Unmute approved voice playback" : "Mute approved voice playback"}
+                  aria-pressed={speech.muted}
+                  title={speech.muted ? "Unmute approved voice playback" : "Mute approved voice playback"}
+                  className="focus-ring rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800"
+                >
+                  {speech.muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className={cn("h-4 w-4", speech.isSpeaking && "text-primary")} />}
+                </button>
+                {(speech.isSpeaking || speech.loading) && (
                   <button
-                    onClick={toggleMute}
-                    aria-label={voiceMuted ? "Unmute voice response" : "Mute voice response"}
-                    title={voiceMuted ? "Unmute voice" : "Mute voice"}
-                    className="focus-ring shrink-0 rounded-lg p-1.5 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
+                    type="button"
+                    onClick={speech.stop}
+                    aria-label="Stop voice playback"
+                    title="Stop voice playback"
+                    className="focus-ring rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800"
                   >
-                    {voiceMuted ? (
-                      <VolumeX className="h-3.5 w-3.5" />
-                    ) : (
-                      <Volume2 className={cn("h-3.5 w-3.5", voice.isSpeaking && "text-primary")} />
-                    )}
+                    <Square className="h-3.5 w-3.5" />
                   </button>
-                  {/* Voice picker — chevron only; dropdown rendered as top-level sibling */}
-                  {voice.voices.length > 0 && (
-                    <button
-                      ref={voiceChevronRef}
-                      onClick={() => {
-                        if (!showVoicePicker && voiceChevronRef.current) {
-                          const r = voiceChevronRef.current.getBoundingClientRect();
-                          setVoicePickerPos({
-                            top: r.bottom + 6,
-                            right: window.innerWidth - r.right,
-                          });
-                        }
-                        setShowVoicePicker((v) => !v);
-                      }}
-                      title="Change AI voice"
-                      aria-label="Change AI voice"
-                      className="focus-ring -ml-0.5 shrink-0 rounded-lg p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
-                    >
-                      <ChevronDown className="h-3 w-3" />
-                    </button>
-                  )}
-                </div>
-              )}
+                )}
+                <button
+                  ref={voiceChevronRef}
+                  type="button"
+                  onClick={() => setShowVoicePicker((v) => !v)}
+                  title="Choose guide voice"
+                  aria-label="Choose guide voice"
+                  aria-haspopup="dialog"
+                  aria-expanded={showVoicePicker}
+                  className="focus-ring flex items-center gap-0.5 rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800"
+                >
+                  {speech.loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                </button>
+              </div>
               {messages.length > 0 && (
                 <button
                   onClick={newChat}
@@ -930,6 +898,9 @@ export function AiAssistant() {
                     {isTutorMode
                       ? "Start the guided course interview and I’ll collect everything I need, one question at a time."
                       : "Ask which course fits your background, or what to learn next based on your progress."}
+                  </p>
+                  <p className="rounded-lg border border-primary/15 bg-primary/[0.04] px-2.5 py-2 text-[11px] leading-relaxed text-zinc-600">
+                    For privacy, personalized chat replies stay text-only. Voice playback is limited to approved, non-personal platform guidance.
                   </p>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {quickPrompts.map(({ icon: Icon, label }, i) => (
@@ -984,7 +955,7 @@ export function AiAssistant() {
                       <PersonaAvatar
                         personaId={assistantPersona}
                         size="xs"
-                        state={isLastAssistant && streaming ? "speaking" : "idle"}
+                        state={speech.isSpeaking ? "speaking" : "idle"}
                         className="mb-0.5"
                       />
                     )}
@@ -1203,116 +1174,198 @@ export function AiAssistant() {
         )}
       </AnimatePresence>
 
-      {/* Voice picker dropdown — rendered outside the overflow-hidden panel */}
-      {showVoicePicker && (
-        <>
-          <div
-            className="fixed inset-0 z-[49]"
-            onClick={() => setShowVoicePicker(false)}
-          />
-          <div
-            className="fixed z-50 w-64 rounded-xl border border-border bg-white p-2 shadow-lg"
-            style={{ top: voicePickerPos.top, right: voicePickerPos.right }}
+      {/* Only these approved fixed phrases may be sent to external speech. */}
+      <AnimatePresence>
+        {showVoicePicker && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] grid place-items-center p-3 sm:p-5"
           >
-            <p className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
-              AI voice
-            </p>
-            <div className="max-h-52 overflow-y-auto">
-              {(() => {
-                const BLOCKED_PREFIXES = [
-                  "Microsoft David",
-                  "Microsoft Ravi",
-                  "Microsoft Heera",
-                  "Microsoft Mark",
-                  "Microsoft Zira",
-                  "Google UK English Male",
-                  "Google español de Estados Unidos",
-                  "Google Bahasa Indonesia",
-                ];
-                const VOICE_LABELS: Array<{ prefix: string; label: string; desc: string }> = [
-                  { prefix: "en-US", label: "Chloe",    desc: "English (USA)" },
-                  { prefix: "en-GB", label: "Emilia",   desc: "English (United Kingdom)" },
-                  { prefix: "de-",   label: "Hannah",   desc: "English (German)" },
-                  { prefix: "pt-BR", label: "Beatriz",  desc: "English (Brazilian Portuguese)" },
-                  { prefix: "es-",   label: "Carlos",   desc: "English (Spanish)" },
-                  { prefix: "fr-",   label: "Camille",  desc: "English (French)" },
-                  { prefix: "en-IN", label: "Ananya",   desc: "English (Indian / Hindi)" },
-                  { prefix: "hi-",   label: "Ananya",   desc: "English (Indian / Hindi)" },
-                  { prefix: "it-",   label: "Giulia",   desc: "English (Italian)" },
-                  { prefix: "ja-",   label: "Yuki",     desc: "English (Japanese)" },
-                  { prefix: "ko-",   label: "Yuna",     desc: "English (Korean)" },
-                  { prefix: "nl-",   label: "Fleur",    desc: "English (Dutch)" },
-                  { prefix: "pl-",   label: "Zofia",    desc: "English (Polish)" },
-                  { prefix: "ru-",   label: "Elena",    desc: "English (Russian)" },
-                  { prefix: "zh-CN", label: "Lin",      desc: "English (Mandarin — Mainland China)" },
-                  { prefix: "zh-HK", label: "Wing-Yee", desc: "English (Cantonese — Hong Kong)" },
-                  { prefix: "zh-TW", label: "Mei-Ling", desc: "English (Mandarin — Taiwan)" },
-                ];
-                const getLabel = (v: SpeechSynthesisVoice) =>
-                  VOICE_LABELS.find((d) => v.lang.startsWith(d.prefix));
-                // Filter blocked voices then deduplicate so each label appears once
-                const seenLabels = new Set<string>();
-                const filtered = voice.voices
-                  .filter((v) => !BLOCKED_PREFIXES.some((p) => v.name.startsWith(p)))
-                  .filter((v) => {
-                    const mapped = getLabel(v);
-                    const key = mapped ? mapped.label : v.name;
-                    if (seenLabels.has(key)) return false;
-                    seenLabels.add(key);
-                    return true;
-                  });
-                return filtered;
-              })().map((v) => {
-                const VOICE_LABELS: Array<{ prefix: string; label: string; desc: string }> = [
-                  { prefix: "en-US", label: "Chloe",    desc: "English (USA)" },
-                  { prefix: "en-GB", label: "Emilia",   desc: "English (United Kingdom)" },
-                  { prefix: "de-",   label: "Hannah",   desc: "English (German)" },
-                  { prefix: "pt-BR", label: "Beatriz",  desc: "English (Brazilian Portuguese)" },
-                  { prefix: "es-",   label: "Carlos",   desc: "English (Spanish)" },
-                  { prefix: "fr-",   label: "Camille",  desc: "English (French)" },
-                  { prefix: "en-IN", label: "Ananya",   desc: "English (Indian / Hindi)" },
-                  { prefix: "hi-",   label: "Ananya",   desc: "English (Indian / Hindi)" },
-                  { prefix: "it-",   label: "Giulia",   desc: "English (Italian)" },
-                  { prefix: "ja-",   label: "Yuki",     desc: "English (Japanese)" },
-                  { prefix: "ko-",   label: "Yuna",     desc: "English (Korean)" },
-                  { prefix: "nl-",   label: "Fleur",    desc: "English (Dutch)" },
-                  { prefix: "pl-",   label: "Zofia",    desc: "English (Polish)" },
-                  { prefix: "ru-",   label: "Elena",    desc: "English (Russian)" },
-                  { prefix: "zh-CN", label: "Lin",      desc: "English (Mandarin — Mainland China)" },
-                  { prefix: "zh-HK", label: "Wing-Yee", desc: "English (Cantonese — Hong Kong)" },
-                  { prefix: "zh-TW", label: "Mei-Ling", desc: "English (Mandarin — Taiwan)" },
-                ];
-                const mapped = VOICE_LABELS.find((d) => v.lang.startsWith(d.prefix));
-                const displayName = mapped?.label ?? v.name;
-                const displayDesc = mapped?.desc ?? v.lang;
-                return (
+            <button
+              type="button"
+              aria-label="Close guide voice settings"
+              className="absolute inset-0 cursor-default bg-zinc-950/35"
+              onClick={() => closeVoicePicker()}
+            />
+            <motion.div
+              ref={voicePickerRef}
+              initial={{ opacity: 0, y: 10, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 6, scale: 0.98 }}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="approved-voice-title"
+              aria-describedby="approved-voice-privacy"
+              className="relative z-10 flex max-h-[min(84dvh,42rem)] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl"
+            >
+              <div className="flex items-start gap-3 border-b border-zinc-100 px-4 py-3.5">
+                <div className="min-w-0 flex-1">
+                  <h2 id="approved-voice-title" className="text-sm font-semibold text-zinc-900">Guide voice</h2>
+                  <p id="approved-voice-privacy" className="mt-1 text-xs leading-relaxed text-zinc-600">
+                    Personalized AI replies, learner details, and chat messages are never spoken. Only these fixed platform phrases can use external speech.
+                  </p>
+                </div>
                 <button
-                  key={v.name}
-                  onClick={() => {
-                    voice.setSelectedVoiceName(v.name);
-                    setShowVoicePicker(false);
-                  }}
-                  className={cn(
-                    "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition",
-                    voice.selectedVoiceName === v.name
-                      ? "bg-primary/10 font-medium text-primary"
-                      : "text-zinc-700 hover:bg-zinc-100"
-                  )}
+                  type="button"
+                  onClick={() => closeVoicePicker()}
+                  aria-label="Close guide voice settings"
+                  className="focus-ring -mr-1 -mt-1 rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800"
                 >
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate">{displayName}</span>
-                    <span className={cn("text-[10px]", voice.selectedVoiceName === v.name ? "text-primary/60" : "text-zinc-400")}>{displayDesc}</span>
-                  </span>
-                  {voice.selectedVoiceName === v.name && (
-                    <Check className="h-3 w-3 shrink-0 text-primary" />
-                  )}
+                  <X className="h-4 w-4" />
                 </button>
-                );
-              })}
-            </div>
-          </div>
-        </>
-      )}
+              </div>
+
+              <div className="min-h-0 space-y-4 overflow-y-auto p-4">
+                {(speech.error || speech.setupMessage) && (
+                  <div
+                    role={speech.error ? "alert" : "status"}
+                    className={cn(
+                      "rounded-xl border px-3 py-2.5 text-xs leading-relaxed",
+                      speech.error
+                        ? "border-red-200 bg-red-50 text-red-800"
+                        : "border-amber-200 bg-amber-50 text-amber-900"
+                    )}
+                  >
+                    {speech.error ?? speech.setupMessage}
+                  </div>
+                )}
+                {speech.loading && (
+                  <div role="status" aria-live="polite" className="flex items-center gap-2 rounded-lg bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Preparing approved speech…
+                  </div>
+                )}
+
+                <section aria-labelledby="voice-options-heading">
+                  <h3 id="voice-options-heading" className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Available voices</h3>
+                  <ul className="space-y-2">
+                    {speech.voices.map((voiceOption: PublicSpeechVoice) => {
+                      const languageLabel = voiceOption.languages.length ? voiceOption.languages.join(" · ") : "Language not specified";
+                      const selected = speech.selectedVoiceKey === voiceOption.key;
+                      return (
+                        <li key={voiceOption.key} className={cn("rounded-xl border p-2.5", selected ? "border-primary/35 bg-primary/[0.04]" : "border-zinc-200")}>
+                          <div className="flex items-start gap-2">
+                            <button
+                              type="button"
+                              disabled={!voiceOption.enabled}
+                              aria-pressed={selected}
+                              onClick={() => {
+                                speech.stop();
+                                speech.selectVoice(voiceOption.key);
+                              }}
+                              className={cn(
+                                "focus-ring min-w-0 flex-1 rounded-lg text-left disabled:cursor-not-allowed disabled:opacity-70",
+                                voiceOption.enabled && "hover:text-primary"
+                              )}
+                            >
+                              <span className="flex items-center gap-1.5 text-sm font-medium text-zinc-800">
+                                <span className="truncate">{voiceOption.name}</span>
+                                {voiceOption.default && <span className="shrink-0 rounded-full bg-zinc-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-zinc-500">Default</span>}
+                                {selected && <Check aria-label="Selected" className="h-3.5 w-3.5 shrink-0 text-primary" />}
+                              </span>
+                              <span className="mt-0.5 block text-[11px] text-zinc-500">
+                                {voiceOption.gender === "female" ? "Female" : "Male"} voice · {languageLabel}
+                              </span>
+                              {!voiceOption.enabled && voiceOption.unavailableReason && (
+                                <span className="mt-1 block text-[11px] leading-relaxed text-amber-800">
+                                  Unavailable: {voiceOption.unavailableReason}
+                                </span>
+                              )}
+                              {!voiceOption.enabled && !voiceOption.unavailableReason && (
+                                <span className="mt-1 block text-[11px] leading-relaxed text-amber-800">
+                                  Unavailable: this voice is not currently available.
+                                </span>
+                              )}
+                            </button>
+                            {voiceOption.enabled && (
+                              <button
+                                type="button"
+                                disabled={speech.loading || speech.muted}
+                                onClick={() => void speech.play("preview", voiceOption.key)}
+                                aria-label={`Preview ${voiceOption.name} voice`}
+                                title={speech.muted ? "Unmute voice playback to preview" : `Preview ${voiceOption.name}`}
+                                className="focus-ring flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[11px] font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-45"
+                              >
+                                <Play className="h-3 w-3" />
+                                Preview
+                              </button>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                    {!speech.loading && speech.voices.length === 0 && (
+                      <li className="rounded-xl border border-dashed border-zinc-300 px-3 py-4 text-center text-xs text-zinc-600">
+                        No approved voices are available right now.
+                      </li>
+                    )}
+                  </ul>
+                </section>
+
+                <section aria-labelledby="fixed-phrases-heading">
+                  <h3 id="fixed-phrases-heading" className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Fixed phrase playback</h3>
+                  <div className="space-y-2">
+                    {APPROVED_SPEECH_PHRASES.map((phrase) => (
+                      <div key={phrase.key} className="rounded-xl border border-zinc-200 p-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-semibold text-zinc-800">{phrase.label}</span>
+                          <button
+                            type="button"
+                            disabled={speech.loading || speech.muted || !speech.voices.some((v) => v.enabled)}
+                            onClick={() => void speech.play(phrase.key)}
+                            aria-label={`Play approved ${phrase.label.toLowerCase()} phrase`}
+                            className="focus-ring flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-2.5 text-[11px] font-semibold text-white hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-45"
+                          >
+                            <Volume2 className="h-3 w-3" />
+                            Play phrase
+                          </button>
+                        </div>
+                        <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-600">{phrase.transcript}</p>
+                      </div>
+                    ))}
+                    <div className="rounded-xl border border-zinc-200 p-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-semibold text-zinc-800">Voice preview</span>
+                        <button
+                          type="button"
+                          disabled={speech.loading || speech.muted || !speech.voices.some((v) => v.enabled)}
+                          onClick={() => void speech.play("preview")}
+                          className="focus-ring flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg border border-border px-2.5 text-[11px] font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-45"
+                        >
+                          <Play className="h-3 w-3" /> Play preview
+                        </button>
+                      </div>
+                      <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-600">{PREVIEW_TRANSCRIPT}</p>
+                    </div>
+                  </div>
+                </section>
+              </div>
+              <div className="flex items-center justify-between gap-3 border-t border-zinc-100 px-4 py-3">
+                <span className="text-[11px] text-zinc-500">{speech.muted ? "Playback muted" : "Fixed phrases only"}</span>
+                <button
+                  type="button"
+                  onClick={toggleMute}
+                  aria-pressed={speech.muted}
+                  aria-label={speech.muted ? "Unmute approved voice playback" : "Mute approved voice playback"}
+                  className="focus-ring min-h-9 rounded-lg border border-zinc-300 px-3 text-xs text-zinc-700 hover:bg-zinc-50"
+                >
+                  {speech.muted ? "Unmute" : "Mute"}
+                </button>
+                {(speech.isSpeaking || speech.loading) && (
+                  <button
+                    type="button"
+                    onClick={speech.stop}
+                    className="focus-ring flex min-h-9 items-center gap-1.5 rounded-lg border border-zinc-300 px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+                  >
+                    <Square className="h-3 w-3" /> Stop playback
+                  </button>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 }

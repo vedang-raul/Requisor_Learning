@@ -14,3 +14,9 @@ External speech output is also covered. The user explicitly approved ElevenLabs 
 **Why:** A speech provider receives the text it voices; omitting names does not make educational records or personalized replies non-personal.
 
 **How to apply:** Require independently approved, server-owned content before external speech generation. Do not treat arbitrary model output, user-selected text, or confirmation as permission to send protected text, and do not silently route it through a browser-speech fallback.
+
+Voice-language metadata does not approve new speech text or automatic translations.
+
+**Why:** The approval applies to reviewed non-personal content, not to everything a selected multilingual voice could narrate. Translating or generating text dynamically would bypass that review boundary.
+
+**How to apply:** Review each additional language's fixed phrases before adding them to the speech allowlist. Keep profile language preferences separate from speech eligibility.
