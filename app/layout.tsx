@@ -4,6 +4,7 @@ import "./globals.css";
 import "../landing/index.css";
 import { Providers } from "@/components/providers";
 import { StoreProvider } from "@/lib/store";
+import { DesignGrid } from "@/components/design-grid";
 
 export const metadata: Metadata = {
   title: "Requisor Learning",
@@ -23,6 +24,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="min-h-screen bg-background font-sans text-[#111827]">
         <Providers>
           <StoreProvider>{children}</StoreProvider>
+          <DesignGrid />
         </Providers>
       </body>
     </html>
