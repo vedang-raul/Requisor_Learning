@@ -200,7 +200,11 @@ type AssignmentState =
   /** The lesson is too thin to generate from; retrying won't help. */
   | { status: "unavailable"; message: string };
 
-export function LessonAssignment({ lessonId, allowSubmission = false }: { lessonId: string; allowSubmission?: boolean }) {
+export function LessonAssignment({ lessonId, allowSubmission = false, curated = false, totalMarks, dueDate }: {
+  lessonId: string; allowSubmission?: boolean;
+  /** The tutor set this lesson's assignment to be written for each learner: it is the assignment, not optional practice. */
+  curated?: boolean; totalMarks?: number; dueDate?: string;
+}) {
   const [state, setState] = useState<AssignmentState>({ status: "idle" });
 
   useEffect(() => {
@@ -275,10 +279,12 @@ export function LessonAssignment({ lessonId, allowSubmission = false }: { lesson
         <div className="min-w-0">
           <CardTitle className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
-            Practice assignment
+            {curated ? "Your assignment" : "Practice assignment"}
           </CardTitle>
           <p className="mt-1 text-sm leading-relaxed text-zinc-600">
-            Turn this lesson into a practical task tailored to your learning profile.
+            {curated
+              ? "Your tutor set this up so everyone gets their own version. Yours is written for you and stays the same once it's created."
+              : "Turn this lesson into a practical task tailored to your learning profile."}
           </p>
         </div>
 
@@ -297,7 +303,7 @@ export function LessonAssignment({ lessonId, allowSubmission = false }: { lesson
             ) : (
               <>
                 <FileText className="h-3.5 w-3.5" aria-hidden="true" />
-                Get assignment
+                {curated ? "Get my assignment" : "Get assignment"}
               </>
             )}
           </Button>
@@ -341,7 +347,7 @@ export function LessonAssignment({ lessonId, allowSubmission = false }: { lesson
             {state.cached ? "Your saved assignment for this lesson." : "Saved for your next visit to this lesson."}
           </p>
           {allowSubmission && (
-            <AssignmentSubmission lessonId={lessonId} assignmentBrief={assignmentSummary(state.assignment)} />
+            <AssignmentSubmission lessonId={lessonId} assignmentBrief={assignmentSummary(state.assignment)} totalMarks={totalMarks} dueDate={dueDate} />
           )}
         </div>
       )}

@@ -520,10 +520,17 @@ function LearnView() {
                           ))}
                         </ul>
                       </div>
-                      {lesson.requiresSubmission && (
+                      {/* An AI-curated lesson has no shared brief: the learner's own assignment carries the upload. */}
+                      {lesson.requiresSubmission && !lesson.assignmentAi && (
                         <AssignmentSubmission lessonId={lesson.id} assignmentBrief={lesson.assignment} totalMarks={lesson.assignmentMarks} dueDate={lesson.assignmentDueDate} />
                       )}
-                      <LessonAssignment lessonId={lesson.id} allowSubmission={!lesson.requiresSubmission} />
+                      <LessonAssignment
+                        lessonId={lesson.id}
+                        curated={Boolean(lesson.assignmentAi)}
+                        allowSubmission={!lesson.requiresSubmission || Boolean(lesson.assignmentAi)}
+                        totalMarks={lesson.assignmentAi && lesson.requiresSubmission ? lesson.assignmentMarks : undefined}
+                        dueDate={lesson.assignmentAi && lesson.requiresSubmission ? lesson.assignmentDueDate : undefined}
+                      />
                     </div>
                   )}
                   {tab === "resources" && (

@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { isValidAssignmentAi, readAssignmentAi } from "@/lib/assignment-ai";
 import { db } from "@/lib/db";
 import { seedCourses } from "@/lib/data";
 import type { Course, Lesson, Resource } from "@/lib/types";
@@ -25,7 +26,7 @@ type CourseRow = {
 type LessonRow = {
   course_slug: string | null; id: string | null; lesson_title: string | null; lesson_description: string | null; youtube_id: string | null;
   duration_min: number | null; resources: Resource[] | null; key_takeaways: string[] | null; assignment: string | null;
-  assignment_marks: number | null; assignment_due_date: string | null;
+  assignment_marks: number | null; assignment_due_date: string | null; assignment_ai: unknown;
   section: string | null; format: "video" | "reading" | null; requires_submission: boolean | null; body: string | null; body_file_url: string | null;
   lesson_published: boolean | null; publish_at: Date | string | null;
 };
@@ -150,7 +151,7 @@ export async function getCourses(where = "", params: unknown[] = []): Promise<Co
              c.base_assessment, c.owner_user_id, c.revision, c.published, c.syllabus, u.name AS tutor_name,
             l.id, l.course_slug, l.title AS lesson_title, l.description AS lesson_description,
              l.youtube_id, l.duration_min, l.resources, l.key_takeaways, l.assignment,
-             l.assignment_marks, l.assignment_due_date,
+             l.assignment_marks, l.assignment_due_date, l.assignment_ai,
              l.section, l.format, l.body, l.body_file_url, l.requires_submission, l.published AS lesson_published, l.publish_at
      FROM courses c
      LEFT JOIN course_lessons l ON l.course_slug = c.slug
@@ -175,6 +176,7 @@ export async function getCourses(where = "", params: unknown[] = []): Promise<Co
       ...(row.assignment ? { assignment: row.assignment } : {}), ...(row.section ? { section: row.section } : {}),
        ...(row.assignment_marks ? { assignmentMarks: row.assignment_marks } : {}),
        ...(row.assignment_due_date ? { assignmentDueDate: new Date(row.assignment_due_date).toISOString().slice(0, 10) } : {}),
+      ...(readAssignmentAi(row.assignment_ai) ? { assignmentAi: readAssignmentAi(row.assignment_ai)! } : {}),
       ...(row.body ? { body: row.body } : {}),
       ...(row.body_file_url ? { bodyFileUrl: row.body_file_url } : {}),
       format: row.format ?? "video", requiresSubmission: Boolean(row.requires_submission),
@@ -240,7 +242,7 @@ export function validateCourse(value: unknown, expectedSlug?: string, requireRev
   for (const raw of c.lessons) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ok: false, error: "Invalid lesson." };
     const l = raw as Record<string, unknown>;
-    const lessonKeys = new Set(["id", "title", "description", "youtubeId", "durationMin", "resources", "keyTakeaways", "assignment", "assignmentMarks", "assignmentDueDate", "section", "format", "body", "bodyFileUrl", "requiresSubmission", "published", "publishAt"]);
+    const lessonKeys = new Set(["id", "title", "description", "youtubeId", "durationMin", "resources", "keyTakeaways", "assignment", "assignmentMarks", "assignmentDueDate", "assignmentAi", "section", "format", "body", "bodyFileUrl", "requiresSubmission", "published", "publishAt"]);
     const format = l.format ?? "video";
     const rawYoutubeId = typeof l.youtubeId === "string" ? l.youtubeId.trim() : "";
     const youtubeId = format === "reading"
@@ -256,6 +258,7 @@ export function validateCourse(value: unknown, expectedSlug?: string, requireRev
       (l.assignment !== undefined && !string(l.assignment, 5000)) ||
       (l.assignmentMarks !== undefined && (!Number.isInteger(l.assignmentMarks) || (l.assignmentMarks as number) < 1 || (l.assignmentMarks as number) > 10000)) ||
       (l.assignmentDueDate !== undefined && !isIsoCalendarDate(l.assignmentDueDate)) ||
+      (l.assignmentAi !== undefined && !isValidAssignmentAi(l.assignmentAi)) ||
       (l.section !== undefined && !string(l.section, 200)) ||
       (l.format !== undefined && l.format !== "video" && l.format !== "reading") ||
       (format !== "reading" && !youtubeId) ||
@@ -303,9 +306,9 @@ export async function replaceCourse(
     await client.query("DELETE FROM course_lessons WHERE course_slug=$1", [course.slug]);
     for (let i = 0; i < course.lessons.length; i++) {
       const l = course.lessons[i];
-      await client.query(`INSERT INTO course_lessons (id,course_slug,title,description,youtube_id,duration_min,resources,key_takeaways,assignment,section,format,position,requires_submission,body,body_file_url,assignment_marks,assignment_due_date,published,publish_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
-      [l.id, course.slug, l.title, l.description, l.youtubeId, l.durationMin, JSON.stringify(l.resources), JSON.stringify(l.keyTakeaways), l.assignment ?? null, l.section ?? null, l.format ?? "video", i, l.requiresSubmission ?? false, l.body ?? null, l.bodyFileUrl ?? null, l.assignmentMarks ?? null, l.assignmentDueDate ?? null, l.published ?? true, l.published !== false && l.publishAt ? new Date(l.publishAt).toISOString() : null]);
+      await client.query(`INSERT INTO course_lessons (id,course_slug,title,description,youtube_id,duration_min,resources,key_takeaways,assignment,section,format,position,requires_submission,body,body_file_url,assignment_marks,assignment_due_date,published,publish_at,assignment_ai)
+        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb)`,
+      [l.id, course.slug, l.title, l.description, l.youtubeId, l.durationMin, JSON.stringify(l.resources), JSON.stringify(l.keyTakeaways), l.assignment ?? null, l.section ?? null, l.format ?? "video", i, l.requiresSubmission ?? false, l.body ?? null, l.bodyFileUrl ?? null, l.assignmentMarks ?? null, l.assignmentDueDate ?? null, l.published ?? true, l.published !== false && l.publishAt ? new Date(l.publishAt).toISOString() : null, l.assignmentAi ? JSON.stringify(l.assignmentAi) : null]);
 
     }
     await client.query("COMMIT");
@@ -353,9 +356,9 @@ export async function updateOwnedCourse(course: Course, userId: number, isAdmin:
     await client.query("DELETE FROM course_lessons WHERE course_slug=$1", [course.slug]);
     for (let i = 0; i < course.lessons.length; i++) {
       const l = course.lessons[i];
-      await client.query(`INSERT INTO course_lessons (id,course_slug,title,description,youtube_id,duration_min,resources,key_takeaways,assignment,section,format,position,requires_submission,body,body_file_url,assignment_marks,assignment_due_date,published,publish_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
-      [l.id, course.slug, l.title, l.description, l.youtubeId, l.durationMin, JSON.stringify(l.resources), JSON.stringify(l.keyTakeaways), l.assignment ?? null, l.section ?? null, l.format ?? "video", i, l.requiresSubmission ?? false, l.body ?? null, l.bodyFileUrl ?? null, l.assignmentMarks ?? null, l.assignmentDueDate ?? null, l.published ?? true, l.published !== false && l.publishAt ? new Date(l.publishAt).toISOString() : null]);
+      await client.query(`INSERT INTO course_lessons (id,course_slug,title,description,youtube_id,duration_min,resources,key_takeaways,assignment,section,format,position,requires_submission,body,body_file_url,assignment_marks,assignment_due_date,published,publish_at,assignment_ai)
+        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20::jsonb)`,
+      [l.id, course.slug, l.title, l.description, l.youtubeId, l.durationMin, JSON.stringify(l.resources), JSON.stringify(l.keyTakeaways), l.assignment ?? null, l.section ?? null, l.format ?? "video", i, l.requiresSubmission ?? false, l.body ?? null, l.bodyFileUrl ?? null, l.assignmentMarks ?? null, l.assignmentDueDate ?? null, l.published ?? true, l.published !== false && l.publishAt ? new Date(l.publishAt).toISOString() : null, l.assignmentAi ? JSON.stringify(l.assignmentAi) : null]);
     }
     await client.query("COMMIT");
     course.revision = next;

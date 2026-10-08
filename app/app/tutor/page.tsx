@@ -9,6 +9,9 @@ import {
   ListChecks, Loader2, Pencil, Plus, Send, Star, Trash2, TrendingUp, Users, X,BookOpen, ChevronDown, ChevronLeft, ChevronRight, Clock, Layers, Sparkles, Video, Youtube
 } from "lucide-react";
 import { RecordStudio } from "@/components/video-recorder";
+import { AssignmentBrief } from "@/components/lesson-assignment";
+import { parseAssignment } from "@/lib/assignment-format";
+import { ASSIGNMENT_DATA, GUARDRAILS_MAX_CHARS, GUARDRAILS_MIN_CHARS, type AssignmentDataKey } from "@/lib/assignment-ai";
 import { SyllabusPanel } from "@/components/syllabus-editor";
 import { isLessonScheduled } from "@/lib/utils";
 import { DATA_CHANGED_EVENT } from "@/components/assistant-action-card";
@@ -1149,6 +1152,12 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
   const [assignmentMarks, setAssignmentMarks] = useState(lesson?.assignmentMarks ? String(lesson.assignmentMarks) : "");
   const [assignmentDueDate, setAssignmentDueDate] = useState(lesson?.assignmentDueDate ?? "");
   const [rubricOpen, setRubricOpen] = useState(false);
+  // AI-curated assignment: the tutor's guardrails, and which learner data the AI may use.
+  const [aiAssignment, setAiAssignment] = useState(Boolean(lesson?.assignmentAi));
+  const [guardrails, setGuardrails] = useState(lesson?.assignmentAi?.guardrails ?? "");
+  const [aiData, setAiData] = useState<AssignmentDataKey[]>(lesson?.assignmentAi?.use ?? ASSIGNMENT_DATA.map((d) => d.key));
+  const [aiPreview, setAiPreview] = useState<{ status: "idle" } | { status: "loading" } | { status: "error"; message: string } | { status: "ready"; assignment: string; learner: string; sample: number }>({ status: "idle" });
+  const guardrailsOk = !aiAssignment || guardrails.trim().length >= GUARDRAILS_MIN_CHARS;
   // Step 4 — takeaways & resources
   const [takeaways, setTakeaways] = useState(lesson?.keyTakeaways.join("\n") ?? "");
   const [resources, setResources] = useState<Resource[]>(lesson?.resources ?? []);
@@ -1167,7 +1176,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
   // What each step needs; used for the tracker ticks and the publish checklist.
   const detailsOk = Boolean(title.trim() && description.trim());
   const contentOk = format === "video" ? Boolean(detectedVideoId) : Boolean(body.trim() || bodyFileUrl);
-  const assignmentOk = !requiresSubmission || Boolean(assignment.trim() && assignmentMarks && assignmentDueDate);
+  const assignmentOk = guardrailsOk && (!requiresSubmission || Boolean((assignment.trim() || aiAssignment) && assignmentMarks && assignmentDueDate));
   const completed = [
     detailsOk,
     visited[1] && contentOk,
@@ -1197,6 +1206,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
     if (!detailsOk) throw new Error("Add a title and description (step 1).");
     if (format === "video" && youtubeId.trim() && !detectedVideoId) throw new Error("Paste a valid YouTube URL or video ID (step 2).");
     if (requiresSubmission && (!assignmentMarks || !assignmentDueDate)) throw new Error("Set total points and a due date for the submission (step 3).");
+    if (!guardrailsOk) throw new Error("Write the guardrails for the AI-curated assignment, or switch it off (step 3).");
     if (published && !contentOk) {
       throw new Error("Add a YouTube video or write a text lesson (step 2) before publishing — or save it as a draft.");
     }
@@ -1215,6 +1225,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
       section: section.trim() || undefined, assignment: assignment.trim() || undefined, requiresSubmission,
       assignmentMarks: requiresSubmission && assignmentMarks ? Number(assignmentMarks) : undefined,
       assignmentDueDate: requiresSubmission && assignmentDueDate ? assignmentDueDate : undefined,
+      assignmentAi: aiAssignment ? { guardrails: guardrails.trim(), use: ASSIGNMENT_DATA.map((d) => d.key).filter((key) => aiData.includes(key)) } : undefined,
       keyTakeaways: takeawayList,
       resources: finalResources,
       body: format === "reading" && body.trim() ? body.trim() : undefined,
@@ -1238,6 +1249,24 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
       setTranscriptNote({ ok: false, text: "Couldn't reach the server. Try again, or paste the transcript." });
     } finally {
       setTranscriptBusy(false);
+    }
+  }
+
+  async function previewAiAssignment(sample: number) {
+    setAiPreview({ status: "loading" });
+    try {
+      const res = await fetch("/api/tutor/assignment-preview/", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: title.trim(), description: description.trim(), keyTakeaways: takeawayList, assignment: assignment.trim(), sample,
+          assignmentAi: { guardrails: guardrails.trim(), use: ASSIGNMENT_DATA.map((d) => d.key).filter((key) => aiData.includes(key)) },
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { assignment?: string; sampleLearner?: string; error?: string };
+      if (!res.ok || !data.assignment) { setAiPreview({ status: "error", message: data.error ?? "Couldn't write a sample right now." }); return; }
+      setAiPreview({ status: "ready", assignment: data.assignment, learner: data.sampleLearner ?? "a sample learner", sample });
+    } catch {
+      setAiPreview({ status: "error", message: "Couldn't reach the server. Try again." });
     }
   }
 
@@ -1360,7 +1389,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
 
             {step === "assignment" && (
               <div className="grid gap-3 sm:grid-cols-2">
-                <div className="sm:col-span-2"><Field label="Assignment"><Textarea value={assignment} onChange={(e) => setAssignment(e.target.value)} maxLength={5000} placeholder="What should learners do after this lesson? (optional)" /></Field></div>
+                <div className="sm:col-span-2"><Field label="Assignment"><Textarea value={assignment} onChange={(e) => setAssignment(e.target.value)} maxLength={5000} placeholder={aiAssignment ? "Optional: a starting brief for the AI to personalise" : "What should learners do after this lesson? (optional)"} /></Field></div>
                 <div className="space-y-2 sm:col-span-2">
                   <label className="flex items-center gap-2 text-sm font-medium text-zinc-800">
                     <input type="checkbox" checked={requiresSubmission} onChange={(e) => setRequiresSubmission(e.target.checked)} className="h-4 w-4 rounded border-zinc-300 accent-primary" />
@@ -1369,6 +1398,71 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
                   <p className="text-xs text-zinc-500">
                     {requiresSubmission ? "Learners see the text above as their assignment brief and upload a PDF or Word file." : "Without this, learners can still generate a personalised AI practice assignment from the lesson."}
                   </p>
+                </div>
+                <div className="space-y-3 rounded-xl border border-primary/20 bg-primary/[0.03] p-3 sm:col-span-2">
+                  <label className="flex items-center gap-2 text-sm font-medium text-zinc-800">
+                    <input type="checkbox" checked={aiAssignment} onChange={(e) => { setAiAssignment(e.target.checked); setAiPreview({ status: "idle" }); }} className="h-4 w-4 rounded border-zinc-300 accent-primary" />
+                    <Sparkles className="h-3.5 w-3.5 text-primary" aria-hidden="true" />Give each learner their own AI-written assignment
+                  </label>
+                  <p className="text-xs text-zinc-500">
+                    {aiAssignment
+                      ? "Instead of one brief for everyone, the AI writes each learner a different assignment from their own data, inside the guardrails you set below. Each learner's version is saved the first time they open it and stays the same after that."
+                      : "Optional. Leave this off to give everyone the same assignment text above."}
+                  </p>
+                  {aiAssignment && (
+                    <>
+                      <Field label="Assignment guardrails">
+                        <span className="mb-1.5 block text-xs font-normal text-zinc-500">
+                          The rules every learner&apos;s version must follow: what skill it tests, what must be included or avoided, the difficulty, the length, and what they hand in.
+                        </span>
+                        <Textarea
+                          value={guardrails}
+                          onChange={(e) => { setGuardrails(e.target.value); setFormError(null); }}
+                          maxLength={GUARDRAILS_MAX_CHARS}
+                          rows={5}
+                          aria-invalid={!guardrailsOk}
+                          placeholder={"e.g. Test whether they can tell an agent-shaped problem from a rule-based one.\nMust use a process from their own kind of workplace.\nNo coding. One page at most. They hand in a short written recommendation.\nKeep it doable in 45 minutes."}
+                        />
+                        <span className={cn("mt-1 block text-xs font-normal", guardrailsOk ? "text-zinc-500" : "text-red-700")}>
+                          {guardrailsOk ? `${guardrails.trim().length} / ${GUARDRAILS_MAX_CHARS}` : "Write at least a sentence of guardrails."}
+                        </span>
+                      </Field>
+                      <fieldset>
+                        <legend className="text-sm font-medium text-zinc-800">Learner data the AI may use</legend>
+                        <div className="mt-1.5 grid gap-1.5 sm:grid-cols-3">
+                          {ASSIGNMENT_DATA.map((item) => (
+                            <label key={item.key} className="flex items-start gap-2 rounded-lg border border-zinc-200 bg-white p-2 text-xs text-zinc-700">
+                              <input
+                                type="checkbox"
+                                checked={aiData.includes(item.key)}
+                                onChange={(e) => setAiData((current) => (e.target.checked ? [...current, item.key] : current.filter((key) => key !== item.key)))}
+                                className="mt-0.5 h-3.5 w-3.5 rounded border-zinc-300 accent-primary"
+                              />
+                              <span><span className="block font-medium text-zinc-800">{item.label}</span>{item.hint}</span>
+                            </label>
+                          ))}
+                        </div>
+                        {aiData.length === 0 && <p className="mt-1.5 text-xs text-zinc-500">With nothing ticked, assignments still differ between learners, but aren&apos;t based on who they are.</p>}
+                      </fieldset>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button type="button" size="sm" variant="outline" disabled={!guardrailsOk || aiPreview.status === "loading"} onClick={() => void previewAiAssignment(aiPreview.status === "ready" ? 1 - aiPreview.sample : 0)}>
+                          {aiPreview.status === "loading" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />}
+                          {aiPreview.status === "ready" ? "Preview for a different learner" : "Preview a sample assignment"}
+                        </Button>
+                        <span className="text-xs text-zinc-500">Uses a made-up learner. Nothing is saved.</span>
+                      </div>
+                      {aiPreview.status === "error" && <p role="alert" className="text-xs text-red-700">{aiPreview.message}</p>}
+                      {aiPreview.status === "ready" && (() => {
+                        const sample = parseAssignment(aiPreview.assignment);
+                        return (
+                          <div className="space-y-2 rounded-xl border border-zinc-200 bg-white p-3">
+                            <p className="text-xs font-medium text-zinc-600">Sample for {aiPreview.learner}</p>
+                            {sample ? <AssignmentBrief assignment={sample} /> : <p className="text-sm text-zinc-700">{aiPreview.assignment}</p>}
+                          </div>
+                        );
+                      })()}
+                    </>
+                  )}
                 </div>
                 {requiresSubmission && <Field label="Total points"><Input type="number" min="1" max="10000" step="1" value={assignmentMarks} onChange={(e) => setAssignmentMarks(e.target.value)} placeholder="e.g. 100" required /></Field>}
                 {requiresSubmission && <Field label="Due date"><Input type="date" value={assignmentDueDate} onChange={(e) => setAssignmentDueDate(e.target.value)} required /></Field>}

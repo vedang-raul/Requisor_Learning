@@ -230,6 +230,8 @@ p.query(`
   ALTER TABLE course_lessons ADD COLUMN IF NOT EXISTS body_file_url VARCHAR(200);
   ALTER TABLE course_lessons ADD COLUMN IF NOT EXISTS assignment_marks INT;
   ALTER TABLE course_lessons ADD COLUMN IF NOT EXISTS assignment_due_date DATE;
+  -- AI-curated assignment: the tutor's guardrails and which learner data may be used. NULL = off.
+  ALTER TABLE course_lessons ADD COLUMN IF NOT EXISTS assignment_ai JSONB;
   -- Per-lesson drafts: a tutor can keep an unfinished lesson hidden inside a
   -- live course. DEFAULT TRUE keeps every existing lesson visible.
   ALTER TABLE course_lessons ADD COLUMN IF NOT EXISTS published BOOLEAN NOT NULL DEFAULT TRUE;
