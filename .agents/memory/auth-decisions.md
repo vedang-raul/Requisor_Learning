@@ -20,3 +20,9 @@ Keep any browser-held learning state isolated between users, and never treat it 
 **Why:** Shared browsers must not reveal one learner's notes or progress to another, and browser state can be forged.
 
 **How to apply:** Review account switching, logout, and server authorization together when changing persistence.
+
+When an additional public domain breaks Google login, prefer starting login on the already-configured authentication origin rather than changing the OAuth callback blindly.
+
+**Why:** Browser OAuth cookies are host-bound. Multiple public aliases can serve the same app while Google still returns to only one configured origin. Changing that origin without confirming Google's authorized redirect URI can also break users whose login already works.
+
+**How to apply:** Keep the public marketing/SEO domain independent from the established authentication domain. Navigate to the authentication origin before creating OAuth state/PKCE cookies; do not forward credential POSTs or callback requests between domains, broaden cookie scope, or disable OAuth checks. Moving authentication to a new origin requires confirming its callback URI is authorized in Google first.

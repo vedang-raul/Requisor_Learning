@@ -1,7 +1,7 @@
 - [Imported zip quirks](imported-zip-quirks.md) — original files are CRLF (strip before exact-string edits); node_modules/.bin may need `chmod +x`.
 - [Test environment isolation](test-environment-isolation.md) — live connector identity changes provider-fallback tests; isolate test credentials, not app credentials.
 - [SEO preview boundaries](seo-preview-boundaries.md) — preview proxies add noindex headers; development-generated sharing URLs are not production URLs.
-- [Auth trust boundaries](auth-decisions.md) — identity verification is not tutor approval; require explicit account linking and shared-browser isolation.
+- [Auth trust boundaries](auth-decisions.md) — approval, explicit account linking, shared-browser isolation and canonical OAuth origins.
 - [Video auto-complete](video-auto-complete.md) — YouTube IFrame API used (not plain iframe) so onEnded fires; onEnded stored in ref to avoid player recreation on re-renders.
 - [Session uid resolution](session-uid-resolution.md) — missing users row → empty token.uid → silent 401s on all APIs; authorize paths must upsert the row, jwt retries lookup.
 - [Chatbot speech](chatbot-speech.md) — full assistant replies should be read through the selected ElevenLabs voice, not browser voices.

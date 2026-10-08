@@ -2,8 +2,29 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { isResourceFileUrl } from "./lib/resource-files";
+import { canonicalLoginRedirect } from "./lib/auth-domain";
 
 export async function middleware(req: NextRequest) {
+  // Replit's proxy may give nextUrl an internal host; use its forwarded public
+  // host for comparison only. The redirect destination is server-owned.
+  const loginRedirect = canonicalLoginRedirect(
+    {
+      pathname: req.nextUrl.pathname,
+      search: req.nextUrl.search,
+      host: (req.headers.get("x-forwarded-host") || req.headers.get("host") || req.nextUrl.host)
+        .split(",")[0].trim(),
+      method: req.method,
+    },
+    process.env.NEXTAUTH_URL,
+    process.env.NODE_ENV === "production",
+  );
+  if (loginRedirect) {
+    const response = NextResponse.redirect(loginRedirect);
+    response.headers.set("Cache-Control", "private, no-store");
+    response.headers.set("X-Robots-Tag", "noindex, nofollow");
+    return response;
+  }
+
   // ── Per-request nonce ───────────────────────────────────────────────────
   // A fresh cryptographic nonce is generated for every HTML response.
   // Buffer.from(...).toString("base64") produces standard base64 which matches
