@@ -1,6 +1,5 @@
 import {
-  analyzeTranscript, buildProposal, composeCurriculum, EMPTY_DISCOVERY, mergeAiCurriculum, reqiReply, REQI_GREETING, SAMPLE_TRANSCRIPT, sampleDiscovery,
-  type Discovery, type ReqiState,
+  analyzeTranscript, buildProposal, cleanDiscoveryFields, composeCurriculum, EMPTY_DISCOVERY, mergeAiCurriculum, readProgramCommand, SAMPLE_TRANSCRIPT, sampleDiscovery,
 } from "@/lib/program-builder";
 
 describe("Program Builder", () => {
@@ -62,46 +61,18 @@ describe("Program Builder", () => {
     expect(buildProposal(c, "", new Date()).employer).toBe("Employer Partner");
   });
 
-  it("lets Reqi run an interview from topic to a built curriculum and proposal", () => {
-    let state: ReqiState = REQI_GREETING.state;
-    let form: Discovery = EMPTY_DISCOVERY;
-    const say = (message: string, hasCurriculum = false) => {
-      const turn = reqiReply(state, message, form, hasCurriculum);
-      state = turn.state;
-      form = { ...form, ...turn.form };
-      return turn;
-    };
-    expect(say("I'll describe it").state).toBe("topic");
-    expect(say("a course on AI for hospital scheduling").state).toBe("audience");
-    expect(form.topic).toBe("AI For Hospital Scheduling");
-    expect(form.industry).toBe("healthcare");
-    say("our ward managers");
-    expect(form.audience).toBe("ward managers");
-    say("beginner");
-    expect(form.level).toBe("Beginner");
-    say("rosters take too long, handovers are inconsistent");
-    expect(form.pains.split("\n")).toHaveLength(2);
-    const confirm = say("5");
-    expect(form.modules).toBe(5);
-    expect(confirm.state).toBe("confirm");
-    expect(confirm.quick).toContain("Build it");
-    expect(say("audience is charge nurses").form).toEqual({ audience: "charge nurses" });
-    expect(say("6 modules").form).toEqual({ modules: 6 });
-    expect(say("level is advanced").form).toEqual({ level: "Advanced" });
-    expect(say("Build it").effect).toBe("build");
-    expect(say("Create the proposal", true).effect).toBe("proposal");
-    expect(say("Back to curriculum", true).effect).toBe("curriculum");
-    // No proposal before there is a curriculum.
-    expect(reqiReply("confirm", "Create the proposal", form, false).effect).toBeUndefined();
-  });
-
-  it("lets Reqi take the sample call or a pasted transcript in one step", () => {
-    const sample = reqiReply("topic", "Use the sample call", EMPTY_DISCOVERY, false);
-    expect(sample.state).toBe("confirm");
-    expect(sample.form?.employer).toMatch(/sample/);
-    const pasted = reqiReply("topic", SAMPLE_TRANSCRIPT.replace("Concap", "a recorder"), EMPTY_DISCOVERY, false);
-    expect(pasted.state).toBe("confirm");
-    expect(pasted.form?.industry).toBe("construction");
-    expect(pasted.form?.transcript).toContain("Discovery call");
+  it("accepts only real discovery fields in a command from the assistant", () => {
+    expect(cleanDiscoveryFields({
+      topic: "  AI for hospital scheduling ", audience: "ward managers", employer: "City General", industry: "healthcare", level: "beginner",
+      modules: 9, format: "live cohort", pains: ["rosters take too long", "", "handovers are inconsistent"], transcript: "Line one.\nLine two.", role: "admin",
+    })).toEqual({
+      topic: "AI for hospital scheduling", audience: "ward managers", employer: "City General", industry: "healthcare", level: "Beginner",
+      modules: 6, format: "Live cohort", pains: "rosters take too long\nhandovers are inconsistent", transcript: "Line one.\nLine two.",
+    });
+    expect(cleanDiscoveryFields({ industry: "space", level: "wizard", modules: "4", format: "", topic: 7 })).toEqual({});
+    expect(cleanDiscoveryFields(null)).toEqual({});
+    expect(readProgramCommand({ run: "generate", form: { topic: "X course" } })).toEqual({ run: "generate", form: { topic: "X course" } });
+    expect(readProgramCommand({ run: "delete everything", form: {} })).toBeNull();
+    expect(readProgramCommand({ run: "proposal" })).toEqual({ run: "proposal", form: {} });
   });
 });

@@ -2,15 +2,15 @@
 
 import { createElement, useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft, ArrowRight, Check, Loader2, Printer, RotateCcw, Send, Sparkles, Wand2, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Loader2, Printer, RotateCcw, Sparkles, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input, Textarea } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import {
   analyzeTranscript, buildProposal, composeCurriculum, EMPTY_DISCOVERY, FORMATS, INDUSTRIES, LEVELS, MODULE_COUNTS,
-  REQI_GREETING, reqiReply, sampleDiscovery,
-  type Curriculum, type Discovery, type Industry, type Level, type Proposal, type ReqiSay, type ReqiState, type ReqiTurn,
+  PROGRAM_COMMAND_EVENT, PROGRAM_DRAFT_KEY, sampleDiscovery, takeProgramCommand,
+  type Curriculum, type Discovery, type Industry, type Level, type Proposal,
 } from "@/lib/program-builder";
 
 /**
@@ -18,14 +18,14 @@ import {
  *   1. Discovery   paste a discovery-call transcript or fill the fields
  *   2. Curriculum  generated in the standard shape; every line is click-to-edit
  *   3. Proposal    assembled from the curriculum as edited; fill in pricing and export as PDF
- * Reqi, the design agent, can run all three steps from a conversation.
+ * The AI assistant can drive all three steps: it sends commands (see lib/program-builder.ts)
+ * that fill the discovery fields, generate the curriculum and assemble the proposal.
  */
 type Step = 1 | 2 | 3;
 type Notice = { kind: "ok" | "warn"; text: string } | null;
 
 const selectClass = "focus-ring h-10 w-full rounded-xl border border-border bg-white px-3 text-sm text-zinc-900 transition-colors hover:border-zinc-300";
-const DRAFT_KEY = "requisor-program-builder";
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const DRAFT_KEY = PROGRAM_DRAFT_KEY;
 
 /** Text that can be edited in place. The change is kept when the field loses focus. */
 function Editable({ value, onChange, as = "span", className, label, multiline = false }: {
@@ -33,7 +33,7 @@ function Editable({ value, onChange, as = "span", className, label, multiline = 
   className?: string; label: string; multiline?: boolean;
 }) {
   const ref = useRef<HTMLElement | null>(null);
-  // Follow changes made elsewhere (a regenerate, Reqi) unless the user is typing here.
+  // Follow changes made elsewhere (a regenerate, the assistant) unless the user is typing here.
   useEffect(() => {
     const el = ref.current;
     if (el && document.activeElement !== el && el.textContent !== value) el.textContent = value;
@@ -72,19 +72,6 @@ function NoticeBox({ notice }: { notice: Notice }) {
     <p role="status" className={cn("mt-3 rounded-lg border px-3 py-2 text-[13px]", notice.kind === "ok" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800")}>
       {notice.text}
     </p>
-  );
-}
-
-/** Reqi's words: `**bold**` and line breaks only. */
-function ReqiText({ text }: { text: string }) {
-  return (
-    <>
-      {text.split("\n").map((line, i) => (
-        <span key={i} className="block">
-          {line.split(/(\*\*[^*]+\*\*)/g).map((part, j) => (part.startsWith("**") ? <b key={j}>{part.slice(2, -2)}</b> : <span key={j}>{part}</span>))}
-        </span>
-      ))}
-    </>
   );
 }
 
@@ -179,8 +166,6 @@ function ProposalDocument({ proposal, onChange, printing = false }: { proposal: 
   );
 }
 
-type ReqiMessage = { id: number; role: "agent" | "user"; text: string; actions?: string[]; typing?: boolean };
-
 export function ProgramBuilder() {
   const [step, setStep] = useState<Step>(1);
   const [form, setForm] = useState<Discovery>(EMPTY_DISCOVERY);
@@ -191,7 +176,7 @@ export function ProgramBuilder() {
   const [analyzeNote, setAnalyzeNote] = useState<Notice>(null);
   const [genNote, setGenNote] = useState<Notice>(null);
   const curriculumRef = useRef<HTMLDivElement>(null);
-  // The latest values, for Reqi's replies, which run across several awaits.
+  // The latest values, for commands from the assistant, which run across several awaits.
   const formRef = useRef(form); formRef.current = form;
   const curriculumState = useRef(curriculum); curriculumState.current = curriculum;
   const useAiRef = useRef(useAi); useAiRef.current = useAi;
@@ -210,7 +195,7 @@ export function ProgramBuilder() {
   }
 
   // ── Step 2 ────────────────────────────────────────────────────────────────
-  const generate = useCallback(async (from?: Discovery) => {
+  const generate = useCallback(async (from?: Discovery): Promise<Curriculum> => {
     const source = from ?? formRef.current;
     const base = composeCurriculum(source);
     const show = (next: Curriculum) => {
@@ -219,7 +204,7 @@ export function ProgramBuilder() {
       setStep(2);
       requestAnimationFrame(() => curriculumRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
     };
-    if (!useAiRef.current) { show(base); setGenNote(null); return; }
+    if (!useAiRef.current) { show(base); setGenNote(null); return base; }
     setGenerating(true);
     setGenNote({ kind: "warn", text: "Writing the curriculum with AI…" });
     try {
@@ -230,9 +215,11 @@ export function ProgramBuilder() {
       setGenNote(data.source === "ai"
         ? { kind: "ok", text: "Written with AI from your discovery notes. Review every line before it goes to the employer." }
         : { kind: "warn", text: `Composed with the built-in engine instead (${data.reason ?? "AI unavailable"}).` });
+      return data.curriculum;
     } catch {
       show(base);
       setGenNote({ kind: "warn", text: "AI unavailable. Composed with the built-in engine instead." });
+      return base;
     } finally {
       setGenerating(false);
     }
@@ -243,8 +230,8 @@ export function ProgramBuilder() {
     setCurriculum((current) => (current ? { ...current, modules: current.modules.map((m, i) => (i === index ? { ...m, ...change } : m)) } : current));
 
   // ── Step 3 ────────────────────────────────────────────────────────────────
-  const createProposal = useCallback(() => {
-    const current = curriculumState.current;
+  const createProposal = useCallback((from?: Curriculum) => {
+    const current = from ?? curriculumState.current;
     if (!current) return;
     setProposal(buildProposal(current, formRef.current.employer, new Date()));
     setStep(3);
@@ -253,11 +240,9 @@ export function ProgramBuilder() {
   }, []);
 
   // Work in progress survives switching tabs or reloading the page (this browser tab only).
-  const [overlayRoot, setOverlayRoot] = useState<HTMLElement | null>(null);
   // Saving waits until the saved draft has been read back in, so an empty first render can't overwrite it.
   const [restored, setRestored] = useState(false);
   useEffect(() => {
-    setOverlayRoot(document.body);
     try {
       const saved = JSON.parse(sessionStorage.getItem(DRAFT_KEY) ?? "null") as { form?: Discovery; curriculum?: Curriculum | null; proposal?: Proposal | null; step?: Step } | null;
       if (saved?.form && typeof saved.form === "object") {
@@ -276,8 +261,41 @@ export function ProgramBuilder() {
   }, [restored, form, curriculum, proposal, step]);
   function startOver() {
     setForm(EMPTY_DISCOVERY); setCurriculum(null); setProposal(null); setStep(1); setAnalyzeNote(null); setGenNote(null);
-    setMessages([]); setQuick([]); setReqiState("idle");
   }
+
+  // ── Commands from the AI assistant ────────────────────────────────────────
+  // The assistant leaves a command (fields to fill, and what to do next); it is picked up
+  // here, whether the builder was already open or has just been opened for it.
+  const [assistantNote, setAssistantNote] = useState<string | null>(null);
+  const runCommand = useCallback(async () => {
+    const command = takeProgramCommand();
+    if (!command) return;
+    const before = formRef.current;
+    const filled: Discovery = { ...before, ...command.form };
+    formRef.current = filled;
+    setForm(filled);
+    setAnalyzeNote(null);
+    // Only fields that really differ count: the assistant often repeats what is already there,
+    // and that must not throw away a curriculum the tutor has been editing.
+    const changed = (Object.keys(command.form) as (keyof Discovery)[]).filter((key) => command.form[key] !== before[key]).length;
+    if (command.run === "fill") {
+      setStep((current) => (current === 3 ? 2 : current));
+      setAssistantNote(changed ? "The assistant filled in the discovery fields. Check them, then generate." : null);
+      return;
+    }
+    if (command.run === "open-curriculum") { setStep(curriculumState.current ? 2 : 1); setAssistantNote(null); return; }
+    // A proposal needs a curriculum: build one first if there is none, or if the fields just changed.
+    const built = command.run === "generate" || !curriculumState.current || changed > 0 ? await generate(filled) : curriculumState.current;
+    if (command.run === "proposal") createProposal(built);
+    setAssistantNote(command.run === "proposal" ? "The assistant assembled this proposal. Fill in the investment amounts before exporting." : "The assistant built this curriculum. Every line is click-to-edit.");
+  }, [generate, createProposal]);
+  useEffect(() => {
+    if (!restored) return;
+    void runCommand();
+    const onCommand = () => void runCommand();
+    window.addEventListener(PROGRAM_COMMAND_EVENT, onCommand);
+    return () => window.removeEventListener(PROGRAM_COMMAND_EVENT, onCommand);
+  }, [restored, runCommand]);
 
   // Printing shows only the proposal: it is copied into a print-only layer directly under <body>.
   const [printRoot, setPrintRoot] = useState<HTMLElement | null>(null);
@@ -292,62 +310,6 @@ export function ProgramBuilder() {
     document.body.classList.toggle("print-program-proposal", step === 3 && proposal !== null);
   }, [step, proposal]);
 
-  // ── Reqi ──────────────────────────────────────────────────────────────────
-  const [reqiOpen, setReqiOpen] = useState(false);
-  const [reqiState, setReqiState] = useState<ReqiState>("idle");
-  const [messages, setMessages] = useState<ReqiMessage[]>([]);
-  const [quick, setQuick] = useState<string[]>([]);
-  const [reqiInput, setReqiInput] = useState("");
-  const [reqiBusy, setReqiBusy] = useState(false);
-  const reqiStateRef = useRef(reqiState); reqiStateRef.current = reqiState;
-  const nextId = useRef(1);
-  const messagesEnd = useRef<HTMLDivElement>(null);
-  const reqiInputRef = useRef<HTMLTextAreaElement>(null);
-  const alive = useRef(true);
-  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
-  useEffect(() => { messagesEnd.current?.scrollIntoView({ block: "end" }); }, [messages]);
-
-  /** Shows the typing dots, then the message. */
-  async function agentSay(say: ReqiSay, delay: number) {
-    const id = nextId.current++;
-    setMessages((all) => [...all, { id, role: "agent", text: "", typing: true }]);
-    await wait(delay);
-    if (!alive.current) return;
-    setMessages((all) => all.map((m) => (m.id === id ? { id, role: "agent", text: say.text, actions: say.actions } : m)));
-  }
-
-  async function playTurn(turn: ReqiTurn) {
-    setReqiBusy(true);
-    setQuick([]);
-    setReqiState(turn.state);
-    let filled = formRef.current;
-    if (turn.form) { filled = { ...filled, ...turn.form }; formRef.current = filled; setForm(filled); }
-    const [first, ...rest] = turn.say;
-    if (first) await agentSay(first, 550);
-    // Reqi does the work between announcing it and reporting back.
-    if (turn.effect === "build") await generate(filled);
-    else if (turn.effect === "proposal") createProposal();
-    else if (turn.effect === "curriculum") setStep(2);
-    for (const say of rest) await agentSay(say, 800);
-    if (!alive.current) return;
-    setQuick(turn.quick ?? []);
-    setReqiBusy(false);
-  }
-
-  function openReqi() {
-    setReqiOpen(true);
-    setTimeout(() => reqiInputRef.current?.focus(), 50);
-    if (reqiStateRef.current === "idle" && messages.length === 0) void playTurn(REQI_GREETING);
-  }
-
-  function reqiSend(raw: string) {
-    const message = raw.trim();
-    if (!message || reqiBusy) return;
-    setReqiInput("");
-    setMessages((all) => [...all, { id: nextId.current++, role: "user", text: message }]);
-    void playTurn(reqiReply(reqiStateRef.current, message, formRef.current, curriculumState.current !== null));
-  }
-
   const steps: [Step, string][] = [[1, "Discovery"], [2, "Curriculum"], [3, "Proposal"]];
 
   return (
@@ -355,7 +317,7 @@ export function ProgramBuilder() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold text-zinc-900">Program Builder</h2>
-          <p className="text-sm text-zinc-600">From an employer&apos;s need to a priced proposal.{" "}
+          <p className="text-sm text-zinc-600">From an employer&apos;s need to a priced proposal. You can also ask the AI assistant to build one for you.{" "}
             {(curriculum || form.transcript || form.topic) && <button type="button" onClick={startOver} className="font-medium text-primary hover:underline">Start a new program</button>}
           </p>
         </div>
@@ -370,6 +332,13 @@ export function ProgramBuilder() {
           ))}
         </ol>
       </div>
+
+      {assistantNote && (
+        <p role="status" className="flex items-center justify-between gap-3 rounded-xl border border-primary/25 bg-primary/5 px-3.5 py-2 text-[13px] text-zinc-700">
+          <span className="flex items-center gap-2"><Sparkles className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />{assistantNote}</span>
+          <button type="button" onClick={() => setAssistantNote(null)} className="shrink-0 font-medium text-primary hover:underline">Dismiss</button>
+        </p>
+      )}
 
       {step < 3 && (
         <div className="grid items-start gap-5 lg:grid-cols-[400px_1fr]">
@@ -503,7 +472,7 @@ export function ProgramBuilder() {
                 <Editable as="p" value={curriculum.assessment} onChange={(v) => editCurriculum({ assessment: v })} className="block text-sm text-zinc-800" label="Assessment and evidence" multiline />
 
                 <div className="mt-5 flex flex-wrap gap-2">
-                  <Button type="button" onClick={createProposal}>Create employer proposal<ArrowRight className="h-4 w-4" /></Button>
+                  <Button type="button" onClick={() => createProposal()}>Create employer proposal<ArrowRight className="h-4 w-4" /></Button>
                   <Button type="button" variant="outline" onClick={() => void generate()} disabled={generating}>
                     {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}Regenerate
                   </Button>
@@ -528,72 +497,6 @@ export function ProgramBuilder() {
       )}
       {printRoot && proposal && createPortal(<ProposalDocument proposal={proposal} printing />, printRoot)}
 
-      {/* Reqi sits above the page's own assistant button. Drawn under <body>, since the tab's enter animation would re-anchor a fixed element. */}
-      {overlayRoot && createPortal(<>
-      {!reqiOpen && (
-        <button type="button" onClick={openReqi} className="focus-ring fixed bottom-24 right-6 z-40 flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-bold text-white shadow-lg transition hover:brightness-95 print:hidden">
-          <span className="h-2 w-2 rounded-full bg-emerald-200 shadow-[0_0_8px] shadow-emerald-200" aria-hidden="true" />Ask Reqi
-        </button>
-      )}
-      {reqiOpen && (
-        <section aria-label="Reqi, program design agent" className="fixed bottom-24 right-6 z-40 flex h-[min(540px,calc(100vh-8rem))] w-[380px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-2xl print:hidden">
-          <header className="flex items-center gap-2.5 bg-primary px-4 py-3 text-white">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-sm font-extrabold text-primary" aria-hidden="true">R</span>
-            <div className="min-w-0">
-              <p className="text-sm font-bold leading-tight">Reqi — Program Design Agent</p>
-              <p className="flex items-center gap-1.5 text-[11.5px] opacity-90"><span className="h-1.5 w-1.5 rounded-full bg-emerald-200" aria-hidden="true" />builds while you talk</p>
-            </div>
-            <button type="button" onClick={() => setReqiOpen(false)} aria-label="Close Reqi" className="focus-ring ml-auto rounded-lg p-1 opacity-90 hover:opacity-100"><X className="h-4 w-4" /></button>
-          </header>
-          <div className="flex-1 space-y-2.5 overflow-y-auto bg-zinc-50 px-3.5 py-4" aria-live="polite">
-            {messages.map((message) => (
-              <div key={message.id} className={cn(
-                "max-w-[86%] rounded-xl px-3 py-2 text-[13.5px] leading-normal",
-                message.role === "agent" ? "rounded-tl-sm border border-zinc-200 bg-white text-zinc-800" : "ml-auto rounded-tr-sm bg-primary text-white"
-              )}>
-                {message.typing ? (
-                  <span className="inline-flex gap-1" aria-label="Reqi is typing">
-                    {[0, 150, 300].map((delay) => <i key={delay} className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-400" style={{ animationDelay: `${delay}ms` }} />)}
-                  </span>
-                ) : (
-                  <>
-                    <ReqiText text={message.text} />
-                    {message.actions && message.actions.length > 0 && (
-                      <span className="mt-1 flex flex-wrap gap-1">
-                        {message.actions.map((action) => (
-                          <span key={action} className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/5 px-2 py-0.5 text-[11.5px] font-bold text-primary"><Check className="h-3 w-3" aria-hidden="true" />{action}</span>
-                        ))}
-                      </span>
-                    )}
-                  </>
-                )}
-              </div>
-            ))}
-            <div ref={messagesEnd} />
-          </div>
-          {quick.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 bg-zinc-50 px-3.5 pb-2">
-              {quick.map((option) => (
-                <button key={option} type="button" disabled={reqiBusy} onClick={() => reqiSend(option)} className="focus-ring rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-semibold text-primary hover:border-primary disabled:opacity-50">{option}</button>
-              ))}
-            </div>
-          )}
-          <form className="flex gap-2 border-t border-zinc-200 bg-white px-3.5 py-3" onSubmit={(e) => { e.preventDefault(); reqiSend(reqiInput); }}>
-            <textarea
-              ref={reqiInputRef}
-              value={reqiInput}
-              onChange={(e) => setReqiInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); reqiSend(reqiInput); } }}
-              maxLength={6000}
-              placeholder="Describe the program, or paste a transcript…"
-              aria-label="Message Reqi"
-              className="focus-ring h-[42px] flex-1 resize-none rounded-xl border border-zinc-200 px-3 py-2 text-[13.5px] text-zinc-900"
-            />
-            <Button type="submit" size="sm" disabled={reqiBusy || !reqiInput.trim()} aria-label="Send to Reqi" className="h-[42px]"><Send className="h-4 w-4" /></Button>
-          </form>
-        </section>
-      )}
-      </>, overlayRoot)}
     </div>
   );
 }

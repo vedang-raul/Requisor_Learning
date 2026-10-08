@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { RecordStudio } from "@/components/video-recorder";
 import { ProgramBuilder } from "@/components/program-builder";
+import { hasProgramCommand, PROGRAM_COMMAND_EVENT } from "@/lib/program-builder";
 import { AssignmentBrief } from "@/components/lesson-assignment";
 import { parseAssignment } from "@/lib/assignment-format";
 import { ASSIGNMENT_DATA, GUARDRAILS_MAX_CHARS, GUARDRAILS_MIN_CHARS, type AssignmentDataKey } from "@/lib/assignment-ai";
@@ -192,6 +193,13 @@ export default function TutorPage() {
   const { state, hydrated, upsertCourse, upsertLesson, deleteLesson, deleteCourse } = useStore();
   const router = useRouter();
   const [tab, setTab] = useState<TabKey>("analytics");
+  // The AI assistant drives the Program Builder: show its tab when a command is waiting or arrives.
+  useEffect(() => {
+    if (hasProgramCommand()) setTab("programs");
+    const open = () => setTab("programs");
+    window.addEventListener(PROGRAM_COMMAND_EVENT, open);
+    return () => window.removeEventListener(PROGRAM_COMMAND_EVENT, open);
+  }, []);
   const [items, setItems] = useState<TutorCourse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

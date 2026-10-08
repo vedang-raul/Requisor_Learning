@@ -2,7 +2,7 @@
  * Program Builder: turns an employer's training need into a curriculum and a
  * priced proposal. Everything here is plain logic with no network or DOM, so
  * the builder works without AI: the transcript reader, the curriculum engine,
- * and Reqi, the agent that interviews the tutor and drives the builder.
+ * the proposal, and the commands the AI assistant uses to drive the builder.
  */
 export const INDUSTRIES = [
   { key: "construction", label: "Construction & engineering" },
@@ -345,149 +345,89 @@ export function buildProposal(curriculum: Curriculum, employer: string, today: D
   };
 }
 
-// ── Reqi, the program design agent ──────────────────────────────────────────
-export type ReqiState = "idle" | "topic" | "audience" | "level" | "pains" | "modules" | "confirm";
-/** Something Reqi says. `**bold**` marks emphasis; `actions` are the small "what I just did" tags. */
-export type ReqiSay = { text: string; actions?: string[] };
-export type ReqiTurn = {
-  state: ReqiState;
-  /** Fields Reqi filled in. */
-  form?: Partial<Discovery>;
-  /** Spoken in order, the second after a short pause. */
-  say: ReqiSay[];
-  quick?: string[];
-  /** What the builder should do next. */
-  effect?: "build" | "proposal" | "curriculum";
-};
+// ── Commands from the AI assistant ──────────────────────────────────────────
+/**
+ * How the AI assistant drives the builder. The assistant's confirmation card
+ * leaves a command in this browser tab's storage and announces it; the builder
+ * picks it up, whether it was already open or is opened for the purpose.
+ *   fill             put these values in the discovery fields
+ *   generate         fill, then write the curriculum
+ *   proposal         fill, write a curriculum if needed, then assemble the proposal
+ *   open-curriculum  go back from the proposal to the curriculum
+ */
+export const PROGRAM_RUNS = ["fill", "generate", "proposal", "open-curriculum"] as const;
+export type ProgramRun = (typeof PROGRAM_RUNS)[number];
+export type ProgramCommand = { form: Partial<Discovery>; run: ProgramRun };
 
-export const REQI_GREETING: ReqiTurn = {
-  state: "topic",
-  say: [{ text: "Hi — I'm Reqi. Tell me about the program you need and I'll build the curriculum while we talk. You can describe it in a sentence, or paste the discovery-call transcript straight in here." }],
-  quick: ["Use the sample call", "I'll describe it"],
-};
+export const PROGRAM_DRAFT_KEY = "requisor-program-builder";
+export const PROGRAM_COMMAND_KEY = "requisor-program-builder-command";
+export const PROGRAM_COMMAND_EVENT = "requisor:program-builder-command";
 
-export function reqiSummary(form: Discovery): string {
-  return `Here's what I have:\n**${form.topic || "—"}** · ${form.audience || "—"} · ${form.level} · ${form.modules} modules · ${form.industry}`;
+/** Keeps only real discovery fields with sensible values; anything else is dropped. */
+export function cleanDiscoveryFields(raw: unknown): Partial<Discovery> {
+  const v = (raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>;
+  const out: Partial<Discovery> = {};
+  if (typeof v.transcript === "string" && v.transcript.trim()) {
+    // Line breaks are kept: the transcript reader works sentence by sentence.
+    // eslint-disable-next-line no-control-regex
+    out.transcript = v.transcript.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, " ").trim().slice(0, 6000);
+  }
+  if (text(v.employer, 160)) out.employer = text(v.employer, 160);
+  if (text(v.audience, 160)) out.audience = text(v.audience, 160);
+  if (text(v.topic, 200)) out.topic = text(v.topic, 200);
+  const industry = INDUSTRIES.find((i) => i.key === v.industry)?.key;
+  if (industry) out.industry = industry;
+  const level = typeof v.level === "string" ? LEVELS.find((l) => l.toLowerCase() === (v.level as string).trim().toLowerCase()) : undefined;
+  if (level) out.level = level;
+  const wanted = typeof v.format === "string" ? v.format.trim().toLowerCase() : "";
+  const format = wanted ? FORMATS.find((f) => f.toLowerCase() === wanted || f.toLowerCase().startsWith(wanted)) : undefined;
+  if (format) out.format = format;
+  if (typeof v.modules === "number" && Number.isFinite(v.modules)) out.modules = clampModules(v.modules);
+  const pains = Array.isArray(v.pains) ? list(v.pains, 6, 200) : typeof v.pains === "string" ? list(painList(v.pains), 6, 200) : [];
+  if (pains.length) out.pains = pains.join("\n");
+  return out;
 }
 
-/** One step of the conversation: what Reqi fills in, says and does in reply to `message`. */
-export function reqiReply(state: ReqiState, message: string, form: Discovery, hasCurriculum: boolean): ReqiTurn {
-  const t = message.trim();
-  const low = t.toLowerCase();
+export function readProgramCommand(raw: unknown): ProgramCommand | null {
+  const v = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const run = PROGRAM_RUNS.find((r) => r === v.run);
+  return run ? { run, form: cleanDiscoveryFields(v.form) } : null;
+}
 
-  // Things Reqi understands at any point.
-  if (low.includes("sample")) {
-    const filled = sampleDiscovery(form);
-    return {
-      state: "confirm", form: filled,
-      say: [
-        { text: "Loaded the sample pre-construction discovery call and extracted the details.", actions: ["Transcript loaded", "Fields filled from call"] },
-        { text: `${reqiSummary(filled)}\nShall I build the curriculum?` },
-      ],
-      quick: ["Build it", "Change something"],
-    };
-  }
-  if (/^(build|generate|yes|go|do it|build it|regenerate)/.test(low) && (state === "confirm" || hasCurriculum)) {
-    return {
-      state: "confirm", effect: "build",
-      say: [
-        { text: "Building the curriculum now — title, outcomes, modules with submodules and activities…", actions: ["Running curriculum engine"] },
-        { text: "Done — it's on screen. Every line is click-to-edit, so your program team has the final word. Want me to assemble the employer proposal?", actions: ["Curriculum generated"] },
-      ],
-      quick: ["Create the proposal", "Regenerate"],
-    };
-  }
-  if (low.includes("proposal") && hasCurriculum) {
-    return {
-      state, effect: "proposal",
-      say: [
-        { text: "Assembling the proposal — need, outcomes, curriculum, delivery, and an investment table for your pricing…", actions: ["Building proposal"] },
-        { text: "Proposal's ready. Fill the investment amounts, then Export PDF to hand it across the table.", actions: ["Proposal assembled"] },
-      ],
-      quick: ["Back to curriculum"],
-    };
-  }
-  if (low.includes("back to curriculum")) {
-    return { state, effect: "curriculum", say: [{ text: "Back on the curriculum view." }], quick: ["Create the proposal"] };
-  }
-  if (t.length > 220) {
-    // A long paste is a transcript.
-    const filled = { ...form, ...analyzeTranscript(t), transcript: t };
-    return {
-      state: "confirm", form: filled,
-      say: [
-        { text: "That reads like a discovery transcript — I've analyzed it and filled in what I found.", actions: ["Transcript analyzed", "Fields extracted"] },
-        { text: `${reqiSummary(filled)}\nCorrect anything by telling me (“audience is project engineers”), or say **build it**.` },
-      ],
-      quick: ["Build it"],
-    };
-  }
+/** Leaves a command for the builder and announces it (browser only). */
+export function sendProgramCommand(command: ProgramCommand): void {
+  try { sessionStorage.setItem(PROGRAM_COMMAND_KEY, JSON.stringify(command)); } catch { /* storage is unavailable */ }
+  window.dispatchEvent(new CustomEvent(PROGRAM_COMMAND_EVENT));
+}
 
-  // Corrections at any point: "audience is X", "5 modules", "level is advanced".
-  const confirmQuick = state === "confirm" ? ["Build it"] : undefined;
-  const audience = /audience (?:is|are|should be)\s+(.{3,60})/.exec(low);
-  if (audience) {
-    return { state, form: { audience: audience[1].trim() }, say: [{ text: "Updated.", actions: [`Audience set: ${titleCase(audience[1].trim())}`] }], quick: confirmQuick };
-  }
-  const moduleCount = /(\d)\s*(?:modules|sessions)/i.exec(t);
-  if (moduleCount) {
-    const n = clampModules(Number(moduleCount[1]));
-    return { state, form: { modules: n }, say: [{ text: `Done — ${n} modules.`, actions: [`Modules: ${n}`] }], quick: confirmQuick };
-  }
-  const level = parseLevel(t);
-  if (level && low.includes("level")) {
-    return { state, form: { level }, say: [{ text: "Level updated.", actions: [`Level: ${level}`] }], quick: confirmQuick };
-  }
+/** Whether a command is waiting, without taking it. */
+export function hasProgramCommand(): boolean {
+  try { return sessionStorage.getItem(PROGRAM_COMMAND_KEY) !== null; } catch { return false; }
+}
 
-  // The interview.
-  switch (state) {
-    case "topic": {
-      if (/describe|i'll/.test(low)) return { state, say: [{ text: "Go ahead — what's the program about, and for which organization or industry?" }] };
-      const industry = detectIndustry(t);
-      return {
-        state: "audience",
-        form: { topic: titleCase(t.replace(/^(a course|a program|training|course|program)\s+(on|in|about|for)\s+/i, "")), ...(industry ? { industry } : {}) },
-        say: [{ text: "Good. Who's the audience — what roles will be in the room?", actions: ["Topic set", ...(industry ? [`Industry: ${industry}`] : [])] }],
-        quick: ["Construction managers", "Operations leads", "Mixed professionals"],
-      };
-    }
-    case "audience": {
-      const industry = detectIndustry(t);
-      return {
-        state: "level",
-        form: { audience: t.replace(/^(for|the|our)\s+/i, ""), ...(industry ? { industry } : {}) },
-        say: [{ text: "What level are they at with this topic — beginner, intermediate, or advanced?", actions: ["Audience set"] }],
-        quick: ["Beginner", "Intermediate", "Advanced"],
-      };
-    }
-    case "level": {
-      const chosen = parseLevel(t) ?? "Intermediate";
-      return {
-        state: "pains", form: { level: chosen },
-        say: [{ text: "What are the pains or outcomes the employer named? List a few — their words are fine.", actions: [`Level: ${chosen}`] }],
-        quick: ["Skip"],
-      };
-    }
-    case "pains": {
-      const skipped = /^skip/.test(low);
-      const pains = t.split(/,|;|\band\b|\n/).map((part) => part.trim()).filter((part) => part.length > 8).join("\n");
-      return {
-        state: "modules", ...(skipped ? {} : { form: { pains } }),
-        say: [{ text: "How many modules should it have? Four fits most 4-week programs.", actions: skipped ? [] : ["Pains captured"] }],
-        quick: ["3", "4", "5", "6"],
-      };
-    }
-    case "modules": {
-      const n = clampModules(Number((/\d/.exec(t) ?? ["4"])[0]));
-      return {
-        state: "confirm", form: { modules: n },
-        say: [{ text: `${reqiSummary({ ...form, modules: n })}\nReady — shall I build the curriculum?`, actions: [`Modules: ${n}`] }],
-        quick: ["Build it", "Change something"],
-      };
-    }
-    case "confirm":
-      return { state, say: [{ text: "Tell me what to change (“audience is…”, “5 modules”, “level is advanced”) — or say **build it**." }], quick: ["Build it"] };
-    default:
-      return { state, say: [{ text: "Tell me about the program you need, paste a transcript, or say **use the sample**." }], quick: ["Use the sample call"] };
+/** Takes the waiting command, if any, so it runs once. */
+export function takeProgramCommand(): ProgramCommand | null {
+  try {
+    const stored = sessionStorage.getItem(PROGRAM_COMMAND_KEY);
+    if (stored === null) return null;
+    sessionStorage.removeItem(PROGRAM_COMMAND_KEY);
+    return readProgramCommand(JSON.parse(stored));
+  } catch {
+    return null;
+  }
+}
+
+/** A one-line account of the builder's saved state, for the assistant's context (browser only). */
+export function programDraftSummary(): { topic: string; audience: string; employer: string; level: string; industry: string; modules: number; hasCurriculum: boolean; curriculumTitle: string; hasProposal: boolean } | null {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(PROGRAM_DRAFT_KEY) ?? "null") as { form?: Partial<Discovery>; curriculum?: Partial<Curriculum> | null; proposal?: unknown } | null;
+    if (!saved?.form) return null;
+    const form = { ...EMPTY_DISCOVERY, ...cleanDiscoveryFields(saved.form) };
+    return {
+      topic: form.topic, audience: form.audience, employer: form.employer, level: form.level, industry: form.industry, modules: form.modules,
+      hasCurriculum: Boolean(saved.curriculum), curriculumTitle: text(saved.curriculum?.title, 160), hasProposal: Boolean(saved.proposal),
+    };
+  } catch {
+    return null;
   }
 }
