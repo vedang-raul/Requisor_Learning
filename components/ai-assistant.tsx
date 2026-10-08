@@ -392,9 +392,7 @@ export function AiAssistant() {
       } else {
         rafRef.current = null;
         setStreaming(false);
-        speech.stop();
         const finalText = fullTextRef.current;
-        if (!requestFailedRef.current && finalText.trim()) void speech.speak(finalText);
         trackEvent("ai_response_completed", {
           mode: isTutorMode ? "tutor" : "learner",
           response_length: finalText.length,
@@ -509,17 +507,25 @@ export function AiAssistant() {
           })),
         }),
       });
+      if (requestController.signal.aborted || requestAbortRef.current !== requestController) return;
       if (!res.body) throw new Error("No response body");
-      if (!res.ok) setRetryText(trimmed);
+      if (!res.ok) {
+        setRetryText(trimmed);
+        requestFailedRef.current = true;
+      } else {
+        speech.beginReply();
+      }
       const reader = res.body.getReader();
       streamReaderRef.current = reader;
       const decoder = new TextDecoder();
       while (true) {
         const { done, value } = await reader.read();
+        if (requestController.signal.aborted || requestAbortRef.current !== requestController) return;
         if (done) break;
         rawTextRef.current += decoder.decode(value, { stream: true });
         const split = splitActionFrames(rawTextRef.current);
         fullTextRef.current = split.text;
+        if (res.ok) speech.updateReply(split.text);
         if (split.actions.length !== replyActionsRef.current.length) {
           replyActionsRef.current = split.actions;
           const actions = split.actions;
@@ -543,6 +549,8 @@ export function AiAssistant() {
         requestAbortRef.current = null;
         streamReaderRef.current = null;
         networkDoneRef.current = true;
+        if (requestFailedRef.current || requestController.signal.aborted) speech.stop();
+        else speech.updateReply(fullTextRef.current, true);
       }
     }
   }

@@ -26,3 +26,9 @@ Do not show a per-reply "Read aloud" button.
 **Why:** The user explicitly requested its removal and reiterated that it was still visible.
 
 **How to apply:** Keep automatic narration when unmuted and the header voice/mute/stop controls. Error messages must not direct users to the removed button.
+
+Reduce startup delay without changing the chosen voice, spoken language, or written answer.
+
+**Why:** The user approved early sentence narration and preloading the next passage to reduce voice-loading delays. Waiting for the cosmetic typing animation adds unnecessary delay; switching providers or dropping translation would violate existing choices.
+
+**How to apply:** Narrate stable visible text, not action metadata or unfinished markup. Keep lookahead bounded to one future audio passage and freeze voice selection for each narration session. Stop, mute, voice changes, account changes and navigation invalidate that session: later reply tokens must not restart it. Keep prefetched audio ephemeral and account-isolated rather than introducing shared or persistent reply caches.

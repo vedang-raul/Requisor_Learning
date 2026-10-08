@@ -1,6 +1,6 @@
 import { SpeechPlayer, type SpeechPlaybackState } from "@/lib/speech-player";
 import { readSpeechPreferences, writeSpeechPreferences, speechPreferenceKey } from "@/lib/speech-preferences";
-import { narrationText, speechChunks } from "@/lib/speech-text";
+import { narrationText, speechChunks, SpeechReplyBuffer } from "@/lib/speech-text";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -26,6 +26,87 @@ function harness() {
   return { player, deps, states, audios };
 }
 describe("speech playback lifecycle", () => {
+  it("starts the first sentence before the reply finishes and never repeats it on completion", async () => {
+    const h = harness();
+    const first = "This sentence can be narrated early.";
+    const full = `${first} The rest of the answer is still being written.`;
+    h.player.beginReply("marathi-male", 300);
+    h.player.updateReply(`${first} `);
+    expect(JSON.parse(h.deps.fetch.mock.calls[0][1].body)).toEqual({ voiceKey: "marathi-male", text: first });
+    await new Promise(r => setTimeout(r, 0));
+    h.player.updateReply(full, true);
+    await new Promise(r => setTimeout(r, 0));
+    expect(h.audios).toHaveLength(1);
+    h.audios[0].onended?.(new Event("ended"));
+    await new Promise(r => setTimeout(r, 0));
+    expect(h.audios).toHaveLength(2);
+    expect(h.deps.fetch.mock.calls.map(call => JSON.parse(call[1].body).text).join("")).toBe(full);
+    h.audios[1].onended?.(new Event("ended"));
+    h.player.updateReply(full, true);
+    expect(h.deps.fetch).toHaveBeenCalledTimes(2);
+  });
+  it("preloads exactly one next passage while current audio plays, without changing speaking feedback", async () => {
+    const h = harness();
+    await h.player.speak("A helpful lesson explanation. ".repeat(100), "guide");
+    h.audios[0].onplaying?.(new Event("playing"));
+    await new Promise(r => setTimeout(r, 0));
+    expect(h.deps.fetch).toHaveBeenCalledTimes(2);
+    expect(h.audios).toHaveLength(1);
+    expect(h.states.at(-1)).toEqual({ loading: false, isSpeaking: true, error: null });
+    h.audios[0].onended?.(new Event("ended"));
+    await new Promise(r => setTimeout(r, 0));
+    expect(h.audios).toHaveLength(2);
+    expect(h.deps.fetch).toHaveBeenCalledTimes(3);
+    h.player.stop();
+  });
+  it("keeps current audio playing when prefetch fails, then reports a safe error for the next passage", async () => {
+    const h = harness();
+    h.deps.fetch.mockResolvedValueOnce(audioResponse()).mockResolvedValueOnce(new Response("private provider detail", { status: 502 }));
+    await h.player.speak("A helpful lesson explanation. ".repeat(40), "guide");
+    h.audios[0].onplaying?.(new Event("playing"));
+    await new Promise(r => setTimeout(r, 0));
+    expect(h.states.at(-1)?.isSpeaking).toBe(true);
+    h.audios[0].onended?.(new Event("ended"));
+    await new Promise(r => setTimeout(r, 0));
+    expect(h.audios).toHaveLength(1);
+    expect(h.states.at(-1)?.error).toContain("unavailable");
+    expect(h.states.at(-1)?.error).not.toContain("private");
+  });
+  it("ignores old audio events after advancing within the same streamed reply", async () => {
+    const h = harness();
+    await h.player.speak("A helpful lesson explanation. ".repeat(60), "guide");
+    const first = h.audios[0], ended = first.onended, paused = first.onpause;
+    ended?.call(first, new Event("ended"));
+    await new Promise(r => setTimeout(r, 0));
+    h.audios[1].onplaying?.(new Event("playing"));
+    const count = h.deps.fetch.mock.calls.length;
+    ended?.call(first, new Event("ended"));
+    paused?.call(first, new Event("pause"));
+    expect(h.audios).toHaveLength(2);
+    expect(h.deps.fetch).toHaveBeenCalledTimes(count);
+    expect(h.states.at(-1)?.isSpeaking).toBe(true);
+    h.player.stop();
+  });
+  it.each(["stop", "mute", "switch voice", "account change", "close chat"])("cancels prefetched audio and ignores subsequent reply tokens after %s", async () => {
+    const h = harness(), pending = deferred<Response>();
+    h.deps.fetch.mockReturnValueOnce(Promise.resolve(audioResponse())).mockReturnValueOnce(pending.promise);
+    const full = "A helpful lesson explanation. ".repeat(50).trim();
+    h.player.beginReply("guide");
+    h.player.updateReply(full);
+    await new Promise(r => setTimeout(r, 0));
+    expect(h.deps.fetch).toHaveBeenCalledTimes(2);
+    const signal = h.deps.fetch.mock.calls[1][1].signal;
+    const ended = h.audios[0].onended;
+    h.player.stop();
+    expect(signal.aborted).toBe(true);
+    pending.resolve(audioResponse());
+    h.player.updateReply(full, true);
+    ended?.call(h.audios[0], new Event("ended"));
+    await new Promise(r => setTimeout(r, 0));
+    expect(h.audios).toHaveLength(1);
+    expect(h.deps.fetch).toHaveBeenCalledTimes(2);
+    expect(h.states.at(-1)).toEqual({ loading: false, isSpeaking: false, error: null });
+  });
   it("uses keys only and drives speaking feedback from actual playback events", async () => {
     const h = harness();
     await h.player.play("preview", "guide");
@@ -154,6 +235,38 @@ describe("speech playback lifecycle", () => {
       pending.resolve(audioResponse()); await play;
       expect(h.deps.createAudio).not.toHaveBeenCalled();
     } finally { jest.useRealTimers(); }
+  });
+});
+describe("incremental narration passages", () => {
+  it("uses a short first sentence and normal-sized remaining passages without dropping text", () => {
+    const buffer = new SpeechReplyBuffer(500);
+    const first = "This is the first complete sentence.";
+    const rest = " More useful explanation follows.".repeat(40);
+    expect(buffer.take("This is the first")).toEqual([]);
+    const chunks = [...buffer.take(`${first} `), ...buffer.take(first + rest, true)];
+    expect(chunks[0]).toBe(first);
+    expect(chunks.slice(1).some(chunk => chunk.length > 180)).toBe(true);
+    expect(chunks.every(chunk => chunk.length <= 500)).toBe(true);
+    expect(chunks.join("")).toBe(first + rest);
+    expect(buffer.take(first + rest, true)).toEqual([]);
+  });
+  it("holds unfinished links, course tags and fenced code instead of speaking raw markup", () => {
+    const buffer = new SpeechReplyBuffer();
+    const first = "This introduction can be spoken.";
+    expect(buffer.take(`${first} [Private label](https://example.test`)).toEqual([first]);
+    const full = `${first} [The lesson](https://example.test). {{course|demo|Demo course}} \`\`\`js\nsecretExample();\n\`\`\``;
+    const chunks = buffer.take(full, true);
+    expect(first + chunks.join("")).toBe(narrationText(full));
+    expect(chunks.join("")).not.toContain("secretExample");
+    const code = new SpeechReplyBuffer();
+    expect(code.take("```js\nsecretExample();")).toEqual([]);
+    const tag = new SpeechReplyBuffer();
+    expect(tag.take("{{course|private")).toEqual([]);
+  });
+  it("does not split the decimal in a first sentence before the following token arrives", () => {
+    const buffer = new SpeechReplyBuffer();
+    expect(buffer.take("The correct measurement is 3.")).toEqual([]);
+    expect(buffer.take("The correct measurement is 3.14 metres. ")).toEqual(["The correct measurement is 3.14 metres."]);
   });
 });
 describe("local speech preferences", () => {

@@ -108,6 +108,16 @@ export function useApprovedSpeech(accountId: string | null) {
     await player.current?.speak(text, prefs.current.voiceKey, english ? 500 : 300);
   }, [accountId, catalog.voices]);
 
+  const beginReply = useCallback(() => {
+    const voice = catalog.voices.find(v => v.key === prefs.current.voiceKey && v.enabled);
+    if (!accountId || owner.current !== accountId || loadedFor.current !== accountId || prefs.current.muted || !voice) return;
+    player.current?.beginReply(voice.key, getSpeechLanguage(voice.languages) === "en" ? 500 : 300);
+  }, [accountId, catalog.voices]);
+  const updateReply = useCallback((text: string, final = false) => {
+    if (!accountId || owner.current !== accountId || loadedFor.current !== accountId || prefs.current.muted) return;
+    player.current?.updateReply(text, final);
+  }, [accountId]);
+
   const ready = owner.current === loadedFor.current && !!accountId;
   return {
     voices: (ready ? catalog.voices : []) as PublicSpeechVoice[],
@@ -118,6 +128,6 @@ export function useApprovedSpeech(accountId: string | null) {
     error: ready ? playback.error : null,
     setupMessage: catalog.setupMessage,
     canSpeak: ready && !muted && catalog.voices.some(v => v.key === selectedVoiceKey && v.enabled),
-    selectVoice, setMuted, play, speak, stop,
+    selectVoice, setMuted, play, speak, stop, beginReply, updateReply,
   };
 }
