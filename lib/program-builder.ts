@@ -117,7 +117,7 @@ export function analyzeTranscript(transcript: string): Partial<Discovery> {
   if (audience) found.audience = audience[1].trim();
 
   // A level the client names outright ("call it intermediate") beats one implied in passing ("new to AI").
-  if (/intermediate/.test(t)) found.level = "Intermediate";
+  if (/intermediate/.test(t)) found.level = "Intermediate";
   else if (/advanced|expert/.test(t)) found.level = "Advanced";
   else if (/beginner|new to|no experience|basics/.test(t)) found.level = "Beginner";
 
