@@ -95,14 +95,12 @@ export function CourseCard({ course }: { course: Course }) {
       {/* Body */}
       <div className="space-y-3 bg-card p-5">
         <div>
-          <h3 className="mt-1 text-base font-semibold transition-colors group-hover:text-primary">{course.title}</h3>
-          <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-zinc-600">{course.tagline}</p>
-          {course.tutorName && (
-            <p className="mt-1 flex items-center gap-1 text-[11px] text-zinc-500">
-              <GraduationCap className="h-3 w-3 shrink-0" />
-              {course.tutorName}
-            </p>
-          )}
+          <h3 className="mt-1 truncate text-base font-semibold transition-colors group-hover:text-primary" title={course.title}>{course.title}</h3>
+          {/* Two lines are always reserved, so cards in a row are the same height whatever the tagline length. */}
+          <p className="mt-1 line-clamp-2 min-h-[2.4375rem] text-xs leading-relaxed text-zinc-600">{course.tagline}</p>
+          <p className="mt-1 flex h-4 items-center gap-1 text-[11px] text-zinc-500">
+            {course.tutorName && <><GraduationCap className="h-3 w-3 shrink-0" /><span className="truncate">{course.tutorName}</span></>}
+          </p>
         </div>
 
         <div className="flex items-center gap-4 text-xs text-zinc-600">
