@@ -24,8 +24,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="min-h-screen bg-background font-sans text-[#111827]">
         <Providers>
           <StoreProvider>{children}</StoreProvider>
-          <DesignGrid />
         </Providers>
+        {/* Spacing and alignment overlay for whoever is working on the UI (Alt+G). */}
+        <DesignGrid />
       </body>
     </html>
   );
