@@ -144,7 +144,7 @@ function describe(action: AssistantAction): { icon: typeof Sparkles; title: stri
 export function AssistantActionCard({ action, onOutcome }: { action: AssistantAction; onOutcome: (outcome: ActionOutcome) => void }) {
   const router = useRouter();
   const [state, setState] = useState<State>({ phase: "idle" });
-  const { state } = useStore();
+  const { state: accountState } = useStore();
   const { icon: Icon, title, lines, confirm } = describe(action);
 
   function finish(message: string, extra: { href?: string; hrefLabel?: string } = {}, changed = false) {
@@ -223,7 +223,7 @@ export function AssistantActionCard({ action, onOutcome }: { action: AssistantAc
         }
         case "program_builder":
           // The builder picks the command up, whether it is open now or opened by this.
-          sendProgramCommand({ run: action.run, form: action.form }, state.user?.email);
+          sendProgramCommand({ run: action.run, form: action.form }, accountState.user?.email);
           finish(action.run === "fill" ? "Filled in the discovery fields." : action.run === "generate" ? "Building the curriculum in the Program Builder." : action.run === "proposal" ? "Assembling the proposal in the Program Builder." : "Opened the curriculum.");
           if (!["/app/tutor", "/app/tutor/"].includes(window.location.pathname)) router.push("/app/tutor/");
           return;

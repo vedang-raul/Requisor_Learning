@@ -26,4 +26,10 @@ Use plain path selections or filter diff output instead of relying on shorthand 
 
 **How to apply:** Run the build in isolation, then restart the development workflow and inspect its logs.
 
+**Rule:** After merging frontend code, require a successful production build before declaring the merge ready to publish, even when the unit suite passes.
+
+**Why:** Domain-level unit tests do not necessarily import the client components used by production routes, so they can miss component compilation failures.
+
+**How to apply:** Keep compilation and TypeScript checks enabled. Validate the complete route build in isolation rather than using unit-test success as a substitute.
+
 **How to apply:** before editing any pre-existing file, strip CRLF; if a binary refuses to run, fix perms first instead of reinstalling.
