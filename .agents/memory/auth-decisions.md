@@ -21,6 +21,12 @@ Keep any browser-held learning state isolated between users, and never treat it 
 
 **How to apply:** Review account switching, logout, and server authorization together when changing persistence.
 
+Do not attribute legacy unscoped browser drafts to whichever account signs in next.
+
+**Why:** Their ownership is unknown; retaining them under the current account can expose another person's work on a shared browser.
+
+**How to apply:** Use account-scoped drafts and queued actions. Ignore unscoped legacy records unless ownership can be independently established.
+
 When an additional public domain breaks Google login, prefer starting login on the already-configured authentication origin rather than changing the OAuth callback blindly.
 
 **Why:** Browser OAuth cookies are host-bound. Multiple public aliases can serve the same app while Google still returns to only one configured origin. Changing that origin without confirming Google's authorized redirect URI can also break users whose login already works.

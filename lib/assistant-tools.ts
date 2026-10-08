@@ -21,6 +21,7 @@ import type { AssistantAction } from "@/lib/assistant-actions";
 import type { Course, Lesson } from "@/lib/types";
 import { getLessonTranscript } from "@/lib/lesson-transcript";
 import { getCategoryCover } from "@/components/category-icon";
+import { cleanDiscoveryFields, FORMATS, INDUSTRIES, PROGRAM_RUNS, type ProgramRun } from "@/lib/program-builder";
 import { transcriptForAi } from "@/lib/transcript";
 
 export type AssistantRole = "employee" | "tutor" | "admin";
@@ -684,6 +685,45 @@ const TOOLS: ToolDef[] = [
       const check = validateCourse({ ...course, lessons: course.lessons.map((l) => (l.id === current.id ? next : l)) }, course.slug, true);
       if (!check.ok) return fail(`Those changes aren't valid: ${check.error}`);
       return proposed({ kind: "update_lesson", id: newId(), courseSlug: course.slug, courseTitle: course.title, lesson: next, summary }, `Update the lesson "${current.title}": ${summary.join("; ")}.`);
+    },
+  },
+  {
+    name: "propose_program_builder",
+    description: "Drive the Program Builder (Tutor Workspace > Program Builder), which turns an employer's training need into a curriculum and a priced proposal. Use it when the tutor wants a training program, curriculum or proposal FOR AN EMPLOYER or client organisation, or pastes a discovery-call transcript. Pass whatever discovery details you know; anything you leave out keeps its current value in the builder. action: 'fill' only fills the fields; 'generate' fills them and writes the curriculum; 'proposal' also assembles the employer proposal (a curriculum is written first if there is none); 'open-curriculum' goes back from the proposal to the curriculum. This is not for courses in My Courses: use propose_create_course for those.",
+    parameters: {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: [...PROGRAM_RUNS] },
+        transcript: { type: "string", description: "The discovery-call transcript or notes, word for word, when the tutor pasted one" },
+        employer: { type: "string" },
+        industry: { type: "string", enum: INDUSTRIES.map((i) => i.key), description: "Use 'general' when none of the others fits" },
+        audience: { type: "string", description: "Who is being trained, e.g. construction managers" },
+        topic: { type: "string", description: "The training topic, as a title" },
+        level: { type: "string", enum: ["Beginner", "Intermediate", "Advanced"] },
+        pains: { type: "array", items: { type: "string" }, description: "Pains or goals the employer named, one per item, in their words" },
+        modules: { type: "integer", description: "3 to 6" },
+        format: { type: "string", enum: [...FORMATS] },
+      },
+      required: ["action"],
+    },
+    roles: MANAGERS,
+    async run(args) {
+      const run = PROGRAM_RUNS.find((r) => r === args.action) as ProgramRun | undefined;
+      if (!run) return fail(`action must be one of: ${PROGRAM_RUNS.join(", ")}.`);
+      const modules = int(args.modules);
+      const form = cleanDiscoveryFields({ ...args, modules: Number.isSafeInteger(modules) ? modules : undefined });
+      const summary = [
+        ...(form.topic ? [form.topic] : []),
+        [form.employer, form.audience, form.level, form.modules ? `${form.modules} modules` : "", form.industry ? INDUSTRIES.find((i) => i.key === form.industry)?.label : ""].filter(Boolean).join(" · "),
+        ...(form.pains ? [`Needs: ${form.pains.split("\n").join("; ")}`.slice(0, 220)] : []),
+        ...(form.transcript ? [`Transcript: ${form.transcript.length.toLocaleString("en-US")} characters`] : []),
+      ].filter(Boolean);
+      if (run === "fill" && !Object.keys(form).length) return fail("Nothing to fill in: give at least one discovery detail (topic, audience, employer, level, pains, modules, format or a transcript).");
+      const what = run === "fill" ? "Fill in the Program Builder's discovery fields"
+        : run === "generate" ? "Write the curriculum in the Program Builder"
+        : run === "proposal" ? "Assemble the employer proposal in the Program Builder"
+        : "Go back to the curriculum in the Program Builder";
+      return proposed({ kind: "program_builder", id: newId(), run, form, summary }, `${what}${summary.length ? `: ${summary[0]}` : ""}. It opens the Program Builder tab. Nothing there is saved to the database or sent to anyone.`);
     },
   },
   {

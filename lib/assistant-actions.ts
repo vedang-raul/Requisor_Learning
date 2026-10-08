@@ -20,6 +20,8 @@ export type AssistantAction =
   | { kind: "create_course"; id: string; course: Course }
   /** Changed course details only; lessons are untouched. */
   | { kind: "update_course"; id: string; courseSlug: string; courseTitle: string; changes: Partial<Pick<Course, "title" | "tagline" | "category" | "level" | "tags" | "baseAssessment" | "cover">>; summary: string[] }
+  /** Drives the Program Builder tab: fills discovery fields and, optionally, builds the curriculum or the proposal. */
+  | { kind: "program_builder"; id: string; run: import("@/lib/program-builder").ProgramRun; form: Partial<import("@/lib/program-builder").Discovery>; summary: string[] }
   /** An existing lesson with edits applied (same id). */
   | { kind: "update_lesson"; id: string; courseSlug: string; courseTitle: string; lesson: Lesson; summary: string[] }
   | { kind: "set_lesson_published"; id: string; courseSlug: string; courseTitle: string; lessonId: string; lessonTitle: string; published: boolean; /** Scheduled launch (ISO); absent = right away. */ publishAt?: string };
@@ -34,7 +36,7 @@ export function encodeActionFrame(action: AssistantAction): string {
 
 const KINDS = new Set<AssistantAction["kind"]>([
   "generate_assignment", "open_quiz", "open_page", "grade_submission",
-  "set_course_published", "create_lesson", "set_lesson_published", "create_course", "update_course", "update_lesson",
+  "set_course_published", "create_lesson", "set_lesson_published", "create_course", "update_course", "update_lesson", "program_builder",
 ]);
 
 /**

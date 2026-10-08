@@ -11,6 +11,7 @@ import { renderMarkdownLite, endsInOpenTag } from "@/components/markdown-lite";
 import { useVoice } from "@/hooks/use-voice";
 import { useApprovedSpeech } from "@/hooks/use-approved-speech";
 import { ChatbotVoiceSelect } from "@/components/chatbot-voice-select";
+import { programDraftSummary } from "@/lib/program-builder";
 import { PersonaAvatar } from "@/components/persona-avatar";
 import { AI_GUIDE_PREFERENCES_UPDATED, getPersona } from "@/lib/personas";
 import { trackEvent } from "@/lib/analytics";
@@ -497,6 +498,8 @@ export function AiAssistant() {
         signal: requestController.signal,
         body: JSON.stringify({
           // On a lesson page, tell the assistant which lesson is open.
+          // What is in the Program Builder, so the assistant can pick up where the tutor left it.
+          ...(isTutorMode && programDraftSummary(state.user?.email) ? { programBuilder: programDraftSummary(state.user?.email) } : {}),
           ...(window.location.pathname.startsWith("/app/learn") ? { viewingLessonId: new URLSearchParams(window.location.search).get("lesson") ?? undefined } : {}),
           messages: next.map((m) => ({
             role: m.role,

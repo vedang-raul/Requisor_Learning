@@ -21,6 +21,8 @@ export interface Lesson {
   /** When true, the assignment isn't just an AI practice prompt — the lesson
    *  page shows an upload widget and learners must submit a file for it. */
   requiresSubmission?: boolean;
+  /** Set when the tutor has the AI write each learner their own assignment, inside these guardrails. */
+  assignmentAi?: import("@/lib/assignment-ai").AssignmentAi;
   /** Optional sub-part / module name used to group lessons on the course page. */
   section?: string;
   /** "reading" lessons are article/tool links with no video by design — not a video pending upload. Defaults to "video". */

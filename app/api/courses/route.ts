@@ -1,4 +1,5 @@
 import { isLessonLive } from "@/lib/utils";
+import { HIDDEN_ASSIGNMENT_AI } from "@/lib/assignment-ai";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -19,7 +20,8 @@ export async function GET() {
       // tutors edit their drafts through /api/tutor/courses instead.
       : (await getCourses("WHERE c.published = TRUE")).map((course) => ({
           ...course,
-          lessons: course.lessons.filter((lesson) => isLessonLive(lesson)),
+          lessons: course.lessons.filter((lesson) => isLessonLive(lesson))
+            .map((lesson) => (lesson.assignmentAi ? { ...lesson, assignmentAi: HIDDEN_ASSIGNMENT_AI } : lesson)),
         }));
     return NextResponse.json({ courses });
   }

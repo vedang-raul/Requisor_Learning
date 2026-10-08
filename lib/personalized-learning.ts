@@ -1,4 +1,5 @@
 import { seedCourses } from "@/lib/data";
+import { readAssignmentAi } from "@/lib/assignment-ai";
 import { db } from "@/lib/db";
 import { INSUFFICIENT_CONTENT_CODE } from "@/lib/assignment-format";
 import type { Lesson } from "@/lib/types";
@@ -7,6 +8,8 @@ const MAX_PROFILE_VALUE_LENGTH = 160;
 
 export type LearnerProfile = {
   qualification: string | null;
+  /** Job title from the profile. */
+  position?: string | null;
   learningGoal: string | null;
   dateOfBirth: Date | string | null;
   weakConcepts: string[];
@@ -24,12 +27,12 @@ export function findTrustedLesson(lessonId: string): Lesson | null {
 }
 
 /** A lesson resolved for AI prompts, flagged by who wrote its text. */
-export type AiLesson = Pick<Lesson, "id" | "title" | "description" | "keyTakeaways" | "assignment"> & {
+export type AiLesson = Pick<Lesson, "id" | "title" | "description" | "keyTakeaways" | "assignment" | "assignmentAi"> & {
   /** True when the text comes from a tutor-authored course, not the built-in catalog. */
   tutorAuthored: boolean;
 };
 
-function cleanLessonText(value: unknown, max: number): string {
+export function cleanLessonText(value: unknown, max: number): string {
   if (typeof value !== "string") return "";
   return value
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " ")
@@ -58,9 +61,9 @@ export async function findLessonForAi(lessonId: string): Promise<AiLesson | null
   if (typeof lessonId !== "string" || !/^[a-z0-9-]{3,120}$/i.test(lessonId)) return null;
 
   const { rows } = await db.query<{
-    id: string; title: string; description: string; key_takeaways: unknown; assignment: string | null;
+    id: string; title: string; description: string; key_takeaways: unknown; assignment: string | null; assignment_ai: unknown;
   }>(
-    `SELECT l.id, l.title, l.description, l.key_takeaways, l.assignment
+    `SELECT l.id, l.title, l.description, l.key_takeaways, l.assignment, l.assignment_ai
      FROM course_lessons l JOIN courses c ON c.slug = l.course_slug
      WHERE l.id = $1 AND c.published = TRUE AND l.published = TRUE AND (l.publish_at IS NULL OR l.publish_at <= NOW())`,
     [lessonId]
@@ -79,6 +82,7 @@ export async function findLessonForAi(lessonId: string): Promise<AiLesson | null
     description: cleanLessonText(row.description, 1200),
     keyTakeaways: takeaways,
     assignment: cleanLessonText(row.assignment, 1200) || undefined,
+    ...(readAssignmentAi(row.assignment_ai) ? { assignmentAi: readAssignmentAi(row.assignment_ai)! } : {}),
     tutorAuthored: true,
   };
 }
@@ -198,6 +202,8 @@ export function buildLearnerPersonaLine(profile: LearnerProfile): string {
     .filter((concept): concept is string => Boolean(concept))
     .slice(0, 3);
 
+  const position = safeProfileValue(profile.position ?? null);
+  if (position) parts.push(`job title: "${position}"`);
   if (qualification) parts.push(`background: "${qualification}"`);
   if (ageBand) parts.push(`age group: "${ageBand}"`);
   if (learningGoal) parts.push(`learning goal: "${learningGoal}"`);

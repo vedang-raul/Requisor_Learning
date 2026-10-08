@@ -3,13 +3,15 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ArrowRight, BookOpen, BookPlus, CheckCircle2, Pencil, ClipboardCheck, Eye, EyeOff, FileText, GraduationCap, Loader2, Sparkles, X, XCircle,
+  ArrowRight, BookOpen, BookPlus, Briefcase, CheckCircle2, Pencil, ClipboardCheck, Eye, EyeOff, FileText, GraduationCap, Loader2, Sparkles, X, XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { AssistantAction } from "@/lib/assistant-actions";
 import { INSUFFICIENT_CONTENT_CODE, parseAssignment } from "@/lib/assignment-format";
 import type { Course } from "@/lib/types";
+import { sendProgramCommand } from "@/lib/program-builder";
+import { useStore } from "@/lib/store";
 
 /**
  * One confirmation card for an action the chat assistant proposed. Nothing
@@ -124,6 +126,14 @@ function describe(action: AssistantAction): { icon: typeof Sparkles; title: stri
         confirm: "Create course",
       };
     }
+    case "program_builder": {
+      const title = action.run === "fill" ? "Fill in the Program Builder"
+        : action.run === "generate" ? "Build the program curriculum"
+        : action.run === "proposal" ? "Create the employer proposal"
+        : "Back to the curriculum";
+      const confirm = action.run === "fill" ? "Fill in" : action.run === "generate" ? "Build curriculum" : action.run === "proposal" ? "Create proposal" : "Open curriculum";
+      return { icon: Briefcase, title, lines: [...action.summary.slice(0, 4), "Opens the Program Builder tab"], confirm };
+    }
     case "update_course":
       return { icon: Pencil, title: `Update ${action.courseTitle}`, lines: action.summary.slice(0, 8), confirm: "Save changes" };
     case "update_lesson":
@@ -134,6 +144,7 @@ function describe(action: AssistantAction): { icon: typeof Sparkles; title: stri
 export function AssistantActionCard({ action, onOutcome }: { action: AssistantAction; onOutcome: (outcome: ActionOutcome) => void }) {
   const router = useRouter();
   const [state, setState] = useState<State>({ phase: "idle" });
+  const { state } = useStore();
   const { icon: Icon, title, lines, confirm } = describe(action);
 
   function finish(message: string, extra: { href?: string; hrefLabel?: string } = {}, changed = false) {
@@ -210,6 +221,12 @@ export function AssistantActionCard({ action, onOutcome }: { action: AssistantAc
           }, true);
           return;
         }
+        case "program_builder":
+          // The builder picks the command up, whether it is open now or opened by this.
+          sendProgramCommand({ run: action.run, form: action.form }, state.user?.email);
+          finish(action.run === "fill" ? "Filled in the discovery fields." : action.run === "generate" ? "Building the curriculum in the Program Builder." : action.run === "proposal" ? "Assembling the proposal in the Program Builder." : "Opened the curriculum.");
+          if (!["/app/tutor", "/app/tutor/"].includes(window.location.pathname)) router.push("/app/tutor/");
+          return;
         case "update_course":
           await updateCourse(action.courseSlug, (c) => ({ ...c, ...action.changes }));
           finish(`Updated "${action.changes.title ?? action.courseTitle}".`, { href: "/app/tutor/", hrefLabel: "Open Tutor Workspace" }, true);

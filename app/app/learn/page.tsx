@@ -6,7 +6,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   CheckCircle2, ChevronLeft, ChevronRight, Circle, Clock, FileText, Link2,
   MessageSquare, NotebookPen, PlayCircle, Bookmark, BookmarkCheck,
-  Sparkles, SearchX, FileDown, GraduationCap, SkipForward, Trash2,
+  Sparkles, SearchX, FileDown, GraduationCap, SkipForward, Trash2, ScrollText,
 } from "lucide-react";
 import { useStore, useCourseProgress } from "@/lib/store";
 import { cn, formatMinutes } from "@/lib/utils";
@@ -20,6 +20,7 @@ import { Confetti } from "@/components/confetti";
 import { PageTransition } from "@/components/motion";
 import { LessonQuiz } from "@/components/lesson-quiz";
 import { LessonAssignment } from "@/components/lesson-assignment";
+import { SyllabusButton } from "@/components/syllabus-view";
 import { AssignmentSubmission } from "@/components/assignment-submission";
 import { trackEvent } from "@/lib/analytics";
 
@@ -520,10 +521,17 @@ function LearnView() {
                           ))}
                         </ul>
                       </div>
-                      {lesson.requiresSubmission && (
+                      {/* An AI-curated lesson has no shared brief: the learner's own assignment carries the upload. */}
+                      {lesson.requiresSubmission && !lesson.assignmentAi && (
                         <AssignmentSubmission lessonId={lesson.id} assignmentBrief={lesson.assignment} totalMarks={lesson.assignmentMarks} dueDate={lesson.assignmentDueDate} />
                       )}
-                      <LessonAssignment lessonId={lesson.id} allowSubmission={!lesson.requiresSubmission} />
+                      <LessonAssignment
+                        lessonId={lesson.id}
+                        curated={Boolean(lesson.assignmentAi)}
+                        allowSubmission={!lesson.requiresSubmission || Boolean(lesson.assignmentAi)}
+                        totalMarks={lesson.assignmentAi && lesson.requiresSubmission ? lesson.assignmentMarks : undefined}
+                        dueDate={lesson.assignmentAi && lesson.requiresSubmission ? lesson.assignmentDueDate : undefined}
+                      />
                     </div>
                   )}
                   {tab === "resources" && (
@@ -660,6 +668,16 @@ function LearnView() {
               <ProgressBar value={pct} className="mt-2.5" />
             </div>
             <div className="flex-1 space-y-1 overflow-y-auto p-2.5">
+              {/* The syllabus sits above the first lesson. */}
+              <SyllabusButton
+                syllabus={course.syllabus}
+                courseTitle={course.title}
+                className="focus-ring flex w-full items-center gap-2.5 rounded-xl border border-primary/20 bg-primary/[0.05] p-2.5 text-left text-sm font-medium text-zinc-800 transition-colors hover:bg-primary/10"
+              >
+                <ScrollText className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                <span className="min-w-0 flex-1">Syllabus</span>
+                <span className="shrink-0 text-[11px] font-semibold text-primary">Read first</span>
+              </SyllabusButton>
               {course.lessons.map((l, i) => {
                 const p = state.progress[l.id];
                 const current = l.id === lesson.id;
