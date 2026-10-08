@@ -943,8 +943,32 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, allowUplo
   const videoCount = course.lessons.filter((l) => l.format !== "reading").length;
 
   function openNew() { setCreatedLesson(null); setEditing(null); setAdding(true); queueMicrotask(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })); }
-  function openEdit(lesson: Lesson) { setCreatedLesson(null); setAdding(false); setEditing(lesson); queueMicrotask(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })); }
+  function openEdit(lesson: Lesson) { setCreatedLesson(null); setAdding(false); setEditing(lesson); setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 120); }
   function closeForm() { setAdding(false); setEditing(null); }
+  // The lesson form: shown directly under the lesson being edited, or after the last lesson when adding a new one.
+  const lessonForm = formOpen ? (
+    <LessonWizard
+      key={`${editing?.id ?? "new"}-${lessonFormVersion}`}
+      courseSlug={course.slug}
+      courseTitle={course.title}
+      coursePublished={course.published !== false}
+      lesson={editing}
+      saving={saving}
+      allowUploads={allowUploads}
+      onCancel={closeForm}
+      onSave={async (lesson) => {
+        const isNew = editing === null;
+        setCreatedLesson(null);
+        const saved = await onAddLesson(lesson);
+        if (!saved) return;
+        if (isNew) {
+          setCreatedLesson({ id: lesson.id, title: lesson.title });
+          setLessonFormVersion((version) => version + 1);
+        }
+        closeForm();
+      }}
+    />
+  ) : null;
 
   return (
     <section className="border-t pt-4">
@@ -979,11 +1003,11 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, allowUplo
       ) : (
         <motion.ol layout className="mt-3 space-y-2">
           <AnimatePresence initial={false}>
-            {course.lessons.map((lesson, index) => {
+            {course.lessons.flatMap((lesson, index) => {
               const isVideo = lesson.format !== "reading";
               const missingVideo = isVideo && isPlaceholder(lesson.youtubeId);
               const isEditing = editing?.id === lesson.id;
-              return (
+              const row = (
                 <motion.li
                   key={lesson.id}
                   layout
@@ -1016,13 +1040,29 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, allowUplo
                   </span>
                 </motion.li>
               );
+              if (!isEditing) return [row];
+              // The editor opens right under the lesson it belongs to.
+              return [
+                row,
+                <motion.li
+                  key={`${lesson.id}-editor`}
+                  layout
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.25 }}
+                  className="overflow-hidden"
+                >
+                  <div ref={formRef} className="scroll-mt-4">{lessonForm}</div>
+                </motion.li>,
+              ];
             })}
           </AnimatePresence>
         </motion.ol>
       )}
 
       <AnimatePresence>
-        {formOpen && (
+        {(adding || (editing !== null && !course.lessons.some((l) => l.id === editing.id))) && (
           <motion.div
             ref={formRef}
             initial={{ opacity: 0, height: 0, y: -8 }}
@@ -1031,27 +1071,7 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, allowUplo
             transition={{ duration: 0.25 }}
             className="overflow-hidden"
           >
-            <LessonWizard
-              key={`${editing?.id ?? "new"}-${lessonFormVersion}`}
-              courseSlug={course.slug}
-              courseTitle={course.title}
-              coursePublished={course.published !== false}
-              lesson={editing}
-              saving={saving}
-              allowUploads={allowUploads}
-              onCancel={closeForm}
-              onSave={async (lesson) => {
-                const isNew = editing === null;
-                setCreatedLesson(null);
-                const saved = await onAddLesson(lesson);
-                if (!saved) return;
-                if (isNew) {
-                  setCreatedLesson({ id: lesson.id, title: lesson.title });
-                  setLessonFormVersion((version) => version + 1);
-                }
-                closeForm();
-              }}
-            />
+            {lessonForm}
           </motion.div>
         )}
       </AnimatePresence>
