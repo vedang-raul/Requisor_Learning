@@ -5,10 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Activity, BarChart3, BookPlus, Check, CheckCircle2, Download, Eye, EyeOff, FileText, GraduationCap, Inbox, LayoutGrid, Paperclip, Upload,
+  Activity, BarChart3, BookPlus, Briefcase, Check, CheckCircle2, Download, Eye, EyeOff, FileText, GraduationCap, Inbox, LayoutGrid, Paperclip, Upload,
   ListChecks, Loader2, Pencil, Plus, Send, Star, Trash2, TrendingUp, Users, X,BookOpen, ChevronDown, ChevronLeft, ChevronRight, Clock, Layers, Sparkles, Video, Youtube
 } from "lucide-react";
 import { RecordStudio } from "@/components/video-recorder";
+import { ProgramBuilder } from "@/components/program-builder";
 import { AssignmentBrief } from "@/components/lesson-assignment";
 import { parseAssignment } from "@/lib/assignment-format";
 import { ASSIGNMENT_DATA, GUARDRAILS_MAX_CHARS, GUARDRAILS_MIN_CHARS, type AssignmentDataKey } from "@/lib/assignment-ai";
@@ -30,7 +31,7 @@ import { mergeSavedTutorCourse, reconcileTutorCourses, type TutorCourseSummary }
 import { SubmissionSourceBadge } from "@/components/submission-source-badge";
 import type { SubmissionSource } from "@/lib/submission-source";
 
-type TabKey = "analytics" | "courses" | "learners" | "ratings";
+type TabKey = "analytics" | "courses" | "learners" | "ratings" | "programs";
 type TutorCourse = TutorCourseSummary;
 const AI_COURSE_DRAFT_KEY = "requisor-ai-course-draft";
 const AI_COURSE_DRAFT_EVENT = "requisor:open-ai-course-draft";
@@ -324,6 +325,7 @@ export default function TutorPage() {
           ["courses", "My Courses", LayoutGrid],
           ["learners", "Learners", Users],
           ["ratings", "Ratings", Star],
+          ["programs", "Program Builder", Briefcase],
         ] as [TabKey, string, typeof BarChart3][]).map(([key, label, Icon]) => {
           const active = tab === key;
           return (
@@ -418,6 +420,7 @@ export default function TutorPage() {
             </div>
           )}
           {tab === "learners" && <LearnersPanel />}
+          {tab === "programs" && <ProgramBuilder />}
           {tab === "ratings" && (
             loading ? <Card className="flex items-center gap-2 py-10 text-sm text-zinc-600"><Loader2 className="h-5 w-5 animate-spin" /> Loading ratings…</Card> :
             <RatingsPanel items={items} />

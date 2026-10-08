@@ -480,3 +480,12 @@ body {
     }
   }
 }
+
+/* Program Builder: printing the proposal prints only the proposal. It is copied
+   into .program-print-root (a direct child of <body>) while the proposal is open. */
+.program-print-root { display: none; }
+@media print {
+  body.print-program-proposal > *:not(.program-print-root) { display: none !important; }
+  body.print-program-proposal { background: #fff !important; }
+  body.print-program-proposal > .program-print-root { display: block !important; }
+}
