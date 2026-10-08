@@ -122,7 +122,11 @@ export function SyllabusView({ syllabus, courseTitle }: { syllabus: Syllabus; co
 }
 
 /** A "Syllabus" button that opens the course syllabus over the page. Renders nothing when the course has none. */
-export function SyllabusButton({ syllabus, courseTitle, className }: { syllabus: Syllabus | null | undefined; courseTitle: string; className?: string }) {
+export function SyllabusButton({ syllabus, courseTitle, className, children }: {
+  syllabus: Syllabus | null | undefined; courseTitle: string; className?: string;
+  /** What the button shows, instead of the default icon and "Syllabus". */
+  children?: React.ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
     if (!open) return;
@@ -134,7 +138,7 @@ export function SyllabusButton({ syllabus, courseTitle, className }: { syllabus:
   return (
     <>
       <button type="button" onClick={() => setOpen(true)} className={className ?? "focus-ring inline-flex items-center gap-2 rounded-xl border border-border bg-white px-4 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50"}>
-        <ScrollText className="h-4 w-4" />Syllabus
+        {children ?? <><ScrollText className="h-4 w-4" />Syllabus</>}
       </button>
       {open && (
         <div role="dialog" aria-modal="true" aria-label={`${courseTitle} syllabus`} className="fixed inset-0 z-[90] overflow-y-auto bg-black/40 p-3 sm:p-6" onClick={() => setOpen(false)}>

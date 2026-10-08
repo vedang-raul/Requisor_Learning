@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Suspense, useMemo, useState, useRef, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
-import { CheckCircle2, Circle, Clock, FileText, PlayCircle, Video, Bookmark, BookmarkCheck, ChevronRight, SearchX, GraduationCap, Sparkles, Loader2 } from "lucide-react";
+import { CheckCircle2, Circle, Clock, FileText, PlayCircle, Video, Bookmark, BookmarkCheck, ChevronRight, SearchX, GraduationCap, Sparkles, Loader2, ScrollText } from "lucide-react";
 import { useStore, useCourseProgress } from "@/lib/store";
 import { cn, formatMinutes, isPlaceholder, youTubeThumb } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
@@ -225,6 +225,22 @@ function CourseView() {
 
       {/* Lessons, grouped by sub-part */}
       <div className="space-y-2.5">
+        {/* The syllabus comes first: it is what a learner should read before any lesson. */}
+        <SyllabusButton
+          syllabus={course.syllabus}
+          courseTitle={course.title}
+          className="focus-ring group flex w-full items-center gap-4 rounded-2xl border border-primary/30 bg-primary/[0.05] p-4 text-left transition-colors hover:border-primary/50 hover:bg-primary/[0.09]"
+        >
+          <span className="w-7 shrink-0 text-center text-sm font-semibold text-primary">00</span>
+          <span className={cn("hidden h-14 w-24 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br sm:flex", course.cover)}>
+            <ScrollText className="h-6 w-6 text-white/90" aria-hidden="true" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold text-zinc-900">Syllabus</span>
+            <span className="block text-xs text-zinc-600">Start here: what this course covers, how it is graded and what is expected of you.</span>
+          </span>
+          <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary">Read first</span>
+        </SyllabusButton>
         {lessons.length === 0 && (
           <div className="glass-card py-12 text-center text-sm text-zinc-500">No lessons match this filter.</div>
         )}
