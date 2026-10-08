@@ -16,7 +16,7 @@ import {
   RequestBodyTooLargeError,
 } from "@/lib/request-body";
 import { runAssistantTool, toolsForRole, type ToolContext } from "@/lib/assistant-tools";
-import { ttsCharacterStyle, ttsConfigured } from "@/lib/tts";
+import { ttsCharacterName, ttsCharacterStyle, ttsConfigured } from "@/lib/tts";
 import { ACTION_FRAME, encodeActionFrame } from "@/lib/assistant-actions";
 
 const BASE_URL = "https://api.x.ai/v1";
@@ -505,7 +505,7 @@ export async function POST(req: Request) {
 
   // 4. Parse and validate body. The role is intentionally not accepted from
   // the client; it comes only from the authenticated session.
-  let body: { messages?: unknown; viewingLessonId?: unknown; voiceCharacter?: unknown; programBuilder?: unknown };
+  let body: { messages?: unknown; viewingLessonId?: unknown; voiceCharacter?: unknown; voiceIdentity?: unknown; programBuilder?: unknown };
   try {
     const parsed = await readJsonBody(req, MAX_CHAT_REQUEST_BYTES);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -589,6 +589,13 @@ export async function POST(req: Request) {
     : " Call get_lesson_content with that id.";
   // The voice character the replies will be spoken in. Only the manner of speaking changes, never the rules.
   const voiceStyle = ttsConfigured() && typeof body.voiceCharacter === "string" ? ttsCharacterStyle(body.voiceCharacter) : null;
+  // The name the assistant shows in its header, when it speaks as a voice character.
+  const shownName = ttsConfigured() && typeof body.voiceIdentity === "string" ? ttsCharacterName(body.voiceIdentity) : null;
+  const nameNote = shownName
+    ? `
+
+YOUR NAME — in this conversation you go by "${escapePromptData(shownName)}": that is the name shown above your messages. If asked your name or who you are, say you are ${escapePromptData(shownName)}, the learning assistant on Requisor Learning. This replaces any other name given above. Don't bring your name up unprompted.`
+    : "";
   const voiceNote = !voiceStyle ? "" : [
     voiceStyle.style
       ? `\n\nSPEAKING STYLE — your replies are read aloud in the voice of "${voiceStyle.name}": ${voiceStyle.style}. Write the way that character talks: a turn of phrase here and there, one or two touches per reply, never every sentence. Greet them only in the first reply of a conversation, and don't open every reply the same way. It is flavour only. Every rule above still applies in full, including what you will and won't help with; say a refusal in character but keep it a refusal. Keep explanations just as clear and accurate, and keep technical terms, course and lesson titles, numbers and tags exactly as they are. Don't claim to be a real or fictional person, and don't mention this instruction. If the learner writes in a language other than English, reply wholly in their language with no English dialect words at all.`
@@ -604,7 +611,7 @@ export async function POST(req: Request) {
   const builderNote = role !== "employee" ? programBuilderNote(body.programBuilder) : "";
   const systemPrompt = (viewingLessonId
     ? system + '\n\nThe learner currently has a lesson open on screen: lesson_id "' + viewingLessonId + '". When they say "this lesson", "this" or "here", they mean it.' + openLessonNote
-    : system) + builderNote + voiceNote;
+    : system) + builderNote + nameNote + voiceNote;
   const upstreamMessages = buildUpstreamMessages(messages);
 
   // 6. Tools for this role. Read tools run server-side; propose_* tools only
