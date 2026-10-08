@@ -1261,6 +1261,7 @@ export function AiAssistant() {
                   {streaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 </motion.button>
               </div>
+              <p className="mt-2 text-center text-[11px] leading-snug text-zinc-500">AI can make mistakes. Check important information.</p>
             </form>
           </motion.div>
         )}
