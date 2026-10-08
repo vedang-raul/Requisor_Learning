@@ -1079,7 +1079,10 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, allowUplo
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) { return <label className="text-sm font-medium text-zinc-800">{label}{children}</label>; }
+/** A labelled form field. The label text sits on its own line with a gap, clear of the input and its focus ring. */
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return <label className="block text-sm font-medium text-zinc-800"><span className="mb-1.5 block">{label}</span>{children}</label>;
+}
 function Select({ children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) { return <select {...props} className="focus-ring mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm">{children}</select>; }
 /* ---------- lesson wizard ----------
    A lesson is built in five steps shown side by side with a tracker:
@@ -1359,7 +1362,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
 
             {step === "details" && (
               <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Lesson title"><Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={200} autoFocus /></Field>
+                <div className="sm:col-span-2"><Field label="Lesson title"><Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={200} autoFocus /></Field></div>
                 <div className="sm:col-span-2"><Field label="Description"><Textarea value={description} onChange={(e) => setDescription(e.target.value)} required maxLength={2000} placeholder="What will learners get out of this lesson?" /></Field></div>
                 <Field label="Duration (minutes)"><Input type="number" min="1" max="1440" step="1" value={duration} onChange={(e) => setDuration(e.target.value)} required /></Field>
                 <Field label="Section (optional)"><Input value={section} onChange={(e) => setSection(e.target.value)} maxLength={200} placeholder="e.g. Module 1" /></Field>
