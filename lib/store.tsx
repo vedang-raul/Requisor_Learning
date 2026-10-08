@@ -9,6 +9,8 @@ import { seedCourses } from "./data";
 
 const STORAGE_KEY_BASE = "requisor-learning-v14"; // v14: added 4 DeepLearning.AI agent-building courses to Agentic AI
 // State is namespaced per signed-in user so accounts sharing a browser never see each other's data.
+/** Fired by the AI assistant's cards after they change a course (DATA_CHANGED_EVENT in components/assistant-action-card). */
+const CATALOG_CHANGED_EVENT = "requisor:data-changed";
 const storageKeyFor = (email: string) => `${STORAGE_KEY_BASE}:${email.toLowerCase()}`;
 const XP_PER_LESSON = 50;
 const XP_PER_COURSE = 200;
@@ -253,25 +255,42 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   // The course catalog belongs to the server.  Keep per-user local storage for
   // learning state only; it must never overwrite catalog changes made elsewhere.
+  // It is loaded when the app opens and again whenever it may have changed
+  // underneath this page: a tutor switching to student mode (they may just have
+  // published a course), the AI assistant changing a course, or the learner
+  // coming back to this browser tab.
   useEffect(() => {
     if (!hydrated || !email) return;
     let cancelled = false;
-    fetch("/api/courses")
-      .then(async (response) => {
-        const data = await response.json() as { courses?: Course[]; error?: string };
-        if (!response.ok) throw new Error(data.error ?? "Couldn't load the course catalog.");
-        if (!Array.isArray(data.courses)) throw new Error("The course catalog response was invalid.");
-        return data.courses;
-      })
-      .then((courses) => {
-        if (!cancelled) setState((current) => ({ ...current, courses }));
-      })
-      .catch(() => {
-        // Retain the currently displayed catalog when offline. Mutations still
-        // reject visibly to their caller instead of being stored locally.
-      });
-    return () => { cancelled = true; };
-  }, [hydrated, email]);
+    let lastLoad = 0;
+    const load = () => {
+      lastLoad = Date.now();
+      fetch("/api/courses")
+        .then(async (response) => {
+          const data = await response.json() as { courses?: Course[]; error?: string };
+          if (!response.ok) throw new Error(data.error ?? "Couldn't load the course catalog.");
+          if (!Array.isArray(data.courses)) throw new Error("The course catalog response was invalid.");
+          return data.courses;
+        })
+        .then((courses) => {
+          if (!cancelled) setState((current) => ({ ...current, courses }));
+        })
+        .catch(() => {
+          // Retain the currently displayed catalog when offline. Mutations still
+          // reject visibly to their caller instead of being stored locally.
+        });
+    };
+    load();
+    // Coming back to the tab reloads at most once every 30 seconds.
+    const onVisible = () => { if (document.visibilityState === "visible" && Date.now() - lastLoad > 30_000) load(); };
+    window.addEventListener(CATALOG_CHANGED_EVENT, load);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(CATALOG_CHANGED_EVENT, load);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [hydrated, email, workspaceMode]);
 
   // Real, server-generated notifications (e.g. a tutor's "learner submitted
   // an assignment" alert) — fetched fresh every session rather than
