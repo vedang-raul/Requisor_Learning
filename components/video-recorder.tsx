@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft, Camera, CircleDot, Sparkles, Download, ExternalLink, Loader2, MonitorUp, Pause, Play, RotateCcw, Scissors, ScrollText, Square, Wand2, X, Youtube } from "lucide-react";
+import { ArrowLeft, Camera, CircleDot, Grid3x3, Sparkles, Download, ExternalLink, Loader2, MonitorUp, Pause, Play, RotateCcw, Scissors, ScrollText, Square, Wand2, X, Youtube } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { VideoEditStudio } from "@/components/video-edit-studio";
 import { VideoEditor, type EditorSource } from "@/components/video-editor";
@@ -31,6 +31,8 @@ type Recording = { file: File; url: string; seconds: number };
 
 /** The recorder tab hands finished recordings back to the lesson wizard's tab over this channel. */
 const RECORDER_CHANNEL = "requisor-recorder";
+/** Whether the presenter last had framing gridlines on. */
+const GRIDLINES_KEY = "requisor-recorder-gridlines";
 type RecorderMessage = { rid: string; file: File; seconds: number };
 
 /** MP4 where the browser can record it (plays everywhere); WebM otherwise. YouTube accepts both. */
@@ -413,6 +415,21 @@ export function VideoRecorder({
   const prompterRef = useRef<Window | null>(null);
 
   const previewRef = useRef<HTMLVideoElement>(null);
+  // Framing gridlines (rule of thirds) over the preview. They are a guide for the presenter only:
+  // the recording is made from the picture itself, so the lines are never in it.
+  const [gridlines, setGridlines] = useState(false);
+  const [previewRatio, setPreviewRatio] = useState(16 / 9);
+  useEffect(() => {
+    try { setGridlines(localStorage.getItem(GRIDLINES_KEY) === "on"); } catch { /* storage is unavailable */ }
+  }, []);
+  function toggleGridlines() {
+    setGridlines((on) => {
+      try { localStorage.setItem(GRIDLINES_KEY, on ? "off" : "on"); } catch { /* storage is unavailable */ }
+      return !on;
+    });
+  }
+  const toggleGridlinesRef = useRef(toggleGridlines);
+  toggleGridlinesRef.current = toggleGridlines;
   const outputRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const secondsRef = useRef(0);
@@ -576,6 +593,20 @@ export function VideoRecorder({
     }
   }
 
+  useEffect(() => {
+    // Only while the preview is on screen.
+    if (phase !== "ready" && phase !== "recording" && phase !== "paused") return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== "g" || event.ctrlKey || event.metaKey || event.altKey || event.repeat) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+      event.preventDefault();
+      toggleGridlinesRef.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [phase]);
+
   function start() {
     const stream = outputRef.current;
     if (!stream) return;
@@ -716,8 +747,22 @@ export function VideoRecorder({
 
       {live && (
         <>
-          <div className="relative min-h-0 flex-1">
-            <video ref={previewRef} autoPlay muted playsInline className={cn("absolute inset-0 h-full w-full object-contain", mode === "camera" && "-scale-x-100")} />
+          <div className="relative min-h-0 flex-1 [container-type:size]">
+            <video
+              ref={previewRef} autoPlay muted playsInline
+              onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.videoWidth && v.videoHeight) setPreviewRatio(v.videoWidth / v.videoHeight); }}
+              onResize={(e) => { const v = e.currentTarget; if (v.videoWidth && v.videoHeight) setPreviewRatio(v.videoWidth / v.videoHeight); }}
+              className={cn("absolute inset-0 h-full w-full object-contain", mode === "camera" && "-scale-x-100")}
+            />
+            {gridlines && (
+              // Sized to the picture itself, not the black bars around it.
+              <div aria-hidden="true" className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <div className="relative" style={{ aspectRatio: String(previewRatio), width: `min(100cqw, calc(100cqh * ${previewRatio}))` }}>
+                  {[1, 2].map((n) => <span key={`v${n}`} className="absolute inset-y-0 w-px bg-white/70 shadow-[0_0_2px_rgba(0,0,0,0.9)]" style={{ left: `${(n * 100) / 3}%` }} />)}
+                  {[1, 2].map((n) => <span key={`h${n}`} className="absolute inset-x-0 h-px bg-white/70 shadow-[0_0_2px_rgba(0,0,0,0.9)]" style={{ top: `${(n * 100) / 3}%` }} />)}
+                </div>
+              </div>
+            )}
             {phase !== "ready" && (
               <span role="status" className="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full bg-black/70 px-3 py-1.5 text-sm font-semibold tabular-nums text-white">
                 <span className={cn("h-2.5 w-2.5 rounded-full", phase === "recording" ? "animate-pulse bg-red-500" : "bg-amber-400")} />
@@ -749,6 +794,13 @@ export function VideoRecorder({
                 </Button>
               </>
             )}
+            <Button
+              type="button" variant="outline" onClick={toggleGridlines} aria-pressed={gridlines} aria-keyshortcuts="G"
+              title="Show or hide framing gridlines (G). They are not recorded."
+              className={cn("hover:bg-zinc-100", gridlines ? "border-primary bg-primary/10 text-primary hover:bg-primary/15" : "bg-white text-zinc-900")}
+            >
+              <Grid3x3 className="h-4 w-4" />Gridlines<kbd className="ml-1 rounded border border-current/30 px-1 text-[11px] font-semibold opacity-70">G</kbd>
+            </Button>
             {mode === "screen" && (
               <Button type="button" variant="outline" onClick={() => void openPrompter()} className="bg-white text-zinc-900 hover:bg-zinc-100">
                 <ScrollText className="h-4 w-4" />{prompter ? "Show the floating window" : hasScript ? "Float the teleprompter" : "Float the controls"}

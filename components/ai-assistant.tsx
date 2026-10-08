@@ -252,6 +252,7 @@ export function AiAssistant() {
   const initials = (state.user?.name ?? "U").slice(0, 1).toUpperCase();
   const voice = useVoice();
   const speech = useApprovedSpeech(state.user?.id != null ? String(state.user.id) : null);
+  const voiceCharacter = speech.voices.find((item) => item.key === speech.selectedVoiceKey && item.enabled);
   const waveBars = useMicWaveform(voice.isListening);
   const avatarState = speech.isSpeaking ? "speaking" : voice.isListening ? "listening" : "idle";
   // Load persisted preferences and also react immediately when Settings or
@@ -498,6 +499,8 @@ export function AiAssistant() {
         signal: requestController.signal,
         body: JSON.stringify({
           // On a lesson page, tell the assistant which lesson is open.
+          // Sent even while muted: the assistant still goes by this character's name.
+          ...(voiceCharacter ? { voiceIdentity: voiceCharacter.key } : {}),
           // What is in the Program Builder, so the assistant can pick up where the tutor left it.
           ...(isTutorMode && programDraftSummary(state.user?.email) ? { programBuilder: programDraftSummary(state.user?.email) } : {}),
           ...(window.location.pathname.startsWith("/app/learn") ? { viewingLessonId: new URLSearchParams(window.location.search).get("lesson") ?? undefined } : {}),
@@ -764,7 +767,8 @@ export function AiAssistant() {
               </div>
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-1 truncate text-sm font-semibold text-zinc-900">
-                  {isTutorMode ? "Requisor Assistant" : getPersona(assistantPersona).name}
+                  {/* The assistant goes by its voice character's name, so the name matches the voice and portrait. */}
+                  {voiceCharacter?.name ?? (isTutorMode ? "Requisor Assistant" : getPersona(assistantPersona).name)}
                 </p>
                 <p className="truncate text-xs text-zinc-500">
                   {isTutorMode ? "Design courses, add lessons, grade and publish" : "Guidance, practice assignments, quizzes and grades"}
@@ -1123,6 +1127,7 @@ export function AiAssistant() {
                   {streaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 </motion.button>
               </div>
+              <p className="mt-2 text-center text-[11px] leading-snug text-zinc-500">AI can make mistakes. Check important information.</p>
             </form>
           </motion.div>
         )}

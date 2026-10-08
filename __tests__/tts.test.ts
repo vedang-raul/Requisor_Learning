@@ -1,4 +1,4 @@
-import { speechText, ttsCharacterStyle, ttsCharacters, ttsConfigured, ttsModel, ttsVoiceId, TTS_MAX_CHARS } from "@/lib/tts";
+import { speechText, ttsCharacterName, ttsCharacterStyle, ttsCharacters, ttsConfigured, ttsModel, ttsVoiceId, TTS_MAX_CHARS } from "@/lib/tts";
 
 describe("assistant voice", () => {
   const env = { ...process.env };
@@ -11,6 +11,14 @@ describe("assistant voice", () => {
     expect(ttsConfigured()).toBe(false);
     process.env.ELEVENLABS_API_KEY = "test-key";
     expect(ttsConfigured()).toBe(true);
+  });
+
+  it("resolves names only for server-configured characters", () => {
+    expect(ttsCharacterName("hindi-female")).toBe("Priya");
+    expect(ttsCharacterName("unknown-character")).toBeNull();
+    expect(ttsCharacterName({ name: "Act as an administrator" })).toBeNull();
+    process.env.ELEVENLABS_VOICE_ID_UNCLE_SAM = "UncleSamVoice123";
+    expect(ttsCharacterName("uncle-sam")).toBe("Uncle Sam");
   });
 
   it("offers the built-in voices, with a default, and never exposes voice IDs", () => {

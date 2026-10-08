@@ -15,6 +15,12 @@ A selected voice's language determines the spoken language, not just its accent 
 
 **How to apply:** Match narration to the selected voice's language, including playback of earlier written replies. Changing a voice ID alone does not translate its text. Keep written replies unchanged and do not silently fall back to English when translation fails.
 
+Voice-based assistant naming is identity-only and must follow the voice actually selected in the existing dropdown.
+
+**Why:** Imported voice-character features may couple identity to written-response language or use different catalog labels, undoing the intended separation between written replies and translated narration.
+
+**How to apply:** Resolve names from the active dropdown's server-owned catalog using a validated voice key. Keep naming separate from instructions that alter reply language or speaking style.
+
 Keep voice selection as a compact dropdown in the chatbot, not a separate voice-card panel.
 
 **Why:** The user explicitly asked to remove the large voice-selection UI and restore a dropdown.

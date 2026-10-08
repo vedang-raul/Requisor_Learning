@@ -5,6 +5,7 @@ import "../landing/index.css";
 import { Providers } from "@/components/providers";
 import { StoreProvider } from "@/lib/store";
 import { SITE_URL, SITE_NAME, SEO_TITLE, SEO_DESCRIPTION } from "@/lib/seo";
+import { DesignGrid } from "@/components/design-grid";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -29,6 +30,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <Providers>
           <StoreProvider>{children}</StoreProvider>
         </Providers>
+        {/* Spacing and alignment overlay for whoever is working on the UI (Alt+G). */}
+        <DesignGrid />
       </body>
     </html>
   );

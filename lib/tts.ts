@@ -112,6 +112,11 @@ const pick = (character: unknown): Voice => {
   return all.find((voice) => voice.key === character) ?? all[0];
 };
 
+/** A character's display name, or null when it isn't a character on this server. */
+export function ttsCharacterName(character: unknown): string | null {
+  return voices().find((voice) => voice.key === character)?.name ?? null;
+}
+
 /** The voice ID for a character; an unknown or missing one gets the default character. */
 export function ttsVoiceId(character?: unknown): string {
   return pick(character).voiceId;
