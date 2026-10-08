@@ -14,6 +14,12 @@ Authorized Git operations that modify Git metadata may require the sandbox's `DA
 
 **How to apply:** Use the prefix only for the specific Git operation the user authorized. It does not authorize force pushes, deleting local work, or changing protected Replit remotes.
 
+Use plain path selections or filter diff output instead of relying on shorthand negated Git pathspecs.
+
+**Why:** The workspace Git wrapper rejected an exclusion pathspec with an unimplemented-magic error. A scan pipeline can incorrectly interpret that reader failure as “no findings.”
+
+**How to apply:** Verify that the Git command succeeded before evaluating its output. Fail closed on reader errors; do not treat empty output from a failed diff as a clean credential scan.
+
 **Rule:** Stop the development workflow before running `npm run build` or a standalone TypeScript check after a build.
 
 **Why:** The production build clears `.next` while the development server can regenerate `.next/dev/types` at the same time, leaving transient malformed route declarations.
