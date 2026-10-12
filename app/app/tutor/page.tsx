@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { RecordStudio } from "@/components/video-recorder";
 import { ProgramBuilder } from "@/components/program-builder";
+import type { LessonAiField, LessonAiValues } from "@/lib/lesson-ai";
 import { hasProgramCommand, PROGRAM_COMMAND_EVENT } from "@/lib/program-builder";
 import { AssignmentBrief } from "@/components/lesson-assignment";
 import { parseAssignment } from "@/lib/assignment-format";
@@ -1080,8 +1081,31 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, allowUplo
 }
 
 /** A labelled form field. The label text sits on its own line with a gap, clear of the input and its focus ring. */
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return <label className="block text-sm font-medium text-zinc-800"><span className="mb-1.5 block">{label}</span>{children}</label>;
+function Field({ label, children, action }: { label: string; children: ReactNode; /** Shown at the end of the label's line, e.g. an AI button. */ action?: ReactNode }) {
+  return (
+    <label className="block text-sm font-medium text-zinc-800">
+      <span className="mb-1.5 flex min-h-6 items-center justify-between gap-2"><span>{label}</span>{action}</span>
+      {children}
+    </label>
+  );
+}
+
+/** The small "write this with AI" button beside a field's label. */
+function AiFieldButton({ busy, disabled, filled, onClick }: { busy: boolean; disabled: boolean; filled: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      // Inside a <label>: stop the click from also focusing the field.
+      onClick={(event) => { event.preventDefault(); onClick(); }}
+      disabled={disabled}
+      title={filled ? "Rewrite with AI" : "Write with AI"}
+      aria-label={filled ? "Rewrite with AI" : "Write with AI"}
+      className="focus-ring inline-flex shrink-0 items-center gap-1 rounded-md border border-primary/25 bg-primary/5 px-1.5 py-0.5 text-[11px] font-semibold text-primary transition hover:bg-primary/10 disabled:opacity-50"
+    >
+      {busy ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" /> : <Sparkles className="h-3 w-3" aria-hidden="true" />}
+      {filled ? "Rewrite" : "AI"}
+    </button>
+  );
 }
 function Select({ children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) { return <select {...props} className="focus-ring mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm">{children}</select>; }
 /* ---------- lesson wizard ----------
@@ -1198,6 +1222,12 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
   const [resourceError, setResourceError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  // AI help: writes fields of this lesson from what is filled in so far, plus an optional note.
+  const [aiHint, setAiHint] = useState("");
+  const [aiBusy, setAiBusy] = useState<LessonAiField[] | null>(null);
+  const [aiNote, setAiNote] = useState<{ ok: boolean; text: string } | null>(null);
+  // What the fields held before the last AI write, so it can be undone.
+  const [aiUndo, setAiUndo] = useState<LessonAiValues | null>(null);
 
   const step: WizardStep = WIZARD_STEPS[stepIndex].key;
   const detectedVideoId = format === "video" && youtubeId.trim() ? extractYouTubeId(youtubeId) : null;
@@ -1223,6 +1253,8 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
     if (index === stepIndex) return;
     if (stepIndex === 0 && index > 0 && !detailsOk) { setFormError("Add a title and description first."); return; }
     setFormError(null);
+    // The AI note and its Undo belong to the step they were shown on.
+    setAiNote(null); setAiUndo(null);
     setDirection(index > stepIndex ? 1 : -1);
     setStepIndex(index);
     setVisited((v) => v.map((seen, i) => seen || i === index));
@@ -1304,6 +1336,76 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
     }
   }
 
+  // ── AI help ───────────────────────────────────────────────────────────────
+  const AI_FIELD_LABELS: Record<LessonAiField, string> = {
+    title: "title", description: "description", durationMin: "duration", section: "section",
+    body: "lesson text", assignment: "assignment", guardrails: "guardrails", takeaways: "key takeaways",
+  };
+  const aiCurrent = (): Required<LessonAiValues> => ({
+    title, description, durationMin: Number(duration) || 0, section, body, assignment, guardrails, takeaways: takeawayList,
+  });
+  function applyAiValues(values: LessonAiValues) {
+    if (values.title !== undefined) setTitle(values.title);
+    if (values.description !== undefined) setDescription(values.description);
+    if (values.durationMin !== undefined) setDuration(values.durationMin ? String(values.durationMin) : "");
+    if (values.section !== undefined) setSection(values.section);
+    if (values.body !== undefined) { setBody(values.body); if (values.body) setBodyFileUrl(undefined); }
+    if (values.assignment !== undefined) setAssignment(values.assignment);
+    if (values.guardrails !== undefined) setGuardrails(values.guardrails);
+    if (values.takeaways !== undefined) setTakeaways(values.takeaways.join("\n"));
+  }
+  /** Which of these fields are still empty. */
+  const aiEmpty = (fields: LessonAiField[]) => {
+    const now = aiCurrent();
+    return fields.filter((field) => (field === "takeaways" ? now.takeaways.length === 0 : field === "durationMin" ? !duration.trim() : !String(now[field]).trim()));
+  };
+  async function writeWithAi(fields: LessonAiField[]) {
+    if (!fields.length || aiBusy) return;
+    if (!title.trim() && !aiHint.trim() && !description.trim() && !body.trim()) {
+      setAiNote({ ok: false, text: "Tell the AI what this lesson is about first: type a title, or a few words in the box above." });
+      return;
+    }
+    setAiBusy(fields);
+    setAiNote(null);
+    try {
+      const res = await fetch("/api/tutor/lesson-ai/", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fields,
+          context: {
+            courseTitle, hint: aiHint, title, description, section, durationMin: Number(duration) || null, format,
+            body, assignment, guardrails, takeaways: takeawayList, requiresSubmission,
+          },
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { values?: LessonAiValues; error?: string };
+      if (!res.ok || !data.values) { setAiNote({ ok: false, text: data.error ?? "Couldn't write that right now. Try again." }); return; }
+      const written = fields.filter((field) => data.values![field] !== undefined);
+      const before = aiCurrent();
+      setAiUndo(Object.fromEntries(written.map((field) => [field, before[field]])) as LessonAiValues);
+      applyAiValues(data.values);
+      setFormError(null);
+      setAiNote({ ok: true, text: `AI wrote the ${written.map((field) => AI_FIELD_LABELS[field]).join(", ")}. Read it through and edit anything that isn't right.` });
+    } catch {
+      setAiNote({ ok: false, text: "Couldn't reach the server. Try again." });
+    } finally {
+      setAiBusy(null);
+    }
+  }
+  const aiButton = (field: LessonAiField, filled: boolean) => (
+    <AiFieldButton busy={aiBusy?.length === 1 && aiBusy[0] === field} disabled={aiBusy !== null} filled={filled} onClick={() => void writeWithAi([field])} />
+  );
+  // The fields AI can write on each step. A text lesson's body is only offered in "Text lesson" mode.
+  const AI_STEP_FIELDS: Record<WizardStep, LessonAiField[]> = {
+    details: ["title", "description", "durationMin", "section"],
+    video: videoMode === "text" ? ["body"] : [],
+    assignment: aiAssignment ? ["assignment", "guardrails"] : ["assignment"],
+    takeaways: ["takeaways"],
+    publish: [],
+  };
+  const aiStepFields = AI_STEP_FIELDS[step];
+  const aiStepEmpty = aiEmpty(aiStepFields);
+
   function save(published: boolean) {
     try {
       const built = buildLesson(published);
@@ -1360,12 +1462,47 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
               Step {stepIndex + 1} of {WIZARD_STEPS.length}: {WIZARD_STEPS[stepIndex].label}
             </h3>
 
+            {aiStepFields.length > 0 && (
+              <div className="mb-3 rounded-xl border border-primary/20 bg-primary/[0.04] p-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <Input
+                    value={aiHint}
+                    onChange={(e) => { setAiHint(e.target.value); setAiNote(null); }}
+                    maxLength={600}
+                    aria-label="Note for the AI: what this lesson is about"
+                    placeholder={title.trim() ? "Optional note for the AI, e.g. focus on real examples from retail" : "What is this lesson about? e.g. how AI agents differ from automation"}
+                    className="h-9 flex-1 bg-white"
+                  />
+                  <Button type="button" size="sm" disabled={aiBusy !== null} onClick={() => void writeWithAi(aiStepEmpty.length ? aiStepEmpty : aiStepFields)} className="shrink-0">
+                    {aiBusy && aiBusy.length > 1 ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                    {aiStepEmpty.length === 0 ? "Rewrite this step with AI" : aiStepEmpty.length < aiStepFields.length ? "Fill the empty fields with AI" : "Fill this step with AI"}
+                  </Button>
+                </div>
+                <p className="mt-1.5 text-xs text-zinc-500">
+                  The AI writes from your title, this note and whatever else you&apos;ve filled in. Use the small AI button beside a field to write just that one. Nothing is saved until you save the lesson.
+                </p>
+                {aiNote && (
+                  <p role="status" className={cn("mt-1.5 text-xs", aiNote.ok ? "text-emerald-800" : "text-red-700")}>
+                    {aiNote.text}
+                    {aiNote.ok && aiUndo && (
+                      <button type="button" onClick={() => { applyAiValues(aiUndo); setAiUndo(null); setAiNote(null); }} className="ml-2 font-semibold text-primary hover:underline">Undo</button>
+                    )}
+                  </p>
+                )}
+              </div>
+            )}
+            {step === "video" && videoMode !== "text" && (
+              <p className="mb-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
+                AI can&apos;t make a video, but it can draft a written lesson: choose <strong>Text lesson</strong> below and use the AI button there.
+              </p>
+            )}
+
             {step === "details" && (
               <div className="grid gap-3 sm:grid-cols-2">
-                <div className="sm:col-span-2"><Field label="Lesson title"><Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={200} autoFocus /></Field></div>
-                <div className="sm:col-span-2"><Field label="Description"><Textarea value={description} onChange={(e) => setDescription(e.target.value)} required maxLength={2000} placeholder="What will learners get out of this lesson?" /></Field></div>
-                <Field label="Duration (minutes)"><Input type="number" min="1" max="1440" step="1" value={duration} onChange={(e) => setDuration(e.target.value)} required /></Field>
-                <Field label="Section (optional)"><Input value={section} onChange={(e) => setSection(e.target.value)} maxLength={200} placeholder="e.g. Module 1" /></Field>
+                <div className="sm:col-span-2"><Field label="Lesson title" action={aiButton("title", Boolean(title.trim()))}><Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={200} autoFocus /></Field></div>
+                <div className="sm:col-span-2"><Field label="Description" action={aiButton("description", Boolean(description.trim()))}><Textarea value={description} onChange={(e) => setDescription(e.target.value)} required maxLength={2000} placeholder="What will learners get out of this lesson?" /></Field></div>
+                <Field label="Duration (minutes)" action={aiButton("durationMin", Boolean(duration.trim()))}><Input type="number" min="1" max="1440" step="1" value={duration} onChange={(e) => setDuration(e.target.value)} required /></Field>
+                <Field label="Section (optional)" action={aiButton("section", Boolean(section.trim()))}><Input value={section} onChange={(e) => setSection(e.target.value)} maxLength={200} placeholder="e.g. Module 1" /></Field>
               </div>
             )}
 
@@ -1423,7 +1560,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
 
             {step === "assignment" && (
               <div className="grid gap-3 sm:grid-cols-2">
-                <div className="sm:col-span-2"><Field label="Assignment"><Textarea value={assignment} onChange={(e) => setAssignment(e.target.value)} maxLength={5000} placeholder={aiAssignment ? "Optional: a starting brief for the AI to personalise" : "What should learners do after this lesson? (optional)"} /></Field></div>
+                <div className="sm:col-span-2"><Field label="Assignment" action={aiButton("assignment", Boolean(assignment.trim()))}><Textarea value={assignment} onChange={(e) => setAssignment(e.target.value)} maxLength={5000} placeholder={aiAssignment ? "Optional: a starting brief for the AI to personalise" : "What should learners do after this lesson? (optional)"} /></Field></div>
                 <div className="space-y-2 sm:col-span-2">
                   <label className="flex items-center gap-2 text-sm font-medium text-zinc-800">
                     <input type="checkbox" checked={requiresSubmission} onChange={(e) => setRequiresSubmission(e.target.checked)} className="h-4 w-4 rounded border-zinc-300 accent-primary" />
@@ -1445,7 +1582,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
                   </p>
                   {aiAssignment && (
                     <>
-                      <Field label="Assignment guardrails">
+                      <Field label="Assignment guardrails" action={aiButton("guardrails", Boolean(guardrails.trim()))}>
                         <span className="mb-1.5 block text-xs font-normal text-zinc-500">
                           The rules every learner&apos;s version must follow: what skill it tests, what must be included or avoided, the difficulty, the length, and what they hand in.
                         </span>
@@ -1512,7 +1649,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
 
             {step === "takeaways" && (
               <div className="space-y-4">
-                <Field label="Key takeaways (one per line)">
+                <Field label="Key takeaways (one per line)" action={aiButton("takeaways", takeawayList.length > 0)}>
                   <Textarea value={takeaways} onChange={(e) => setTakeaways(e.target.value)} placeholder={"e.g. Agents pursue goals; automation follows rules\nWhen an agent is overkill"} />
                   <span className="mt-1 block text-xs font-normal text-zinc-500">Takeaways also help the AI build better practice assignments and quizzes.</span>
                 </Field>
@@ -1601,6 +1738,8 @@ function LessonContentField({ body, bodyFileUrl, uploading, setUploading, onChan
   onChange: (value: { body: string; bodyFileUrl?: string }) => void; allowUploads: boolean;
 }) {
   const [mode, setMode] = useState<"write" | "document">(bodyFileUrl ? "document" : "write");
+  // Text arriving from outside (the AI drafting the lesson) shows in the writing box.
+  useEffect(() => { if (body) setMode("write"); }, [body]);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
