@@ -28,7 +28,7 @@ import { parseCanvasCartridge, type CanvasImportSummary } from "@/lib/canvas-imp
 import { courseFolderToZip, MAX_COURSE_IMPORT_BYTES } from "@/lib/course-folder-import";
 import { Input, Textarea } from "@/components/ui/input";
 import { PageTransition } from "@/components/motion";
-import { getCategoryCover, DEFAULT_CATEGORIES } from "@/components/category-icon";
+import { getCategoryCover, getCategoryMeta, DEFAULT_CATEGORIES } from "@/components/category-icon";
 import { MAX_RESOURCE_FILE_BYTES, RESOURCE_FILE_ACCEPT } from "@/lib/resource-files";
 import { mergeSavedTutorCourse, reconcileTutorCourses, type TutorCourseSummary } from "@/lib/tutor-course-sync";
 import { SubmissionSourceBadge } from "@/components/submission-source-badge";
@@ -394,7 +394,7 @@ export default function TutorPage() {
               {creating && <CourseForm saving={saving} onCancel={() => setCreating(false)} onSave={saveCourse} />}
               {loading ? <Card className="flex items-center gap-2 py-10 text-sm text-zinc-600"><Loader2 className="h-5 w-5 animate-spin" /> Loading your courses…</Card> :
                 items.length === 0 ? <EmptyCoursesState /> :
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{items.map((item) => <button key={item.course.slug} onClick={() => { setCreating(false); setAiDraft(false); setSelected(item.course); }} className="focus-ring group min-h-32 rounded-2xl text-left"><Card className="relative h-full transition hover:border-primary/40">{item.course.published === false && <span className="absolute left-3 top-3 rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-700">Draft</span>}<span className="absolute right-3 top-3 flex items-center gap-1 rounded-full border border-transparent px-2 py-1 text-[11px] font-medium text-zinc-400 opacity-0 transition group-hover:border-primary/30 group-hover:bg-primary/10 group-hover:text-primary group-hover:opacity-100"><Pencil className="h-3 w-3" aria-hidden="true" />Edit</span><div className={`mb-3 h-2 rounded-full bg-gradient-to-r ${item.course.cover}`} /><CardTitle>{item.course.title}</CardTitle><p className="mt-1 text-xs text-zinc-600">{item.course.lessons.length} lessons · <span className="inline-flex items-center gap-1"><Star className="h-3 w-3 fill-amber-400 text-amber-400" aria-hidden="true" />{item.averageRating.toFixed(1)} ({item.ratingCount})</span></p><div className="mt-3 flex gap-1" aria-hidden="true">{[5,4,3,2,1].map((rating) => <span key={rating} title={`${rating} stars: ${distributionCount(item.ratingDistribution, rating)}`} className="h-1 flex-1 rounded bg-primary/20" style={{ opacity: item.ratingCount ? Math.max(.2, distributionCount(item.ratingDistribution, rating) / item.ratingCount) : .2 }} />)}</div><span className="sr-only">{[5,4,3,2,1].map((rating) => `${rating} stars: ${distributionCount(item.ratingDistribution, rating)}`).join(", ")}</span></Card></button>)}</div>}
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{items.map((item) => <button key={item.course.slug} onClick={() => { setCreating(false); setAiDraft(false); setSelected(item.course); }} className="focus-ring group min-h-32 rounded-2xl text-left"><Card className="relative h-full transition hover:border-primary/40"><span className="absolute right-3 top-3 flex items-center gap-1 rounded-full border border-transparent px-2 py-1 text-[11px] font-medium text-zinc-400 opacity-0 transition group-hover:border-primary/30 group-hover:bg-primary/10 group-hover:text-primary group-hover:opacity-100"><Pencil className="h-3 w-3" aria-hidden="true" />Edit</span><TutorCourseHeading course={item.course} /><p className="mt-3 text-xs text-zinc-600">{item.course.lessons.length} lesson{item.course.lessons.length === 1 ? "" : "s"} · <span className="inline-flex items-center gap-1"><Star className="h-3 w-3 fill-amber-400 text-amber-400" aria-hidden="true" />{item.averageRating.toFixed(1)} ({item.ratingCount})</span></p><div className="mt-3 flex gap-1" aria-hidden="true">{[5,4,3,2,1].map((rating) => <span key={rating} title={`${rating} stars: ${distributionCount(item.ratingDistribution, rating)}`} className="h-1 flex-1 rounded bg-primary/20" style={{ opacity: item.ratingCount ? Math.max(.2, distributionCount(item.ratingDistribution, rating) / item.ratingCount) : .2 }} />)}</div><span className="sr-only">{[5,4,3,2,1].map((rating) => `${rating} stars: ${distributionCount(item.ratingDistribution, rating)}`).join(", ")}</span></Card></button>)}</div>}
               {selected && <>
                 {aiDraft && <div role="status" className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-sm text-violet-900"><strong>AI-generated draft:</strong> Review every field and lesson below. It is unpublished and has not been saved yet.</div>}
                 {!aiDraft && (
@@ -1082,6 +1082,26 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, allowUplo
 }
 
 /** A labelled form field. The label text sits on its own line with a gap, clear of the input and its focus ring. */
+/** A course's name on its card: its category's icon in the course colour, the title, and what kind of course it is. */
+function TutorCourseHeading({ course }: { course: Course }) {
+  const meta = getCategoryMeta(course.category);
+  const Icon = meta.icon;
+  return (
+    <div className="flex items-center gap-3 pr-14">
+      <span className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-white shadow-sm", course.cover)} aria-hidden="true">
+        <Icon className="h-5 w-5" />
+      </span>
+      <div className="min-w-0">
+        <CardTitle className="truncate" title={course.title}>{course.title}</CardTitle>
+        <p className="mt-0.5 flex items-center gap-1.5 text-xs text-zinc-500">
+          <span className="truncate">{meta.label} · {course.level}</span>
+          {course.published === false && <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">Draft</span>}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function Field({ label, children, action }: { label: string; children: ReactNode; /** Shown right after the label text, e.g. an AI button. */ action?: ReactNode }) {
   return (
     <label className="block text-sm font-medium text-zinc-800">
@@ -1226,6 +1246,8 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
   // AI help: writes fields of this lesson from what is filled in so far, plus an optional note.
   const [aiHint, setAiHint] = useState("");
   const [aiBusy, setAiBusy] = useState<LessonAiField[] | null>(null);
+  // Whether the write in progress was started by the step's own button (as opposed to a field's).
+  const [aiBusyStep, setAiBusyStep] = useState(false);
   const [aiNote, setAiNote] = useState<{ ok: boolean; text: string } | null>(null);
   // What the fields held before the last AI write, so it can be undone.
   const [aiUndo, setAiUndo] = useState<LessonAiValues | null>(null);
@@ -1360,13 +1382,14 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
     const now = aiCurrent();
     return fields.filter((field) => (field === "takeaways" ? now.takeaways.length === 0 : field === "durationMin" ? !duration.trim() : !String(now[field]).trim()));
   };
-  async function writeWithAi(fields: LessonAiField[]) {
+  async function writeWithAi(fields: LessonAiField[], fromStep = false) {
     if (!fields.length || aiBusy) return;
     if (!title.trim() && !aiHint.trim() && !description.trim() && !body.trim()) {
       setAiNote({ ok: false, text: "Tell the AI what this lesson is about first: type a title, or a few words in the box above." });
       return;
     }
     setAiBusy(fields);
+    setAiBusyStep(fromStep);
     setAiNote(null);
     try {
       const res = await fetch("/api/tutor/lesson-ai/", {
@@ -1391,10 +1414,11 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
       setAiNote({ ok: false, text: "Couldn't reach the server. Try again." });
     } finally {
       setAiBusy(null);
+      setAiBusyStep(false);
     }
   }
   const aiButton = (field: LessonAiField, filled: boolean) => (
-    <AiFieldButton busy={aiBusy?.length === 1 && aiBusy[0] === field} disabled={aiBusy !== null} filled={filled} onClick={() => void writeWithAi([field])} />
+    <AiFieldButton busy={!aiBusyStep && aiBusy?.length === 1 && aiBusy[0] === field} disabled={aiBusy !== null} filled={filled} onClick={() => void writeWithAi([field])} />
   );
   // The fields AI can write on each step. A text lesson's body is only offered in "Text lesson" mode.
   const AI_STEP_FIELDS: Record<WizardStep, LessonAiField[]> = {
@@ -1474,9 +1498,9 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
                     placeholder={title.trim() ? "Optional note for the AI, e.g. focus on real examples from retail" : "What is this lesson about? e.g. how AI agents differ from automation"}
                     className="h-9 flex-1 bg-white"
                   />
-                  <Button type="button" size="sm" disabled={aiBusy !== null} onClick={() => void writeWithAi(aiStepEmpty.length ? aiStepEmpty : aiStepFields)} className="shrink-0">
-                    {aiBusy && aiBusy.length > 1 ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                    {aiStepEmpty.length === 0 ? "Rewrite this step with AI" : aiStepEmpty.length < aiStepFields.length ? "Fill the empty fields with AI" : "Fill this step with AI"}
+                  <Button type="button" size="sm" disabled={aiBusy !== null} onClick={() => void writeWithAi(aiStepEmpty.length ? aiStepEmpty : aiStepFields, true)} className="shrink-0">
+                    {aiBusyStep ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                    {aiBusyStep ? "Writing…" : aiStepEmpty.length === 0 ? "Rewrite this step with AI" : aiStepEmpty.length < aiStepFields.length ? "Fill the empty fields with AI" : "Fill this step with AI"}
                   </Button>
                 </div>
                 <p className="mt-1.5 text-xs text-zinc-500">
@@ -1567,7 +1591,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
                   />
                 )}
                 {videoMode === "text" && (
-                  <LessonContentField body={body} bodyFileUrl={bodyFileUrl} uploading={uploading} setUploading={setUploading} allowUploads={allowUploads} onChange={({ body: nextBody, bodyFileUrl: nextUrl }) => { setBody(nextBody); setBodyFileUrl(nextUrl); }} />
+                  <LessonContentField action={aiButton("body", Boolean(body.trim()))} body={body} bodyFileUrl={bodyFileUrl} uploading={uploading} setUploading={setUploading} allowUploads={allowUploads} onChange={({ body: nextBody, bodyFileUrl: nextUrl }) => { setBody(nextBody); setBodyFileUrl(nextUrl); }} />
                 )}
               </div>
             )}
@@ -1747,9 +1771,11 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
   );
 }
 
-function LessonContentField({ body, bodyFileUrl, uploading, setUploading, onChange, allowUploads }: {
+function LessonContentField({ body, bodyFileUrl, uploading, setUploading, onChange, allowUploads, action }: {
   body: string; bodyFileUrl?: string; uploading: boolean; setUploading: (value: boolean) => void;
   onChange: (value: { body: string; bodyFileUrl?: string }) => void; allowUploads: boolean;
+  /** Shown right after the "Lesson content" label, e.g. an AI button. */
+  action?: ReactNode;
 }) {
   const [mode, setMode] = useState<"write" | "document">(bodyFileUrl ? "document" : "write");
   // Text arriving from outside (the AI drafting the lesson) shows in the writing box.
@@ -1782,9 +1808,10 @@ function LessonContentField({ body, bodyFileUrl, uploading, setUploading, onChan
     }
   }
 
-  return <div className="space-y-2">
-    <span className="text-sm font-medium text-zinc-800">Lesson content</span>
-    <div className="flex w-fit gap-1 rounded-xl bg-zinc-100 p-1 text-xs font-medium">
+  // The header lines up with every other field's: label, then the AI button, on a 24px row with 6px below.
+  return <div className="[&>p[role=alert]]:mt-2">
+    <div className="mb-1.5 flex min-h-6 items-center gap-2 text-sm font-medium text-zinc-800"><span>Lesson content</span>{action}</div>
+    <div className="mb-2 flex w-fit gap-1 rounded-xl bg-zinc-100 p-1 text-xs font-medium">
       <button type="button" onClick={() => { setMode("write"); onChange({ body, bodyFileUrl: undefined }); }} className={cn("rounded-lg px-3 py-1.5", mode === "write" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}>Write content</button>
       <button type="button" disabled={!allowUploads} title={!allowUploads ? "Save the course draft before attaching files" : undefined} onClick={() => { setMode("document"); onChange({ body: "", bodyFileUrl }); }} className={cn("rounded-lg px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-50", mode === "document" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}>Attach document</button>
     </div>
