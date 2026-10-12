@@ -28,7 +28,8 @@ import { parseCanvasCartridge, type CanvasImportSummary } from "@/lib/canvas-imp
 import { courseFolderToZip, MAX_COURSE_IMPORT_BYTES } from "@/lib/course-folder-import";
 import { Input, Textarea } from "@/components/ui/input";
 import { PageTransition } from "@/components/motion";
-import { getCategoryCover, getCategoryMeta, DEFAULT_CATEGORIES } from "@/components/category-icon";
+import { getCategoryCover, getCategoryMeta, DEFAULT_COURSE_ICON } from "@/components/category-icon";
+import { CourseIconPicker } from "@/components/course-icon-picker";
 import { MAX_RESOURCE_FILE_BYTES, RESOURCE_FILE_ACCEPT } from "@/lib/resource-files";
 import { mergeSavedTutorCourse, reconcileTutorCourses, type TutorCourseSummary } from "@/lib/tutor-course-sync";
 import { SubmissionSourceBadge } from "@/components/submission-source-badge";
@@ -182,14 +183,6 @@ function distributionCount(distribution: TutorCourse["ratingDistribution"], rati
   return Array.isArray(distribution) ? distribution[rating] ?? distribution[rating - 1] ?? 0 : distribution[String(rating)] ?? 0;
 }
 
-/** Categories already in use across the catalog, merged with the four
- *  defaults every install ships with — offered as datalist suggestions so a
- *  tutor can reuse an existing category or type a brand-new one. */
-function categoryOptions(courses: Course[]): string[] {
-  const inUse = new Set<string>(DEFAULT_CATEGORIES);
-  for (const c of courses) if (c.category) inUse.add(c.category);
-  return [...inUse].sort();
-}
 
 export default function TutorPage() {
   const { state, hydrated, upsertCourse, upsertLesson, deleteLesson, deleteCourse } = useStore();
@@ -678,7 +671,7 @@ function CourseForm({ saving, onCancel, onSave }: { saving: boolean; onCancel: (
   const { state } = useStore();
   const [title, setTitle] = useState("");
   const [tagline, setTagline] = useState("");
-  const [category, setCategory] = useState("product");
+  const [category, setCategory] = useState(DEFAULT_COURSE_ICON);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -719,20 +712,10 @@ function CourseForm({ saving, onCancel, onSave }: { saving: boolean; onCancel: (
           <Input className="mt-1" placeholder="One-line tagline" value={tagline} onChange={(event) => setTagline(event.target.value)} maxLength={400} />
         </label>
         <label className="block text-sm font-medium text-zinc-800">
-          Category
-          <Input
-            list="tutor-new-course-categories"
-            className="mt-1"
-            placeholder="Pick an existing one or type a new one"
-            value={category}
-            onChange={(event) => setCategory(event.target.value)}
-            required
-            maxLength={40}
-          />
-          <datalist id="tutor-new-course-categories">
-            {categoryOptions(state.courses).map((c) => <option key={c} value={c} />)}
-          </datalist>
+          Course icon
+          <span className="mb-1.5 mt-0.5 block text-xs font-normal text-zinc-500">Shown beside the course wherever it appears. The colour comes with the icon.</span>
         </label>
+        <CourseIconPicker value={category} onChange={setCategory} />
         <p className="text-xs text-zinc-500">Starts as a private draft — publish it from the editor once it's ready for learners.</p>
         <Button type="submit" disabled={saving || !title.trim()} className="min-h-11">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
@@ -926,9 +909,9 @@ const DURATION_PRESETS = [5, 10, 15, 20, 30, 45, 60];
 
 function CourseEditor({ course, saving, onCancel, onSave, onAddLesson, onDeleteLesson, onDeleteCourse, allowUploads = true }: { course?: Course | null; saving: boolean; onCancel: () => void; onSave: (course: Course) => Promise<void>; onAddLesson?: (lesson: Lesson) => Promise<boolean>; onDeleteLesson?: (lesson: Lesson) => Promise<boolean>; onDeleteCourse?: () => Promise<void>; allowUploads?: boolean }) {
   const { state } = useStore();
-  const [title, setTitle] = useState(course?.title ?? ""); const [tagline, setTagline] = useState(course?.tagline ?? ""); const [category, setCategory] = useState(course?.category ?? "product"); const [level, setLevel] = useState<Course["level"]>(course?.level ?? "Beginner"); const [tags, setTags] = useState(course?.tags.join(", ") ?? ""); const [assessment, setAssessment] = useState(course?.baseAssessment ?? ""); const [published, setPublished] = useState(course?.published ?? false);
+  const [title, setTitle] = useState(course?.title ?? ""); const [tagline, setTagline] = useState(course?.tagline ?? ""); const [category, setCategory] = useState(course?.category ?? DEFAULT_COURSE_ICON); const [level, setLevel] = useState<Course["level"]>(course?.level ?? "Beginner"); const [tags, setTags] = useState(course?.tags.join(", ") ?? ""); const [assessment, setAssessment] = useState(course?.baseAssessment ?? ""); const [published, setPublished] = useState(course?.published ?? false);
   const submit = (event: FormEvent) => { event.preventDefault(); const cleanCategory = category.trim(); if (!title.trim() || !cleanCategory) return; void onSave(course ? { ...course, title: title.trim(), tagline: tagline.trim(), category: cleanCategory, level, tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean), baseAssessment: assessment.trim() || undefined, cover: getCategoryCover(cleanCategory), published } : { slug: title.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || `course-${Date.now()}`, title: title.trim(), tagline: tagline.trim() || "New learning path.", category: cleanCategory, level, tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean), cover: getCategoryCover(cleanCategory), addedAt: new Date().toISOString().slice(0, 10), lessons: [], baseAssessment: assessment.trim() || undefined, published }); };
-    return <Card className="space-y-4"><div className="flex items-center justify-between"><CardTitle>{course ? `Edit ${course.title}` : "New course"}</CardTitle><div className="flex gap-1">{course && <Button type="button" size="sm" variant="outline" onClick={() => window.open(`/api/courses/export?slug=${encodeURIComponent(course.slug)}`, "_blank")}><Download className="h-3.5 w-3.5" />Export ZIP</Button>}<Button size="sm" variant="ghost" onClick={onCancel}>Close</Button></div></div><form onSubmit={submit} className="grid gap-3 sm:grid-cols-2"><Field label="Course title"><Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={160} /></Field><Field label="Tagline"><Input value={tagline} onChange={(e) => setTagline(e.target.value)} required maxLength={400} /></Field><Field label="Category"><Input list="tutor-editor-category-options" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Pick an existing one or type a new one" required maxLength={40} /><datalist id="tutor-editor-category-options">{categoryOptions(state.courses).map((c) => <option key={c} value={c} />)}</datalist></Field><Field label="Level"><Select value={level} onChange={(e) => setLevel(e.target.value as Course["level"])}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></Select></Field><Field label="Tags (comma separated)"><Input value={tags} onChange={(e) => setTags(e.target.value)} /></Field><Field label="Base assessment"><Textarea value={assessment} onChange={(e) => setAssessment(e.target.value)} maxLength={5000} /></Field><label className="flex items-center gap-2 text-sm font-medium text-zinc-800 sm:col-span-2"><input type="checkbox" checked={published} onChange={(e) => setPublished(e.target.checked)} className="h-4 w-4 rounded border-zinc-300 accent-primary" />Published — visible to learners{!published && <span className="font-normal text-zinc-500">(currently a private draft)</span>}</label><div className="flex items-end gap-2"><Button type="submit" disabled={saving} className="min-h-11">{saving && <Loader2 className="h-4 w-4 animate-spin" />}Save course</Button>{course && onDeleteCourse && <Button type="button" variant="danger" disabled={saving} onClick={() => void onDeleteCourse()} aria-label={`Delete ${course.title}`}><Trash2 className="h-4 w-4" /></Button>}</div></form>
+    return <Card className="space-y-4"><div className="flex items-center justify-between"><CardTitle>{course ? `Edit ${course.title}` : "New course"}</CardTitle><div className="flex gap-1">{course && <Button type="button" size="sm" variant="outline" onClick={() => window.open(`/api/courses/export?slug=${encodeURIComponent(course.slug)}`, "_blank")}><Download className="h-3.5 w-3.5" />Export ZIP</Button>}<Button size="sm" variant="ghost" onClick={onCancel}>Close</Button></div></div><form onSubmit={submit} className="grid gap-3 sm:grid-cols-2"><Field label="Course title"><Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={160} /></Field><Field label="Tagline"><Input value={tagline} onChange={(e) => setTagline(e.target.value)} required maxLength={400} /></Field><div className="sm:col-span-2"><p className="mb-1.5 text-sm font-medium text-zinc-800">Course icon</p><CourseIconPicker value={category} onChange={setCategory} /></div><Field label="Level"><Select value={level} onChange={(e) => setLevel(e.target.value as Course["level"])}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></Select></Field><Field label="Tags (comma separated)"><Input value={tags} onChange={(e) => setTags(e.target.value)} /></Field><Field label="Base assessment"><Textarea value={assessment} onChange={(e) => setAssessment(e.target.value)} maxLength={5000} /></Field><label className="flex items-center gap-2 text-sm font-medium text-zinc-800 sm:col-span-2"><input type="checkbox" checked={published} onChange={(e) => setPublished(e.target.checked)} className="h-4 w-4 rounded border-zinc-300 accent-primary" />Published — visible to learners{!published && <span className="font-normal text-zinc-500">(currently a private draft)</span>}</label><div className="flex items-end gap-2"><Button type="submit" disabled={saving} className="min-h-11">{saving && <Loader2 className="h-4 w-4 animate-spin" />}Save course</Button>{course && onDeleteCourse && <Button type="button" variant="danger" disabled={saving} onClick={() => void onDeleteCourse()} aria-label={`Delete ${course.title}`}><Trash2 className="h-4 w-4" /></Button>}</div></form>
     {course && onAddLesson && <LessonsSection course={course} saving={saving} onAddLesson={onAddLesson} onDeleteLesson={onDeleteLesson} allowUploads={allowUploads} />}
   </Card>;
 }
@@ -1094,7 +1077,7 @@ function TutorCourseHeading({ course }: { course: Course }) {
       <div className="min-w-0">
         <CardTitle className="truncate" title={course.title}>{course.title}</CardTitle>
         <p className="mt-0.5 flex items-center gap-1.5 text-xs text-zinc-500">
-          <span className="truncate">{meta.label} · {course.level}</span>
+          <span className="truncate">{course.level}</span>
           {course.published === false && <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">Draft</span>}
         </p>
       </div>

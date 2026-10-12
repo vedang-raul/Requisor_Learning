@@ -114,7 +114,7 @@ function describe(action: AssistantAction): { icon: typeof Sparkles; title: stri
         title: "Create course",
         lines: [
           c.title,
-          `${c.level} · ${c.category}${c.tags.length ? ` · ${c.tags.slice(0, 4).join(", ")}` : ""}`,
+          `${c.level}${c.tags.length ? ` · ${c.tags.slice(0, 4).join(", ")}` : ""}`,
           c.lessons.length
             ? `${c.lessons.length} lesson${c.lessons.length === 1 ? "" : "s"}: ${written} written${c.lessons.length - written ? `, ${c.lessons.length - written} waiting for a video` : ""}`
             : "No lessons yet",

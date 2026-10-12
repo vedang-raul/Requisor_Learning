@@ -155,7 +155,6 @@ function CourseView() {
         <div className="relative z-10 flex flex-wrap items-end justify-between gap-6">
           <div className="max-w-2xl">
             <div className="mb-3 flex items-center gap-2">
-              <Tag className="bg-black/30 text-white backdrop-blur-sm">{meta.label}</Tag>
               <Tag className="bg-black/30 text-white backdrop-blur-sm">{course.level}</Tag>
             </div>
             <h1 className="text-3xl font-bold text-white drop-shadow md:text-4xl">{course.title}</h1>

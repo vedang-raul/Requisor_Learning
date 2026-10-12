@@ -20,7 +20,8 @@ import { Tag } from "@/components/ui/badge";
 import { PageTransition } from "@/components/motion";
 import { ProgressBar } from "@/components/ui/progress";
 import { TeamInsights } from "@/components/team-insights";
-import { getCategoryCover, DEFAULT_CATEGORIES } from "@/components/category-icon";
+import { getCategoryCover, DEFAULT_COURSE_ICON } from "@/components/category-icon";
+import { CourseIconPicker } from "@/components/course-icon-picker";
 
 type TabKey = "analytics" | "content" | "users" | "reviews" | "bugs";
 const AI_COURSE_DRAFT_KEY = "requisor-ai-course-draft";
@@ -565,14 +566,6 @@ function ContentManager() {
   );
 }
 
-/** Categories already in use across the catalog, merged with the four
- *  defaults every install ships with — offered as datalist suggestions so an
- *  admin can reuse an existing category or type a brand-new one. */
-function categoryOptions(courses: Course[]): string[] {
-  const inUse = new Set<string>(DEFAULT_CATEGORIES);
-  for (const c of courses) if (c.category) inUse.add(c.category);
-  return [...inUse].sort();
-}
 
     /* Imports a previously exported course JSON file (see /api/tutor/courses/export)
        as a brand-new draft course — never merged into an existing one. Reuses the
@@ -694,7 +687,7 @@ function CourseForm({ onSave, onClose }: { onSave: (c: Course) => void | Promise
   const { state } = useStore();
   const [title, setTitle] = useState("");
   const [tagline, setTagline] = useState("");
-  const [category, setCategory] = useState("product");
+  const [category, setCategory] = useState(DEFAULT_COURSE_ICON);
   return (
     <motion.div
       initial={{ opacity: 0, height: 0 }}
@@ -712,17 +705,7 @@ function CourseForm({ onSave, onClose }: { onSave: (c: Course) => void | Promise
         </div>
         <Input placeholder="Course title (e.g. System Design)" value={title} onChange={(e) => setTitle(e.target.value)} />
         <Input placeholder="One-line tagline" value={tagline} onChange={(e) => setTagline(e.target.value)} />
-        <Input
-          list="admin-new-course-categories"
-          placeholder="Category — pick an existing one or type a new one"
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          aria-label="Category"
-          maxLength={40}
-        />
-        <datalist id="admin-new-course-categories">
-          {categoryOptions(state.courses).map((c) => <option key={c} value={c} />)}
-        </datalist>
+        <CourseIconPicker value={category} onChange={setCategory} />
         <motion.div whileHover={{ scale: title.trim() ? 1.02 : 1 }} whileTap={{ scale: title.trim() ? 0.98 : 1 }}>
           <Button
             disabled={!title.trim() || !category.trim()}

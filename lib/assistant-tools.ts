@@ -20,7 +20,7 @@ import { extractYouTubeId, isLessonLive, isLessonScheduled, PLACEHOLDER_VIDEO } 
 import type { AssistantAction } from "@/lib/assistant-actions";
 import type { Course, Lesson } from "@/lib/types";
 import { getLessonTranscript } from "@/lib/lesson-transcript";
-import { getCategoryCover } from "@/components/category-icon";
+import { COURSE_ICONS, DEFAULT_COURSE_ICON, getCategoryCover, getCategoryMeta, isCourseIcon } from "@/components/category-icon";
 import { cleanDiscoveryFields, FORMATS, INDUSTRIES, PROGRAM_RUNS, type ProgramRun } from "@/lib/program-builder";
 import { transcriptForAi } from "@/lib/transcript";
 
@@ -68,7 +68,9 @@ const level = (v: unknown) => LEVELS.find((l) => l.toLowerCase() === str(v, 20).
 const tagList = (v: unknown) => (Array.isArray(v) ? [...new Set(v.map((t) => str(t, 50)).filter(Boolean))].slice(0, 20) : null);
 const slugify = (text: string) => text.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 60).replace(/-$/, "");
 /** Categories are short lowercase keys ("ai", "product"); a new one is allowed. */
-const categoryKey = (v: unknown) => str(v, 40).toLowerCase().replace(/\s+/g, " ");
+/** A course's icon is stored in its category field. An icon that isn't on offer gives "". */
+const iconKey = (v: unknown) => { const key = str(v, 40).toLowerCase().replace(/\s+/g, " "); return isCourseIcon(key) ? key : ""; };
+const ICON_HINT = `The course's icon, shown beside it everywhere. One of: ${COURSE_ICONS.map((icon) => icon.key).join(", ")}. Pick the closest to the subject.`;
 
 /** A drafted lesson inside a new course: a text lesson when it has a body, otherwise a draft waiting for a video. */
 function outlineLesson(raw: unknown, id: string): Lesson | null {
@@ -520,7 +522,7 @@ const TOOLS: ToolDef[] = [
       properties: {
         title: { type: "string" },
         tagline: { type: "string", description: "One sentence on what the learner gets; written for you if omitted" },
-        category: { type: "string", description: "Short lowercase key. Existing ones: product, data, ai, security. A new one is allowed, e.g. history, design." },
+        category: { type: "string", enum: COURSE_ICONS.map((icon) => icon.key), description: ICON_HINT },
         level: { type: "string", enum: ["Beginner", "Intermediate", "Advanced"] },
         tags: { type: "array", items: { type: "string" } },
         base_assessment: { type: "string", description: "Optional final assessment brief for the whole course" },
@@ -544,10 +546,10 @@ const TOOLS: ToolDef[] = [
     roles: MANAGERS,
     async run(args, ctx) {
       const title = str(args.title, 160);
-      const category = categoryKey(args.category);
+      // An icon the model made up falls back to the general one rather than failing the whole course.
+      const category = iconKey(args.category) || DEFAULT_COURSE_ICON;
       const courseLevel = level(args.level);
       if (!title) return fail("A course title is required.");
-      if (!category) return fail("A category is required, e.g. ai, data, product, security, or a new short one.");
       if (!courseLevel) return fail("level must be Beginner, Intermediate or Advanced.");
       const base = slugify(title) || "course";
       const mine = ctx.role === "admin" ? await getCourses() : await getCourses("WHERE c.owner_user_id = $1", [ctx.userId]);
@@ -584,11 +586,11 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "propose_update_course",
-    description: "Propose changing a course's details: title, tagline, category, level, tags or final assessment. Give only the fields that change. Lessons are not touched (use propose_update_lesson); publishing is propose_set_course_published.",
+    description: "Propose changing a course's details: title, tagline, icon, level, tags or final assessment. Give only the fields that change. Lessons are not touched (use propose_update_lesson); publishing is propose_set_course_published.",
     parameters: {
       type: "object",
       properties: {
-        course_slug: { type: "string" }, title: { type: "string" }, tagline: { type: "string" }, category: { type: "string" },
+        course_slug: { type: "string" }, title: { type: "string" }, tagline: { type: "string" }, category: { type: "string", enum: COURSE_ICONS.map((icon) => icon.key), description: ICON_HINT },
         level: { type: "string", enum: ["Beginner", "Intermediate", "Advanced"] }, tags: { type: "array", items: { type: "string" } },
         base_assessment: { type: "string" },
       },
@@ -600,10 +602,10 @@ const TOOLS: ToolDef[] = [
       if (!course) return fail("Course not found among the courses you manage. Use list_my_courses.");
       const changes: Extract<AssistantAction, { kind: "update_course" }>["changes"] = {};
       const summary: string[] = [];
-      const title = str(args.title, 160), tagline = str(args.tagline, 400), category = categoryKey(args.category);
+      const title = str(args.title, 160), tagline = str(args.tagline, 400), category = iconKey(args.category);
       if (title && title !== course.title) { changes.title = title; summary.push(`Title: ${title}`); }
       if (tagline && tagline !== course.tagline) { changes.tagline = tagline; summary.push(`Tagline: ${tagline}`); }
-      if (category && category !== course.category) { changes.category = category; changes.cover = getCategoryCover(category); summary.push(`Category: ${category}`); }
+      if (category && category !== course.category) { changes.category = category; changes.cover = getCategoryCover(category); summary.push(`Icon: ${getCategoryMeta(category).label}`); }
       if (args.level !== undefined) {
         const next = level(args.level);
         if (!next) return fail("level must be Beginner, Intermediate or Advanced.");
