@@ -1082,10 +1082,10 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, allowUplo
 }
 
 /** A labelled form field. The label text sits on its own line with a gap, clear of the input and its focus ring. */
-function Field({ label, children, action }: { label: string; children: ReactNode; /** Shown at the end of the label's line, e.g. an AI button. */ action?: ReactNode }) {
+function Field({ label, children, action }: { label: string; children: ReactNode; /** Shown right after the label text, e.g. an AI button. */ action?: ReactNode }) {
   return (
     <label className="block text-sm font-medium text-zinc-800">
-      <span className="mb-1.5 flex min-h-6 items-center justify-between gap-2"><span>{label}</span>{action}</span>
+      <span className="mb-1.5 flex min-h-6 items-center gap-2"><span>{label}</span>{action}</span>
       {children}
     </label>
   );
