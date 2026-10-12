@@ -149,8 +149,8 @@ export function Sidebar() {
               transition={{ duration: 0.2 }}
               className="leading-tight"
             >
-              <p className="text-sm font-bold text-zinc-900">Requisor</p>
-              <p className="text-gradient text-[11px] font-semibold">Learning</p>
+              <p className="text-sm font-bold text-zinc-900">Alma 41</p>
+              <p className="text-gradient text-[11px] font-semibold">by Requisor.io</p>
             </motion.div>
           )}
         </AnimatePresence>

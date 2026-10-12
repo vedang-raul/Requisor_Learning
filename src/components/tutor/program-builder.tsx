@@ -159,7 +159,7 @@ function ProposalDocument({ proposal, onChange, printing = false }: { proposal: 
       {E({ value: proposal.pricingNote, onEdit: (v) => set("pricingNote", v), as: "p", className: "mt-2 text-xs text-zinc-600", label: "Pricing note", multiline: true })}
 
       <footer className="mt-8 flex justify-between border-t border-zinc-200 pt-4 text-xs text-zinc-600">
-        <span>Generated with the Requisor Learning Program Builder</span>
+        <span>Generated with the Alma 41 Program Builder</span>
         <span>{proposal.date}</span>
       </footer>
     </article>

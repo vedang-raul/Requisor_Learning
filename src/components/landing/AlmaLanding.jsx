@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import s from './alma-landing.module.css'
 
-/* Alma by Requisor — the public landing page.
+/* Alma 41 by Requisor.io — the public landing page.
    Structure follows the "Alma landing page" design; colours are Requisor's
    (see alma-landing.module.css). Sign-in goes to /login/, and the Nova demo
    talks to the same anonymous endpoint the previous landing page used. */
@@ -175,9 +175,9 @@ const plainReply = (text) => text.replace(/\{\{course\|[^|}]*\|([^}]*)\}\}/g, '$
 function Wordmark({ by = false }) {
   return (
     <>
-      <span className={s.wordmarkName}>alma</span>
+      <span className={s.wordmarkName}>alma 41</span>
       <span className={s.wordmarkDot} aria-hidden="true" />
-      {by && <span className={s.wordmarkBy}>by Requisor</span>}
+      {by && <span className={s.wordmarkBy}>by Requisor.io</span>}
     </>
   )
 }
@@ -358,7 +358,7 @@ export default function AlmaLanding() {
     <div id="top" className={s.root}>
       <header className={s.header}>
         <nav aria-label="Main" className={`${s.wrap} ${s.nav}`}>
-          <a href="#top" aria-label="Alma by Requisor home" className={s.wordmark}><Wordmark by /></a>
+          <a href="#top" aria-label="Alma 41 by Requisor.io home" className={s.wordmark}><Wordmark by /></a>
           <div className={s.navLinks}>
             {NAV.map(([href, label]) => <a key={href} className={s.navLink} href={href}>{label}</a>)}
           </div>

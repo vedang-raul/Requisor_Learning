@@ -27,7 +27,7 @@ const initialState: AppState = {
   notes: {},
   xp: 0,
   notifications: [
-    { id: "n1", kind: "announcement", title: "Welcome to Requisor Learning", body: "Your curated learning paths are ready. Start anywhere — progress is saved automatically.", at: new Date().toISOString(), read: false },
+    { id: "n1", kind: "announcement", title: "Welcome to Alma 41", body: "Your curated learning paths are ready. Start anywhere — progress is saved automatically.", at: new Date().toISOString(), read: false },
     { id: "n2", kind: "course", title: "New path: Agentic AI", body: "18 lessons on LLMs, agents, RAG and MCP are now available.", at: new Date().toISOString(), read: false },
   ],
   serverNotifications: [],

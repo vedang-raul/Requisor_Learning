@@ -11,12 +11,12 @@ export default function LoginPage() {
           >
             <img
               src="/requisor.png"
-              alt="Requisor Learning home"
+              alt="Alma 41 home"
               className="h-10 w-10 rounded-lg object-contain"
               width="40"
               height="40"
             />
-            <span className="text-lg font-semibold">Requisor Learning</span>
+            <span className="text-lg font-semibold">Alma 41 <span className="text-sm font-normal text-zinc-500">by Requisor.io</span></span>
           </Link>
           <h1 className="text-2xl font-bold sm:text-3xl">Choose your login</h1>
           <p className="mt-2 text-sm text-zinc-600 sm:text-base">

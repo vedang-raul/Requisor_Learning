@@ -26,7 +26,7 @@ Set one of them:
 - **Resend:** create an API key and set `RESEND_API_KEY`.
 
 `EMAIL_FROM` must be a sender that service has verified, for example
-`Requisor Learning <support@your-domain.com>`.
+`Alma 41 <support@your-domain.com>`.
 
 Without an email key, sign-up in production fails at the "send verification
 email" step.
@@ -41,7 +41,7 @@ email" step.
    | `DATABASE_URL` | the Supabase Session pooler string |
    | `XAI_API_KEY` | your xAI key |
    | `BREVO_API_KEY` | your Brevo key (or `RESEND_API_KEY` for Resend) |
-   | `EMAIL_FROM` | e.g. `Requisor Learning <support@your-domain.com>` |
+   | `EMAIL_FROM` | e.g. `Alma 41 <support@your-domain.com>` |
    | `AUPHONIC_API_KEY` | optional; without it auto-edit runs in demo mode |
 
    `NEXTAUTH_SECRET` is generated for you, and `DATABASE_SSL=require` and

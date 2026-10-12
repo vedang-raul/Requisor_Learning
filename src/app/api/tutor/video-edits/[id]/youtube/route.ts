@@ -56,7 +56,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       accessToken,
       { ...source, sizeBytes, contentType: head.headers.get("content-type") || "video/mp4" },
       // Unlisted: embeddable in the lesson without appearing on the channel page.
-      { title: job.title, description: "Lesson video — Requisor Learning.", privacyStatus: "unlisted" }
+      { title: job.title, description: "Lesson video — Alma 41.", privacyStatus: "unlisted" }
     );
     await db.query("UPDATE video_edit_jobs SET youtube_video_id = $2, updated_at = NOW() WHERE id = $1", [id, videoId]);
 

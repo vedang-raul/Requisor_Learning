@@ -9,7 +9,7 @@ import { getBaseUrl } from "./base-url";
  *  3. The Gmail connector, inside a Repl.
  *  4. Local development: nothing is sent; the email's links are logged.
  */
-const FROM = process.env.EMAIL_FROM || `Requisor Learning <support@requisor.io>`;
+const FROM = process.env.EMAIL_FROM || `Alma 41 <support@requisor.io>`;
 
 function base64Url(input: string): string {
   return Buffer.from(input).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -26,7 +26,7 @@ const hasReplitIdentity = Boolean(process.env.REPL_IDENTITY || process.env.WEB_R
  */
 export const skipEmailVerification = () => (process.env.SKIP_EMAIL_VERIFICATION ?? "").toLowerCase() === "on";
 
-/** "Requisor Learning <support@requisor.io>" → its name and address. */
+/** "Alma 41 <support@requisor.io>" → its name and address. */
 export function parseSender(from: string): { name?: string; email: string } {
   const match = from.match(/^\s*"?([^"<]*?)"?\s*<\s*([^<>\s]+)\s*>\s*$/);
   if (!match) return { email: from.trim() };
@@ -105,13 +105,13 @@ function shell(title: string, body: string, cta?: { label: string; href: string 
     <tr><td align="center">
       <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;padding:36px;text-align:left;">
         <tr><td style="padding-bottom:20px;">
-          <span style="font-size:20px;font-weight:bold;color:#14b8a6;">Requisor</span>
-          <span style="font-size:20px;font-weight:bold;color:#111827;"> Learning</span>
+          <span style="font-size:20px;font-weight:bold;color:#14b8a6;">Alma 41</span>
+          <span style="font-size:13px;font-weight:600;color:#6b7280;"> by Requisor.io</span>
         </td></tr>
         <tr><td style="font-size:18px;font-weight:bold;color:#111827;padding-bottom:12px;">${title}</td></tr>
         <tr><td style="font-size:14px;line-height:1.6;color:#374151;padding-bottom:24px;">${body}</td></tr>
         ${cta ? `<tr><td><a href="${cta.href}" style="display:inline-block;background:#14b8a6;color:#ffffff;text-decoration:none;font-size:14px;font-weight:bold;padding:12px 28px;border-radius:10px;">${cta.label}</a></td></tr>` : ""}
-        <tr><td style="font-size:11px;color:#9ca3af;padding-top:28px;">Requisor Learning · Internal training platform · Citrus Innovations<br/>Sent from support@requisor.io</td></tr>
+        <tr><td style="font-size:11px;color:#9ca3af;padding-top:28px;">Alma 41 by Requisor.io · Citrus Innovations<br/>Sent from support@requisor.io</td></tr>
       </table>
     </td></tr>
   </table>
@@ -122,10 +122,10 @@ export async function sendVerificationEmail(to: string, name: string, token: str
   const url = `${getBaseUrl()}/api/verify?token=${token}`;
   await sendEmail(
     to,
-    "Verify your email — Requisor Learning",
+    "Verify your email — Alma 41",
     shell(
       `Hi ${name || "there"}, verify your email`,
-      "Thanks for creating your Requisor Learning account. Please confirm this email address to activate your account. The link expires in 24 hours.",
+      "Thanks for creating your Alma 41 account. Please confirm this email address to activate your account. The link expires in 24 hours.",
       { label: "Verify my email", href: url }
     )
   );
@@ -134,7 +134,7 @@ export async function sendVerificationEmail(to: string, name: string, token: str
 export async function sendWelcomeEmail(to: string, name: string) {
   await sendEmail(
     to,
-    "Welcome to Requisor Learning 🎉",
+    "Welcome to Alma 41 🎉",
     shell(
       `Welcome aboard, ${name || "there"}!`,
       "Your account is verified and ready. Explore curated learning paths in Product Management, Data Analytics, Agentic AI and Cyber Security — your progress and XP are saved automatically.",
@@ -147,10 +147,10 @@ export async function sendPasswordResetEmail(to: string, name: string, token: st
   const url = `${getBaseUrl()}/reset-password?token=${token}`;
   await sendEmail(
     to,
-    "Reset your password — Requisor Learning",
+    "Reset your password — Alma 41",
     shell(
       `Hi ${name || "there"}, reset your password`,
-      "We received a request to reset your Requisor Learning password. If this wasn't you, you can safely ignore this email. The link expires in 1 hour.",
+      "We received a request to reset your Alma 41 password. If this wasn't you, you can safely ignore this email. The link expires in 1 hour.",
       { label: "Reset password", href: url }
     )
   );

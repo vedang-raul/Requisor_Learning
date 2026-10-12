@@ -204,7 +204,7 @@ export async function POST(req: Request) {
       const videoId = await uploadVideo(
         accessToken,
         { url: job.video_url, sizeBytes, contentType: head.headers.get("content-type") || "video/mp4" },
-        { title: job.title, description: "Lesson video — Requisor Learning.", privacyStatus: "unlisted" }
+        { title: job.title, description: "Lesson video — Alma 41.", privacyStatus: "unlisted" }
       );
       await db.query("UPDATE ai_video_jobs SET youtube_video_id = $2, updated_at = NOW() WHERE id = $1", [id, videoId]);
       return Response.json({ videoId });

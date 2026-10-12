@@ -2,7 +2,7 @@ import { Course, Lesson, CategoryKey } from "../types";
 import { PLACEHOLDER_VIDEO } from "../utils";
 
 /**
- * Seed content for Requisor Learning.
+ * Seed content for Alma 41.
  * Every lesson ships with a PLACEHOLDER_VIDEO id — paste real YouTube URLs
  * from the Admin panel (Admin → Lessons → Edit) and the thumbnail, player
  * and duration wire up automatically.

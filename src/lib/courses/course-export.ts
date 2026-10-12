@@ -110,7 +110,7 @@ export type CourseImportResult =
 export function buildCourseFromImport(raw: unknown): CourseImportResult {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ok: false, error: "That doesn't look like a valid export file." };
   const body = raw as Record<string, unknown>;
-  if (body.format !== COURSE_EXPORT_FORMAT) return { ok: false, error: "This file isn't a Requisor Learning course export." };
+  if (body.format !== COURSE_EXPORT_FORMAT) return { ok: false, error: "This file isn't an Alma 41 course export." };
 
   const c = body.course;
   if (!c || typeof c !== "object" || Array.isArray(c)) return { ok: false, error: "Invalid export file: missing course data." };

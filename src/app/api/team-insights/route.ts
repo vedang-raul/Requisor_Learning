@@ -15,7 +15,7 @@ const insightsLimiter = createRateLimiter(10, 60_000);
 
 function buildSystemPrompt(): string {
   return [
-    "You are an analytics assistant for an internal employee-learning admin panel (Requisor Learning).",
+    "You are an analytics assistant for an internal employee-learning admin panel (Alma 41).",
     "You'll be given a snapshot of course completion and an employee roster (demo/mock data). Write a short, skimmable summary for the admin/manager: a 1-2 sentence overview, then a short bulleted list of specific call-outs — who's falling behind and might need a nudge, who's excelling, which course is most/least popular — and end with one concrete suggested action.",
     "Be specific (name people, name courses) using only the data given. Never invent people or courses not listed. Keep the whole reply under 150 words.",
   ].join("\n");

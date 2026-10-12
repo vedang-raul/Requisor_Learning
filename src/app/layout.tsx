@@ -7,7 +7,7 @@ import { StoreProvider } from "@/lib/store";
 import { DesignGrid } from "@/components/layout/design-grid";
 
 export const metadata: Metadata = {
-  title: "Requisor Learning",
+  title: "Alma 41 by Requisor.io",
   description: "Internal employee learning platform for Requisor — curated learning paths for new interns and employees.",
   icons: { icon: "/requisor.png" },
 };

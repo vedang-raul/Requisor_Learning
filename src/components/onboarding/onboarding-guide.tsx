@@ -61,10 +61,10 @@ export function OnboardingGuide({ hasDob, onComplete }: Props) {
 
   const narration: Record<StepKey, string> = {
     welcome: "Hi — I'm your Requisor guide. I'll help you get set up and find the right path to start with. It only takes a minute.",
-    tour: "Requisor Learning has four tracks: Product Management, Data Analytics, Agentic AI, and Cyber Security. As you go you'll earn XP and badges, and I'll keep track of your progress so I can pick up right where you left off.",
+    tour: "Alma 41 has four tracks: Product Management, Data Analytics, Agentic AI, and Cyber Security. As you go you'll earn XP and badges, and I'll keep track of your progress so I can pick up right where you left off.",
     persona: "First, make it yours — pick how I should look, and which language you'd like me to use.",
     qualification: "Tell me a bit about your background.",
-    goal: "And what brings you here — what are you hoping to get out of Requisor Learning?",
+    goal: "And what brings you here — what are you hoping to get out of Alma 41?",
     dob: "One more thing — your date of birth helps calibrate content complexity. It's kept private.",
     recommend: recommended
       ? `Based on what you told me, I'd start with ${recommended.course.title}.`

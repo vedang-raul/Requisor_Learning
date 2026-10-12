@@ -329,7 +329,7 @@ export function LoginScreen() {
       >
         <div className="mb-6 text-center">
           <img src="/requisor.png" alt="Requisor logo" className="mx-auto mb-4 h-24 w-24 rounded-xl object-contain" />
-          <h1 className="text-2xl font-bold">Requisor Learning</h1>
+          <h1 className="text-2xl font-bold">Alma 41 <span className="text-base font-medium text-zinc-500">by Requisor.io</span></h1>
           <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}

@@ -86,8 +86,8 @@ export function MobileNav() {
               <div className="flex h-16 items-center gap-2.5 border-b border-zinc-200 px-4">
                 <img src="/requisor.png" alt="Requisor logo" className="h-9 w-9 shrink-0 rounded-lg object-contain" />
                 <div className="leading-tight">
-                  <p className="text-sm font-bold text-zinc-900">Requisor</p>
-                  <p className="text-gradient text-[11px] font-semibold">Learning</p>
+                  <p className="text-sm font-bold text-zinc-900">Alma 41</p>
+                  <p className="text-gradient text-[11px] font-semibold">by Requisor.io</p>
                 </div>
                 <div className="flex-1" />
                 <button onClick={() => setOpen(false)} aria-label="Close navigation menu" className="focus-ring rounded-lg p-1.5 text-zinc-500 hover:text-zinc-900">

@@ -316,7 +316,7 @@ export default function TutorAuth() {
           </div>
 
           <h1 className="text-center text-2xl font-bold [text-wrap:balance]">
-            Requisor Learning
+            Alma 41 <span className="text-base font-medium text-zinc-500">by Requisor.io</span>
           </h1>
           <p className="mt-2 mb-6 min-h-[18px] text-center text-sm text-zinc-600">
             {activeCopy.subtitle}

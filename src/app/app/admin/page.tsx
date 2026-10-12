@@ -102,7 +102,7 @@ export default function AdminPage() {
         </motion.div>
         <div>
           <h1 className="text-2xl font-bold md:text-3xl">Admin <span className="text-gradient">Panel</span></h1>
-          <p className="mt-1 text-sm text-zinc-600">Manage content, users and analytics for Requisor Learning.</p>
+          <p className="mt-1 text-sm text-zinc-600">Manage content, users and analytics for Alma 41.</p>
         </div>
       </motion.div>
 

@@ -256,7 +256,7 @@ export function composeCurriculum(form: Discovery): Curriculum {
       ? `The organization identified the following needs: ${pains.map((pain) => pain.replace(/\.$/, "")).join("; ")}.`
       : `The organization is seeking practical AI capability for its ${audience}, applied directly to current workflows.`,
     assessment: "Each module closes with a mastery check (fresh questions per attempt) and an applied deliverable graded on a rubric mapped to the learning outcomes. The capstone rollout memo and template library constitute portfolio evidence. Leadership receives a per-learner competency report — completion is demonstrated, not assumed.",
-    delivery: `${form.format}. Delivered on the Requisor Learning platform: lessons authored by the program team, an always-available AI tutor scoped to the program content, assignments tailored to each learner's role, and spaced review to retain what's mastered.`,
+    delivery: `${form.format}. Delivered on the Alma 41 platform: lessons authored by the program team, an always-available AI tutor scoped to the program content, assignments tailored to each learner's role, and spaced review to retain what's mastered.`,
   };
 }
 
@@ -324,7 +324,7 @@ export function buildProposal(curriculum: Curriculum, employer: string, today: D
     employer: employer.trim() || "Employer Partner",
     date: today.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
     preparedBy: "Prepared by: Professional & Continuing Education",
-    platform: "Delivered on the Requisor Learning platform",
+    platform: "Delivered on the Alma 41 platform",
     need: `${curriculum.needLine} This program addresses those needs directly, using the organization’s own documents and workflows as the training material.`,
     description: curriculum.description,
     outcomes: [...curriculum.outcomes],
