@@ -31,7 +31,7 @@ All limits are enforced in-process with a sliding-window counter.  Limits reset 
 
 All rate-limited routes return **HTTP 429** with a `Retry-After: N` header (seconds until the window resets).
 
-**Upgrade path:** Replace the in-process `Map` in `lib/server/rate-limit.ts` with a Redis-backed sliding window (e.g. ioredis + a Lua `EVALSHA` script).  No call-site changes required — only the `createRateLimiter` implementation changes.
+**Upgrade path:** Replace the in-process `Map` in `src/lib/server/rate-limit.ts` with a Redis-backed sliding window (e.g. ioredis + a Lua `EVALSHA` script).  No call-site changes required — only the `createRateLimiter` implementation changes.
 
 ---
 

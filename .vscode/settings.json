@@ -1,0 +1,13 @@
+{
+  "explorer.fileNesting.enabled": true,
+  "explorer.fileNesting.expand": false,
+  "explorer.fileNesting.patterns": {
+    "package.json": "package-lock.json, tsconfig*.json, next.config.*, next-env.d.ts, tailwind.config.*, postcss.config.*, vercel.json, render.yaml, .gitignore, .gitattributes, .replit, replit.nix, *.tsbuildinfo",
+    "README.md": "AGENTS.md, CLAUDE.md",
+    ".env.example": ".env, .env.*"
+  },
+  "files.exclude": {
+    "**/.next": true,
+    "**/node_modules": true
+  }
+}

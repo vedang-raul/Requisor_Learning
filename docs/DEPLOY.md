@@ -82,7 +82,7 @@ browser uploads to a second copy of this app on Render:
    `RECORDING_UPLOAD_URL=https://<your-render-service>.onrender.com`, then redeploy.
 
 The Render copy never serves pages to users; it only receives those uploads,
-authorised by a short-lived signed token (`lib/auth/upload-token.ts`). Without
+authorised by a short-lived signed token (`src/lib/auth/upload-token.ts`). Without
 `RECORDING_UPLOAD_URL`, the Vercel site simply doesn't offer "Tidy it up".
 
 ## Things to know

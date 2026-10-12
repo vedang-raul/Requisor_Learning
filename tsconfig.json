@@ -23,10 +23,11 @@
     ],
     "paths": {
       "@/*": [
-        "./*"
+        "./src/*"
       ]
     },
-    "target": "ES2017"
+    "target": "ES2017",
+    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.tsbuildinfo"
   },
   "include": [
     "next-env.d.ts",
@@ -37,6 +38,6 @@
   ],
   "exclude": [
     "node_modules",
-    "attached_assets"
+    "docs/archive"
   ]
 }

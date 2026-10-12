@@ -17,7 +17,7 @@ const nextConfig = {
     // controls that do not require application code changes.
     //
     // NOTE: Content-Security-Policy is intentionally absent here.  It is set
-    // per-request in middleware.ts so a fresh nonce can be embedded in every
+    // per-request in src/middleware.ts so a fresh nonce can be embedded in every
     // response.  Static headers() runs once at build time and cannot reference
     // a request-scoped nonce.
     return [
