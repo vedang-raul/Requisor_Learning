@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { isValidResourceFileId, resourceFileUrl } from "@/lib/resource-files";
+import { authOptions } from "@/lib/auth/auth";
+import { db } from "@/lib/server/db";
+import { isValidResourceFileId, resourceFileUrl } from "@/lib/courses/resource-files";
 
 type ResourceFileRow = { filename: string; mime_type: string; data: Buffer };
 

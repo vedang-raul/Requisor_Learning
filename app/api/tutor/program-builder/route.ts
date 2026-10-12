@@ -2,13 +2,13 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import { withAiConcurrency, SemaphoreFullError, AI_UPSTREAM_TIMEOUT_MS } from "@/lib/ai-semaphore";
-import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
-import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/request-body";
+import { authOptions } from "@/lib/auth/auth";
+import { withAiConcurrency, SemaphoreFullError, AI_UPSTREAM_TIMEOUT_MS } from "@/lib/ai/ai-semaphore";
+import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
+import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
 import {
   clampModules, composeCurriculum, EMPTY_DISCOVERY, FORMATS, INDUSTRIES, LEVELS, mergeAiCurriculum, type Discovery,
-} from "@/lib/program-builder";
+} from "@/lib/courses/program-builder";
 
 /**
  * Writes a Program Builder curriculum with AI from the discovery fields and

@@ -1,4 +1,4 @@
-import { followSpeech, normalizeWord, parseScript, wordsMatch } from "@/lib/teleprompter";
+import { followSpeech, normalizeWord, parseScript, wordsMatch } from "@/lib/video/teleprompter";
 
 const heard = (text: string) => text.split(/\s+/).map(normalizeWord).filter(Boolean);
 

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
-import { isResourceFileUrl } from "./lib/resource-files";
+import { isResourceFileUrl } from "./lib/courses/resource-files";
 
 export async function middleware(req: NextRequest) {
   // ── Per-request nonce ───────────────────────────────────────────────────
@@ -50,7 +50,7 @@ export async function middleware(req: NextRequest) {
     `connect-src 'self' https://accounts.google.com https://oauth2.googleapis.com https://challenges.cloudflare.com${uploadOrigin ? ` ${uploadOrigin}` : ""}`,
     // Edited lesson videos preview from this app's own download route. blob:
     // lets a tutor preview their recording locally and carries subtitle tracks.
-    // AI-generated lesson videos are previewed straight from the video service (lib/ai-video.ts).
+    // AI-generated lesson videos are previewed straight from the video service (lib/video/ai-video.ts).
     "media-src 'self' blob: https://*.heygen.ai https://*.heygen.com",
     // fonts.gstatic.com serves the actual Inter font binary files.
     "font-src 'self' data: https://fonts.gstatic.com",

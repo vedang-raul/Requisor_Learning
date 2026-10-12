@@ -1,5 +1,5 @@
-import { seedCourses } from "@/lib/data";
-import { validateCourse } from "@/lib/course-catalog";
+import { seedCourses } from "@/lib/courses/data";
+import { validateCourse } from "@/lib/courses/course-catalog";
 import { extractYouTubeId } from "@/lib/utils";
 
 const VIDEO_ID = "dQw4w9WgXcQ";

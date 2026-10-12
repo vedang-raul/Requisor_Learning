@@ -11,11 +11,11 @@ import { useSession } from "next-auth/react";
 import { useStore } from "@/lib/store";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { PageTransition } from "@/components/motion";
+import { PageTransition } from "@/components/ui/motion";
 import { cn, REPLAY_TOUR_KEY } from "@/lib/utils";
-import { checkJobTitle, JOB_TITLE_HINT, stripJobTitle } from "@/lib/job-title";
-import { PersonaAvatar } from "@/components/persona-avatar";
-import { PERSONAS, LANGUAGES, COUNTRIES } from "@/lib/personas";
+import { checkJobTitle, JOB_TITLE_HINT, stripJobTitle } from "@/lib/auth/job-title";
+import { PersonaAvatar } from "@/components/assistant/persona-avatar";
+import { PERSONAS, LANGUAGES, COUNTRIES } from "@/lib/assistant/personas";
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 interface ProfileData {

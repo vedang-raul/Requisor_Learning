@@ -1,4 +1,4 @@
-import { mergeSavedTutorCourse, reconcileTutorCourses, type TutorCourseSummary } from "@/lib/tutor-course-sync";
+import { mergeSavedTutorCourse, reconcileTutorCourses, type TutorCourseSummary } from "@/lib/courses/tutor-course-sync";
 import type { Course, Lesson } from "@/lib/types";
 
 const lesson = (id: string, title = id): Lesson => ({

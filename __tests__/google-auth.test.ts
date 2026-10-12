@@ -1,10 +1,10 @@
-jest.mock("@/lib/db", () => ({
+jest.mock("@/lib/server/db", () => ({
   db: { query: jest.fn() },
   roleForEmail: jest.fn(() => "employee"),
   ADMIN_EMAIL: "support@requisor.io",
 }));
 
-jest.mock("@/lib/email", () => ({
+jest.mock("@/lib/server/email", () => ({
   skipEmailVerification: () => process.env.SKIP_EMAIL_VERIFICATION === "on",
   sendWelcomeEmail: jest.fn(() => Promise.resolve()),
 }));
@@ -14,9 +14,9 @@ jest.mock("next/headers", () => ({
   cookies: () => ({ get: mockCookieGet }),
 }));
 
-import { authOptions } from "@/lib/auth";
-import { db, roleForEmail } from "@/lib/db";
-import { sendWelcomeEmail } from "@/lib/email";
+import { authOptions } from "@/lib/auth/auth";
+import { db, roleForEmail } from "@/lib/server/db";
+import { sendWelcomeEmail } from "@/lib/server/email";
 
 const mockedQuery = db.query as jest.Mock;
 const mockedRoleForEmail = roleForEmail as jest.Mock;

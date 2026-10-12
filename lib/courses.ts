@@ -1,4 +1,4 @@
-import { seedCourses } from '@/lib/data'
+import { seedCourses } from '@/lib/courses/data'
 
 /* Lightweight summaries of the 4 real learning paths for the anonymous
    landing page — same source data as the signed-in app's course catalog,

@@ -2,23 +2,23 @@
  * __tests__/capacity.test.ts
  *
  * Unit and integration tests for the high-traffic capacity features:
- *  - createRateLimiter  (lib/rate-limit.ts)
- *  - rateLimitResponse  (lib/rate-limit.ts)
- *  - createSemaphore    (lib/ai-semaphore.ts)
+ *  - createRateLimiter  (lib/server/rate-limit.ts)
+ *  - rateLimitResponse  (lib/server/rate-limit.ts)
+ *  - createSemaphore    (lib/ai/ai-semaphore.ts)
  *  - Cache-Control headers on leaderboard and XP routes
  */
 
 // ── Mocks (hoisted before all imports by Jest) ────────────────────────────────
 jest.mock("next-auth", () => ({ getServerSession: jest.fn() }));
 jest.mock("next-auth/next", () => ({ getServerSession: jest.fn() }));
-jest.mock("@/lib/auth", () => ({ authOptions: {} }));
-jest.mock("@/lib/db", () => ({
+jest.mock("@/lib/auth/auth", () => ({ authOptions: {} }));
+jest.mock("@/lib/server/db", () => ({
   db: { query: jest.fn() },
   ADMIN_EMAIL: "support@requisor.io",
 }));
 
-import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
-import { createSemaphore, SemaphoreFullError } from "@/lib/ai-semaphore";
+import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
+import { createSemaphore, SemaphoreFullError } from "@/lib/ai/ai-semaphore";
 // Route handlers — next-auth and db are already mocked above
 import { GET as leaderboardGet } from "@/app/api/leaderboard/route";
 import { GET as xpGet } from "@/app/api/xp/route";
@@ -26,7 +26,7 @@ import { GET as xpGet } from "@/app/api/xp/route";
 // Typed references to the mocked modules
 import { getServerSession as nextAuthSession } from "next-auth";
 import { getServerSession as nextAuthNextSession } from "next-auth/next";
-import { db } from "@/lib/db";
+import { db } from "@/lib/server/db";
 
 const mockNextAuthSession = nextAuthSession as jest.Mock;
 const mockNextAuthNextSession = nextAuthNextSession as jest.Mock;

@@ -1,10 +1,10 @@
 import { after, NextResponse } from "next/server";
 import crypto from "crypto";
-import { db, type DbUser } from "@/lib/db";
-import { sendPasswordResetEmail } from "@/lib/email";
-import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/request-body";
-import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
-import { verifyTurnstile } from "@/lib/turnstile";
+import { db, type DbUser } from "@/lib/server/db";
+import { sendPasswordResetEmail } from "@/lib/server/email";
+import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
+import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
+import { verifyTurnstile } from "@/lib/auth/turnstile";
 
 const RESET_EMAIL_COOLDOWN_MINUTES = 10;
 const MAX_FORGOT_REQUEST_BYTES = 4 * 1024;

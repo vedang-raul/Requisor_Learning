@@ -1,14 +1,14 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { buildCanvasExport, type CanvasExportRubric } from "@/lib/canvas-export";
+import { authOptions } from "@/lib/auth/auth";
+import { db } from "@/lib/server/db";
+import { buildCanvasExport, type CanvasExportRubric } from "@/lib/courses/canvas-export";
 import type { Course, Lesson } from "@/lib/types";
 
 /**
  * Downloads one owned course as a real Canvas-compatible course export
- * package (.imscc) — the same format lib/canvas-import.ts reads, and the
+ * package (.imscc) — the same format lib/courses/canvas-import.ts reads, and the
  * same format a genuine Canvas export uses (see that file's header comment
  * for the confirmed structure). Re-importable into either this app or
  * Canvas itself.

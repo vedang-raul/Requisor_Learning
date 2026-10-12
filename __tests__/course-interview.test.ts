@@ -1,4 +1,4 @@
-import { parseCourseLessonCount } from "@/lib/course-interview";
+import { parseCourseLessonCount } from "@/lib/ai/course-interview";
 
 describe("guided course interview lesson count", () => {
   it.each(["1", "2 lessons", "13", "Please make 20 lessons", "none"])(

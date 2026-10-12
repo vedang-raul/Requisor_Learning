@@ -2,11 +2,11 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import { withAiConcurrency, SemaphoreFullError, AI_UPSTREAM_TIMEOUT_MS } from "@/lib/ai-semaphore";
-import { lessonAiHasSubject, lessonAiPrompt, readLessonAiContext, readLessonAiFields, readLessonAiValues } from "@/lib/lesson-ai";
-import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
-import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/request-body";
+import { authOptions } from "@/lib/auth/auth";
+import { withAiConcurrency, SemaphoreFullError, AI_UPSTREAM_TIMEOUT_MS } from "@/lib/ai/ai-semaphore";
+import { lessonAiHasSubject, lessonAiPrompt, readLessonAiContext, readLessonAiFields, readLessonAiValues } from "@/lib/ai/lesson-ai";
+import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
+import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
 
 /**
  * Writes fields of a lesson for the tutor's lesson editor.

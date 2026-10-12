@@ -1,8 +1,8 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { authOptions } from "@/lib/auth/auth";
+import { db } from "@/lib/server/db";
 
 /** The signed-in user's own server-side notifications. GET lists the most
  *  recent ones; PATCH marks one (by id) or all of them read. */

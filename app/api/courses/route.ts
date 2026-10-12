@@ -1,10 +1,10 @@
 import { isLessonLive } from "@/lib/utils";
-import { HIDDEN_ASSIGNMENT_AI } from "@/lib/assignment-ai";
+import { HIDDEN_ASSIGNMENT_AI } from "@/lib/ai/assignment-ai";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/request-body";
-import { CourseConflictError, ensureCourseCatalog, getCourses, replaceCourse, validateCourse } from "@/lib/course-catalog";
+import { authOptions } from "@/lib/auth/auth";
+import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
+import { CourseConflictError, ensureCourseCatalog, getCourses, replaceCourse, validateCourse } from "@/lib/courses/course-catalog";
 
 const requestId = () => crypto.randomUUID();
 const canManage = (role: unknown) => role === "admin" || role === "tutor";

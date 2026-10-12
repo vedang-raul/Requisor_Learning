@@ -1,9 +1,9 @@
 jest.mock("next-auth/next", () => ({ getServerSession: jest.fn() }));
-jest.mock("@/lib/auth", () => ({ authOptions: {} }));
-jest.mock("@/lib/db", () => ({ db: { query: jest.fn() } }));
+jest.mock("@/lib/auth/auth", () => ({ authOptions: {} }));
+jest.mock("@/lib/server/db", () => ({ db: { query: jest.fn() } }));
 
 import { PATCH } from "@/app/api/profile/route";
-import { db } from "@/lib/db";
+import { db } from "@/lib/server/db";
 import { getServerSession } from "next-auth/next";
 
 const mockSession = getServerSession as jest.Mock;

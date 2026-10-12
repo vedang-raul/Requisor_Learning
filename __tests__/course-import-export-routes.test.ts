@@ -1,24 +1,24 @@
 jest.mock("next-auth/next", () => ({ getServerSession: jest.fn() }));
-jest.mock("@/lib/auth", () => ({ authOptions: {} }));
-jest.mock("@/lib/db", () => ({
+jest.mock("@/lib/auth/auth", () => ({ authOptions: {} }));
+jest.mock("@/lib/server/db", () => ({
   db: {
     query: jest.fn(),
     connect: jest.fn(),
   },
 }));
-jest.mock("@/lib/course-catalog", () => ({
+jest.mock("@/lib/courses/course-catalog", () => ({
   replaceCourse: jest.fn(),
   validateCourse: jest.fn((course) => ({ ok: true, course })),
   CourseConflictError: class CourseConflictError extends Error {},
 }));
-jest.mock("@/components/category-icon", () => ({
+jest.mock("@/components/course/category-icon", () => ({
   getCategoryCover: jest.fn(() => "/covers/leadership.svg"),
 }));
 
 import { getServerSession } from "next-auth/next";
-import { db } from "@/lib/db";
-import { replaceCourse } from "@/lib/course-catalog";
-import { buildCourseFromImport, COURSE_EXPORT_FORMAT, MAX_IMPORT_RUBRIC_CRITERIA } from "@/lib/course-export";
+import { db } from "@/lib/server/db";
+import { replaceCourse } from "@/lib/courses/course-catalog";
+import { buildCourseFromImport, COURSE_EXPORT_FORMAT, MAX_IMPORT_RUBRIC_CRITERIA } from "@/lib/courses/course-export";
 import { GET } from "@/app/api/tutor/courses/export/route";
 import { POST } from "@/app/api/tutor/courses/import/route";
 

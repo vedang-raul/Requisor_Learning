@@ -4,8 +4,8 @@ import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Filter, SlidersHorizontal, GraduationCap } from "lucide-react";
 import { useStore } from "@/lib/store";
-import { CourseCard } from "@/components/course-card";
-import { PageTransition } from "@/components/motion";
+import { CourseCard } from "@/components/course/course-card";
+import { PageTransition } from "@/components/ui/motion";
 import { cn } from "@/lib/utils";
 
 type StatusFilter = "all" | "completed" | "in-progress" | "not-started";

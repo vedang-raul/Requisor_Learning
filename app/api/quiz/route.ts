@@ -1,8 +1,8 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import { db, type DbUser } from "@/lib/db";
+import { authOptions } from "@/lib/auth/auth";
+import { db, type DbUser } from "@/lib/server/db";
 import {
   buildLearnerPersonaLine,
   findLessonForAi,
@@ -10,14 +10,14 @@ import {
   lessonConcepts,
   lessonHasEnoughContent,
   lessonPromptLines,
-} from "@/lib/personalized-learning";
+} from "@/lib/ai/personalized-learning";
 import {
   InvalidJsonBodyError,
   readJsonBody,
   RequestBodyTooLargeError,
-} from "@/lib/request-body";
-import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
-import { withAiConcurrency, SemaphoreFullError, AI_UPSTREAM_TIMEOUT_MS } from "@/lib/ai-semaphore";
+} from "@/lib/server/request-body";
+import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
+import { withAiConcurrency, SemaphoreFullError, AI_UPSTREAM_TIMEOUT_MS } from "@/lib/ai/ai-semaphore";
 
 const BASE_URL = "https://api.x.ai/v1";
 const MODEL = process.env.XAI_MODEL || "grok-3-mini";

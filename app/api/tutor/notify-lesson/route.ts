@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { sendNewVideoEmail } from "@/lib/email";
-import { getBaseUrl } from "@/lib/base-url";
-import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
+import { authOptions } from "@/lib/auth/auth";
+import { db } from "@/lib/server/db";
+import { sendNewVideoEmail } from "@/lib/server/email";
+import { getBaseUrl } from "@/lib/server/base-url";
+import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
 
 /**
  * Tutor-facing equivalent of /api/admin/notify-video — but scoped down:

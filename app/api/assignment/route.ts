@@ -1,24 +1,24 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import { db, type DbUser } from "@/lib/db";
+import { authOptions } from "@/lib/auth/auth";
+import { db, type DbUser } from "@/lib/server/db";
 import {
   buildLearnerPersonaLine,
   findLessonForAi,
   insufficientContentResponse,
   lessonHasEnoughContent,
-} from "@/lib/personalized-learning";
-import { cleanTailoring } from "@/lib/assignment-format";
-import { variationSeed } from "@/lib/assignment-ai";
-import { assignmentPrompt, generateAssignment } from "@/lib/assignment-generate";
-import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
-import { SemaphoreFullError } from "@/lib/ai-semaphore";
+} from "@/lib/ai/personalized-learning";
+import { cleanTailoring } from "@/lib/ai/assignment-format";
+import { variationSeed } from "@/lib/ai/assignment-ai";
+import { assignmentPrompt, generateAssignment } from "@/lib/ai/assignment-generate";
+import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
+import { SemaphoreFullError } from "@/lib/ai/ai-semaphore";
 import {
   InvalidJsonBodyError,
   readJsonBody,
   RequestBodyTooLargeError,
-} from "@/lib/request-body";
+} from "@/lib/server/request-body";
 
 const MAX_ASSIGNMENT_REQUEST_BYTES = 1024;
 

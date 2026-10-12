@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { ensureCourseCatalog } from "@/lib/course-catalog";
-import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
+import { db } from "@/lib/server/db";
+import { ensureCourseCatalog } from "@/lib/courses/course-catalog";
+import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
 
 /**
  * Public, unauthenticated aggregate ratings for the landing page's "Meet

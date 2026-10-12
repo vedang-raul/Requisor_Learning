@@ -1,4 +1,4 @@
-import { editTimeOf, findPauses, keptSegments, totalSeconds } from "@/lib/video-editing";
+import { editTimeOf, findPauses, keptSegments, totalSeconds } from "@/lib/video/video-editing";
 
 /** A loudness envelope in 50 ms steps: [seconds, level] runs. */
 const envelope = (...runs: Array<[number, number]>) => runs.flatMap(([seconds, level]) => Array(Math.round(seconds / 0.05)).fill(level));

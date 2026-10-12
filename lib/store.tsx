@@ -4,7 +4,7 @@ import { isLessonLive } from "@/lib/utils";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { AppState, Course, EarnedBadge, Lesson, Notification, UserState } from "./types";
-import { seedCourses } from "./data";
+import { seedCourses } from "./courses/data";
 
 
 const STORAGE_KEY_BASE = "requisor-learning-v14"; // v14: added 4 DeepLearning.AI agent-building courses to Agentic AI

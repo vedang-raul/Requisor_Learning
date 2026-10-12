@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import { db, ADMIN_EMAIL } from "@/lib/db";
+import { authOptions } from "@/lib/auth/auth";
+import { db, ADMIN_EMAIL } from "@/lib/server/db";
 
 function isAdmin(email: string) {
   return email.toLowerCase() === ADMIN_EMAIL.toLowerCase();

@@ -2,8 +2,8 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { deleteConnection, getConnection, videoDelivery, youtubeConfigured } from "@/lib/youtube";
+import { authOptions } from "@/lib/auth/auth";
+import { deleteConnection, getConnection, videoDelivery, youtubeConfigured } from "@/lib/video/youtube";
 
 /** The tutor's YouTube connection: GET its status, DELETE to disconnect. */
 const canManage = (role: unknown) => role === "admin" || role === "tutor";

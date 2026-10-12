@@ -1,8 +1,8 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { authOptions } from "@/lib/auth/auth";
+import { db } from "@/lib/server/db";
 
 /** Every assignment a learner has submitted, across all their courses —
  *  with grading status, for the "Submissions" sidebar page. Own data only:

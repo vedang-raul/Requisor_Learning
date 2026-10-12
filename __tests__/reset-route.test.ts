@@ -1,4 +1,4 @@
-jest.mock("@/lib/db", () => ({
+jest.mock("@/lib/server/db", () => ({
   db: { query: jest.fn() },
 }));
 

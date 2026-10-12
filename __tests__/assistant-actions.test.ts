@@ -1,15 +1,15 @@
 jest.mock("next-auth/next", () => ({ getServerSession: jest.fn() }));
-jest.mock("@/lib/auth", () => ({ authOptions: {} }));
-jest.mock("@/lib/db", () => ({ db: { query: jest.fn() } }));
-jest.mock("@/lib/rate-limit", () => ({
+jest.mock("@/lib/auth/auth", () => ({ authOptions: {} }));
+jest.mock("@/lib/server/db", () => ({ db: { query: jest.fn() } }));
+jest.mock("@/lib/server/rate-limit", () => ({
   createRateLimiter: () => ({ check: () => ({ limited: false, retryAfterMs: 0 }) }),
   rateLimitResponse: () => new Response("rate limited", { status: 429 }),
 }));
-jest.mock("@/lib/ai-semaphore", () => ({
+jest.mock("@/lib/ai/ai-semaphore", () => ({
   acquireAiSlot: jest.fn(async () => () => undefined),
   SemaphoreFullError: class SemaphoreFullError extends Error {},
 }));
-jest.mock("@/lib/course-catalog", () => ({
+jest.mock("@/lib/courses/course-catalog", () => ({
   ensureCourseCatalog: jest.fn(async () => undefined),
   getCourses: jest.fn(async () => []),
   validateCourse: jest.fn(() => ({ ok: true })),
@@ -17,10 +17,10 @@ jest.mock("@/lib/course-catalog", () => ({
 }));
 
 import { getServerSession } from "next-auth/next";
-import { db } from "@/lib/db";
-import { getCourses, validateCourse } from "@/lib/course-catalog";
-import { ACTION_FRAME, encodeActionFrame, splitActionFrames, type AssistantAction } from "@/lib/assistant-actions";
-import { runAssistantTool, toolsForRole } from "@/lib/assistant-tools";
+import { db } from "@/lib/server/db";
+import { getCourses, validateCourse } from "@/lib/courses/course-catalog";
+import { ACTION_FRAME, encodeActionFrame, splitActionFrames, type AssistantAction } from "@/lib/assistant/assistant-actions";
+import { runAssistantTool, toolsForRole } from "@/lib/assistant/assistant-tools";
 import { POST as chatPOST } from "@/app/api/chat/route";
 import type { Course } from "@/lib/types";
 

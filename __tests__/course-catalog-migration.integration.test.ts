@@ -1,6 +1,6 @@
 import { Client } from "pg";
-import { seedCourses } from "@/lib/data";
-import { initializeCourseCatalog } from "@/lib/course-catalog";
+import { seedCourses } from "@/lib/courses/data";
+import { initializeCourseCatalog } from "@/lib/courses/course-catalog";
 
 const databaseUrl = process.env.DATABASE_URL;
 const describeWithDatabase = databaseUrl ? describe : describe.skip;

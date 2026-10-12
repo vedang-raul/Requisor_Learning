@@ -1,9 +1,9 @@
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { seedCourses } from "@/lib/data";
-import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/request-body";
+import { authOptions } from "@/lib/auth/auth";
+import { db } from "@/lib/server/db";
+import { seedCourses } from "@/lib/courses/data";
+import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
 
 const MAX_NOTE_CONTENT_LENGTH = 50_000;
 const MAX_NOTES_PER_REQUEST = 200;

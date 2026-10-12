@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { authOptions } from "@/lib/auth/auth";
+import { db } from "@/lib/server/db";
 
 const MAX_TITLE = 200;
 const MAX_DESC = 5000;

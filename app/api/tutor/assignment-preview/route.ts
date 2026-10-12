@@ -1,13 +1,13 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import { SemaphoreFullError } from "@/lib/ai-semaphore";
-import { readAssignmentAi } from "@/lib/assignment-ai";
-import { assignmentPrompt, generateAssignment } from "@/lib/assignment-generate";
-import { buildLearnerPersonaLine, cleanLessonText, lessonHasEnoughContent, type AiLesson } from "@/lib/personalized-learning";
-import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
-import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/request-body";
+import { authOptions } from "@/lib/auth/auth";
+import { SemaphoreFullError } from "@/lib/ai/ai-semaphore";
+import { readAssignmentAi } from "@/lib/ai/assignment-ai";
+import { assignmentPrompt, generateAssignment } from "@/lib/ai/assignment-generate";
+import { buildLearnerPersonaLine, cleanLessonText, lessonHasEnoughContent, type AiLesson } from "@/lib/ai/personalized-learning";
+import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
+import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
 
 /**
  * Lets a tutor see what their guardrails produce before saving the lesson:

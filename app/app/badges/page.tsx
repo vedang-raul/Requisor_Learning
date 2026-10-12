@@ -7,9 +7,9 @@ import {
 } from "lucide-react";
 import { useStore, useEarnedBadges, useOverallStats } from "@/lib/store";
 import { Card } from "@/components/ui/card";
-import { PageTransition, Reveal } from "@/components/motion";
+import { PageTransition, Reveal } from "@/components/ui/motion";
 import { Tag } from "@/components/ui/badge";
-import { Counter } from "@/components/counter";
+import { Counter } from "@/components/ui/counter";
 import { cn } from "@/lib/utils";
 import type { LeaderboardEntry, LeaderboardResponse } from "@/app/api/leaderboard/route";
 

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { seedCourses } from "@/lib/data";
-import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
-import { withAiConcurrency, SemaphoreFullError } from "@/lib/ai-semaphore";
+import { authOptions } from "@/lib/auth/auth";
+import { db } from "@/lib/server/db";
+import { seedCourses } from "@/lib/courses/data";
+import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
+import { withAiConcurrency, SemaphoreFullError } from "@/lib/ai/ai-semaphore";
 
 const MAX_BODY_LENGTH = 2000;
 const DEFAULT_PAGE_SIZE = 20;

@@ -1,14 +1,14 @@
 jest.mock("next-auth/next", () => ({ getServerSession: jest.fn() }));
-jest.mock("@/lib/auth", () => ({ authOptions: {} }));
-jest.mock("@/lib/rate-limit", () => ({
+jest.mock("@/lib/auth/auth", () => ({ authOptions: {} }));
+jest.mock("@/lib/server/rate-limit", () => ({
   createRateLimiter: () => ({ check: jest.fn(() => ({ limited: false, retryAfterMs: 0 })) }),
   rateLimitResponse: jest.fn(() => new Response("Too many requests.", { status: 429 })),
 }));
-jest.mock("@/lib/ai-semaphore", () => ({
+jest.mock("@/lib/ai/ai-semaphore", () => ({
   acquireAiSlot: jest.fn(async () => jest.fn()),
   SemaphoreFullError: class SemaphoreFullError extends Error {},
 }));
-jest.mock("@/lib/course-catalog", () => ({
+jest.mock("@/lib/courses/course-catalog", () => ({
   ensureCourseCatalog: jest.fn(async () => undefined),
   getCourses: jest.fn(async () => []),
   validateCourse: jest.fn((course) => ({ ok: true, course })),
@@ -16,7 +16,7 @@ jest.mock("@/lib/course-catalog", () => ({
 
 import { POST } from "@/app/api/tutor/course-draft/route";
 import { getServerSession } from "next-auth/next";
-import { getCourses } from "@/lib/course-catalog";
+import { getCourses } from "@/lib/courses/course-catalog";
 
 const mockSession = getServerSession as jest.Mock;
 const mockGetCourses = getCourses as jest.Mock;

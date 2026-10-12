@@ -22,7 +22,7 @@ export interface Lesson {
    *  page shows an upload widget and learners must submit a file for it. */
   requiresSubmission?: boolean;
   /** Set when the tutor has the AI write each learner their own assignment, inside these guardrails. */
-  assignmentAi?: import("@/lib/assignment-ai").AssignmentAi;
+  assignmentAi?: import("@/lib/ai/assignment-ai").AssignmentAi;
   /** Optional sub-part / module name used to group lessons on the course page. */
   section?: string;
   /** "reading" lessons are article/tool links with no video by design — not a video pending upload. Defaults to "video". */
@@ -41,11 +41,11 @@ export interface Lesson {
  * Free-form: a tutor/admin can add a new category from the course editor,
  * not just pick one of the four the platform launched with. Those four
  * ("product" | "data" | "ai" | "security") keep their specific icon/label/
- * color — see components/category-icon.tsx — anything else gets a generic
+ * color — see components/course/category-icon.tsx — anything else gets a generic
  * fallback rather than being rejected.
  */
 export type CategoryKey = string;
-import type { Syllabus } from "@/lib/syllabus";
+import type { Syllabus } from "@/lib/courses/syllabus";
 
 export interface Course {
   slug: string;
@@ -68,7 +68,7 @@ export interface Course {
    *  data never sent through the DB) is treated as published — only an
    *  explicit `false` hides a course. */
   published?: boolean;
-  /** The course syllabus (see lib/syllabus.ts). Read-only here: it is saved
+  /** The course syllabus (see lib/courses/syllabus.ts). Read-only here: it is saved
    *  through /api/tutor/courses/syllabus and ignored by the course save. */
   syllabus?: Syllabus | null;
 }

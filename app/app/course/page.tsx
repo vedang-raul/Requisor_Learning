@@ -10,11 +10,11 @@ import { cn, formatMinutes, isPlaceholder, youTubeThumb } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Tag } from "@/components/ui/badge";
 import { ProgressBar } from "@/components/ui/progress";
-import { PageTransition, Reveal } from "@/components/motion";
-import { getCategoryMeta } from "@/components/category-icon";
+import { PageTransition, Reveal } from "@/components/ui/motion";
+import { getCategoryMeta } from "@/components/course/category-icon";
 import { Button } from "@/components/ui/button";
-import { CourseReviews } from "@/components/course-reviews";
-import { SyllabusButton } from "@/components/syllabus-view";
+import { CourseReviews } from "@/components/course/course-reviews";
+import { SyllabusButton } from "@/components/course/syllabus-view";
 
 type LessonFilter = "all" | "completed" | "in-progress" | "not-started";
 

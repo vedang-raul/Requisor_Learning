@@ -1,4 +1,4 @@
-import { cleanGeneratedScript, defaultScriptMinutes, parseScript, scriptBrief } from "@/lib/teleprompter";
+import { cleanGeneratedScript, defaultScriptMinutes, parseScript, scriptBrief } from "@/lib/video/teleprompter";
 
 describe("script request", () => {
   it("needs a lesson title, and trims what it is given", () => {

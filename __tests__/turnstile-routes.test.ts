@@ -20,7 +20,7 @@ const mockVerifyTurnstile = jest.fn<
   [string | null | undefined]
 >();
 
-jest.mock("@/lib/turnstile", () => ({
+jest.mock("@/lib/auth/turnstile", () => ({
   isTurnstileEnabled: () => process.env.TURNSTILE_ENABLED === "true",
   verifyTurnstile: (...args: [string | null | undefined]) =>
     mockVerifyTurnstile(...args),
@@ -33,7 +33,7 @@ const mockReadJsonBody = jest.fn<Promise<unknown>, [Request, number]>(async (req
 class MockRequestBodyTooLargeError extends Error {}
 class MockInvalidJsonBodyError extends Error {}
 
-jest.mock("@/lib/rate-limit", () => ({
+jest.mock("@/lib/server/rate-limit", () => ({
   createRateLimiter: () => ({ check: (_key: string) => mockRateLimitCheck() }),
   rateLimitResponse: jest.fn((_retryAfterMs: number) =>
     new Response(
@@ -50,14 +50,14 @@ jest.mock("next-auth", () => {
   return NextAuth;
 });
 
-jest.mock("@/lib/auth", () => ({ authOptions: {} }));
+jest.mock("@/lib/auth/auth", () => ({ authOptions: {} }));
 
-jest.mock("@/lib/db", () => ({
+jest.mock("@/lib/server/db", () => ({
   db: { query: jest.fn().mockResolvedValue({ rows: [] }) },
   roleForEmail: jest.fn(() => "employee"),
 }));
 
-jest.mock("@/lib/email", () => ({
+jest.mock("@/lib/server/email", () => ({
   skipEmailVerification: () => process.env.SKIP_EMAIL_VERIFICATION === "on",
   sendVerificationEmail: jest.fn().mockResolvedValue(undefined),
   sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
@@ -71,7 +71,7 @@ jest.mock("next/server", () => {
   };
 });
 
-jest.mock("@/lib/request-body", () => ({
+jest.mock("@/lib/server/request-body", () => ({
   readJsonBody: (...args: [Request, number]) => mockReadJsonBody(...args),
   RequestBodyTooLargeError: MockRequestBodyTooLargeError,
   InvalidJsonBodyError: MockInvalidJsonBodyError,
@@ -85,7 +85,7 @@ import { POST as resetPost } from "@/app/api/reset/route";
 import { POST as authPost } from "@/app/api/auth/[...nextauth]/route";
 import { POST as googleInitiatePost } from "@/app/api/auth/google-initiate/route";
 // Real captcha-grant implementation used so we can issue + verify grants in tests.
-import { issueGrant, GRANT_COOKIE_NAME } from "@/lib/captcha-grant";
+import { issueGrant, GRANT_COOKIE_NAME } from "@/lib/auth/captcha-grant";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -212,7 +212,7 @@ describe("POST /api/signup — CAPTCHA enforcement", () => {
   });
 
   it("creates a public tutor signup as an employee", async () => {
-    const { db } = jest.requireMock("@/lib/db") as { db: { query: jest.Mock } };
+    const { db } = jest.requireMock("@/lib/server/db") as { db: { query: jest.Mock } };
     const req = new Request("http://localhost/api/signup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -244,8 +244,8 @@ describe("POST /api/signup — CAPTCHA enforcement", () => {
     afterEach(() => { delete process.env.SKIP_EMAIL_VERIFICATION; });
 
     it("creates the account already verified and sends no email", async () => {
-      const { db } = jest.requireMock("@/lib/db") as { db: { query: jest.Mock } };
-      const { sendVerificationEmail } = jest.requireMock("@/lib/email") as { sendVerificationEmail: jest.Mock };
+      const { db } = jest.requireMock("@/lib/server/db") as { db: { query: jest.Mock } };
+      const { sendVerificationEmail } = jest.requireMock("@/lib/server/email") as { sendVerificationEmail: jest.Mock };
       sendVerificationEmail.mockClear();
 
       const res = await signup();
@@ -259,7 +259,7 @@ describe("POST /api/signup — CAPTCHA enforcement", () => {
     });
 
     it("won't let a different password take over a half-finished registration", async () => {
-      const { db } = jest.requireMock("@/lib/db") as { db: { query: jest.Mock } };
+      const { db } = jest.requireMock("@/lib/server/db") as { db: { query: jest.Mock } };
       const bcrypt = jest.requireActual("bcryptjs") as typeof import("bcryptjs");
       const pending = { id: 9, name: "Tester", email_verified: false, verification_expires: null, password_hash: await bcrypt.hash("securepassword", 4) };
       const original = db.query.getMockImplementation();
@@ -311,7 +311,7 @@ describe("POST /api/reset — CAPTCHA enforcement", () => {
   });
 
   it("does not touch the database when CAPTCHA fails", async () => {
-    const { db } = jest.requireMock("@/lib/db") as { db: { query: jest.Mock } };
+    const { db } = jest.requireMock("@/lib/server/db") as { db: { query: jest.Mock } };
     mockVerifyTurnstile.mockResolvedValueOnce({ success: false });
     await resetPost(makeResetRequest("bad-token"));
     expect(db.query).not.toHaveBeenCalled();

@@ -2,10 +2,10 @@ export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { fetchOutput } from "@/lib/auphonic";
-import { editedVideoSource, type VideoEditJobRow } from "@/lib/video-edit-jobs";
+import { authOptions } from "@/lib/auth/auth";
+import { db } from "@/lib/server/db";
+import { fetchOutput } from "@/lib/video/auphonic";
+import { editedVideoSource, type VideoEditJobRow } from "@/lib/video/video-edit-jobs";
 
 /**
  * Streams a finished job's edited video from Auphonic to its owner. Auphonic's

@@ -7,7 +7,7 @@
 
 // ── Mocks (hoisted before all imports) ───────────────────────────────────────
 
-jest.mock("@/lib/rate-limit", () => {
+jest.mock("@/lib/server/rate-limit", () => {
   const checkMock = jest.fn(() => ({ limited: false, retryAfterMs: 0 }));
   return {
     __checkMock: checkMock,
@@ -25,21 +25,21 @@ jest.mock("@/lib/rate-limit", () => {
   };
 });
 
-jest.mock("@/lib/db", () => ({
+jest.mock("@/lib/server/db", () => ({
   db: { query: jest.fn().mockResolvedValue({ rows: [] }) },
 }));
 
-jest.mock("@/lib/email", () => ({
+jest.mock("@/lib/server/email", () => ({
   skipEmailVerification: () => process.env.SKIP_EMAIL_VERIFICATION === "on",
   sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
   sendWelcomeEmail: jest.fn().mockResolvedValue(undefined),
 }));
 
-jest.mock("@/lib/base-url", () => ({
+jest.mock("@/lib/server/base-url", () => ({
   getBaseUrl: () => "http://localhost",
 }));
 
-jest.mock("@/lib/request-body", () => ({
+jest.mock("@/lib/server/request-body", () => ({
   readJsonBody: jest.fn().mockResolvedValue({ email: "victim@example.com" }),
   InvalidJsonBodyError: class InvalidJsonBodyError extends Error {},
   RequestBodyTooLargeError: class RequestBodyTooLargeError extends Error {},
@@ -49,8 +49,8 @@ jest.mock("@/lib/request-body", () => ({
 
 import { POST as forgotPost } from "@/app/api/forgot/route";
 import { GET as verifyGet } from "@/app/api/verify/route";
-import * as rateLimitModule from "@/lib/rate-limit";
-import { db } from "@/lib/db";
+import * as rateLimitModule from "@/lib/server/rate-limit";
+import { db } from "@/lib/server/db";
 
 const mockCheck = (rateLimitModule as unknown as { __checkMock: jest.Mock }).__checkMock;
 const mockDbQuery = (db as unknown as { query: jest.Mock }).query;

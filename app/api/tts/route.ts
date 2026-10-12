@@ -2,10 +2,10 @@ export const runtime = "nodejs";
 export const maxDuration = 30;
 
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
-import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/request-body";
-import { speechText, ttsCharacters, ttsConfigured, ttsModel, ttsVoiceId } from "@/lib/tts";
+import { authOptions } from "@/lib/auth/auth";
+import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
+import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
+import { speechText, ttsCharacters, ttsConfigured, ttsModel, ttsVoiceId } from "@/lib/ai/tts";
 
 /**
  * Speaks the assistant's replies with an ElevenLabs voice.

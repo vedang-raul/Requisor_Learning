@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { ensureCourseCatalog } from "@/lib/course-catalog";
-import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/request-body";
+import { authOptions } from "@/lib/auth/auth";
+import { db } from "@/lib/server/db";
+import { ensureCourseCatalog } from "@/lib/courses/course-catalog";
+import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
 
 const MAX_BODY_BYTES = 2 * 1024;
 

@@ -1,9 +1,9 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { toSubmissionSource } from "@/lib/submission-source";
+import { authOptions } from "@/lib/auth/auth";
+import { db } from "@/lib/server/db";
+import { toSubmissionSource } from "@/lib/courses/submission-source";
 
 /**
  * Lists learner submissions for one lesson so a tutor can review who has

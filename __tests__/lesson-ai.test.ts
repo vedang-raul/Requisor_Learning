@@ -1,4 +1,4 @@
-import { lessonAiHasSubject, lessonAiPrompt, readLessonAiContext, readLessonAiFields, readLessonAiValues } from "@/lib/lesson-ai";
+import { lessonAiHasSubject, lessonAiPrompt, readLessonAiContext, readLessonAiFields, readLessonAiValues } from "@/lib/ai/lesson-ai";
 
 describe("AI help in the lesson editor", () => {
   it("accepts only known fields, in a fixed order", () => {

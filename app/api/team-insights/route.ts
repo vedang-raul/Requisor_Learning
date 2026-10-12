@@ -1,8 +1,8 @@
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { ADMIN_EMAIL } from "@/lib/db";
-import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
-import { withAiConcurrency, SemaphoreFullError, AI_UPSTREAM_TIMEOUT_MS } from "@/lib/ai-semaphore";
+import { authOptions } from "@/lib/auth/auth";
+import { ADMIN_EMAIL } from "@/lib/server/db";
+import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
+import { withAiConcurrency, SemaphoreFullError, AI_UPSTREAM_TIMEOUT_MS } from "@/lib/ai/ai-semaphore";
 
 export const runtime = "nodejs";
 

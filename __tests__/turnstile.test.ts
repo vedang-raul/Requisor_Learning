@@ -1,7 +1,7 @@
 /**
  * __tests__/turnstile.test.ts
  *
- * Tests for the verifyTurnstile server-side helper (lib/turnstile.ts).
+ * Tests for the verifyTurnstile server-side helper (lib/auth/turnstile.ts).
  *
  * The module is imported directly (not mocked) so we test the real logic.
  * Global fetch is replaced with a Jest mock to control Cloudflare API responses.
@@ -9,7 +9,7 @@
 
 // ── Imports ───────────────────────────────────────────────────────────────────
 
-import { isTurnstileEnabled, verifyTurnstile } from "@/lib/turnstile";
+import { isTurnstileEnabled, verifyTurnstile } from "@/lib/auth/turnstile";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

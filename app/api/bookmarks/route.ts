@@ -1,9 +1,9 @@
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { seedCourses } from "@/lib/data";
-import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/request-body";
+import { authOptions } from "@/lib/auth/auth";
+import { db } from "@/lib/server/db";
+import { seedCourses } from "@/lib/courses/data";
+import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
 
 const MAX_BOOKMARKS_PER_REQUEST = 200;
 const MAX_BOOKMARK_REQUEST_BYTES = 64 * 1024;

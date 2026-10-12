@@ -1,5 +1,5 @@
-import { buildCourseFromImport, COURSE_EXPORT_FORMAT } from "@/lib/course-export";
-import { validateCourse } from "@/lib/course-catalog";
+import { buildCourseFromImport, COURSE_EXPORT_FORMAT } from "@/lib/courses/course-export";
+import { validateCourse } from "@/lib/courses/course-catalog";
 
 const resourceFileUrl = "/api/resources/0123456789abcdef0123456789abcdef";
 

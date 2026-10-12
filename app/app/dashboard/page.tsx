@@ -7,12 +7,12 @@ import {
   PlayCircle, Rocket, Network, MessageSquare, Cloud, Compass, Bot, Shield,
 } from "lucide-react";
 import { useStore, useOverallStats, useContinueWatching } from "@/lib/store";
-import { announcements, upcomingPaths } from "@/lib/data";
+import { announcements, upcomingPaths } from "@/lib/courses/data";
 import { Card, CardTitle } from "@/components/ui/card";
-import { ProgressRing } from "@/components/progress-ring";
-import { Counter } from "@/components/counter";
-import { CourseCard } from "@/components/course-card";
-import { PageTransition, Reveal } from "@/components/motion";
+import { ProgressRing } from "@/components/ui/progress-ring";
+import { Counter } from "@/components/ui/counter";
+import { CourseCard } from "@/components/course/course-card";
+import { PageTransition, Reveal } from "@/components/ui/motion";
 import { ProgressBar } from "@/components/ui/progress";
 import { formatMinutes } from "@/lib/utils";
 

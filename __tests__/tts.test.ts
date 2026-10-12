@@ -1,4 +1,4 @@
-import { speechText, ttsCharacterStyle, ttsCharacters, ttsConfigured, ttsModel, ttsVoiceId, TTS_MAX_CHARS } from "@/lib/tts";
+import { speechText, ttsCharacterStyle, ttsCharacters, ttsConfigured, ttsModel, ttsVoiceId, TTS_MAX_CHARS } from "@/lib/ai/tts";
 
 describe("assistant voice", () => {
   const env = { ...process.env };

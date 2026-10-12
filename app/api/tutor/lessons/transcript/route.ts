@@ -1,13 +1,13 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
-import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/request-body";
-import { canManageLesson, getLessonTranscript, saveLessonTranscript } from "@/lib/lesson-transcript";
-import { cleanTranscript, TRANSCRIPT_MAX_CHARS } from "@/lib/transcript";
+import { authOptions } from "@/lib/auth/auth";
+import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
+import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
+import { canManageLesson, getLessonTranscript, saveLessonTranscript } from "@/lib/courses/lesson-transcript";
+import { cleanTranscript, TRANSCRIPT_MAX_CHARS } from "@/lib/courses/transcript";
 import { extractYouTubeId } from "@/lib/utils";
-import { fetchOwnCaptions, getConnection, refreshAccessToken, YouTubeError, youtubeConfigured } from "@/lib/youtube";
+import { fetchOwnCaptions, getConnection, refreshAccessToken, YouTubeError, youtubeConfigured } from "@/lib/video/youtube";
 
 /**
  * A lesson's video transcript, which the learner's assistant answers from.

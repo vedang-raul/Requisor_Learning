@@ -1,8 +1,8 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { authOptions } from "@/lib/auth/auth";
+import { db } from "@/lib/server/db";
 
 /**
  * Sets or updates the grade for one submission — recording this row is what

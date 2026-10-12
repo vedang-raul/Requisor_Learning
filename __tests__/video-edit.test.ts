@@ -1,21 +1,21 @@
 jest.mock("next-auth", () => ({ getServerSession: jest.fn() }));
-jest.mock("@/lib/auth", () => ({ authOptions: {} }));
-jest.mock("@/lib/db", () => ({ db: { query: jest.fn() } }));
-jest.mock("@/lib/rate-limit", () => ({
+jest.mock("@/lib/auth/auth", () => ({ authOptions: {} }));
+jest.mock("@/lib/server/db", () => ({ db: { query: jest.fn() } }));
+jest.mock("@/lib/server/rate-limit", () => ({
   createRateLimiter: () => ({ check: () => ({ limited: false, retryAfterMs: 0 }) }),
   rateLimitResponse: () => new Response(JSON.stringify({ error: "rate limited" }), { status: 429 }),
 }));
-jest.mock("@/lib/base-url", () => ({ getBaseUrl: () => "https://learning.example.com" }));
+jest.mock("@/lib/server/base-url", () => ({ getBaseUrl: () => "https://learning.example.com" }));
 
 import { getServerSession } from "next-auth";
-import { db } from "@/lib/db";
-import { buildDemoEditResult, cuesToVtt, parseVtt, videoEditDemoEnabled } from "@/lib/video-edit";
-import { refreshVideoEditJob, type VideoEditJobRow } from "@/lib/video-edit-jobs";
-import { productionSettings } from "@/lib/auphonic";
+import { db } from "@/lib/server/db";
+import { buildDemoEditResult, cuesToVtt, parseVtt, videoEditDemoEnabled } from "@/lib/video/video-edit";
+import { refreshVideoEditJob, type VideoEditJobRow } from "@/lib/video/video-edit-jobs";
+import { productionSettings } from "@/lib/video/auphonic";
 import { GET as download } from "@/app/api/tutor/video-edits/[id]/download/route";
 import {
   buildAuthUrl, createOAuthState, decryptToken, encryptToken, uploadCaptions, uploadVideo, verifyOAuthState, videoDelivery,
-} from "@/lib/youtube";
+} from "@/lib/video/youtube";
 import { POST as createEdit } from "@/app/api/tutor/video-edits/route";
 import { POST as publish } from "@/app/api/tutor/video-edits/[id]/youtube/route";
 

@@ -1,4 +1,4 @@
-import { checkJobTitle, stripJobTitle } from "@/lib/job-title";
+import { checkJobTitle, stripJobTitle } from "@/lib/auth/job-title";
 
 describe("job title", () => {
   it("accepts real titles, in any language", () => {

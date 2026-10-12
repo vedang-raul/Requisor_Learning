@@ -1,13 +1,13 @@
 export const runtime = "nodejs";
 
-import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
-import { withAiConcurrency, SemaphoreFullError, AI_UPSTREAM_TIMEOUT_MS } from "@/lib/ai-semaphore";
+import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
+import { withAiConcurrency, SemaphoreFullError, AI_UPSTREAM_TIMEOUT_MS } from "@/lib/ai/ai-semaphore";
 import {
   InvalidJsonBodyError,
   readJsonBody,
   RequestBodyTooLargeError,
-} from "@/lib/request-body";
-import { LANGUAGES, getLanguageLabel } from "@/lib/personas";
+} from "@/lib/server/request-body";
+import { LANGUAGES, getLanguageLabel } from "@/lib/assistant/personas";
 
 const BASE_URL = "https://api.x.ai/v1";
 const MODEL = process.env.XAI_MODEL || "grok-3-mini";

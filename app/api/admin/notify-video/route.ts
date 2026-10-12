@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { sendNewVideoEmail } from "@/lib/email";
-import { getBaseUrl } from "@/lib/base-url";
+import { authOptions } from "@/lib/auth/auth";
+import { db } from "@/lib/server/db";
+import { sendNewVideoEmail } from "@/lib/server/email";
+import { getBaseUrl } from "@/lib/server/base-url";
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);

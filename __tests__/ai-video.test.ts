@@ -1,7 +1,7 @@
 import {
   aiVideoBriefReady, aiVideoScriptPrompt, cleanVideoScript, createPresenterVideo, getPresenterVideo, heygenVideoRequest, listPresenters,
   readAiVideoBrief, readVideoStatus, scriptSeconds, splitScriptIntoScenes, AiVideoError,
-} from "@/lib/ai-video";
+} from "@/lib/video/ai-video";
 
 describe("AI lesson videos", () => {
   const env = { ...process.env };

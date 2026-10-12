@@ -1,5 +1,5 @@
-import { validateCourse } from "@/lib/course-catalog";
-import { seedCourses } from "@/lib/data";
+import { validateCourse } from "@/lib/courses/course-catalog";
+import { seedCourses } from "@/lib/courses/data";
 
 function courseFixture() {
   return structuredClone(seedCourses[0]);

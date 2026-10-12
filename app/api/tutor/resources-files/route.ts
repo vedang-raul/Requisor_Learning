@@ -1,16 +1,16 @@
 import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
-import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/request-body";
+import { authOptions } from "@/lib/auth/auth";
+import { db } from "@/lib/server/db";
+import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
+import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
 import {
   ALLOWED_RESOURCE_MIME_TYPES,
   MAX_RESOURCE_FILE_BYTES,
   MAX_RESOURCE_UPLOAD_BODY_BYTES,
   resourceFileUrl,
-} from "@/lib/resource-files";
+} from "@/lib/courses/resource-files";
 
 const canManage = (role: unknown) => role === "admin" || role === "tutor";
 const uploadLimiter = createRateLimiter(30, 15 * 60_000);

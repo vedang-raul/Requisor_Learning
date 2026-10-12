@@ -11,7 +11,7 @@
 
 // ── Mocks (hoisted before all imports) ───────────────────────────────────────
 
-jest.mock("@/lib/rate-limit", () => {
+jest.mock("@/lib/server/rate-limit", () => {
   // Factory-internal reference avoids the const-hoisting pitfall.
   const checkMock = jest.fn(() => ({ limited: false, retryAfterMs: 0 }));
   return {
@@ -31,7 +31,7 @@ jest.mock("@/lib/rate-limit", () => {
 });
 
 // Turnstile mock — dev bypass returns success so rate-limit tests are unaffected.
-jest.mock("@/lib/turnstile", () => ({
+jest.mock("@/lib/auth/turnstile", () => ({
   isTurnstileEnabled: jest.fn(() => false),
   verifyTurnstile: jest.fn().mockResolvedValue({ success: true }),
 }));
@@ -44,14 +44,14 @@ jest.mock("next-auth", () => {
   return NextAuth;
 });
 
-jest.mock("@/lib/auth", () => ({ authOptions: {} }));
+jest.mock("@/lib/auth/auth", () => ({ authOptions: {} }));
 
-jest.mock("@/lib/db", () => ({
+jest.mock("@/lib/server/db", () => ({
   db: { query: jest.fn() },
   roleForEmail: jest.fn(() => "employee"),
 }));
 
-jest.mock("@/lib/email", () => ({
+jest.mock("@/lib/server/email", () => ({
   skipEmailVerification: () => process.env.SKIP_EMAIL_VERIFICATION === "on",
   sendVerificationEmail: jest.fn().mockResolvedValue(undefined),
 }));
@@ -61,8 +61,8 @@ jest.mock("@/lib/email", () => ({
 import { POST as signupPost } from "@/app/api/signup/route";
 import { POST as authPost } from "@/app/api/auth/[...nextauth]/route";
 import NextAuth from "next-auth";
-import * as rateLimitModule from "@/lib/rate-limit";
-import { db } from "@/lib/db";
+import * as rateLimitModule from "@/lib/server/rate-limit";
+import { db } from "@/lib/server/db";
 
 const mockCheck = (rateLimitModule as unknown as { __checkMock: jest.Mock }).__checkMock;
 const mockNextAuthHandler = (NextAuth as unknown as { __handler: jest.Mock }).__handler;

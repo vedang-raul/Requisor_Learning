@@ -1,23 +1,23 @@
 jest.mock("next-auth/next", () => ({ getServerSession: jest.fn() }));
-jest.mock("@/lib/auth", () => ({ authOptions: {} }));
-jest.mock("@/lib/db", () => ({ db: { query: jest.fn() } }));
-jest.mock("@/lib/rate-limit", () => ({
+jest.mock("@/lib/auth/auth", () => ({ authOptions: {} }));
+jest.mock("@/lib/server/db", () => ({ db: { query: jest.fn() } }));
+jest.mock("@/lib/server/rate-limit", () => ({
   createRateLimiter: () => ({ check: () => ({ limited: false, retryAfterMs: 0 }) }),
   rateLimitResponse: () => new Response(JSON.stringify({ error: "rate limited" }), { status: 429 }),
 }));
-jest.mock("@/lib/ai-semaphore", () => ({
+jest.mock("@/lib/ai/ai-semaphore", () => ({
   withAiConcurrency: (fn: () => Promise<unknown>) => fn(),
   SemaphoreFullError: class SemaphoreFullError extends Error {},
   AI_UPSTREAM_TIMEOUT_MS: 30_000,
 }));
 
-import { lessonHasEnoughContent } from "@/lib/personalized-learning";
-import { INSUFFICIENT_CONTENT_CODE } from "@/lib/assignment-format";
-import { seedCourses } from "@/lib/data";
+import { lessonHasEnoughContent } from "@/lib/ai/personalized-learning";
+import { INSUFFICIENT_CONTENT_CODE } from "@/lib/ai/assignment-format";
+import { seedCourses } from "@/lib/courses/data";
 import { POST as assignmentPOST } from "@/app/api/assignment/route";
 import { POST as quizPOST } from "@/app/api/quiz/route";
 import { getServerSession } from "next-auth/next";
-import { db } from "@/lib/db";
+import { db } from "@/lib/server/db";
 
 const mockedDbQuery = db.query as jest.Mock;
 

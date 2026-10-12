@@ -1,12 +1,12 @@
 jest.mock("next-auth", () => ({ getServerSession: jest.fn() }));
-jest.mock("@/lib/auth", () => ({ authOptions: {} }));
-jest.mock("@/lib/course-catalog", () => ({ ensureCourseCatalog: jest.fn() }));
-jest.mock("@/lib/db", () => ({ db: { connect: jest.fn() } }));
+jest.mock("@/lib/auth/auth", () => ({ authOptions: {} }));
+jest.mock("@/lib/courses/course-catalog", () => ({ ensureCourseCatalog: jest.fn() }));
+jest.mock("@/lib/server/db", () => ({ db: { connect: jest.fn() } }));
 
 import { NextRequest } from "next/server";
 import { getServerSession } from "next-auth";
-import { ensureCourseCatalog } from "@/lib/course-catalog";
-import { db } from "@/lib/db";
+import { ensureCourseCatalog } from "@/lib/courses/course-catalog";
+import { db } from "@/lib/server/db";
 import { POST } from "@/app/api/course-activity/route";
 
 const session = getServerSession as jest.Mock;

@@ -8,18 +8,18 @@ jest.mock("next-auth/next", () => ({
   getServerSession: jest.fn(),
 }));
 
-jest.mock("@/lib/auth", () => ({ authOptions: {} }));
+jest.mock("@/lib/auth/auth", () => ({ authOptions: {} }));
 
-jest.mock("@/lib/db", () => ({
+jest.mock("@/lib/server/db", () => ({
   db: { query: jest.fn() },
 }));
 
-jest.mock("@/lib/rate-limit", () => ({
+jest.mock("@/lib/server/rate-limit", () => ({
   createRateLimiter: () => ({ check: () => ({ limited: false, retryAfterMs: 0 }) }),
   rateLimitResponse: () => new Response(JSON.stringify({ error: "rate limited" }), { status: 429 }),
 }));
 
-jest.mock("@/lib/ai-semaphore", () => ({
+jest.mock("@/lib/ai/ai-semaphore", () => ({
   withAiConcurrency: (fn: () => Promise<unknown>) => fn(),
   SemaphoreFullError: class SemaphoreFullError extends Error {},
   AI_UPSTREAM_TIMEOUT_MS: 30_000,
@@ -27,8 +27,8 @@ jest.mock("@/lib/ai-semaphore", () => ({
 
 import { POST } from "@/app/api/quiz/route";
 import { getServerSession } from "next-auth/next";
-import { db } from "@/lib/db";
-import { seedCourses } from "@/lib/data";
+import { db } from "@/lib/server/db";
+import { seedCourses } from "@/lib/courses/data";
 
 const mockedGetServerSession = getServerSession as jest.Mock;
 const mockedDbQuery = db.query as jest.Mock;

@@ -2,8 +2,8 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { buildAuthUrl, videoDelivery } from "@/lib/youtube";
+import { authOptions } from "@/lib/auth/auth";
+import { buildAuthUrl, videoDelivery } from "@/lib/video/youtube";
 
 /** Starts the Google consent screen so a tutor can connect their YouTube channel. */
 const canManage = (role: unknown) => role === "admin" || role === "tutor";

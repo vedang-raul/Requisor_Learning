@@ -1,8 +1,8 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { authOptions } from "@/lib/auth/auth";
+import { db } from "@/lib/server/db";
 /** Streams back one of the signed-in learner's own submitted files. */
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);

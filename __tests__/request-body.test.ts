@@ -2,7 +2,7 @@ import {
   InvalidJsonBodyError,
   readJsonBody,
   RequestBodyTooLargeError,
-} from "@/lib/request-body";
+} from "@/lib/server/request-body";
 
 describe("readJsonBody", () => {
   it("parses a JSON body within its byte limit", async () => {

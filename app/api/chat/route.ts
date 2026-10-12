@@ -2,22 +2,22 @@ export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
 import { isLessonLive } from "@/lib/utils";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { ensureCourseCatalog, getCourses } from "@/lib/course-catalog";
-import { formatRecommendationContext, scoreCourses } from "@/lib/course-match";
+import { authOptions } from "@/lib/auth/auth";
+import { db } from "@/lib/server/db";
+import { ensureCourseCatalog, getCourses } from "@/lib/courses/course-catalog";
+import { formatRecommendationContext, scoreCourses } from "@/lib/ai/course-match";
 import type { Course, LessonProgress } from "@/lib/types";
-import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
-import { acquireAiSlot, SemaphoreFullError } from "@/lib/ai-semaphore";
-import { getPersona, LANGUAGES, getLanguageLabel } from "@/lib/personas";
+import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
+import { acquireAiSlot, SemaphoreFullError } from "@/lib/ai/ai-semaphore";
+import { getPersona, LANGUAGES, getLanguageLabel } from "@/lib/assistant/personas";
 import {
   InvalidJsonBodyError,
   readJsonBody,
   RequestBodyTooLargeError,
-} from "@/lib/request-body";
-import { runAssistantTool, toolsForRole, type ToolContext } from "@/lib/assistant-tools";
-import { ttsCharacterName, ttsCharacterStyle, ttsConfigured } from "@/lib/tts";
-import { ACTION_FRAME, encodeActionFrame } from "@/lib/assistant-actions";
+} from "@/lib/server/request-body";
+import { runAssistantTool, toolsForRole, type ToolContext } from "@/lib/assistant/assistant-tools";
+import { ttsCharacterName, ttsCharacterStyle, ttsConfigured } from "@/lib/ai/tts";
+import { ACTION_FRAME, encodeActionFrame } from "@/lib/assistant/assistant-actions";
 
 const BASE_URL = "https://api.x.ai/v1";
 const MODEL = process.env.XAI_MODEL || "grok-3-mini";
@@ -46,7 +46,7 @@ const CLAIMS_PROPOSAL = /\b(click|press|tap|hit)\s+(the\s+)?confirm|confirmation
 const UPSTREAM_TIMEOUT_MS = 45_000;
 
 // ── Per-user rate limiter ─────────────────────────────────────────────────────
-// 20 chat messages per user per minute.  Process-local; see LOAD_TEST.md for
+// 20 chat messages per user per minute.  Process-local; see docs/LOAD_TEST.md for
 // the Redis upgrade path for multi-instance deployments.
 const chatLimiter = createRateLimiter(20, 60_000);
 
@@ -615,7 +615,7 @@ YOUR NAME — in this conversation you go by "${escapePromptData(shownName)}": t
   const upstreamMessages = buildUpstreamMessages(messages);
 
   // 6. Tools for this role. Read tools run server-side; propose_* tools only
-  //    produce confirmation cards (see lib/assistant-tools.ts).
+  //    produce confirmation cards (see lib/assistant/assistant-tools.ts).
   const numericUserId = Number(session.user.id);
   const toolContext: ToolContext | null =
     Number.isSafeInteger(numericUserId) && numericUserId > 0 ? { userId: numericUserId, role } : null;

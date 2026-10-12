@@ -1,4 +1,4 @@
-import { cleanTranscript, formatClock, transcriptForAi, TRANSCRIPT_AI_CHARS } from "@/lib/transcript";
+import { cleanTranscript, formatClock, transcriptForAi, TRANSCRIPT_AI_CHARS } from "@/lib/courses/transcript";
 
 describe("lesson transcripts", () => {
   it("reads YouTube's pasted transcript, grouping lines into passages", () => {

@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import "./globals.css";
-import "../landing/index.css";
-import { Providers } from "@/components/providers";
+import "../components/landing/index.css";
+import { Providers } from "@/components/layout/providers";
 import { StoreProvider } from "@/lib/store";
-import { DesignGrid } from "@/components/design-grid";
+import { DesignGrid } from "@/components/layout/design-grid";
 
 export const metadata: Metadata = {
   title: "Requisor Learning",

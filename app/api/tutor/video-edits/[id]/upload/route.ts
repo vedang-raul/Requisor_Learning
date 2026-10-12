@@ -6,11 +6,11 @@ export const maxDuration = 300;
 
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { AuphonicError, forwardUpload, startProduction } from "@/lib/auphonic";
-import { failVideoEditJob, type VideoEditJobRow } from "@/lib/video-edit-jobs";
-import { verifyUploadToken } from "@/lib/upload-token";
+import { authOptions } from "@/lib/auth/auth";
+import { db } from "@/lib/server/db";
+import { AuphonicError, forwardUpload, startProduction } from "@/lib/video/auphonic";
+import { failVideoEditJob, type VideoEditJobRow } from "@/lib/video/video-edit-jobs";
+import { verifyUploadToken } from "@/lib/auth/upload-token";
 
 /**
  * Receives the tutor's recording for an auto-edit job and streams it straight
@@ -20,7 +20,7 @@ import { verifyUploadToken } from "@/lib/upload-token";
  *
  * The tutor is identified by their login, or, when the site itself runs on a
  * host that can't take large uploads and sends them here instead, by a signed
- * upload token (lib/upload-token.ts). That second case is a cross-site
+ * upload token (lib/auth/upload-token.ts). That second case is a cross-site
  * request, hence the CORS headers; it carries no cookies, so allowing any
  * origin is safe: the token is the only thing that grants access.
  */

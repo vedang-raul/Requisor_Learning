@@ -1,9 +1,9 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { toSubmissionSource } from "@/lib/submission-source";
+import { authOptions } from "@/lib/auth/auth";
+import { db } from "@/lib/server/db";
+import { toSubmissionSource } from "@/lib/courses/submission-source";
 
 /** Everything the grading view needs about one submission in a single
  *  request: who submitted it, its file, its current mark, and the

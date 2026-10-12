@@ -1,12 +1,12 @@
 jest.mock("next-auth", () => ({ getServerSession: jest.fn() }));
-jest.mock("@/lib/auth", () => ({ authOptions: {} }));
-jest.mock("@/lib/db", () => ({ db: { query: jest.fn() } }));
-jest.mock("@/lib/request-body", () => ({
+jest.mock("@/lib/auth/auth", () => ({ authOptions: {} }));
+jest.mock("@/lib/server/db", () => ({ db: { query: jest.fn() } }));
+jest.mock("@/lib/server/request-body", () => ({
   readJsonBody: jest.fn().mockResolvedValue({}),
   RequestBodyTooLargeError: class RequestBodyTooLargeError extends Error {},
   InvalidJsonBodyError: class InvalidJsonBodyError extends Error {},
 }));
-jest.mock("@/lib/course-catalog", () => ({
+jest.mock("@/lib/courses/course-catalog", () => ({
   ensureCourseCatalog: jest.fn().mockResolvedValue(undefined),
   updateOwnedCourse: jest.fn(),
   deleteOwnedCourse: jest.fn(),
@@ -15,7 +15,7 @@ jest.mock("@/lib/course-catalog", () => ({
 
 import { DELETE, PUT } from "@/app/api/courses/[slug]/route";
 import { getServerSession } from "next-auth";
-import { deleteOwnedCourse, updateOwnedCourse, validateCourse } from "@/lib/course-catalog";
+import { deleteOwnedCourse, updateOwnedCourse, validateCourse } from "@/lib/courses/course-catalog";
 
 const session = getServerSession as jest.Mock;
 const update = updateOwnedCourse as jest.Mock;

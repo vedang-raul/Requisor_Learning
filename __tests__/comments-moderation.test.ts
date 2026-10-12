@@ -9,7 +9,7 @@
 
 // Expose a controllable `check` mock via a custom property on the mock module.
 // Using a factory-internal reference avoids the hoisting pitfall with `const`.
-jest.mock("@/lib/rate-limit", () => {
+jest.mock("@/lib/server/rate-limit", () => {
   const checkMock = jest.fn(() => ({ limited: false, retryAfterMs: 0 }));
   return {
     __checkMock: checkMock,
@@ -24,7 +24,7 @@ jest.mock("@/lib/rate-limit", () => {
   };
 });
 
-jest.mock("@/lib/ai-semaphore", () => {
+jest.mock("@/lib/ai/ai-semaphore", () => {
   const withConcurrencyMock = jest.fn((fn: () => Promise<unknown>) => fn());
   return {
     __withConcurrencyMock: withConcurrencyMock,
@@ -39,17 +39,17 @@ jest.mock("@/lib/ai-semaphore", () => {
 });
 
 jest.mock("next-auth", () => ({ getServerSession: jest.fn() }));
-jest.mock("@/lib/auth", () => ({ authOptions: {} }));
-jest.mock("@/lib/db", () => ({ db: { query: jest.fn() } }));
-jest.mock("@/lib/data", () => ({ seedCourses: [] }));
+jest.mock("@/lib/auth/auth", () => ({ authOptions: {} }));
+jest.mock("@/lib/server/db", () => ({ db: { query: jest.fn() } }));
+jest.mock("@/lib/courses/data", () => ({ seedCourses: [] }));
 
 // ── Imports (after mocks) ─────────────────────────────────────────────────────
 
 import { POST } from "@/app/api/comments/route";
 import { getServerSession } from "next-auth";
-import { db } from "@/lib/db";
-import * as rateLimitModule from "@/lib/rate-limit";
-import * as semaphoreModule from "@/lib/ai-semaphore";
+import { db } from "@/lib/server/db";
+import * as rateLimitModule from "@/lib/server/rate-limit";
+import * as semaphoreModule from "@/lib/ai/ai-semaphore";
 
 const mockGetSession = getServerSession as jest.Mock;
 const mockDbQuery = (db as unknown as { query: jest.Mock }).query;

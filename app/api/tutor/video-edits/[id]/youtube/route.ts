@@ -2,16 +2,16 @@ export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
-import { editedVideoSource, type VideoEditJobRow } from "@/lib/video-edit-jobs";
-import { getConnection, refreshAccessToken, uploadCaptions, uploadVideo, videoDelivery, YouTubeError } from "@/lib/youtube";
+import { authOptions } from "@/lib/auth/auth";
+import { db } from "@/lib/server/db";
+import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
+import { editedVideoSource, type VideoEditJobRow } from "@/lib/video/video-edit-jobs";
+import { getConnection, refreshAccessToken, uploadCaptions, uploadVideo, videoDelivery, YouTubeError } from "@/lib/video/youtube";
 
 /**
  * Posts a finished auto-edit to the tutor's connected YouTube channel and
  * returns the new video id (which becomes the lesson's video). Only available
- * when the "youtube" delivery mode is switched on (see lib/youtube.ts).
+ * when the "youtube" delivery mode is switched on (see lib/video/youtube.ts).
  */
 const canManage = (role: unknown) => role === "admin" || role === "tutor";
 // YouTube allows 100 uploads a day per API project; keep one tutor from using them all.

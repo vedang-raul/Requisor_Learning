@@ -2,9 +2,9 @@ export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { refreshVideoEditJob, toVideoEditJob, type VideoEditJobRow } from "@/lib/video-edit-jobs";
+import { authOptions } from "@/lib/auth/auth";
+import { db } from "@/lib/server/db";
+import { refreshVideoEditJob, toVideoEditJob, type VideoEditJobRow } from "@/lib/video/video-edit-jobs";
 
 /** Polls one of the tutor's own auto-edit jobs. */
 const canManage = (role: unknown) => role === "admin" || role === "tutor";

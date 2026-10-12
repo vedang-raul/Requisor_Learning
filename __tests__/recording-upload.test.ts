@@ -1,22 +1,22 @@
 jest.mock("next-auth", () => ({ getServerSession: jest.fn() }));
-jest.mock("@/lib/auth", () => ({ authOptions: {} }));
-jest.mock("@/lib/db", () => ({ db: { query: jest.fn() } }));
-jest.mock("@/lib/rate-limit", () => ({
+jest.mock("@/lib/auth/auth", () => ({ authOptions: {} }));
+jest.mock("@/lib/server/db", () => ({ db: { query: jest.fn() } }));
+jest.mock("@/lib/server/rate-limit", () => ({
   createRateLimiter: () => ({ check: () => ({ limited: false, retryAfterMs: 0 }) }),
   rateLimitResponse: () => new Response("{}", { status: 429 }),
 }));
-jest.mock("@/lib/auphonic", () => ({
-  ...jest.requireActual("@/lib/auphonic"),
+jest.mock("@/lib/video/auphonic", () => ({
+  ...jest.requireActual("@/lib/video/auphonic"),
   forwardUpload: jest.fn(async () => undefined),
   startProduction: jest.fn(async () => ({ uuid: "prod-1", status: 1 })),
   createProduction: jest.fn(async () => "prod-1"),
 }));
 
 import { getServerSession } from "next-auth";
-import { db } from "@/lib/db";
-import { forwardUpload, startProduction } from "@/lib/auphonic";
-import { createUploadToken, recordingUploadBase, verifyUploadToken } from "@/lib/upload-token";
-import { videoEditConfigured, videoEditDemoEnabled } from "@/lib/video-edit";
+import { db } from "@/lib/server/db";
+import { forwardUpload, startProduction } from "@/lib/video/auphonic";
+import { createUploadToken, recordingUploadBase, verifyUploadToken } from "@/lib/auth/upload-token";
+import { videoEditConfigured, videoEditDemoEnabled } from "@/lib/video/video-edit";
 import { POST as createEdit } from "@/app/api/tutor/video-edits/route";
 import { OPTIONS, POST as upload } from "@/app/api/tutor/video-edits/[id]/upload/route";
 

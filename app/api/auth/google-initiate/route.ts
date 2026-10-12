@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { isTurnstileEnabled, verifyTurnstile } from "@/lib/turnstile";
-import { issueGrant, GRANT_COOKIE_NAME } from "@/lib/captcha-grant";
-import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
+import { isTurnstileEnabled, verifyTurnstile } from "@/lib/auth/turnstile";
+import { issueGrant, GRANT_COOKIE_NAME } from "@/lib/auth/captcha-grant";
+import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
 import {
   InvalidJsonBodyError,
   readJsonBody,
   RequestBodyTooLargeError,
-} from "@/lib/request-body";
+} from "@/lib/server/request-body";
 
 const ROLE_INTENT_COOKIE_NAME = "google-role-intent";
 const GOOGLE_INITIATE_BODY_MAX_BYTES = 8 * 1024;

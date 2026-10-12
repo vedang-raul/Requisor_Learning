@@ -1,5 +1,5 @@
-import { guardrailPromptLines, isValidAssignmentAi, readAssignmentAi, variationSeed } from "@/lib/assignment-ai";
-import { validateCourse } from "@/lib/course-catalog";
+import { guardrailPromptLines, isValidAssignmentAi, readAssignmentAi, variationSeed } from "@/lib/ai/assignment-ai";
+import { validateCourse } from "@/lib/courses/course-catalog";
 
 const lesson = (assignmentAi?: unknown) => ({
   id: "demo-1", title: "Lesson", description: "About things", youtubeId: "", format: "reading", body: "Text", durationMin: 10,

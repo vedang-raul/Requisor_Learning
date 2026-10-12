@@ -1,8 +1,8 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { authOptions } from "@/lib/auth/auth";
+import { db } from "@/lib/server/db";
 
 /** Streams one learner's submitted file to the tutor who owns its course (or an admin). */
 const canManage = (role: unknown) => role === "admin" || role === "tutor";

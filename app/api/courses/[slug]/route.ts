@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/request-body";
-import { deleteOwnedCourse, ensureCourseCatalog, updateOwnedCourse, validateCourse } from "@/lib/course-catalog";
+import { authOptions } from "@/lib/auth/auth";
+import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
+import { deleteOwnedCourse, ensureCourseCatalog, updateOwnedCourse, validateCourse } from "@/lib/courses/course-catalog";
 
 const manager = (role: unknown) => role === "admin" || role === "tutor";
 const fail = (operation: string, id: string, error: unknown) => { console.error(JSON.stringify({ operation, requestId: id, error: error instanceof Error ? error.message : "unknown" })); return NextResponse.json({ error: "Unable to process course." }, { status: 500 }); };

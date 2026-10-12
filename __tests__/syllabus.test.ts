@@ -1,4 +1,4 @@
-import { blankSyllabus, cleanSyllabus, gradingShares, syllabusHasContent } from "@/lib/syllabus";
+import { blankSyllabus, cleanSyllabus, gradingShares, syllabusHasContent } from "@/lib/courses/syllabus";
 
 const course = { tagline: "Visualize data to support decisions.", lessons: [{ title: "L1", section: "Foundations" }, { title: "L2", section: "Foundations" }, { title: "L3", section: "Tableau" }] };
 

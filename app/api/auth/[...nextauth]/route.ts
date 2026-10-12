@@ -1,8 +1,8 @@
 import NextAuth from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
-import { isTurnstileEnabled, verifyTurnstile } from "@/lib/turnstile";
-import { verifyGrant, GRANT_COOKIE_NAME } from "@/lib/captcha-grant";
+import { authOptions } from "@/lib/auth/auth";
+import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
+import { isTurnstileEnabled, verifyTurnstile } from "@/lib/auth/turnstile";
+import { verifyGrant, GRANT_COOKIE_NAME } from "@/lib/auth/captcha-grant";
 
 const handler = NextAuth(authOptions);
 
@@ -12,7 +12,7 @@ const handler = NextAuth(authOptions);
 // pass through unchanged so normal session behaviour is unaffected.
 //
 // The check runs before NextAuth processes the request so we can return a real
-// HTTP 429 rather than a redirect.  In-process store; see LOAD_TEST.md for
+// HTTP 429 rather than a redirect.  In-process store; see docs/LOAD_TEST.md for
 // the Redis upgrade path when running multiple replicas.
 const loginLimiter = createRateLimiter(10, 15 * 60_000);
 // Google OAuth initiation happens at NextAuth's /signin/google route. Keep

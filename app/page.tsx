@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import LandingApp from "@/landing/App.jsx";
+import LandingApp from "@/components/landing/App.jsx";
 
 export const metadata: Metadata = {
   title: "Alma by Requisor — The AI-Native University",

@@ -4,7 +4,7 @@
  * There's no PDF.js/mammoth-style library in this project and the sandbox
  * this app is built in has no network access to install one, so this hand-
  * rolls the minimum needed to show a docx submission for tutor markup:
- *  1. lib/browser-zip.ts (docx is a ZIP container) to get at word/document.xml.
+ *  1. lib/files/browser-zip.ts (docx is a ZIP container) to get at word/document.xml.
  *  2. DOMParser (native) to walk the OOXML paragraph/run structure into
  *     plain {text, bold, italic, underline} runs the UI can render.
  *
@@ -14,7 +14,7 @@
  * every layout detail of the original document.
  */
 
-import { readZipEntryByName, ZipParseError } from "@/lib/browser-zip";
+import { readZipEntryByName, ZipParseError } from "@/lib/files/browser-zip";
 
 export interface DocxRun {
   text: string;

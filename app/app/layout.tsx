@@ -2,14 +2,14 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Sidebar } from "@/components/sidebar";
-import { Topbar } from "@/components/topbar";
+import { Sidebar } from "@/components/layout/sidebar";
+import { Topbar } from "@/components/layout/topbar";
 import { useStore } from "@/lib/store";
-import { GradientBlobs } from "@/components/gradient-blobs";
-import { AiAssistant } from "@/components/ai-assistant";
-import { OnboardingGuide } from "@/components/onboarding-guide";
-import TutorSurvey from "@/components/onboarding-survey-tutor";
-import { InactivityGuard } from "@/components/inactivity-guard";
+import { GradientBlobs } from "@/components/ui/gradient-blobs";
+import { AiAssistant } from "@/components/assistant/ai-assistant";
+import { OnboardingGuide } from "@/components/onboarding/onboarding-guide";
+import TutorSurvey from "@/components/onboarding/onboarding-survey-tutor";
+import { InactivityGuard } from "@/components/layout/inactivity-guard";
 import { REPLAY_TOUR_KEY } from "@/lib/utils";
 import { trackEvent } from "@/lib/analytics";
 

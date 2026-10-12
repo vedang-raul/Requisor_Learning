@@ -1,11 +1,11 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { replaceCourse, validateCourse, CourseConflictError } from "@/lib/course-catalog";
-import { buildCourseFromImport } from "@/lib/course-export";
-import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/request-body";
+import { authOptions } from "@/lib/auth/auth";
+import { db } from "@/lib/server/db";
+import { replaceCourse, validateCourse, CourseConflictError } from "@/lib/courses/course-catalog";
+import { buildCourseFromImport } from "@/lib/courses/course-export";
+import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
 import type { Course } from "@/lib/types";
 
 /**

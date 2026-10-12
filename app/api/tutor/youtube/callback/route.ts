@@ -2,9 +2,9 @@ export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { getBaseUrl } from "@/lib/base-url";
-import { exchangeCode, fetchOwnChannel, saveConnection, verifyOAuthState, videoDelivery } from "@/lib/youtube";
+import { authOptions } from "@/lib/auth/auth";
+import { getBaseUrl } from "@/lib/server/base-url";
+import { exchangeCode, fetchOwnChannel, saveConnection, verifyOAuthState, videoDelivery } from "@/lib/video/youtube";
 
 /**
  * Google redirects here after the tutor approves (or declines) access. The

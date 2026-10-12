@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/ui/password-input";
 import { PasswordStrength } from "@/components/ui/password-strength";
 
-// Cloudflare Turnstile — mirrors components/login-screen.tsx so both halves of
+// Cloudflare Turnstile — mirrors components/onboarding/login-screen.tsx so both halves of
 // the password-reset flow (request link, set new password) are gated together.
 const CAPTCHA_ENABLED = process.env.NEXT_PUBLIC_TURNSTILE_ENABLED === "true";
 const SITE_KEY =

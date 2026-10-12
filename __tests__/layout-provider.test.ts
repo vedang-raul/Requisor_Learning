@@ -11,7 +11,7 @@ describe("application layout providers", () => {
     const rootLayout = readFileSync(join(process.cwd(), "app/layout.tsx"), "utf8");
     const appLayout = readFileSync(join(process.cwd(), "app/app/layout.tsx"), "utf8");
 
-    expect(rootLayout).toContain('import { Providers } from "@/components/providers"');
+    expect(rootLayout).toContain('import { Providers } from "@/components/layout/providers"');
     expect(rootLayout).toContain('import { StoreProvider } from "@/lib/store"');
     expect(rootLayout).toMatch(/<Providers>\s*<StoreProvider>\{children\}<\/StoreProvider>\s*<\/Providers>/);
     expect(rootLayout.match(/<StoreProvider>/g)).toHaveLength(1);

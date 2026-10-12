@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import { db, type DbUser } from "@/lib/db";
-import { sendWelcomeEmail } from "@/lib/email";
-import { getBaseUrl } from "@/lib/base-url";
-import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
+import { db, type DbUser } from "@/lib/server/db";
+import { sendWelcomeEmail } from "@/lib/server/email";
+import { getBaseUrl } from "@/lib/server/base-url";
+import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
 
 // ── Per-IP rate limiting ──────────────────────────────────────────────────────
 // 10 verification attempts per IP per 15 minutes.  Higher than forgot-password

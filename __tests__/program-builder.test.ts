@@ -1,6 +1,6 @@
 import {
   analyzeTranscript, buildProposal, cleanDiscoveryFields, composeCurriculum, EMPTY_DISCOVERY, mergeAiCurriculum, readProgramCommand, SAMPLE_TRANSCRIPT, sampleDiscovery,
-} from "@/lib/program-builder";
+} from "@/lib/courses/program-builder";
 
 describe("Program Builder", () => {
   it("reads industry, audience, topic, level and pains out of a transcript", () => {

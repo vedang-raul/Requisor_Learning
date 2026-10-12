@@ -2,15 +2,15 @@ export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
-import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/request-body";
-import { AuphonicError, auphonicSubtitlesEnabled, createProduction } from "@/lib/auphonic";
-import { videoEditConfigured, videoEditDemoEnabled } from "@/lib/video-edit";
-import { createUploadToken, recordingUploadBase } from "@/lib/upload-token";
-import { toVideoEditJob, type VideoEditJobRow } from "@/lib/video-edit-jobs";
-import { getConnection, videoDelivery, youtubeConfigured } from "@/lib/youtube";
+import { authOptions } from "@/lib/auth/auth";
+import { db } from "@/lib/server/db";
+import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
+import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
+import { AuphonicError, auphonicSubtitlesEnabled, createProduction } from "@/lib/video/auphonic";
+import { videoEditConfigured, videoEditDemoEnabled } from "@/lib/video/video-edit";
+import { createUploadToken, recordingUploadBase } from "@/lib/auth/upload-token";
+import { toVideoEditJob, type VideoEditJobRow } from "@/lib/video/video-edit-jobs";
+import { getConnection, videoDelivery, youtubeConfigured } from "@/lib/video/youtube";
 
 /**
  * Auto-edit jobs for the lesson wizard: a tutor adds a long recording and gets
@@ -113,7 +113,7 @@ export async function POST(req: NextRequest) {
      VALUES ($1, $2, $3, $4, $5, 'auphonic', $6) RETURNING *`,
     [userId, slug, cleanTitle, cleanFile, seconds, productionId]
   );
-  // The recording goes to this app, or to the copy that can take large uploads (see lib/upload-token.ts).
+  // The recording goes to this app, or to the copy that can take large uploads (see lib/auth/upload-token.ts).
   const uploadBase = recordingUploadBase();
   return NextResponse.json({
     job: toVideoEditJob(rows[0]),

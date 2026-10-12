@@ -1,5 +1,5 @@
-import { validateCourse } from "@/lib/course-catalog";
-import { seedCourses } from "@/lib/data";
+import { validateCourse } from "@/lib/courses/course-catalog";
+import { seedCourses } from "@/lib/courses/data";
 import { isLessonLive, isLessonScheduled } from "@/lib/utils";
 
 const HOUR = 3_600_000;

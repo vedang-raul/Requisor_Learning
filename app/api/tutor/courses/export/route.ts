@@ -1,13 +1,13 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { COURSE_EXPORT_FORMAT, type CourseExportPayload, type RubricCriterionExport } from "@/lib/course-export";
+import { authOptions } from "@/lib/auth/auth";
+import { db } from "@/lib/server/db";
+import { COURSE_EXPORT_FORMAT, type CourseExportPayload, type RubricCriterionExport } from "@/lib/courses/course-export";
 
 /** Downloads one owned course as a portable JSON export package — this
  *  app's equivalent of Canvas's course export package. See
- *  lib/course-export.ts for what is and isn't included. */
+ *  lib/courses/course-export.ts for what is and isn't included. */
 const canManage = (role: unknown) => role === "admin" || role === "tutor";
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 

@@ -7,15 +7,15 @@ import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, Cloc
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { PageTransition } from "@/components/motion";
+import { PageTransition } from "@/components/ui/motion";
 import { cn } from "@/lib/utils";
 import { useStore } from "@/lib/store";
-import { DocumentMarkupViewer } from "@/components/document-markup-viewer";
-import { AssignmentBrief } from "@/components/lesson-assignment";
-import { SubmissionSourceBadge } from "@/components/submission-source-badge";
-import { DATA_CHANGED_EVENT } from "@/components/assistant-action-card";
-import { parseAssignment } from "@/lib/assignment-format";
-import type { SubmissionSource } from "@/lib/submission-source";
+import { DocumentMarkupViewer } from "@/components/tutor/document-markup-viewer";
+import { AssignmentBrief } from "@/components/lesson/lesson-assignment";
+import { SubmissionSourceBadge } from "@/components/lesson/submission-source-badge";
+import { DATA_CHANGED_EVENT } from "@/components/assistant/assistant-action-card";
+import { parseAssignment } from "@/lib/ai/assignment-format";
+import type { SubmissionSource } from "@/lib/courses/submission-source";
 
 interface RubricCriterion {
   id: number;

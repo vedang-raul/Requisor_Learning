@@ -1,9 +1,9 @@
 import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
-import { authOptions } from "@/lib/auth";
-import { db, type DbUser } from "@/lib/db";
-import { PERSONAS, LANGUAGES, COUNTRIES } from "@/lib/personas";
-import { checkJobTitle } from "@/lib/job-title";
+import { authOptions } from "@/lib/auth/auth";
+import { db, type DbUser } from "@/lib/server/db";
+import { PERSONAS, LANGUAGES, COUNTRIES } from "@/lib/assistant/personas";
+import { checkJobTitle } from "@/lib/auth/job-title";
 
 export async function GET() {
   const session = await getServerSession(authOptions);

@@ -1,13 +1,13 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import { db, type DbUser } from "@/lib/db";
+import { authOptions } from "@/lib/auth/auth";
+import { db, type DbUser } from "@/lib/server/db";
 import {
   InvalidJsonBodyError,
   readJsonBody,
   RequestBodyTooLargeError,
-} from "@/lib/request-body";
+} from "@/lib/server/request-body";
 
 const MAX_GRADE_REQUEST_BYTES = 8 * 1024;
 

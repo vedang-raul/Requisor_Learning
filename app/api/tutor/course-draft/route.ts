@@ -1,15 +1,15 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import { acquireAiSlot, SemaphoreFullError } from "@/lib/ai-semaphore";
-import { ensureCourseCatalog, getCourses, validateCourse } from "@/lib/course-catalog";
-import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
+import { authOptions } from "@/lib/auth/auth";
+import { acquireAiSlot, SemaphoreFullError } from "@/lib/ai/ai-semaphore";
+import { ensureCourseCatalog, getCourses, validateCourse } from "@/lib/courses/course-catalog";
+import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
 import {
   InvalidJsonBodyError,
   readJsonBody,
   RequestBodyTooLargeError,
-} from "@/lib/request-body";
+} from "@/lib/server/request-body";
 import { PLACEHOLDER_VIDEO } from "@/lib/utils";
 import type { Course, Lesson } from "@/lib/types";
 

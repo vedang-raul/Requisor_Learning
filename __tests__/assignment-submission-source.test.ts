@@ -2,27 +2,27 @@ jest.mock("next-auth/next", () => ({
   getServerSession: jest.fn(),
 }));
 
-jest.mock("@/lib/auth", () => ({ authOptions: {} }));
+jest.mock("@/lib/auth/auth", () => ({ authOptions: {} }));
 
-jest.mock("@/lib/db", () => ({
+jest.mock("@/lib/server/db", () => ({
   db: { query: jest.fn() },
 }));
 
-jest.mock("@/lib/rate-limit", () => ({
+jest.mock("@/lib/server/rate-limit", () => ({
   createRateLimiter: () => ({ check: () => ({ limited: false, retryAfterMs: 0 }) }),
   rateLimitResponse: () => new Response(JSON.stringify({ error: "rate limited" }), { status: 429 }),
 }));
 
-jest.mock("@/lib/course-catalog", () => ({ findLessonLocation: jest.fn() }));
-jest.mock("@/lib/notifications", () => ({ notifyUser: jest.fn() }));
-jest.mock("@/lib/email", () => ({ sendAssignmentSubmittedEmail: jest.fn() }));
-jest.mock("@/lib/base-url", () => ({ getBaseUrl: () => "http://localhost" }));
+jest.mock("@/lib/courses/course-catalog", () => ({ findLessonLocation: jest.fn() }));
+jest.mock("@/lib/server/notifications", () => ({ notifyUser: jest.fn() }));
+jest.mock("@/lib/server/email", () => ({ sendAssignmentSubmittedEmail: jest.fn() }));
+jest.mock("@/lib/server/base-url", () => ({ getBaseUrl: () => "http://localhost" }));
 
 import { POST } from "@/app/api/assignment/submission/route";
 import { getServerSession } from "next-auth/next";
-import { db } from "@/lib/db";
-import { findLessonLocation } from "@/lib/course-catalog";
-import { notifyUser } from "@/lib/notifications";
+import { db } from "@/lib/server/db";
+import { findLessonLocation } from "@/lib/courses/course-catalog";
+import { notifyUser } from "@/lib/server/notifications";
 
 const mockedGetServerSession = getServerSession as jest.Mock;
 const mockedDbQuery = db.query as jest.Mock;

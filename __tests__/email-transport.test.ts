@@ -1,4 +1,4 @@
-import { parseSender, sendEmail } from "@/lib/email";
+import { parseSender, sendEmail } from "@/lib/server/email";
 
 describe("email transport", () => {
   const env = { ...process.env };

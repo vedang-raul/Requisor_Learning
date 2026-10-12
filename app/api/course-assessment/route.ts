@@ -1,11 +1,11 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import { db, type DbUser } from "@/lib/db";
-import { seedCourses } from "@/lib/data";
-import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
-import { withAiConcurrency, SemaphoreFullError, AI_UPSTREAM_TIMEOUT_MS } from "@/lib/ai-semaphore";
+import { authOptions } from "@/lib/auth/auth";
+import { db, type DbUser } from "@/lib/server/db";
+import { seedCourses } from "@/lib/courses/data";
+import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
+import { withAiConcurrency, SemaphoreFullError, AI_UPSTREAM_TIMEOUT_MS } from "@/lib/ai/ai-semaphore";
 
 // ── Per-user rate limiter ─────────────────────────────────────────────────────
 // Capstone assessment is the most expensive AI call — 5 per user per minute.

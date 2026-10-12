@@ -12,16 +12,16 @@ import {
 import { useStore } from "@/lib/store";
 import { Course, Lesson } from "@/lib/types";
 import { cn, extractYouTubeId, formatMinutes, youTubeThumb, isPlaceholder, PLACEHOLDER_VIDEO } from "@/lib/utils";
-import { parseCanvasCartridge, type CanvasImportSummary } from "@/lib/canvas-import";
+import { parseCanvasCartridge, type CanvasImportSummary } from "@/lib/courses/canvas-import";
 import { Card, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { Tag } from "@/components/ui/badge";
-import { PageTransition } from "@/components/motion";
+import { PageTransition } from "@/components/ui/motion";
 import { ProgressBar } from "@/components/ui/progress";
-import { TeamInsights } from "@/components/team-insights";
-import { getCategoryCover, DEFAULT_COURSE_ICON } from "@/components/category-icon";
-import { CourseIconPicker } from "@/components/course-icon-picker";
+import { TeamInsights } from "@/components/admin/team-insights";
+import { getCategoryCover, DEFAULT_COURSE_ICON } from "@/components/course/category-icon";
+import { CourseIconPicker } from "@/components/course/course-icon-picker";
 
 type TabKey = "analytics" | "content" | "users" | "reviews" | "bugs";
 const AI_COURSE_DRAFT_KEY = "requisor-ai-course-draft";

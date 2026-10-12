@@ -1,11 +1,11 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import { acquireAiSlot, SemaphoreFullError } from "@/lib/ai-semaphore";
-import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
-import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/request-body";
-import { cleanGeneratedScript, scriptBrief, SCRIPT_WORDS_PER_MINUTE } from "@/lib/teleprompter";
+import { authOptions } from "@/lib/auth/auth";
+import { acquireAiSlot, SemaphoreFullError } from "@/lib/ai/ai-semaphore";
+import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
+import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
+import { cleanGeneratedScript, scriptBrief, SCRIPT_WORDS_PER_MINUTE } from "@/lib/video/teleprompter";
 
 /**
  * Drafts a teleprompter script for a lesson recording from what the tutor

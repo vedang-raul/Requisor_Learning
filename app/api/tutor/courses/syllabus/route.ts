@@ -2,11 +2,11 @@ export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { ensureCourseCatalog } from "@/lib/course-catalog";
-import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/request-body";
-import { cleanSyllabus } from "@/lib/syllabus";
+import { authOptions } from "@/lib/auth/auth";
+import { db } from "@/lib/server/db";
+import { ensureCourseCatalog } from "@/lib/courses/course-catalog";
+import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
+import { cleanSyllabus } from "@/lib/courses/syllabus";
 
 /**
  * Saves (or removes) a course's syllabus. Kept apart from the course editor's

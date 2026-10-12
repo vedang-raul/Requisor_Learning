@@ -1,14 +1,14 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { findLessonLocation } from "@/lib/course-catalog";
-import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
-import { notifyUser } from "@/lib/notifications";
-import { sendAssignmentSubmittedEmail } from "@/lib/email";
-import { getBaseUrl } from "@/lib/base-url";
-import type { SubmissionSource } from "@/lib/submission-source";
+import { authOptions } from "@/lib/auth/auth";
+import { db } from "@/lib/server/db";
+import { findLessonLocation } from "@/lib/courses/course-catalog";
+import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
+import { notifyUser } from "@/lib/server/notifications";
+import { sendAssignmentSubmittedEmail } from "@/lib/server/email";
+import { getBaseUrl } from "@/lib/server/base-url";
+import type { SubmissionSource } from "@/lib/courses/submission-source";
 
 // A learner's upload for a tutor-required assignment or a personalized
 // practice assignment already generated for that learner. GET returns the

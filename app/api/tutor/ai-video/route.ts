@@ -2,17 +2,17 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { withAiConcurrency, SemaphoreFullError, AI_UPSTREAM_TIMEOUT_MS } from "@/lib/ai-semaphore";
+import { authOptions } from "@/lib/auth/auth";
+import { db } from "@/lib/server/db";
+import { withAiConcurrency, SemaphoreFullError, AI_UPSTREAM_TIMEOUT_MS } from "@/lib/ai/ai-semaphore";
 import {
   AiVideoError, aiVideoBriefReady, aiVideoScriptPrompt, cleanVideoScript, createPresenterVideo, getPresenterVideo, heygenConfigured,
   isProviderId, listPresenters, listVoices, readAiVideoBrief, SCRIPT_MIN_CHARS, splitScriptIntoScenes, VIDEO_BACKGROUNDS,
   type VideoPresenter, type VideoVoice,
-} from "@/lib/ai-video";
-import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
-import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/request-body";
-import { getConnection, refreshAccessToken, uploadVideo, videoDelivery, YouTubeError, youtubeConfigured } from "@/lib/youtube";
+} from "@/lib/video/ai-video";
+import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
+import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
+import { getConnection, refreshAccessToken, uploadVideo, videoDelivery, YouTubeError, youtubeConfigured } from "@/lib/video/youtube";
 
 /**
  * AI-generated lesson videos for the tutor's lesson editor.

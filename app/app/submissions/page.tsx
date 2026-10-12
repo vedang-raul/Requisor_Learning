@@ -6,7 +6,7 @@ import { Download, FileCheck2, Loader2 } from "lucide-react";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Tag } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { PageTransition } from "@/components/motion";
+import { PageTransition } from "@/components/ui/motion";
 
 interface Submission {
   id: number;

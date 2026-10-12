@@ -43,7 +43,7 @@ export default function TutorAuth() {
   const [direction, setDirection] = useState<Direction>("forward");
   const [entering, setEntering] = useState<View | null>(null);
   const [submitting, setSubmitting] = useState<false | "login" | "signup" | "google" | "dev-tutor">(false);
-  // Test-login buttons appear only where the server offers them (see testLoginsEnabled in lib/auth.ts).
+  // Test-login buttons appear only where the server offers them (see testLoginsEnabled in lib/auth/auth.ts).
   const [testLogins, setTestLogins] = useState(false);
   useEffect(() => {
     let cancelled = false;

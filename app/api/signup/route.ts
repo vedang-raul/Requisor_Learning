@@ -1,16 +1,16 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
-import { db, roleForEmail } from "@/lib/db";
-import { sendVerificationEmail, skipEmailVerification } from "@/lib/email";
-import { createRateLimiter, rateLimitResponse } from "@/lib/rate-limit";
-import { verifyTurnstile } from "@/lib/turnstile";
-import { checkJobTitle, stripJobTitle } from "@/lib/job-title";
+import { db, roleForEmail } from "@/lib/server/db";
+import { sendVerificationEmail, skipEmailVerification } from "@/lib/server/email";
+import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
+import { verifyTurnstile } from "@/lib/auth/turnstile";
+import { checkJobTitle, stripJobTitle } from "@/lib/auth/job-title";
 import {
   InvalidJsonBodyError,
   readJsonBody,
   RequestBodyTooLargeError,
-} from "@/lib/request-body";
+} from "@/lib/server/request-body";
 
 const sha256 = (v: string) => crypto.createHash("sha256").update(v).digest("hex");
 const SIGNUP_BODY_MAX_BYTES = 16 * 1024;
@@ -165,7 +165,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "An account with this email already exists. Try logging in." }, { status: 409 });
     }
 
-    // Testing switch (see lib/email.ts): no email, the account is usable at once.
+    // Testing switch (see lib/server/email.ts): no email, the account is usable at once.
     if (skipEmailVerification()) {
       if (existingRow) {
         // A half-finished registration: only its own password may finish it,

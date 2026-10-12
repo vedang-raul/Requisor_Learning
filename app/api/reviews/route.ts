@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { ensureCourseCatalog } from "@/lib/course-catalog";
+import { authOptions } from "@/lib/auth/auth";
+import { db } from "@/lib/server/db";
+import { ensureCourseCatalog } from "@/lib/courses/course-catalog";
 import {
   InvalidJsonBodyError,
   readJsonBody,
   RequestBodyTooLargeError,
-} from "@/lib/request-body";
+} from "@/lib/server/request-body";
 
 const MAX_COMMENT_LENGTH = 1000;
 const MAX_REVIEW_BODY_BYTES = 8_192;

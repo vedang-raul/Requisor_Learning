@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
-import { db, type DbUser } from "@/lib/db";
-import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/request-body";
-import { verifyTurnstile } from "@/lib/turnstile";
+import { db, type DbUser } from "@/lib/server/db";
+import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
+import { verifyTurnstile } from "@/lib/auth/turnstile";
 
 const MAX_RESET_REQUEST_BYTES = 4 * 1024;
 const MAX_PASSWORD_LENGTH = 1024;

@@ -8,8 +8,8 @@ import {
 } from "lucide-react";
 import { useStore, useContinueWatching, useEarnedBadges } from "@/lib/store";
 import { Card } from "@/components/ui/card";
-import { CourseCard } from "@/components/course-card";
-import { PageTransition } from "@/components/motion";
+import { CourseCard } from "@/components/course/course-card";
+import { PageTransition } from "@/components/ui/motion";
 import { ProgressBar } from "@/components/ui/progress";
 import { Tag } from "@/components/ui/badge";
 import { cn, formatMinutes } from "@/lib/utils";
