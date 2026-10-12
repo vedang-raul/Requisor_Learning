@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { RecordStudio } from "@/components/video-recorder";
 import { ProgramBuilder } from "@/components/program-builder";
+import { AiVideoStudio } from "@/components/ai-video-studio";
 import type { LessonAiField, LessonAiValues } from "@/lib/lesson-ai";
 import { hasProgramCommand, PROGRAM_COMMAND_EVENT } from "@/lib/program-builder";
 import { AssignmentBrief } from "@/components/lesson-assignment";
@@ -1177,7 +1178,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
   // Step 2 — video or reading content
   // Step 2 decides the lesson format: a YouTube video (pasted, or made by
   // recorded in the Record tab) or a text lesson. Neither is mandatory until publishing.
-  const [videoMode, setVideoMode] = useState<"youtube" | "edit" | "text">(lesson?.format === "reading" ? "text" : "youtube");
+  const [videoMode, setVideoMode] = useState<"youtube" | "edit" | "ai" | "text">(lesson?.format === "reading" ? "text" : "youtube");
   const [editJobId, setEditJobId] = useState<number | null>(null);
   const format: "video" | "reading" = videoMode === "text" ? "reading" : "video";
   const [youtubeId, setYoutubeId] = useState(lesson?.youtubeId === "REPLACE_ME" ? "" : lesson?.youtubeId ?? "");
@@ -1491,9 +1492,9 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
                 )}
               </div>
             )}
-            {step === "video" && videoMode !== "text" && (
+            {step === "video" && (videoMode === "youtube" || videoMode === "edit") && (
               <p className="mb-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
-                AI can&apos;t make a video, but it can draft a written lesson: choose <strong>Text lesson</strong> below and use the AI button there.
+                Want AI to do it? <strong>AI video</strong> makes a presenter video from a script, and <strong>Text lesson</strong> drafts a written lesson.
               </p>
             )}
 
@@ -1508,10 +1509,11 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
 
             {step === "video" && (
               <div className="space-y-3">
-                <p className="text-sm text-zinc-600">Paste a YouTube link, record your video here, or write a text lesson. You only need one.</p>
+                <p className="text-sm text-zinc-600">Paste a YouTube link, record your video here, generate one with AI, or write a text lesson. You only need one.</p>
                 <div className="flex w-fit flex-wrap gap-1 rounded-xl bg-zinc-100 p-1 text-xs font-medium" role="tablist" aria-label="Lesson content type">
                   <button type="button" role="tab" aria-selected={videoMode === "youtube"} onClick={() => setVideoMode("youtube")} className={cn("flex items-center gap-1.5 rounded-lg px-3 py-1.5", videoMode === "youtube" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}><Youtube className="h-3.5 w-3.5" />YouTube link</button>
                   <button type="button" role="tab" aria-selected={videoMode === "edit"} onClick={() => setVideoMode("edit")} className={cn("flex items-center gap-1.5 rounded-lg px-3 py-1.5", videoMode === "edit" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}><Video className="h-3.5 w-3.5" />Record</button>
+                  <button type="button" role="tab" aria-selected={videoMode === "ai"} onClick={() => setVideoMode("ai")} className={cn("flex items-center gap-1.5 rounded-lg px-3 py-1.5", videoMode === "ai" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}><Sparkles className="h-3.5 w-3.5" />AI video</button>
                   <button type="button" role="tab" aria-selected={videoMode === "text"} onClick={() => setVideoMode("text")} className={cn("flex items-center gap-1.5 rounded-lg px-3 py-1.5", videoMode === "text" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}><BookOpen className="h-3.5 w-3.5" />Text lesson</button>
                 </div>
                 {videoMode === "youtube" && (
@@ -1537,6 +1539,18 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
                     </span>
                     {transcriptNote && <span role="status" className={cn("mt-1 block text-xs", transcriptNote.ok ? "text-emerald-800" : "text-red-700")}>{transcriptNote.text}</span>}
                   </Field>
+                )}
+                {videoMode === "ai" && (
+                  <AiVideoStudio
+                    lessonTitle={title}
+                    lessonDescription={description}
+                    lessonTakeaways={takeawayList}
+                    courseTitle={courseTitle}
+                    // The script is exactly what is said in the video, so it becomes the lesson's transcript.
+                    onScriptReady={(script) => { setTranscript(script); setTranscriptSource("manual"); }}
+                    onVideoPosted={(videoId, script) => { setYoutubeId(videoId); setTranscript(script); setTranscriptSource("manual"); setVideoMode("youtube"); }}
+                    onUseLinkTab={() => setVideoMode("youtube")}
+                  />
                 )}
                 {videoMode === "edit" && (
                   <RecordStudio

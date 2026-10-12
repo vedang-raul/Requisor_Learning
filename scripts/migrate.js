@@ -278,6 +278,24 @@ p.query(`
   );
   -- What is said in a lesson's video, for the learner's assistant. Keyed by
   -- lesson id with no foreign key: saving a course rewrites its lesson rows.
+  -- AI-generated presenter videos (lib/ai-video.ts): one row per render a tutor started.
+  CREATE TABLE IF NOT EXISTS ai_video_jobs (
+    id SERIAL PRIMARY KEY,
+    owner_user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider TEXT NOT NULL DEFAULT 'heygen',
+    provider_video_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    script TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'processing',
+    video_url TEXT,
+    thumbnail_url TEXT,
+    duration_sec INT,
+    error TEXT,
+    youtube_video_id TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS ai_video_jobs_owner_idx ON ai_video_jobs (owner_user_id, id DESC);
   CREATE TABLE IF NOT EXISTS lesson_transcripts (
     lesson_id TEXT PRIMARY KEY,
     transcript TEXT NOT NULL,
