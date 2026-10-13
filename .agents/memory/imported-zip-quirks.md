@@ -32,4 +32,10 @@ Use plain path selections or filter diff output instead of relying on shorthand 
 
 **How to apply:** Keep compilation and TypeScript checks enabled. Validate the complete route build in isolation rather than using unit-test success as a substitute.
 
+**Rule:** During upstream folder reorganizations, audit imports in local-only files separately from Git's rename conflict resolution.
+
+**Why:** Git can relocate a local addition without rewriting its imports. A directory at an alias target also does not mean an import resolves: it may lack an index module.
+
+**How to apply:** Preserve local behavior while adopting incoming paths; check alias imports, relative imports, test mocks and fixture paths against actual module files, then run the complete build and test suite.
+
 **How to apply:** before editing any pre-existing file, strip CRLF; if a binary refuses to run, fix perms first instead of reinstalling.

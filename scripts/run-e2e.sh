@@ -7,4 +7,4 @@ set -euo pipefail
 export PLAYWRIGHT_BROWSERS_PATH=0
 
 npx playwright install chromium
-npx playwright test "$@"
+npx playwright test -c tests/playwright.config.ts "$@"

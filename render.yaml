@@ -1,5 +1,5 @@
 # Render Blueprint: one Node web service running the Next.js app.
-# The database lives on Supabase (see DEPLOY.md), so no Render database here.
+# The database lives on Supabase (see docs/DEPLOY.md), so no Render database here.
 # Values marked "sync: false" are secrets you type into the Render dashboard.
 services:
   - type: web

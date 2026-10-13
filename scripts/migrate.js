@@ -22,7 +22,7 @@ if (!process.env.DATABASE_URL) {
 }
 if (!process.env.DATABASE_URL) { console.error('DATABASE_URL is not set.'); process.exit(1); }
 
-// Same SSL rule as lib/db.ts: DATABASE_SSL=require for hosted Postgres (Supabase).
+// Same SSL rule as src/lib/server/db.ts: DATABASE_SSL=require for hosted Postgres (Supabase).
 const sslMode = (process.env.DATABASE_SSL || '').toLowerCase();
 const ssl = sslMode && sslMode !== 'off' && sslMode !== 'false'
   ? (process.env.DATABASE_CA_CERT ? { ca: process.env.DATABASE_CA_CERT.replace(/\\n/g, '\n'), rejectUnauthorized: true } : { rejectUnauthorized: false })
@@ -166,7 +166,7 @@ p.query(`
   ALTER TABLE courses ALTER COLUMN category TYPE TEXT;
 
   -- The course syllabus: a filled-in template or a reference to an uploaded
-  -- Word/PDF file (lib/syllabus.ts).
+  -- Word/PDF file (src/lib/courses/syllabus.ts).
   ALTER TABLE courses ADD COLUMN IF NOT EXISTS syllabus JSONB;
 
   CREATE TABLE IF NOT EXISTS course_catalog_metadata (
@@ -267,7 +267,7 @@ p.query(`
   CREATE INDEX IF NOT EXISTS video_edit_jobs_owner_idx ON video_edit_jobs (owner_user_id, created_at DESC);
 
   -- A tutor's connected YouTube channel, for posting edited videos on their
-  -- behalf. The refresh token is stored AES-256-GCM encrypted (lib/youtube.ts),
+  -- behalf. The refresh token is stored AES-256-GCM encrypted (src/lib/video/youtube.ts),
   -- never in plain text.
   CREATE TABLE IF NOT EXISTS youtube_connections (
     user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -278,6 +278,24 @@ p.query(`
   );
   -- What is said in a lesson's video, for the learner's assistant. Keyed by
   -- lesson id with no foreign key: saving a course rewrites its lesson rows.
+  -- AI-generated presenter videos (src/lib/video/ai-video.ts): one row per render a tutor started.
+  CREATE TABLE IF NOT EXISTS ai_video_jobs (
+    id SERIAL PRIMARY KEY,
+    owner_user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider TEXT NOT NULL DEFAULT 'heygen',
+    provider_video_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    script TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'processing',
+    video_url TEXT,
+    thumbnail_url TEXT,
+    duration_sec INT,
+    error TEXT,
+    youtube_video_id TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS ai_video_jobs_owner_idx ON ai_video_jobs (owner_user_id, id DESC);
   CREATE TABLE IF NOT EXISTS lesson_transcripts (
     lesson_id TEXT PRIMARY KEY,
     transcript TEXT NOT NULL,
@@ -545,7 +563,7 @@ p.query(`
 
   -- Server-side notifications (the notification bell was purely a local,
   -- per-browser mock before this: seeded with two hardcoded welcome
-  -- messages, never written to by any server event — see lib/store.tsx).
+  -- messages, never written to by any server event — see src/lib/store.tsx).
   -- This table backs real events, starting with "a learner submitted an
   -- assignment"; the client keeps its local array too and merges the two
   -- (see useStore's serverNotifications) rather than migrating every
