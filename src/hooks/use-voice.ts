@@ -32,6 +32,8 @@ export interface UseVoiceReturn {
   isListening: boolean;
   isSpeaking: boolean;
   transcript: string;
+  /** What has been heard so far while listening, updated as the person speaks. */
+  liveTranscript: string;
   sttSupported: boolean;
   ttsSupported: boolean;
   /** True when replies are spoken by the server's ElevenLabs voice rather than the browser's. */
@@ -63,6 +65,7 @@ export function useVoice(): UseVoiceReturn {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [transcript, setTranscript] = useState("");
+  const [liveTranscript, setLiveTranscript] = useState("");
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoiceName, setSelectedVoiceNameState] = useState<string>(() => {
     if (typeof window === "undefined") return "";
@@ -150,14 +153,21 @@ export function useVoice(): UseVoiceReturn {
       window.SpeechRecognition || window.webkitSpeechRecognition;
     const rec = new SpeechRecognitionCtor();
     rec.continuous = false;
-    rec.interimResults = false;
+    // Interim results: the words appear as they are spoken, not only once the person stops.
+    rec.interimResults = true;
     rec.lang = "en-US";
 
     rec.onresult = (event: SpeechRecognitionResultEvt) => {
-      const result = event.results[event.results.length - 1];
-      if (result.isFinal) {
-        setTranscript(result[0].transcript);
+      let heard = "";
+      let settled = true;
+      for (let i = 0; i < event.results.length; i++) {
+        heard += event.results[i][0].transcript;
+        if (!event.results[i].isFinal) settled = false;
       }
+      heard = heard.replace(/\s+/g, " ").trim();
+      setLiveTranscript(heard);
+      // The final wording is what gets sent.
+      if (settled && heard) setTranscript(heard);
     };
 
     rec.onend = () => {
@@ -193,6 +203,7 @@ export function useVoice(): UseVoiceReturn {
   const startListening = useCallback(() => {
     if (!recognitionRef.current || isListening) return;
     setTranscript("");
+    setLiveTranscript("");
     try {
       recognitionRef.current.start();
       setIsListening(true);
@@ -355,6 +366,7 @@ export function useVoice(): UseVoiceReturn {
     isListening,
     isSpeaking,
     transcript,
+    liveTranscript,
     sttSupported,
     ttsSupported,
     premiumVoice,
