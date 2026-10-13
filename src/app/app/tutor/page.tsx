@@ -12,6 +12,7 @@ import { RecordStudio } from "@/components/tutor/video-recorder";
 import { ProgramBuilder } from "@/components/tutor/program-builder";
 import { AiVideoStudio } from "@/components/tutor/ai-video-studio";
 import type { LessonAiField, LessonAiValues } from "@/lib/ai/lesson-ai";
+import { trackEvent } from "@/lib/analytics";
 import { hasProgramCommand, PROGRAM_COMMAND_EVENT } from "@/lib/courses/program-builder";
 import { AssignmentBrief } from "@/components/lesson/lesson-assignment";
 import { parseAssignment } from "@/lib/ai/assignment-format";
@@ -271,6 +272,7 @@ export default function TutorPage() {
     setSaving(true); setError(null);
     try {
       const saved = await upsertCourse(course);
+      trackEvent("course_saved", { action: creating ? "create" : "update", published: saved.published !== false, lesson_count: saved.lessons.length });
       const refreshed = await load(saved.slug);
       setCreating(false);
       setAiDraft(false);
@@ -1376,6 +1378,8 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
     setAiBusy(fields);
     setAiBusyStep(fromStep);
     setAiNote(null);
+    const analyticsData = { field: fields.length === 1 ? fields[0] : "multiple", field_count: fields.length };
+    trackEvent("lesson_ai_requested", analyticsData);
     try {
       const res = await fetch("/api/tutor/lesson-ai/", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -1388,14 +1392,19 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
         }),
       });
       const data = (await res.json().catch(() => ({}))) as { values?: LessonAiValues; error?: string };
-      if (!res.ok || !data.values) { setAiNote({ ok: false, text: data.error ?? "Couldn't write that right now. Try again." }); return; }
+      if (!res.ok || !data.values) {
+        trackEvent("lesson_ai_failed", analyticsData);
+        setAiNote({ ok: false, text: data.error ?? "Couldn't write that right now. Try again." }); return;
+      }
       const written = fields.filter((field) => data.values![field] !== undefined);
       const before = aiCurrent();
       setAiUndo(Object.fromEntries(written.map((field) => [field, before[field]])) as LessonAiValues);
       applyAiValues(data.values);
+      trackEvent("lesson_ai_completed", { ...analyticsData, written_count: written.length });
       setFormError(null);
       setAiNote({ ok: true, text: `AI wrote the ${written.map((field) => AI_FIELD_LABELS[field]).join(", ")}. Read it through and edit anything that isn't right.` });
     } catch {
+      trackEvent("lesson_ai_failed", analyticsData);
       setAiNote({ ok: false, text: "Couldn't reach the server. Try again." });
     } finally {
       setAiBusy(null);

@@ -5,6 +5,7 @@ import { Check, Download, Film, Loader2, RotateCcw, Sparkles, Youtube } from "lu
 import { Button } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { trackEvent } from "@/lib/analytics";
 import {
   SCRIPT_MAX_CHARS, SCRIPT_MIN_CHARS, scriptSeconds, scriptWordCount, VIDEO_BACKGROUNDS, VIDEO_MINUTES, VIDEO_TONES,
   type VideoPresenter, type VideoVoice,
@@ -76,6 +77,7 @@ export function AiVideoStudio({ lessonTitle, lessonDescription, lessonTakeaways,
   const [busy, setBusy] = useState<"create" | "youtube" | null>(null);
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
   const alive = useRef(true);
+  const trackedJobs = useRef(new Set<Job["id"]>());
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
   useEffect(() => {
@@ -104,6 +106,10 @@ export function AiVideoStudio({ lessonTitle, lessonDescription, lessonTakeaways,
         .then((res) => (res.ok ? res.json() : null))
         .then((data: { job?: Job } | null) => {
           if (!alive.current || !data?.job) return;
+          if ((data.job.status === "ready" || data.job.status === "failed") && !trackedJobs.current.has(data.job.id)) {
+            trackedJobs.current.add(data.job.id);
+            trackEvent("ai_video_generation_finished", { provider: "heygen", success: data.job.status === "ready" });
+          }
           setJob(data.job);
           if (data.job.status === "ready") onScriptReady(data.job.script);
         })
@@ -138,6 +144,7 @@ export function AiVideoStudio({ lessonTitle, lessonDescription, lessonTakeaways,
       const { ok, data } = await post({ action: "script", brief: { topic, audience, keyPoints, example, avoid, closing, tone, minutes, lessonTitle, courseTitle } });
       if (!ok || !data.script) { setNote({ ok: false, text: data.error ?? "Couldn't write the script. Try again." }); return; }
       setScript(data.script);
+      trackEvent("ai_video_script_generated", { provider: "heygen" });
       setNote({ ok: true, text: "Script drafted. Read it through and change anything: the presenter says exactly these words." });
     } catch {
       setNote({ ok: false, text: "Couldn't reach the server. Try again." });
@@ -152,6 +159,7 @@ export function AiVideoStudio({ lessonTitle, lessonDescription, lessonTakeaways,
       const { ok, data } = await post({ action: "create", title: lessonTitle || "Lesson video", script, avatarId: presenterId, voiceId, background });
       if (!ok || !data.job) { setNote({ ok: false, text: data.error ?? "Couldn't start the video. Try again." }); return; }
       setJob(data.job);
+      trackEvent("ai_video_generation_started", { provider: "heygen" });
     } catch {
       setNote({ ok: false, text: "Couldn't reach the server. Try again." });
     } finally {
@@ -166,6 +174,7 @@ export function AiVideoStudio({ lessonTitle, lessonDescription, lessonTakeaways,
       const { ok, data } = await post({ action: "youtube", id: job.id });
       if (!ok || !data.videoId) { setNote({ ok: false, text: data.error ?? "Couldn't post the video to YouTube." }); return; }
       setJob({ ...job, youtubeVideoId: data.videoId });
+      trackEvent("ai_video_youtube_published", { provider: "heygen" });
       onVideoPosted(data.videoId, job.script);
     } catch {
       setNote({ ok: false, text: "Couldn't reach the server. Try again." });

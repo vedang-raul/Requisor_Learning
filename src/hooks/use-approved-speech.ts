@@ -5,6 +5,7 @@ import { SpeechPlayer, type SpeechPlaybackState } from "@/lib/courses/speech-pla
 import { readSpeechPreferences, writeSpeechPreferences } from "@/lib/courses/speech-preferences";
 import { getSpeechLanguage } from "@/lib/courses/speech-languages";
 import type { ApprovedSpeechKey, SpeechCatalogResponse, PublicSpeechVoice } from "@/lib/courses/speech-types";
+import { trackEvent } from "@/lib/analytics";
 
 export function useApprovedSpeech(accountId: string | null) {
   const [catalog, setCatalog] = useState<SpeechCatalogResponse>({ voices: [], setupMessage: null });
@@ -84,16 +85,22 @@ export function useApprovedSpeech(accountId: string | null) {
   const selectVoice = useCallback((key: string) => {
     stop();
     if (owner.current !== accountId || loadedFor.current !== accountId || !catalog.voices.some(v => v.key === key && v.enabled)) return;
+    const changed = prefs.current.voiceKey !== key;
+    const voice = catalog.voices.find(v => v.key === key)!;
     prefs.current.voiceKey = key;
     setSelectedVoiceKey(key);
     save();
+    const language = getSpeechLanguage(voice.languages);
+    if (changed) trackEvent("voice_selected", { gender: voice.gender, ...(language ? { language } : {}) });
   }, [accountId, catalog.voices, save, stop]);
   const setMuted = useCallback((value: boolean) => {
     stop();
     if (!accountId || owner.current !== accountId || loadedFor.current !== accountId) return;
+    const changed = prefs.current.muted !== value;
     prefs.current.muted = value;
     setMutedState(value);
     save();
+    if (changed) trackEvent("narration_mute_changed", { muted: value });
   }, [accountId, save, stop]);
   const play = useCallback(async (contentKey: ApprovedSpeechKey, voiceKey = prefs.current.voiceKey) => {
     if (!accountId || owner.current !== accountId || loadedFor.current !== accountId || prefs.current.muted

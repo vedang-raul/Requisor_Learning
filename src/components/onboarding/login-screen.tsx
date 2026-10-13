@@ -14,6 +14,7 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { PasswordStrength } from "@/components/ui/password-strength";
 import { cn } from "@/lib/utils";
 import { checkJobTitle, JOB_TITLE_HINT, JOB_TITLE_MAX_LENGTH, stripJobTitle } from "@/lib/auth/job-title";
+import { trackEvent } from "@/lib/analytics";
 
 type Mode = "login" | "signup" | "forgot";
 
@@ -242,6 +243,7 @@ export function LoginScreen() {
           );
         }
         else {
+          trackEvent("account_created");
           setNotice(data?.verified
             ? "Account created! You can log in now with your email and password."
             : "Account created! Check your inbox — we sent a verification link from support@requisor.io.");
@@ -259,6 +261,7 @@ export function LoginScreen() {
           turnstileToken: tok,
         });
         if (res?.error) {
+          trackEvent("email_signin_failed");
           setError(
             res.error === "EMAIL_NOT_VERIFIED"
               ? "Please verify your email first — check your inbox for the link from support@requisor.io."
@@ -267,6 +270,7 @@ export function LoginScreen() {
                 : authErrorMessage(res.error)
           );
         } else {
+          if (res?.ok) trackEvent("email_signin_completed");
           router.push("/app/dashboard/");
         }
       }
@@ -302,6 +306,7 @@ export function LoginScreen() {
         body: JSON.stringify({ token: tok }),
       });
       if (!res.ok) {
+        trackEvent("google_signin_blocked");
         const data = await safeJson(res);
         setError(
           data?.code === "google_unavailable" ? data.error
@@ -312,8 +317,10 @@ export function LoginScreen() {
         setLoading(false);
         return;
       }
+      trackEvent("google_signin_started");
       void signIn("google", { callbackUrl: "/app/dashboard/" });
     } catch {
+      trackEvent("google_signin_blocked");
       setError("Network error. Please try again.");
       setLoading(false);
     }
