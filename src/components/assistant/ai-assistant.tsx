@@ -1148,10 +1148,12 @@ export function AiAssistant() {
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.96 }}
                       transition={{ duration: 0.15 }}
-                      className="flex min-w-0 flex-1 items-center"
-                      aria-live="polite"
-                      aria-label="Recording — speak now"
+                      className="flex min-w-0 flex-1 flex-col gap-1 py-1"
                     >
+                      {/* The words heard so far, shown as the user speaks. */}
+                      <p aria-live="polite" className={cn("max-h-20 overflow-y-auto text-sm leading-snug", voice.liveTranscript ? "text-zinc-900" : "text-zinc-400")}>
+                        {voice.liveTranscript || "Listening… start speaking"}
+                      </p>
                       <RecordingWaveform bars={waveBars} />
                     </motion.div>
                   ) : voice.isTranscribing ? (
@@ -1162,10 +1164,10 @@ export function AiAssistant() {
                       exit={{ opacity: 0 }}
                       transition={{ duration: 0.12 }}
                       role="status"
-                      className="flex h-9 min-w-0 flex-1 items-center gap-2 text-sm text-zinc-600"
+                      className="flex min-h-9 min-w-0 flex-1 items-center gap-2 py-1 text-sm text-zinc-600"
                     >
                       <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" aria-hidden="true" />
-                      Writing out what you said…
+                      {voice.liveTranscript ? <span className="max-h-20 overflow-y-auto leading-snug">{voice.liveTranscript}</span> : "Writing out what you said…"}
                     </motion.div>
                   ) : (
                     <motion.textarea

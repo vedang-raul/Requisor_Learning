@@ -46,6 +46,22 @@ export function cleanTranscript(raw: unknown): string {
     .slice(0, MAX_TRANSCRIPT_CHARS);
 }
 
+/**
+ * The words to show while the person is still speaking, from the pieces the
+ * browser's speech recognition has reported so far. Some browsers (Chrome on
+ * Android) repeat everything said so far in each new piece, so a piece that
+ * begins with what is already there replaces it instead of being added again.
+ */
+export function livePreview(pieces: string[]): string {
+  let heard = "";
+  for (const piece of pieces) {
+    const text = piece.replace(/\s+/g, " ").trim();
+    if (!text) continue;
+    heard = heard && !text.toLowerCase().startsWith(heard.toLowerCase()) ? `${heard} ${text}` : text;
+  }
+  return heard;
+}
+
 /** Why the microphone could not be opened, in plain words. Takes the browser's error name. */
 export function micErrorMessage(name: unknown): string {
   switch (name) {

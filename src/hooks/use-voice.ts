@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
-import { micErrorMessage } from "@/lib/ai/stt";
+import { livePreview, micErrorMessage } from "@/lib/ai/stt";
 
 /**
  * Voice input records the microphone and has the server transcribe it; the
@@ -17,6 +17,28 @@ const NO_SPEECH_AFTER_MS = 8000;
 const MAX_RECORDING_MS = 60_000;
 const RECORDING_TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
 
+/**
+ * The browser's own speech recognition, where it exists. It is used only to
+ * show the words while the person is speaking; the text that gets sent always
+ * comes from the server's transcription of the recording.
+ */
+type LivePreview = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start(): void;
+  abort(): void;
+  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+};
+function createLivePreview(): LivePreview | null {
+  const w = window as unknown as { SpeechRecognition?: new () => LivePreview; webkitSpeechRecognition?: new () => LivePreview };
+  const Recognition = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+  if (!Recognition) return null;
+  try { return new Recognition(); } catch { return null; }
+}
+
 type ListenSession = {
   /** Set once the session is over, so late callbacks do nothing. */
   ended: boolean;
@@ -29,12 +51,18 @@ type ListenSession = {
   recorder: MediaRecorder | null;
   context: AudioContext | null;
   timer: ReturnType<typeof setInterval> | null;
+  preview: LivePreview | null;
   chunks: Blob[];
 };
 
 function releaseSession(session: ListenSession) {
   if (session.timer) clearInterval(session.timer);
   session.timer = null;
+  if (session.preview) {
+    session.preview.onresult = null;
+    try { session.preview.abort(); } catch { /* already stopped */ }
+    session.preview = null;
+  }
   session.stream?.getTracks().forEach((track) => track.stop());
   session.stream = null;
   session.context?.close().catch(() => {});
@@ -50,6 +78,8 @@ export interface UseVoiceReturn {
   isSpeaking: boolean;
   /** What the person said in the last recording, once it has been transcribed. */
   transcript: string;
+  /** While recording: the words heard so far, where the browser can show them. A preview only; "" otherwise. */
+  liveTranscript: string;
   /** The recording has ended and its words are being worked out. */
   isTranscribing: boolean;
   /** Why voice input gave nothing, in plain words; "" otherwise. */
@@ -88,6 +118,7 @@ export function useVoice(): UseVoiceReturn {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [transcript, setTranscript] = useState("");
+  const [liveTranscript, setLiveTranscript] = useState("");
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [listenError, setListenError] = useState("");
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -226,8 +257,9 @@ export function useVoice(): UseVoiceReturn {
     listenTurnRef.current++;
     setIsTranscribing(false);
     setTranscript("");
+    setLiveTranscript("");
     setListenError("");
-    const session: ListenSession = { ended: false, discard: false, heardSpeech: false, silent: false, stream: null, recorder: null, context: null, timer: null, chunks: [] };
+    const session: ListenSession = { ended: false, discard: false, heardSpeech: false, silent: false, stream: null, recorder: null, context: null, timer: null, preview: null, chunks: [] };
     sessionRef.current = session;
     setIsListening(true);
 
@@ -248,6 +280,24 @@ export function useVoice(): UseVoiceReturn {
           if (recording.size) transcribe(recording);
         };
         recorder.start(250);
+
+        // The words as they are spoken. If the browser can't do this, the recording carries on without it.
+        const preview = createLivePreview();
+        if (preview) {
+          session.preview = preview;
+          preview.continuous = true;
+          preview.interimResults = true;
+          preview.lang = navigator.language || "en-US";
+          preview.onresult = (event) => {
+            if (session.ended) return;
+            const pieces: string[] = [];
+            for (let i = 0; i < event.results.length; i++) pieces.push(event.results[i][0]?.transcript ?? "");
+            setLiveTranscript(livePreview(pieces));
+          };
+          preview.onerror = () => {};
+          preview.onend = () => {};
+          try { preview.start(); } catch { session.preview = null; }
+        }
 
         // Watches the input level so the recording ends when the person stops talking.
         let level: (() => number) | null = null;
@@ -453,6 +503,7 @@ export function useVoice(): UseVoiceReturn {
     isListening,
     isSpeaking,
     transcript,
+    liveTranscript,
     isTranscribing,
     listenError,
     sttSupported,

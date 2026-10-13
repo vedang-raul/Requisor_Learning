@@ -1,4 +1,4 @@
-import { audioUpload, cleanTranscript, micErrorMessage, sttConfigured, sttModel } from "@/lib/ai/stt";
+import { audioUpload, cleanTranscript, livePreview, micErrorMessage, sttConfigured, sttModel } from "@/lib/ai/stt";
 
 describe("voice input transcription", () => {
   const env = { ...process.env };
@@ -30,6 +30,13 @@ describe("voice input transcription", () => {
     expect(cleanTranscript("")).toBe("");
     expect(cleanTranscript(undefined)).toBe("");
     expect(cleanTranscript("a".repeat(5000))).toHaveLength(2000);
+  });
+
+  it("shows the words heard so far without repeating them", () => {
+    expect(livePreview(["what is", " a KPI"])).toBe("what is a KPI");
+    expect(livePreview(["how", "how does", "how does XP work"])).toBe("how does XP work");
+    expect(livePreview(["  ", ""])).toBe("");
+    expect(livePreview([])).toBe("");
   });
 
   it("explains why the microphone could not be opened", () => {
