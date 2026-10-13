@@ -21,6 +21,7 @@ import {
 type Job = {
   id: number; title: string; script: string; status: "processing" | "ready" | "failed";
   videoUrl: string | null; thumbnailUrl: string | null; durationSec: number | null; error: string | null; youtubeVideoId: string | null;
+  createdAt: string;
 };
 type Setup = {
   configured: boolean; presenters: VideoPresenter[]; languages: string[]; jobs: Job[]; error?: string;
@@ -29,6 +30,56 @@ type Setup = {
 
 const selectClass = "focus-ring h-10 w-full rounded-xl border border-border bg-white px-3 text-sm text-zinc-900";
 const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+
+/**
+ * How long a render is likely to take, in seconds. The video service reports no
+ * percentage, so this is an estimate from the script's length: a short clip took
+ * about a minute, and longer scripts take proportionally longer.
+ */
+function expectedRenderSeconds(script: string): number {
+  return Math.round(45 + scriptSeconds(script) * 3);
+}
+
+/** Progress while a video renders: a bar that fills on the estimate, the time so far, and what is happening. */
+function RenderProgress({ job }: { job: Job }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const started = new Date(job.createdAt).getTime();
+  const elapsed = Math.max(0, Math.round((now - (Number.isFinite(started) ? started : now)) / 1000));
+  const expected = expectedRenderSeconds(job.script);
+  // Fills quickly at first and ever more slowly, so it keeps moving but never claims to be done before it is.
+  const percent = Math.min(96, Math.round(100 * (1 - Math.exp(-elapsed / (expected * 0.55)))));
+  const stage = percent < 15 ? "Sending the script to the presenter" : percent < 45 ? "Generating the voice" : percent < 85 ? "Animating the presenter" : "Finishing the video";
+  const overdue = elapsed > expected * 2.5;
+  return (
+    <div role="status" aria-live="polite" className="space-y-2">
+      <div className="flex items-center justify-between gap-3 text-sm">
+        <span className="flex min-w-0 items-center gap-2 font-medium text-zinc-800"><Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" aria-hidden="true" /><span className="truncate">{stage}…</span></span>
+        <span className="shrink-0 font-mono text-xs tabular-nums text-zinc-600">{percent}%</span>
+      </div>
+      <div
+        role="progressbar"
+        aria-label={`Rendering ${job.title}`}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent}
+        className="h-2.5 overflow-hidden rounded-full bg-zinc-200"
+      >
+        <div className="h-full rounded-full bg-gradient-to-r from-primary to-secondary transition-[width] duration-1000 ease-linear" style={{ width: `${percent}%` }} />
+      </div>
+      <p className="text-xs text-zinc-600">
+        {clock(elapsed)} so far · usually about {clock(expected)} for a script this long.{" "}
+        {overdue
+          ? "This one is taking longer than usual, but it is still rendering."
+          : "You can keep editing the lesson; it carries on if you leave this step."}
+      </p>
+      <p className="text-[11px] text-zinc-500">The bar is an estimate: the video service doesn&apos;t report exact progress.</p>
+    </div>
+  );
+}
 
 function Label({ children, hint }: { children: string; hint?: string }) {
   return (
@@ -350,9 +401,7 @@ export function AiVideoStudio({ lessonTitle, lessonDescription, lessonTakeaways,
       {job && (
         <section className="space-y-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
           <h4 className="text-xs font-bold uppercase tracking-wide text-primary">4 · Your video</h4>
-          {job.status === "processing" && (
-            <p role="status" className="flex items-center gap-2 text-sm text-zinc-700"><Loader2 className="h-4 w-4 animate-spin text-primary" />Rendering “{job.title}”… this usually takes a few minutes. You can keep editing the lesson; it carries on if you leave this step.</p>
-          )}
+          {job.status === "processing" && <RenderProgress job={job} />}
           {job.status === "failed" && (
             <p role="alert" className="text-sm text-red-700">The video couldn&apos;t be made{job.error ? `: ${job.error}` : "."} Check the script and try again.</p>
           )}
