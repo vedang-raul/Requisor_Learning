@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { BookPlus, Check, Compass, ListChecks, Loader2, RotateCcw, Send, Sparkles, TrendingUp, Volume2, VolumeX, X, ChevronDown } from "lucide-react";
+import { BookPlus, Check, Compass, ListChecks, Loader2, RotateCcw, Send, Sparkles, Square, ThumbsDown, ThumbsUp, TrendingUp, Volume2, VolumeX, X, ChevronDown } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { getNudge, markNudgeSeen, type Nudge } from "@/lib/ai/nudges";
@@ -17,7 +17,13 @@ import type { Course } from "@/lib/types";
 import { splitActionFrames, type AssistantAction } from "@/lib/assistant/assistant-actions";
 import { AssistantActionCard, type ActionOutcome } from "@/components/assistant/assistant-action-card";
 /** An assistant reply may carry actions the user can confirm (see src/lib/assistant/assistant-actions.ts). */
-type ChatMessage = { role: "user" | "assistant"; content: string; actions?: AssistantAction[] };
+type ChatMessage = {
+  role: "user" | "assistant"; content: string; actions?: AssistantAction[];
+  /** The user's thumbs up or down on this reply, and the id it is stored under. */
+  feedback?: "up" | "down"; feedbackId?: string;
+  /** The user cut this reply short. */
+  stopped?: boolean;
+};
 
 /** What the model is told happened to its proposals, so the conversation stays accurate. */
 function describeOutcome(action: AssistantAction, outcome: ActionOutcome | undefined): string {
@@ -481,6 +487,36 @@ export function AiAssistant() {
       rafRef.current = null;
     }
     setStreaming(false);
+  }
+  /** Cuts the reply short: stops the writing and the voice, and keeps what is on screen. */
+  function stopResponse() {
+    const wasWriting = streaming;
+    cancelActiveRequest();
+    voice.stopSpeaking();
+    speakingReplyRef.current = false;
+    textGateUntilRef.current = 0;
+    if (!wasWriting) return;
+    setMessages((prev) => {
+      const updated = [...prev];
+      const last = updated[updated.length - 1];
+      if (last?.role !== "assistant") return prev;
+      updated[updated.length - 1] = { ...last, content: last.content.trim() || "Stopped before answering.", stopped: true };
+      return updated;
+    });
+  }
+  /** Records a thumbs up or down on a reply. Choosing the same one again takes it back. */
+  function rateReply(index: number, rating: "up" | "down") {
+    const message = messages[index];
+    if (!message || message.role !== "assistant" || !message.content.trim()) return;
+    const next = message.feedback === rating ? null : rating;
+    const feedbackId = message.feedbackId ?? crypto.randomUUID();
+    setMessages((prev) => prev.map((m, i) => (i === index ? { ...m, feedback: next ?? undefined, feedbackId } : m)));
+    const question = [...messages.slice(0, index)].reverse().find((m) => m.role === "user")?.content ?? "";
+    trackEvent("ai_reply_rated", { mode: isTutorMode ? "tutor" : "learner", rating: next ?? "cleared" });
+    void fetch("/api/chat/feedback/", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: feedbackId, rating: next, reply: message.content, question, mode: isTutorMode ? "tutor" : "learner" }),
+    }).catch(() => { /* a lost rating is not worth interrupting the chat for */ });
   }
   function closePanel() {
     cancelActiveRequest();
@@ -1073,6 +1109,35 @@ export function AiAssistant() {
                       ) : (
                         m.content
                       )}
+                      {m.role === "assistant" && !isLastAssistant && m.content.trim() && (
+                        <span className="mt-1.5 flex items-center gap-0.5 border-t border-zinc-100 pt-1.5 text-zinc-400">
+                          {m.stopped && <span className="mr-auto text-[11px] font-normal text-zinc-500">Stopped</span>}
+                          {/* A reply that was cut short isn't rated: there is no finished answer to judge. */}
+                          <span className={cn("flex items-center gap-0.5", m.stopped ? "hidden" : "ml-auto")}>
+                            {m.feedback && <span className="mr-1 text-[11px] font-normal text-zinc-500">Thanks for the feedback</span>}
+                            <button
+                              type="button"
+                              onClick={() => rateReply(i, "up")}
+                              aria-label="Good response"
+                              aria-pressed={m.feedback === "up"}
+                              title="Good response"
+                              className={cn("focus-ring rounded-md p-1 transition hover:bg-zinc-100 hover:text-zinc-700", m.feedback === "up" && "bg-emerald-50 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-600")}
+                            >
+                              <ThumbsUp className="h-3.5 w-3.5" aria-hidden="true" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => rateReply(i, "down")}
+                              aria-label="Bad response"
+                              aria-pressed={m.feedback === "down"}
+                              title="Bad response"
+                              className={cn("focus-ring rounded-md p-1 transition hover:bg-zinc-100 hover:text-zinc-700", m.feedback === "down" && "bg-rose-50 text-rose-600 hover:bg-rose-50 hover:text-rose-600")}
+                            >
+                              <ThumbsDown className="h-3.5 w-3.5" aria-hidden="true" />
+                            </button>
+                          </span>
+                        </span>
+                      )}
                     </motion.div>
                     {isUser && (
                       <div className="mb-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-[10px] font-bold text-zinc-700">
@@ -1270,6 +1335,19 @@ export function AiAssistant() {
                     </button>
                   </div>
                 )}
+                {(streaming || voice.isSpeaking) ? (
+                  <motion.button
+                    type="button"
+                    onClick={stopResponse}
+                    aria-label={streaming ? "Stop the response" : "Stop the voice"}
+                    title={streaming ? "Stop the response" : "Stop the voice"}
+                    whileHover={{ scale: 1.06 }}
+                    whileTap={{ scale: 0.94 }}
+                    className="focus-ring flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-600 shadow-sm ring-1 ring-inset ring-rose-200 transition-colors hover:bg-rose-200"
+                  >
+                    <Square className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
+                  </motion.button>
+                ) : (
                 <motion.button
                   type="submit"
                   disabled={streaming || !input.trim()}
@@ -1280,6 +1358,7 @@ export function AiAssistant() {
                 >
                   {streaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 </motion.button>
+                )}
               </div>
               <p className="mt-2 text-center text-[11px] leading-snug text-zinc-500">AI can make mistakes. Check important information.</p>
             </form>

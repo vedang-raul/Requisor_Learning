@@ -18,6 +18,7 @@ import {
 import { runAssistantTool, toolsForRole, type ToolContext } from "@/lib/assistant/assistant-tools";
 import { ttsCharacterName, ttsCharacterStyle, ttsConfigured } from "@/lib/ai/tts";
 import { ACTION_FRAME, encodeActionFrame } from "@/lib/assistant/assistant-actions";
+import { feedbackNote, FEEDBACK_PER_RATING, type RatedReply } from "@/lib/assistant/feedback";
 
 const BASE_URL = "https://api.x.ai/v1";
 const MODEL = process.env.XAI_MODEL || "grok-3-mini";
@@ -609,9 +610,20 @@ YOUR NAME — in this conversation you go by "${escapePromptData(shownName)}": t
   ].join("");
   // What the tutor has in the Program Builder right now, as their browser reports it: reference data only.
   const builderNote = role !== "employee" ? programBuilderNote(body.programBuilder) : "";
+  // The user's latest thumbs up and down, so the assistant keeps to what they liked and drops what they didn't.
+  let ratingsNote = "";
+  try {
+    const rated = await db.query<RatedReply>(
+      `(SELECT rating, question, reply FROM assistant_feedback WHERE user_id = $1 AND mode = $2 AND rating = 'down' ORDER BY updated_at DESC LIMIT $3)
+       UNION ALL
+       (SELECT rating, question, reply FROM assistant_feedback WHERE user_id = $1 AND mode = $2 AND rating = 'up' ORDER BY updated_at DESC LIMIT $3)`,
+      [Number(session.user.id), role === "employee" ? "learner" : "tutor", FEEDBACK_PER_RATING]
+    );
+    ratingsNote = feedbackNote((rated?.rows ?? []).filter((r) => (r?.rating === "up" || r?.rating === "down") && typeof r.reply === "string"), escapePromptData);
+  } catch { /* ratings are a refinement; the assistant answers without them */ }
   const systemPrompt = (viewingLessonId
     ? system + '\n\nThe learner currently has a lesson open on screen: lesson_id "' + viewingLessonId + '". When they say "this lesson", "this" or "here", they mean it.' + openLessonNote
-    : system) + builderNote + nameNote + voiceNote;
+    : system) + builderNote + nameNote + voiceNote + ratingsNote;
   const upstreamMessages = buildUpstreamMessages(messages);
 
   // 6. Tools for this role. Read tools run server-side; propose_* tools only
