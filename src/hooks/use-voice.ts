@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
+import { readSpeechResults, speechErrorMessage } from "@/lib/speech-results";
 
 // Browser type declarations for Web Speech API (not in standard TS lib)
 interface SpeechRecognitionInstance extends EventTarget {
@@ -34,6 +35,8 @@ export interface UseVoiceReturn {
   transcript: string;
   /** What has been heard so far while listening, updated as the person speaks. */
   liveTranscript: string;
+  /** Why listening stopped without hearing anything usable, in plain words; "" otherwise. */
+  listenError: string;
   sttSupported: boolean;
   ttsSupported: boolean;
   /** True when replies are spoken by the server's ElevenLabs voice rather than the browser's. */
@@ -66,6 +69,9 @@ export function useVoice(): UseVoiceReturn {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [liveTranscript, setLiveTranscript] = useState("");
+  const [listenError, setListenError] = useState("");
+  // What this listening session has produced so far, readable from the recognition callbacks.
+  const heardRef = useRef({ live: "", final: false });
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoiceName, setSelectedVoiceNameState] = useState<string>(() => {
     if (typeof window === "undefined") return "";
@@ -158,23 +164,24 @@ export function useVoice(): UseVoiceReturn {
     rec.lang = "en-US";
 
     rec.onresult = (event: SpeechRecognitionResultEvt) => {
-      let heard = "";
-      let settled = true;
-      for (let i = 0; i < event.results.length; i++) {
-        heard += event.results[i][0].transcript;
-        if (!event.results[i].isFinal) settled = false;
-      }
-      heard = heard.replace(/\s+/g, " ").trim();
-      setLiveTranscript(heard);
-      // The final wording is what gets sent.
-      if (settled && heard) setTranscript(heard);
+      const pieces = [];
+      for (let i = 0; i < event.results.length; i++) pieces.push({ transcript: event.results[i][0].transcript, isFinal: event.results[i].isFinal });
+      const { live, final } = readSpeechResults(pieces);
+      heardRef.current.live = live;
+      setLiveTranscript(live);
+      // The settled wording is what gets sent.
+      if (final) { heardRef.current.final = true; setTranscript(final); }
     };
 
     rec.onend = () => {
+      // Recognition can stop without ever settling its last guess. What was heard is still
+      // what the person said, so it is used rather than lost.
+      if (!heardRef.current.final && heardRef.current.live) setTranscript(heardRef.current.live);
       setIsListening(false);
     };
 
-    rec.onerror = () => {
+    rec.onerror = (event: Event) => {
+      setListenError(speechErrorMessage((event as Event & { error?: string }).error));
       setIsListening(false);
     };
 
@@ -204,6 +211,8 @@ export function useVoice(): UseVoiceReturn {
     if (!recognitionRef.current || isListening) return;
     setTranscript("");
     setLiveTranscript("");
+    setListenError("");
+    heardRef.current = { live: "", final: false };
     try {
       recognitionRef.current.start();
       setIsListening(true);
@@ -367,6 +376,7 @@ export function useVoice(): UseVoiceReturn {
     isSpeaking,
     transcript,
     liveTranscript,
+    listenError,
     sttSupported,
     ttsSupported,
     premiumVoice,

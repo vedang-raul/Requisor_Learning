@@ -1195,6 +1195,10 @@ export function AiAssistant() {
               }}
               className="border-t border-zinc-100 p-3"
             >
+              {/* Why voice input gave nothing, when it has a reason. */}
+              {voice.listenError && !voice.isListening && (
+                <p role="alert" className="mb-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900">{voice.listenError}</p>
+              )}
               <div
                 className={cn(
                   "flex items-end gap-1.5 rounded-2xl border p-1.5 pl-3.5 transition",
