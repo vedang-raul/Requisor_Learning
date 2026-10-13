@@ -7,15 +7,11 @@
  *   HEYGEN_API_KEY   turns it on. Without it the editor explains how to set it up.
  *
  * This file holds everything that isn't a route: the brief the tutor fills in,
- * the script prompt and clean-up, cutting a script into scenes, and the HeyGen
- * calls.
+ * the script prompt and clean-up, and the HeyGen calls (their v3 API).
  */
 const HEYGEN_API = "https://api.heygen.com";
-/** HeyGen limits the text of one scene; long scripts are cut into several. */
-export const SCENE_MAX_CHARS = 1400;
 export const SCRIPT_MAX_CHARS = 9000;
 export const SCRIPT_MIN_CHARS = 60;
-const MAX_SCENES = 20;
 /** Presenters speak at roughly this pace. */
 export const WORDS_PER_MINUTE = 150;
 
@@ -136,41 +132,7 @@ export function scriptSeconds(script: string): number {
   return Math.round((scriptWordCount(script) / WORDS_PER_MINUTE) * 60);
 }
 
-/**
- * Cuts a script into scenes HeyGen will accept: paragraphs are kept together
- * where they fit, and a long paragraph is cut at sentence ends.
- */
-export function splitScriptIntoScenes(script: string, max = SCENE_MAX_CHARS): string[] {
-  const pieces: string[] = [];
-  for (const paragraph of script.split(/\n{2,}/).map((p) => p.replace(/\s+/g, " ").trim()).filter(Boolean)) {
-    if (paragraph.length <= max) { pieces.push(paragraph); continue; }
-    let current = "";
-    for (const sentence of paragraph.match(/[^.!?。]+[.!?。]+["”')]*\s*|[^.!?。]+$/g) ?? [paragraph]) {
-      const part = sentence.trim();
-      if (!part) continue;
-      if (current && current.length + part.length + 1 > max) { pieces.push(current); current = ""; }
-      if (part.length > max) {
-        // A single sentence longer than a scene: cut at spaces.
-        let rest = part;
-        while (rest.length > max) { const cut = rest.lastIndexOf(" ", max); const at = cut > max / 2 ? cut : max; pieces.push(rest.slice(0, at).trim()); rest = rest.slice(at).trim(); }
-        current = rest;
-      } else {
-        current = current ? `${current} ${part}` : part;
-      }
-    }
-    if (current) pieces.push(current);
-  }
-  // Join neighbouring pieces while they fit, so there are as few scene changes as possible.
-  const scenes: string[] = [];
-  for (const piece of pieces) {
-    const last = scenes[scenes.length - 1];
-    if (last && last.length + piece.length + 1 <= max) scenes[scenes.length - 1] = `${last} ${piece}`;
-    else scenes.push(piece);
-  }
-  return scenes.slice(0, MAX_SCENES);
-}
-
-// ── HeyGen ──────────────────────────────────────────────────────────────────
+// ── HeyGen (v3 API) ─────────────────────────────────────────────────────────
 export class AiVideoError extends Error {
   constructor(message: string, readonly status?: number) {
     super(message);
@@ -178,12 +140,19 @@ export class AiVideoError extends Error {
   }
 }
 
-export type VideoPresenter = { id: string; name: string; gender: string; image: string };
-export type VideoVoice = { id: string; name: string; language: string; gender: string };
+/** A person who can present: one of HeyGen's stock presenters, or one made in the account (a digital twin or photo avatar). */
+export type VideoPresenter = { id: string; name: string; gender: string; image: string; own: boolean };
+export type VideoVoice = { id: string; name: string; language: string; gender: string; own: boolean };
 export type VideoStatus = { status: "processing" | "ready" | "failed"; videoUrl?: string; thumbnailUrl?: string; durationSec?: number; error?: string };
+
+/** Languages offered in the voice picker. Voices are fetched one language at a time. */
+export const VOICE_LANGUAGES = ["English", "Hindi", "Spanish", "Portuguese", "French", "German", "Arabic", "Chinese", "Japanese", "Italian", "Dutch"] as const;
 
 const ID = /^[A-Za-z0-9_.-]{6,120}$/;
 export const isProviderId = (value: unknown): value is string => typeof value === "string" && ID.test(value);
+const record = (value: unknown): Record<string, unknown> => (value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {});
+const items = (value: unknown): Record<string, unknown>[] => (Array.isArray(value) ? value.map(record) : []);
+const httpsUrl = (value: unknown): value is string => typeof value === "string" && /^https:\/\//.test(value);
 
 async function heygen(path: string, init?: RequestInit): Promise<Record<string, unknown>> {
   const key = process.env.HEYGEN_API_KEY;
@@ -200,9 +169,12 @@ async function heygen(path: string, init?: RequestInit): Promise<Record<string, 
   }
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) {
-    const detail = data.error && typeof data.error === "object" ? line((data.error as Record<string, unknown>).message, 200) : line(data.message ?? data.error, 200);
+    // v3 errors: { error: { code, message, param } }
+    const error = record(data.error);
+    const code = line(error.code, 60);
+    const detail = line(error.message ?? data.message, 200);
     const reason = res.status === 401 || res.status === 403 ? "The video service rejected the API key."
-      : res.status === 402 || /credit|quota|insufficient/i.test(detail) ? "The video service account is out of credits."
+      : res.status === 402 || /credit|quota|insufficient|balance/i.test(`${code} ${detail}`) ? "The video service account is out of credit."
       : res.status === 429 ? "The video service is busy. Try again in a moment."
       : `The video service refused the request${detail ? `: ${detail}` : ` (${res.status})`}.`;
     throw new AiVideoError(reason, res.status);
@@ -210,54 +182,77 @@ async function heygen(path: string, init?: RequestInit): Promise<Record<string, 
   return data;
 }
 
-const record = (value: unknown): Record<string, unknown> => (value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {});
-
-export async function listPresenters(): Promise<VideoPresenter[]> {
-  const data = record((await heygen("/v2/avatars")).data);
-  const seen = new Set<string>();
+function readPresenters(raw: unknown, own: boolean): VideoPresenter[] {
   const out: VideoPresenter[] = [];
-  for (const raw of Array.isArray(data.avatars) ? data.avatars : []) {
-    const a = record(raw);
-    const id = a.avatar_id, image = a.preview_image_url;
-    if (!isProviderId(id) || typeof image !== "string" || !/^https:\/\//.test(image) || a.premium === true) continue;
-    const name = line(a.avatar_name, 80) || "Presenter";
-    // The library lists many near-identical takes of one presenter; show one of each.
-    const who = name.replace(/\s*[\(\-–|].*$/, "").trim().toLowerCase();
-    if (seen.has(who)) continue;
-    seen.add(who);
-    out.push({ id, name: name.replace(/\s*[\(\-–|].*$/, "").trim() || name, gender: line(a.gender, 20).toLowerCase(), image });
-    if (out.length >= 60) break;
+  for (const group of items(record(raw).data)) {
+    if (!isProviderId(group.id) || !httpsUrl(group.preview_image_url)) continue;
+    const gender = line(group.gender, 20).toLowerCase();
+    out.push({ id: group.id, name: line(group.name, 80) || "Presenter", gender: /^(wo)?m[ae]n$/.test(gender) ? (gender.startsWith("w") ? "female" : "male") : gender === "unknown" ? "" : gender, image: group.preview_image_url, own });
   }
   return out;
 }
 
-export async function listVoices(): Promise<VideoVoice[]> {
-  const data = record((await heygen("/v2/voices")).data);
+/** The presenters on offer: the account's own first, then HeyGen's stock ones. Each is a person; the look is chosen when the video is made. */
+export async function listPresenters(): Promise<VideoPresenter[]> {
+  const [mine, stock] = await Promise.all([
+    heygen("/v3/avatars?ownership=private&limit=50").catch(() => ({})),
+    heygen("/v3/avatars?ownership=public&limit=50"),
+  ]);
+  return [...readPresenters(mine, true), ...readPresenters(stock, false)];
+}
+
+function readVoices(raw: unknown, own: boolean): VideoVoice[] {
   const out: VideoVoice[] = [];
-  for (const raw of Array.isArray(data.voices) ? data.voices : []) {
-    const v = record(raw);
-    if (!isProviderId(v.voice_id)) continue;
-    out.push({ id: v.voice_id, name: line(v.name, 80) || "Voice", language: line(v.language, 40) || "Unknown", gender: line(v.gender, 20).toLowerCase() });
-    if (out.length >= 400) break;
+  for (const voice of items(record(raw).data)) {
+    if (!isProviderId(voice.voice_id)) continue;
+    out.push({ id: voice.voice_id, name: line(voice.name, 80) || "Voice", language: line(voice.language, 40) || "Other", gender: line(voice.gender, 20).toLowerCase(), own });
   }
   return out;
 }
 
-export function heygenVideoRequest(input: { title: string; scenes: string[]; avatarId: string; voiceId: string; background: string }) {
+/** Voices for one language: the account's own cloned voices in that language first, then HeyGen's library. */
+export async function listVoices(language: string): Promise<VideoVoice[]> {
+  const chosen = VOICE_LANGUAGES.find((l) => l === language) ?? VOICE_LANGUAGES[0];
+  const [mine, library] = await Promise.all([
+    heygen("/v3/voices?type=private&limit=100").catch(() => ({})),
+    heygen(`/v3/voices?language=${encodeURIComponent(chosen)}&limit=100`),
+  ]);
+  const seen = new Set<string>();
+  return [...readVoices(mine, true).filter((voice) => voice.language === chosen), ...readVoices(library, false)]
+    // A cloned voice can be listed more than once; show each name once.
+    .filter((voice) => { const key = `${voice.own}:${voice.name}`; if (seen.has(key)) return false; seen.add(key); return true; });
+}
+
+/** The look a presenter is filmed in, and the rendering engine it supports. */
+export async function presenterLook(presenterId: string): Promise<{ lookId: string; engine: string | null }> {
+  const data = await heygen(`/v3/avatars/looks?group_id=${encodeURIComponent(presenterId)}&limit=20`);
+  const looks = items(data.data).filter((look) => isProviderId(look.id) && look.status !== "processing" && look.status !== "failed");
+  if (!looks.length) throw new AiVideoError("That presenter isn't available. Choose another.", 400);
+  const look = looks[0];
+  const engines = Array.isArray(look.supported_api_engines) ? look.supported_api_engines.filter((e): e is string => typeof e === "string") : [];
+  // HeyGen's default engine is avatar_iv; a look that doesn't support it needs one named.
+  const engine = !engines.length || engines.includes("avatar_iv") ? null : engines[0];
+  return { lookId: look.id as string, engine };
+}
+
+export function heygenVideoRequest(input: { title: string; script: string; lookId: string; engine: string | null; voiceId: string | null; background: string }) {
   return {
+    type: "avatar",
+    avatar_id: input.lookId,
+    script: input.script,
+    // Without a voice, the presenter's own default voice is used.
+    ...(input.voiceId ? { voice_id: input.voiceId } : {}),
+    ...(input.engine ? { engine: { type: input.engine } } : {}),
     title: input.title.slice(0, 100),
-    dimension: { width: 1280, height: 720 },
-    video_inputs: input.scenes.map((text) => ({
-      character: { type: "avatar", avatar_id: input.avatarId, avatar_style: "normal" },
-      voice: { type: "text", input_text: text, voice_id: input.voiceId },
-      background: { type: "color", value: input.background },
-    })),
+    resolution: "1080p",
+    aspect_ratio: "16:9",
+    background: { type: "color", value: input.background },
   };
 }
 
 /** Starts a render and returns HeyGen's id for it. */
 export async function createPresenterVideo(input: Parameters<typeof heygenVideoRequest>[0]): Promise<string> {
-  const data = await heygen("/v2/video/generate", { method: "POST", body: JSON.stringify(heygenVideoRequest(input)) });
+  const data = await heygen("/v3/videos", { method: "POST", body: JSON.stringify(heygenVideoRequest(input)) });
   const id = record(data.data).video_id;
   if (!isProviderId(id)) throw new AiVideoError("The video service didn't start the video. Try again.");
   return id;
@@ -267,23 +262,17 @@ export async function createPresenterVideo(input: Parameters<typeof heygenVideoR
 export function readVideoStatus(raw: unknown): VideoStatus {
   const d = record(record(raw).data);
   const status = line(d.status, 20).toLowerCase();
-  if (status === "completed" && typeof d.video_url === "string" && /^https:\/\//.test(d.video_url)) {
+  if (status === "completed" && httpsUrl(d.video_url)) {
     return {
       status: "ready", videoUrl: d.video_url,
-      ...(typeof d.thumbnail_url === "string" && /^https:\/\//.test(d.thumbnail_url) ? { thumbnailUrl: d.thumbnail_url } : {}),
+      ...(httpsUrl(d.thumbnail_url) ? { thumbnailUrl: d.thumbnail_url } : {}),
       ...(typeof d.duration === "number" && Number.isFinite(d.duration) ? { durationSec: Math.round(d.duration) } : {}),
     };
   }
-  if (status === "failed") {
-    const error = record(d.error);
-    return { status: "failed", error: line(error.message ?? error.detail ?? d.error, 300) || "The video couldn't be made." };
-  }
+  if (status === "failed") return { status: "failed", error: line(d.failure_message ?? record(d.error).message, 300) || "The video couldn't be made." };
   return { status: "processing" };
 }
 
 export async function getPresenterVideo(providerId: string): Promise<VideoStatus> {
-  return readVideoStatus(await heygen(`/v1/video_status.get?video_id=${encodeURIComponent(providerId)}`));
+  return readVideoStatus(await heygen(`/v3/videos/${encodeURIComponent(providerId)}`));
 }
-
-/** Hosts the finished file is served from, for the page's media policy. */
-export const AI_VIDEO_MEDIA_HOSTS = ["https://*.heygen.ai", "https://*.heygen.com"];

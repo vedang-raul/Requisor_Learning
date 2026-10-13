@@ -1,6 +1,6 @@
 import {
   aiVideoBriefReady, aiVideoScriptPrompt, cleanVideoScript, createPresenterVideo, getPresenterVideo, heygenVideoRequest, listPresenters,
-  readAiVideoBrief, readVideoStatus, scriptSeconds, splitScriptIntoScenes, AiVideoError,
+  listVoices, presenterLook, readAiVideoBrief, readVideoStatus, scriptSeconds, AiVideoError,
 } from "@/lib/video/ai-video";
 
 describe("AI lesson videos", () => {
@@ -26,26 +26,15 @@ describe("AI lesson videos", () => {
     expect(scriptSeconds("word ".repeat(150))).toBe(60);
   });
 
-  it("cuts a script into scenes at paragraph and sentence ends", () => {
-    expect(splitScriptIntoScenes("Short one.\n\nShort two.", 100)).toEqual(["Short one. Short two."]);
-    const long = Array.from({ length: 30 }, (_, i) => `This is sentence number ${i + 1} of the paragraph.`).join(" ");
-    const scenes = splitScriptIntoScenes(long, 200);
-    expect(scenes.length).toBeGreaterThan(3);
-    expect(scenes.every((s) => s.length <= 200 && /[.]$/.test(s))).toBe(true);
-    expect(scenes.join(" ")).toBe(long);
-    expect(splitScriptIntoScenes("x".repeat(450), 200).every((s) => s.length <= 200)).toBe(true);
-    expect(splitScriptIntoScenes("")).toEqual([]);
-  });
-
-  it("builds one scene per piece of script for the video service", () => {
-    const request = heygenVideoRequest({ title: "T", scenes: ["One.", "Two."], avatarId: "avatar_1234", voiceId: "voice_1234", background: "#FFFFFF" });
-    expect(request.video_inputs).toHaveLength(2);
-    expect(request.video_inputs[1]).toEqual({
-      character: { type: "avatar", avatar_id: "avatar_1234", avatar_style: "normal" },
-      voice: { type: "text", input_text: "Two.", voice_id: "voice_1234" },
+  it("asks for one video with the presenter's look, and names an engine or voice only when needed", () => {
+    const base = { title: "T", script: "Hello there.", lookId: "look_123456", background: "#FFFFFF" };
+    expect(heygenVideoRequest({ ...base, engine: null, voiceId: null })).toEqual({
+      type: "avatar", avatar_id: "look_123456", script: "Hello there.", title: "T", resolution: "1080p", aspect_ratio: "16:9",
       background: { type: "color", value: "#FFFFFF" },
     });
-    expect(request.dimension).toEqual({ width: 1280, height: 720 });
+    const withBoth = heygenVideoRequest({ ...base, engine: "avatar_iii", voiceId: "voice_123456" });
+    expect(withBoth.engine).toEqual({ type: "avatar_iii" });
+    expect(withBoth.voice_id).toBe("voice_123456");
   });
 
   it("reads the video service's progress answers", () => {
@@ -55,7 +44,8 @@ describe("AI lesson videos", () => {
       .toEqual({ status: "ready", videoUrl: "https://files.heygen.ai/v.mp4", thumbnailUrl: "https://files.heygen.ai/t.jpg", durationSec: 61 });
     // "completed" without a usable file is not ready.
     expect(readVideoStatus({ data: { status: "completed", video_url: "javascript:alert(1)" } })).toEqual({ status: "processing" });
-    expect(readVideoStatus({ data: { status: "failed", error: { message: "Voice not found" } } })).toEqual({ status: "failed", error: "Voice not found" });
+    expect(readVideoStatus({ data: { status: "failed", failure_message: "Voice not found" } })).toEqual({ status: "failed", error: "Voice not found" });
+    expect(readVideoStatus({ data: { status: "pending" } })).toEqual({ status: "processing" });
     expect(readVideoStatus(null)).toEqual({ status: "processing" });
   });
 
@@ -65,32 +55,56 @@ describe("AI lesson videos", () => {
     process.env.HEYGEN_API_KEY = "test-key";
 
     global.fetch = answer(200, { data: { video_id: "video_abcdef" } });
-    await expect(createPresenterVideo({ title: "T", scenes: ["Hello there."], avatarId: "avatar_1234", voiceId: "voice_1234", background: "#FFFFFF" })).resolves.toBe("video_abcdef");
+    await expect(createPresenterVideo({ title: "T", script: "Hello there.", lookId: "look_123456", engine: null, voiceId: null, background: "#FFFFFF" })).resolves.toBe("video_abcdef");
     const [url, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("https://api.heygen.com/v2/video/generate");
+    expect(url).toBe("https://api.heygen.com/v3/videos");
     expect((init.headers as Record<string, string>)["X-Api-Key"]).toBe("test-key");
-    expect(JSON.parse(String(init.body)).video_inputs[0].voice.input_text).toBe("Hello there.");
+    expect(JSON.parse(String(init.body)).script).toBe("Hello there.");
 
-    global.fetch = answer(401, { error: { message: "Unauthorized" } });
+    global.fetch = answer(401, { error: { code: "unauthorized", message: "Unauthorized" } });
     await expect(getPresenterVideo("video_123456")).rejects.toThrow("rejected the API key");
-    global.fetch = answer(400, { error: { message: "Insufficient credit" } });
-    await expect(getPresenterVideo("video_123456")).rejects.toThrow("out of credits");
+    global.fetch = answer(400, { error: { code: "insufficient_balance", message: "Wallet balance too low" } });
+    await expect(getPresenterVideo("video_123456")).rejects.toThrow("out of credit");
+    global.fetch = answer(400, { error: { code: "invalid_parameter", message: "Extra inputs are not permitted" } });
+    await expect(getPresenterVideo("video_123456")).rejects.toThrow("Extra inputs are not permitted");
     global.fetch = answer(200, { data: {} });
-    await expect(createPresenterVideo({ title: "T", scenes: ["Hi."], avatarId: "avatar_1234", voiceId: "voice_1234", background: "#FFFFFF" })).rejects.toBeInstanceOf(AiVideoError);
+    await expect(createPresenterVideo({ title: "T", script: "Hi.", lookId: "look_123456", engine: null, voiceId: null, background: "#FFFFFF" })).rejects.toBeInstanceOf(AiVideoError);
   });
 
-  it("lists one of each presenter, skipping premium and broken entries", async () => {
+  it("lists the account's own presenters first, then stock ones, skipping broken entries", async () => {
     process.env.HEYGEN_API_KEY = "test-key";
-    global.fetch = answer(200, { data: { avatars: [
-      { avatar_id: "anna_front_1", avatar_name: "Anna (front)", gender: "Female", preview_image_url: "https://files.heygen.ai/a.jpg" },
-      { avatar_id: "anna_side_1", avatar_name: "Anna (side)", gender: "Female", preview_image_url: "https://files.heygen.ai/a2.jpg" },
-      { avatar_id: "ben_front_1", avatar_name: "Ben", gender: "Male", preview_image_url: "https://files.heygen.ai/b.jpg", premium: true },
-      { avatar_id: "carl_front_1", avatar_name: "Carl", gender: "Male", preview_image_url: "http://insecure/c.jpg" },
-      { avatar_id: "dee_front_1", avatar_name: "Dee", gender: "Female", preview_image_url: "https://files.heygen.ai/d.jpg" },
-    ] } });
+    global.fetch = jest.fn(async (url: string) => new Response(JSON.stringify(String(url).includes("ownership=private")
+      ? { data: [{ id: "group_mine_1", name: "Naveen", gender: "Man", preview_image_url: "https://files.heygen.ai/n.jpg" }] }
+      : { data: [
+          { id: "group_anna_1", name: "Anna", gender: "female", preview_image_url: "https://files.heygen.ai/a.jpg" },
+          { id: "group_carl_1", name: "Carl", gender: "male", preview_image_url: "http://insecure/c.jpg" },
+          { id: "x", name: "Bad id", gender: "male", preview_image_url: "https://files.heygen.ai/b.jpg" },
+        ] }), { status: 200 })) as unknown as typeof fetch;
     expect(await listPresenters()).toEqual([
-      { id: "anna_front_1", name: "Anna", gender: "female", image: "https://files.heygen.ai/a.jpg" },
-      { id: "dee_front_1", name: "Dee", gender: "female", image: "https://files.heygen.ai/d.jpg" },
+      { id: "group_mine_1", name: "Naveen", gender: "male", image: "https://files.heygen.ai/n.jpg", own: true },
+      { id: "group_anna_1", name: "Anna", gender: "female", image: "https://files.heygen.ai/a.jpg", own: false },
     ]);
+  });
+
+  it("lists voices for one language, the account's own first, each name once", async () => {
+    process.env.HEYGEN_API_KEY = "test-key";
+    global.fetch = jest.fn(async (url: string) => new Response(JSON.stringify(String(url).includes("type=private")
+      ? { data: [{ voice_id: "voice_mine_1", name: "Naveen", language: "English", gender: "male" }, { voice_id: "voice_mine_2", name: "Naveen", language: "English", gender: "male" }, { voice_id: "voice_mine_3", name: "Hindi me", language: "Hindi", gender: "male" }] }
+      : { data: [{ voice_id: "voice_sara_1", name: "Sara", language: "English", gender: "female" }] }), { status: 200 })) as unknown as typeof fetch;
+    expect(await listVoices("English")).toEqual([
+      { id: "voice_mine_1", name: "Naveen", language: "English", gender: "male", own: true },
+      { id: "voice_sara_1", name: "Sara", language: "English", gender: "female", own: false },
+    ]);
+    expect(String((global.fetch as jest.Mock).mock.calls.find(([u]) => !String(u).includes("type=private"))[0])).toContain("language=English");
+  });
+
+  it("picks a presenter's look and names an engine only when the default isn't supported", async () => {
+    process.env.HEYGEN_API_KEY = "test-key";
+    global.fetch = answer(200, { data: [{ id: "look_studio_1", supported_api_engines: ["avatar_iii"] }] });
+    expect(await presenterLook("group_anna_1")).toEqual({ lookId: "look_studio_1", engine: "avatar_iii" });
+    global.fetch = answer(200, { data: [{ id: "look_training", status: "processing" }, { id: "look_ready_1", supported_api_engines: ["avatar_v", "avatar_iv"], status: "completed" }] });
+    expect(await presenterLook("group_mine_1")).toEqual({ lookId: "look_ready_1", engine: null });
+    global.fetch = answer(200, { data: [] });
+    await expect(presenterLook("group_none_1")).rejects.toThrow("isn't available");
   });
 });

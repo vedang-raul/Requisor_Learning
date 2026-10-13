@@ -23,7 +23,7 @@ type Job = {
   videoUrl: string | null; thumbnailUrl: string | null; durationSec: number | null; error: string | null; youtubeVideoId: string | null;
 };
 type Setup = {
-  configured: boolean; presenters: VideoPresenter[]; voices: VideoVoice[]; jobs: Job[]; error?: string;
+  configured: boolean; presenters: VideoPresenter[]; languages: string[]; jobs: Job[]; error?: string;
   youtube: { delivery: string; connected: boolean; channelTitle: string | null };
 };
 
@@ -69,7 +69,10 @@ export function AiVideoStudio({ lessonTitle, lessonDescription, lessonTakeaways,
   const [presenterId, setPresenterId] = useState("");
   const [presenterFilter, setPresenterFilter] = useState("");
   const [language, setLanguage] = useState("English");
+  // "" means the presenter's own voice.
   const [voiceId, setVoiceId] = useState("");
+  const [voices, setVoices] = useState<VideoVoice[]>([]);
+  const [voicesLoading, setVoicesLoading] = useState(false);
   const [background, setBackground] = useState<string>(VIDEO_BACKGROUNDS[0].key);
 
   const [job, setJob] = useState<Job | null>(null);
@@ -113,18 +116,29 @@ export function AiVideoStudio({ lessonTitle, lessonDescription, lessonTakeaways,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId, rendering]);
 
-  const languages = useMemo(() => [...new Set((setup?.voices ?? []).map((v) => v.language))].sort((a, b) => a.localeCompare(b)), [setup]);
-  const voices = useMemo(() => (setup?.voices ?? []).filter((v) => v.language === language), [setup, language]);
+  const configured = setup?.configured ?? false;
+  const languages = setup?.languages ?? [];
+  // Voices are fetched one language at a time: the library is too large to load whole.
+  useEffect(() => {
+    if (!configured) return;
+    let cancelled = false;
+    setVoicesLoading(true);
+    fetch(`/api/tutor/ai-video/?voices=${encodeURIComponent(language)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { voices?: VideoVoice[] } | null) => {
+        if (cancelled) return;
+        setVoices(data?.voices ?? []);
+        // A voice from another language no longer applies: back to the presenter's own.
+        setVoiceId((current) => (data?.voices?.some((v) => v.id === current) ? current : ""));
+      })
+      .catch(() => { if (!cancelled) setVoices([]); })
+      .finally(() => { if (!cancelled) setVoicesLoading(false); });
+    return () => { cancelled = true; };
+  }, [configured, language]);
   const presenters = useMemo(() => {
     const q = presenterFilter.trim().toLowerCase();
     return (setup?.presenters ?? []).filter((p) => !q || p.name.toLowerCase().includes(q) || p.gender === q).slice(0, 24);
   }, [setup, presenterFilter]);
-  useEffect(() => {
-    if (languages.length && !languages.includes(language)) setLanguage(languages.find((l) => /english/i.test(l)) ?? languages[0]);
-  }, [languages, language]);
-  useEffect(() => {
-    if (voices.length && !voices.some((v) => v.id === voiceId)) setVoiceId(voices[0].id);
-  }, [voices, voiceId]);
 
   async function post(payload: Record<string, unknown>) {
     const res = await fetch("/api/tutor/ai-video/", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
@@ -149,13 +163,28 @@ export function AiVideoStudio({ lessonTitle, lessonDescription, lessonTakeaways,
   async function createVideo() {
     setBusy("create"); setNote(null);
     try {
-      const { ok, data } = await post({ action: "create", title: lessonTitle || "Lesson video", script, avatarId: presenterId, voiceId, background });
+      const { ok, data } = await post({ action: "create", title: lessonTitle || "Lesson video", script, presenterId, voiceId: voiceId || undefined, background });
       if (!ok || !data.job) { setNote({ ok: false, text: data.error ?? "Couldn't start the video. Try again." }); return; }
       setJob(data.job);
     } catch {
       setNote({ ok: false, text: "Couldn't reach the server. Try again." });
     } finally {
       setBusy(null);
+    }
+  }
+
+  /** Reopens an earlier video, with fresh links to its file. */
+  async function openJob(id: number) {
+    setNote(null);
+    try {
+      const res = await fetch(`/api/tutor/ai-video/?id=${id}`);
+      const data = (await res.json().catch(() => ({}))) as { job?: Job; error?: string };
+      if (!res.ok || !data.job) { setNote({ ok: false, text: data.error ?? "Couldn't open that video." }); return; }
+      setJob(data.job);
+      setScript(data.job.script);
+      if (data.job.status === "ready") onScriptReady(data.job.script);
+    } catch {
+      setNote({ ok: false, text: "Couldn't reach the server. Try again." });
     }
   }
 
@@ -179,7 +208,7 @@ export function AiVideoStudio({ lessonTitle, lessonDescription, lessonTakeaways,
 
   const words = scriptWordCount(script);
   const scriptOk = script.trim().length >= SCRIPT_MIN_CHARS;
-  const canCreate = setup.configured && scriptOk && Boolean(presenterId) && Boolean(voiceId) && busy === null && !rendering;
+  const canCreate = setup.configured && scriptOk && Boolean(presenterId) && busy === null && !rendering;
   const canPostToYouTube = setup.youtube.delivery === "youtube" && setup.youtube.connected;
 
   return (
@@ -267,6 +296,7 @@ export function AiVideoStudio({ lessonTitle, lessonDescription, lessonTakeaways,
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={p.image} alt="" loading="lazy" className="aspect-square w-full object-cover" />
                     <span className="block truncate px-1.5 py-1 text-[11px] font-medium text-zinc-800">{p.name}</span>
+                    {p.own && <span className="absolute left-1 top-1 rounded-full bg-zinc-900/75 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white">Yours</span>}
                     {presenterId === p.id && <span className="absolute right-1 top-1 rounded-full bg-primary p-0.5 text-white"><Check className="h-3 w-3" /></span>}
                   </button>
                 ))}
@@ -276,7 +306,10 @@ export function AiVideoStudio({ lessonTitle, lessonDescription, lessonTakeaways,
           )}
           <div className="grid gap-3 sm:grid-cols-3">
             <label className="block"><Label>Language</Label><select className={selectClass} value={language} onChange={(e) => setLanguage(e.target.value)}>{languages.map((l) => <option key={l}>{l}</option>)}</select></label>
-            <label className="block"><Label>Voice</Label><select className={selectClass} value={voiceId} onChange={(e) => setVoiceId(e.target.value)}>{voices.map((v) => <option key={v.id} value={v.id}>{v.name}{v.gender ? ` (${v.gender})` : ""}</option>)}</select></label>
+            <label className="block"><Label>Voice</Label><select className={selectClass} value={voiceId} onChange={(e) => setVoiceId(e.target.value)} disabled={voicesLoading}>
+              <option value="">Presenter&apos;s own voice</option>
+              {voices.map((v) => <option key={v.id} value={v.id}>{v.own ? "Yours: " : ""}{v.name}{v.gender ? ` (${v.gender})` : ""}</option>)}
+            </select></label>
             <label className="block"><Label>Background</Label><select className={selectClass} value={background} onChange={(e) => setBackground(e.target.value)}>{VIDEO_BACKGROUNDS.map((b) => <option key={b.key} value={b.key}>{b.label}</option>)}</select></label>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -284,13 +317,34 @@ export function AiVideoStudio({ lessonTitle, lessonDescription, lessonTakeaways,
               {busy === "create" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Film className="h-4 w-4" />}Generate the video
             </Button>
             <span className="text-xs text-zinc-500">
-              {!scriptOk ? "Write the script first." : !presenterId ? "Choose a presenter." : "Uses video-service credits. Rendering takes a few minutes."}
+              {!scriptOk ? "Write the script first." : !presenterId ? "Choose a presenter." : "Each video is charged to the HeyGen account. Rendering takes a few minutes."}
             </span>
           </div>
         </section>
       )}
 
       {note && <p role="status" className={cn("text-xs", note.ok ? "text-emerald-800" : "text-red-700")}>{note.text}</p>}
+
+      {/* Earlier videos: a render finishes even if the tutor has left this step. */}
+      {!job && setup.jobs.length > 0 && (
+        <section className="space-y-1.5">
+          <h4 className="text-xs font-bold uppercase tracking-wide text-primary">Your recent AI videos</h4>
+          <ul className="divide-y divide-zinc-100 rounded-xl border border-zinc-200">
+            {setup.jobs.map((earlier) => (
+              <li key={earlier.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                <span className="min-w-0">
+                  <span className="block truncate font-medium text-zinc-800">{earlier.title}</span>
+                  <span className="block text-xs text-zinc-500">
+                    {earlier.status === "ready" ? `Ready${earlier.durationSec ? ` · ${clock(earlier.durationSec)}` : ""}` : earlier.status === "failed" ? "Couldn't be made" : "Rendering…"}
+                    {earlier.youtubeVideoId ? " · on YouTube" : ""}
+                  </span>
+                </span>
+                <Button type="button" size="sm" variant="outline" onClick={() => void openJob(earlier.id)}>Open</Button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* 4 · The result */}
       {job && (
