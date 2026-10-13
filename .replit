@@ -250,6 +250,8 @@ ELEVENLABS_VOICES = """
 
 [userenv.production]
 NEXTAUTH_URL = "https://learning.requisor.io"
+TEST_LOGINS = "off"
+TUTOR_TEST_LOGIN = "on"
 
 [postMerge]
 path = "scripts/post-merge.sh"

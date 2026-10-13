@@ -45,6 +45,14 @@ export function testLoginsEnabled(): boolean {
   return process.env.NODE_ENV !== "production" || Boolean(process.env.VERCEL);
 }
 
+/** Independent opt-in for the shared test tutor; never enables learner/admin bypasses. */
+export function tutorTestLoginEnabled(): boolean {
+  const setting = (process.env.TUTOR_TEST_LOGIN ?? "").toLowerCase();
+  if (setting === "on") return true;
+  if (setting === "off") return false;
+  return testLoginsEnabled();
+}
+
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET || process.env.SESSION_SECRET,
   session: {
@@ -105,8 +113,8 @@ export const authOptions: NextAuthOptions = {
           }),
         ]
       : []),
-    // ─── Test logins (see testLoginsEnabled above) ──────────────────────
-    ...(testLoginsEnabled()
+    // ─── Shared test tutor (independently configurable) ────────────────
+    ...(tutorTestLoginEnabled()
       ? [
           CredentialsProvider({
             id: "dev-tutor",
@@ -125,6 +133,11 @@ export const authOptions: NextAuthOptions = {
               return { id: String(rows[0].id), email: rows[0].email, name: rows[0].name ?? "Development Tutor" };
             },
           }),
+        ]
+      : []),
+    // The legacy TEST_LOGINS setting still controls the student shortcut.
+    ...(testLoginsEnabled()
+      ? [
           CredentialsProvider({
             id: "dev-student",
             name: "Dev Student",

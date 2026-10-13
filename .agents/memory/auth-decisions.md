@@ -9,6 +9,12 @@ Public registration must not grant privileged tutor access merely because a user
 
 **How to apply:** Require a separately authenticated and authorized promotion path; re-check server-side permissions for sensitive actions. Imported test-login or verification-bypass features are not evidence that their use is approved for real students.
 
+The user explicitly approved public password-free access to the shared test-tutor account on 2026-10-13, after being warned that anyone can enter it and edit its courses. This approval does not extend to student or admin shortcuts.
+
+**Why:** The user wants the tutor testing shortcut on the published website, independently of other test logins.
+
+**How to apply:** Keep that access restricted to the reserved synthetic tutor identity and separately configurable. Do not make arbitrary email addresses, user-selected roles, student accounts or admin accounts eligible for the public shortcut. This exception does not change the approval requirements for ordinary tutor accounts.
+
 Do not automatically link Google identities to existing accounts by email alone.
 
 **Why:** Implicit linking can permit account takeover and expose account existence.

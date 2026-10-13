@@ -49,7 +49,7 @@ export default function TutorAuth() {
     let cancelled = false;
     fetch("/api/auth/providers")
       .then((r) => (r.ok ? r.json() : null))
-      .then((providers: Record<string, unknown> | null) => { if (!cancelled) setTestLogins(Boolean(providers && providers["dev-student"] && providers["dev-tutor"])); })
+      .then((providers: Record<string, unknown> | null) => { if (!cancelled) setTestLogins(Boolean(providers && providers["dev-tutor"])); })
       .catch(() => undefined);
     return () => { cancelled = true; };
   }, []);
