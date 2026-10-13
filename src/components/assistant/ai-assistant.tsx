@@ -1328,7 +1328,7 @@ export function AiAssistant() {
                     title={streaming ? "Stop the response" : "Stop the voice"}
                     whileHover={{ scale: 1.06 }}
                     whileTap={{ scale: 0.94 }}
-                    className="focus-ring flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-zinc-900 text-white shadow-sm"
+                    className="focus-ring flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-600 shadow-sm ring-1 ring-inset ring-rose-200 transition-colors hover:bg-rose-200"
                   >
                     <Square className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
                   </motion.button>
