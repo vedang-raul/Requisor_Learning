@@ -279,20 +279,6 @@ p.query(`
   -- What is said in a lesson's video, for the learner's assistant. Keyed by
   -- lesson id with no foreign key: saving a course rewrites its lesson rows.
   -- AI-generated presenter videos (src/lib/video/ai-video.ts): one row per render a tutor started.
-  -- A thumbs up or down on one of the assistant's replies, with the reply and the question it answered.
-  CREATE TABLE IF NOT EXISTS assistant_feedback (
-    id SERIAL PRIMARY KEY,
-    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    feedback_id TEXT NOT NULL,
-    rating TEXT NOT NULL CHECK (rating IN ('up', 'down')),
-    question TEXT NOT NULL DEFAULT '',
-    reply TEXT NOT NULL,
-    mode TEXT NOT NULL DEFAULT 'learner',
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    UNIQUE (user_id, feedback_id)
-  );
-  CREATE INDEX IF NOT EXISTS assistant_feedback_rating_idx ON assistant_feedback (rating, created_at DESC);
   CREATE TABLE IF NOT EXISTS ai_video_jobs (
     id SERIAL PRIMARY KEY,
     owner_user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
