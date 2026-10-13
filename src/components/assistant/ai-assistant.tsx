@@ -116,8 +116,7 @@ function StreamCursor() {
  * While `active`, opens an AnalyserNode on the mic stream and samples the real
  * input level ~18×/s. Each sample is pushed onto a rolling buffer, so the bars
  * scroll left as you speak — exactly like Claude's recording animation.
- * Falls back to a gentle synthetic pulse if the audio stream can't be opened
- * (e.g. permission granted to SpeechRecognition but AudioContext blocked).
+ * Falls back to a gentle synthetic pulse if the audio stream can't be opened.
  */
 function useMicWaveform(active: boolean, barCount = 28) {
   const [bars, setBars] = useState<number[]>(() => Array.from({ length: barCount }, () => 0.06));
@@ -378,13 +377,15 @@ export function AiAssistant() {
   // We keep a stable ref to `send` so the effect closure never goes stale.
   const sendRef = useRef(send);
   useEffect(() => { sendRef.current = send; });
-  const prevListeningRef = useRef(false);
+  // The transcript arrives a moment after the recording ends; each new one is sent once.
+  const sentSpokenRef = useRef("");
   useEffect(() => {
-    if (prevListeningRef.current && !voice.isListening && voice.transcript.trim()) {
-      sendRef.current(voice.transcript);
-    }
-    prevListeningRef.current = voice.isListening;
-  }, [voice.isListening, voice.transcript]);
+    const spoken = voice.transcript.trim();
+    if (!spoken) { sentSpokenRef.current = ""; return; }
+    if (spoken === sentSpokenRef.current) return;
+    sentSpokenRef.current = spoken;
+    sendRef.current(spoken);
+  }, [voice.transcript]);
   const resolveLesson = useMemo(
     () => (courseTitle: string, lessonTitle: string) => {
       const course = state.courses.find((c) => c.title.toLowerCase() === courseTitle.toLowerCase());
@@ -483,8 +484,7 @@ export function AiAssistant() {
   }
   function closePanel() {
     cancelActiveRequest();
-    prevListeningRef.current = false;
-    voice.stopListening();
+    voice.cancelListening();
     voice.stopSpeaking();
     setOpen(false);
   }
@@ -697,8 +697,7 @@ export function AiAssistant() {
   function newChat() {
     cancelActiveRequest();
     cancelDraftGeneration();
-    prevListeningRef.current = false;
-    voice.stopListening();
+    voice.cancelListening();
     voice.stopSpeaking();
     setMessages([]);
     setActionOutcomes({});
@@ -713,8 +712,7 @@ export function AiAssistant() {
     cancelActiveRequest();
     cancelDraftGeneration();
     interviewSubmittingRef.current = false;
-    prevListeningRef.current = false;
-    voice.stopListening();
+    voice.cancelListening();
     voice.stopSpeaking();
     setCourseDraft(null);
     setDraftError(null);
@@ -1130,6 +1128,10 @@ export function AiAssistant() {
               }}
               className="border-t border-zinc-100 p-3"
             >
+              {/* Why voice input gave nothing, when it has a reason. */}
+              {voice.listenError && !voice.isListening && !voice.isTranscribing && (
+                <p role="alert" className="mb-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900">{voice.listenError}</p>
+              )}
               <div
                 className={cn(
                   "flex items-end gap-1.5 rounded-2xl border p-1.5 pl-3.5 transition",
@@ -1151,6 +1153,19 @@ export function AiAssistant() {
                       aria-label="Recording — speak now"
                     >
                       <RecordingWaveform bars={waveBars} />
+                    </motion.div>
+                  ) : voice.isTranscribing ? (
+                    <motion.div
+                      key="transcribing"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.12 }}
+                      role="status"
+                      className="flex h-9 min-w-0 flex-1 items-center gap-2 text-sm text-zinc-600"
+                    >
+                      <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" aria-hidden="true" />
+                      Writing out what you said…
                     </motion.div>
                   ) : (
                     <motion.textarea
@@ -1200,9 +1215,9 @@ export function AiAssistant() {
                     <button
                       type="button"
                       onClick={handleMicClick}
-                      disabled={streaming}
-                      aria-label={voice.isListening ? "Stop listening" : "Start voice input"}
-                      title={voice.isListening ? "Stop listening" : "Start voice input"}
+                      disabled={streaming || voice.isTranscribing}
+                      aria-label={voice.isListening ? "Stop and send" : "Start voice input"}
+                      title={voice.isListening ? "Stop and send" : "Start voice input"}
                       className={cn(
                         "orb orb-input focus-ring disabled:opacity-40",
                         voice.isListening && "orb-listening"

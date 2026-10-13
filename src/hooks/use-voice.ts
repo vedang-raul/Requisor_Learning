@@ -1,27 +1,44 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
+import { micErrorMessage } from "@/lib/ai/stt";
 
-// Browser type declarations for Web Speech API (not in standard TS lib)
-interface SpeechRecognitionInstance extends EventTarget {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  start(): void;
-  stop(): void;
-  abort(): void;
-  onresult: ((event: SpeechRecognitionResultEvt) => void) | null;
-  onend: (() => void) | null;
-  onerror: ((event: Event) => void) | null;
-}
-interface SpeechRecognitionResultEvt extends Event {
-  readonly results: SpeechRecognitionResultList;
-}
-declare global {
-  interface Window {
-    SpeechRecognition: { new (): SpeechRecognitionInstance };
-    webkitSpeechRecognition: { new (): SpeechRecognitionInstance };
-  }
+/**
+ * Voice input records the microphone and has the server transcribe it; the
+ * browser's own speech recognition is not used. Recording stops by itself once
+ * the person has finished speaking.
+ */
+/** Input level (0..1) above which the microphone is hearing a voice rather than the room. */
+const SPEECH_LEVEL = 0.015;
+/** A pause this long after speaking ends the recording. */
+const PAUSE_ENDS_AFTER_MS = 1800;
+/** Nothing said for this long ends the recording. */
+const NO_SPEECH_AFTER_MS = 8000;
+const MAX_RECORDING_MS = 60_000;
+const RECORDING_TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
+
+type ListenSession = {
+  /** Set once the session is over, so late callbacks do nothing. */
+  ended: boolean;
+  /** The recording is thrown away instead of transcribed. */
+  discard: boolean;
+  heardSpeech: boolean;
+  /** It ended by itself because nothing was said. */
+  silent: boolean;
+  stream: MediaStream | null;
+  recorder: MediaRecorder | null;
+  context: AudioContext | null;
+  timer: ReturnType<typeof setInterval> | null;
+  chunks: Blob[];
+};
+
+function releaseSession(session: ListenSession) {
+  if (session.timer) clearInterval(session.timer);
+  session.timer = null;
+  session.stream?.getTracks().forEach((track) => track.stop());
+  session.stream = null;
+  session.context?.close().catch(() => {});
+  session.context = null;
 }
 
 const VOICE_STORAGE_KEY = "requisor-tts-voice";
@@ -31,7 +48,12 @@ export type VoiceCharacter = { key: string; name: string; description?: string }
 export interface UseVoiceReturn {
   isListening: boolean;
   isSpeaking: boolean;
+  /** What the person said in the last recording, once it has been transcribed. */
   transcript: string;
+  /** The recording has ended and its words are being worked out. */
+  isTranscribing: boolean;
+  /** Why voice input gave nothing, in plain words; "" otherwise. */
+  listenError: string;
   sttSupported: boolean;
   ttsSupported: boolean;
   /** True when replies are spoken by the server's ElevenLabs voice rather than the browser's. */
@@ -44,7 +66,10 @@ export interface UseVoiceReturn {
   selectedVoiceName: string;
   setSelectedVoiceName: (name: string) => void;
   startListening: () => void;
+  /** Ends the recording and transcribes it. */
   stopListening: () => void;
+  /** Ends the recording and throws it away. */
+  cancelListening: () => void;
   speak: (text: string) => void;
   stopSpeaking: () => void;
   /**
@@ -63,6 +88,8 @@ export function useVoice(): UseVoiceReturn {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [transcript, setTranscript] = useState("");
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [listenError, setListenError] = useState("");
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoiceName, setSelectedVoiceNameState] = useState<string>(() => {
     if (typeof window === "undefined") return "";
@@ -70,14 +97,17 @@ export function useVoice(): UseVoiceReturn {
   });
 
   // Determine support (safe for SSR)
-  const sttSupported =
+  const canRecord =
     typeof window !== "undefined" &&
-    !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+    !!navigator.mediaDevices?.getUserMedia &&
+    typeof MediaRecorder !== "undefined";
   const browserTts =
     typeof window !== "undefined" && !!window.speechSynthesis;
   // The server's ElevenLabs voice, when one is set up. The browser's voice stays as the fallback.
   const [premiumVoice, setPremiumVoice] = useState(false);
   const ttsSupported = browserTts || premiumVoice;
+  // Transcription runs on the server with the same key as the voice.
+  const sttSupported = canRecord && premiumVoice;
   const [characters, setCharacters] = useState<VoiceCharacter[]>([]);
   const [storedCharacter, setStoredCharacter] = useState<string>(() => {
     if (typeof window === "undefined") return "";
@@ -90,7 +120,9 @@ export function useVoice(): UseVoiceReturn {
     try { localStorage.setItem(CHARACTER_STORAGE_KEY, key); } catch { /* private window */ }
   }, []);
 
-  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
+  const sessionRef = useRef<ListenSession | null>(null);
+  // Counts recordings, so a transcript that arrives after a newer one (or a cancel) is dropped.
+  const listenTurnRef = useRef(0);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const audioUrlRef = useRef<string | null>(null);
@@ -142,43 +174,6 @@ export function useVoice(): UseVoiceReturn {
     }
   }, []);
 
-  // Initialise recognition once
-  useEffect(() => {
-    if (!sttSupported) return;
-
-    const SpeechRecognitionCtor =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
-    const rec = new SpeechRecognitionCtor();
-    rec.continuous = false;
-    rec.interimResults = false;
-    rec.lang = "en-US";
-
-    rec.onresult = (event: SpeechRecognitionResultEvt) => {
-      const result = event.results[event.results.length - 1];
-      if (result.isFinal) {
-        setTranscript(result[0].transcript);
-      }
-    };
-
-    rec.onend = () => {
-      setIsListening(false);
-    };
-
-    rec.onerror = () => {
-      setIsListening(false);
-    };
-
-    recognitionRef.current = rec;
-
-    return () => {
-      try {
-        rec.abort();
-      } catch {
-        // ignore
-      }
-    };
-  }, [sttSupported]);
-
   // Stop speech synthesis on unmount
   useEffect(() => {
     return () => {
@@ -190,25 +185,128 @@ export function useVoice(): UseVoiceReturn {
     };
   }, [browserTts, stopAudio]);
 
-  const startListening = useCallback(() => {
-    if (!recognitionRef.current || isListening) return;
-    setTranscript("");
-    try {
-      recognitionRef.current.start();
-      setIsListening(true);
-    } catch {
-      // already started or other error
-    }
-  }, [isListening]);
+  const transcribe = useCallback((recording: Blob) => {
+    const turn = ++listenTurnRef.current;
+    setIsTranscribing(true);
+    fetch("/api/stt/", { method: "POST", headers: { "Content-Type": recording.type || "audio/webm" }, body: recording })
+      .then(async (res) => {
+        const data = (await res.json().catch(() => null)) as { text?: string; error?: string } | null;
+        if (!res.ok) throw new Error(typeof data?.error === "string" ? data.error : "");
+        return typeof data?.text === "string" ? data.text.trim() : "";
+      })
+      .then((text) => {
+        if (turn !== listenTurnRef.current) return;
+        if (text) setTranscript(text);
+        else setListenError("I couldn't make out any words. Try again, a little closer to the microphone.");
+      })
+      .catch((error: Error) => {
+        if (turn !== listenTurnRef.current) return;
+        setListenError(error.message || "Voice input couldn't be transcribed. Check your connection and try again.");
+      })
+      .finally(() => { if (turn === listenTurnRef.current) setIsTranscribing(false); });
+  }, []);
 
-  const stopListening = useCallback(() => {
-    if (!recognitionRef.current) return;
-    try {
-      recognitionRef.current.stop();
-    } catch {
-      // ignore
-    }
+  /** Ends the recording. Unless it is discarded, what was recorded goes off to be transcribed. */
+  const endListening = useCallback((discard: boolean) => {
+    const session = sessionRef.current;
+    if (!session) return;
+    sessionRef.current = null;
+    session.ended = true;
+    session.discard = discard;
     setIsListening(false);
+    if (session.recorder && session.recorder.state !== "inactive") {
+      // The recorder's "stop" handler picks it up from here.
+      try { session.recorder.stop(); return; } catch { /* fall through and release */ }
+    }
+    releaseSession(session);
+  }, []);
+
+  const startListening = useCallback(() => {
+    if (!canRecord || sessionRef.current) return;
+    listenTurnRef.current++;
+    setIsTranscribing(false);
+    setTranscript("");
+    setListenError("");
+    const session: ListenSession = { ended: false, discard: false, heardSpeech: false, silent: false, stream: null, recorder: null, context: null, timer: null, chunks: [] };
+    sessionRef.current = session;
+    setIsListening(true);
+
+    navigator.mediaDevices
+      .getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } })
+      .then((stream) => {
+        if (session.ended) { stream.getTracks().forEach((track) => track.stop()); return; }
+        session.stream = stream;
+        const type = RECORDING_TYPES.find((candidate) => MediaRecorder.isTypeSupported(candidate));
+        const recorder = new MediaRecorder(stream, type ? { mimeType: type, audioBitsPerSecond: 32_000 } : undefined);
+        session.recorder = recorder;
+        recorder.ondataavailable = (event) => { if (event.data.size) session.chunks.push(event.data); };
+        recorder.onstop = () => {
+          releaseSession(session);
+          if (session.discard) return;
+          if (session.silent) { setListenError("I didn't hear anything. Tap the microphone and try again."); return; }
+          const recording = new Blob(session.chunks, { type: recorder.mimeType || type || "audio/webm" });
+          if (recording.size) transcribe(recording);
+        };
+        recorder.start(250);
+
+        // Watches the input level so the recording ends when the person stops talking.
+        let level: (() => number) | null = null;
+        try {
+          const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+          const context = new AC();
+          session.context = context;
+          const analyser = context.createAnalyser();
+          analyser.fftSize = 1024;
+          context.createMediaStreamSource(stream).connect(analyser);
+          const samples = new Uint8Array(analyser.fftSize);
+          level = () => {
+            analyser.getByteTimeDomainData(samples);
+            let sum = 0;
+            for (let i = 0; i < samples.length; i++) { const v = (samples[i] - 128) / 128; sum += v * v; }
+            return Math.sqrt(sum / samples.length);
+          };
+        } catch { /* without a level meter the person ends the recording by tapping */ }
+
+        const startedAt = Date.now();
+        let lastVoiceAt = startedAt;
+        session.timer = setInterval(() => {
+          if (session.ended) return;
+          const now = Date.now();
+          if (level && level() > SPEECH_LEVEL) { session.heardSpeech = true; lastVoiceAt = now; }
+          if (now - startedAt > MAX_RECORDING_MS) endListening(false);
+          else if (!level) return;
+          else if (session.heardSpeech && now - lastVoiceAt > PAUSE_ENDS_AFTER_MS) endListening(false);
+          else if (!session.heardSpeech && now - startedAt > NO_SPEECH_AFTER_MS) { session.silent = true; endListening(false); }
+        }, 100);
+      })
+      .catch((error: { name?: string } | null) => {
+        if (session.ended) return;
+        sessionRef.current = null;
+        session.ended = true;
+        releaseSession(session);
+        setIsListening(false);
+        setListenError(micErrorMessage(error?.name));
+      });
+  }, [canRecord, endListening, transcribe]);
+
+  const stopListening = useCallback(() => endListening(false), [endListening]);
+
+  const cancelListening = useCallback(() => {
+    endListening(true);
+    listenTurnRef.current++;
+    setIsTranscribing(false);
+    setListenError("");
+  }, [endListening]);
+
+  // Leaving the page ends any recording without sending it.
+  useEffect(() => () => {
+    const session = sessionRef.current;
+    if (!session) return;
+    sessionRef.current = null;
+    session.ended = true;
+    session.discard = true;
+    try { if (session.recorder && session.recorder.state !== "inactive") session.recorder.stop(); } catch { /* already stopped */ }
+    releaseSession(session);
   }, []);
 
   const speakWithBrowser = useCallback(
@@ -355,6 +453,8 @@ export function useVoice(): UseVoiceReturn {
     isListening,
     isSpeaking,
     transcript,
+    isTranscribing,
+    listenError,
     sttSupported,
     ttsSupported,
     premiumVoice,
@@ -366,6 +466,7 @@ export function useVoice(): UseVoiceReturn {
     setSelectedVoiceName,
     startListening,
     stopListening,
+    cancelListening,
     speak,
     stopSpeaking,
     beginSpeech,
