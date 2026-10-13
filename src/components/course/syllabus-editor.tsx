@@ -20,11 +20,14 @@ const area = `${input} min-h-[84px] leading-relaxed`;
 
 function Group({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
-    <fieldset className="space-y-3 rounded-2xl border border-border bg-white p-4">
-      <legend className="px-1 text-sm font-semibold text-zinc-900">{title}</legend>
-      {hint && <p className="text-xs text-zinc-500">{hint}</p>}
+    // A plain section with a heading: a <legend> is drawn on the box's border, half outside it.
+    <section role="group" aria-label={title} className="space-y-3 rounded-2xl border border-border bg-white p-4">
+      <div>
+        <h3 className="text-sm font-semibold text-zinc-900">{title}</h3>
+        {hint && <p className="mt-0.5 text-xs text-zinc-500">{hint}</p>}
+      </div>
       {children}
-    </fieldset>
+    </section>
   );
 }
 function Label({ text, children }: { text: string; children: React.ReactNode }) {
