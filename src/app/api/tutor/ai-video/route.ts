@@ -7,7 +7,7 @@ import { db } from "@/lib/server/db";
 import { withAiConcurrency, SemaphoreFullError, AI_UPSTREAM_TIMEOUT_MS } from "@/lib/ai/ai-semaphore";
 import {
   AiVideoError, aiVideoBriefReady, aiVideoScriptPrompt, cleanVideoScript, createPresenterVideo, getPresenterVideo, heygenConfigured,
-  isProviderId, listPresenters, listVoices, readAiVideoBrief, SCRIPT_MIN_CHARS, splitScriptIntoScenes, VIDEO_BACKGROUNDS,
+  isProviderId, listPresenters, listVoices, presenterLook, readAiVideoBrief, SCRIPT_MIN_CHARS, VIDEO_BACKGROUNDS, VOICE_LANGUAGES,
   type VideoPresenter, type VideoVoice,
 } from "@/lib/video/ai-video";
 import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
@@ -16,10 +16,11 @@ import { getConnection, refreshAccessToken, uploadVideo, videoDelivery, YouTubeE
 
 /**
  * AI-generated lesson videos for the tutor's lesson editor.
- *   GET                       whether it is set up, the presenters and voices to choose from, and the tutor's recent videos
+ *   GET                       whether it is set up, the presenters and voice languages to choose from, and the tutor's recent videos
+ *   GET  ?voices=<language>   the voices for one language
  *   GET  ?id=…                one video's progress (asks the video service while it is still rendering)
  *   POST { action: "script", brief }                                   → { script }   a draft script from the brief
- *   POST { action: "create", title, script, avatarId, voiceId, background } → { job }  starts the render
+ *   POST { action: "create", title, script, presenterId, voiceId?, background } → { job }  starts the render
  *   POST { action: "youtube", id }                                     → { videoId }  posts a finished video to the tutor's channel
  */
 const BASE_URL = "https://api.x.ai/v1";
@@ -33,7 +34,7 @@ const publishLimiter = createRateLimiter(10, 24 * 60 * 60_000);
 type JobRow = {
   id: number; owner_user_id: number; provider_video_id: string; title: string; script: string; status: string;
   video_url: string | null; thumbnail_url: string | null; duration_sec: number | null; error: string | null;
-  youtube_video_id: string | null; created_at: Date;
+  youtube_video_id: string | null; created_at: Date; updated_at: Date;
 };
 const publicJob = (row: JobRow) => ({
   id: row.id, title: row.title, script: row.script, status: row.status as "processing" | "ready" | "failed",
@@ -51,19 +52,32 @@ async function tutor(): Promise<{ userId: number } | Response> {
 }
 
 // The presenter and voice lists are the same for everyone and change rarely.
-let catalog: { at: number; presenters: VideoPresenter[]; voices: VideoVoice[] } | null = null;
-async function loadCatalog() {
-  if (catalog && Date.now() - catalog.at < 15 * 60_000) return catalog;
-  const [presenters, voices] = await Promise.all([listPresenters(), listVoices()]);
-  catalog = { at: Date.now(), presenters, voices };
-  return catalog;
+const CACHE_MS = 15 * 60_000;
+let presenterCache: { at: number; presenters: VideoPresenter[] } | null = null;
+async function loadPresenters() {
+  if (presenterCache && Date.now() - presenterCache.at < CACHE_MS) return presenterCache.presenters;
+  const presenters = await listPresenters();
+  presenterCache = { at: Date.now(), presenters };
+  return presenters;
+}
+const voiceCache = new Map<string, { at: number; voices: VideoVoice[] }>();
+async function loadVoices(language: string) {
+  const cached = voiceCache.get(language);
+  if (cached && Date.now() - cached.at < CACHE_MS) return cached.voices;
+  const voices = await listVoices(language);
+  voiceCache.set(language, { at: Date.now(), voices });
+  return voices;
 }
 
 /** Asks the video service about a render that is still in progress and records the answer. */
 async function refresh(row: JobRow): Promise<JobRow> {
-  if (row.status !== "processing") return row;
+  // A finished video's links are signed and expire, so they are renewed when they are an hour old.
+  const linksAreOld = row.status === "ready" && Date.now() - new Date(row.updated_at).getTime() > 60 * 60_000;
+  if (row.status !== "processing" && !linksAreOld) return row;
   const now = await getPresenterVideo(row.provider_video_id);
   if (now.status === "processing") return row;
+  // A finished video stays finished even if the service can no longer find its file.
+  if (linksAreOld && now.status !== "ready") return row;
   const { rows } = await db.query<JobRow>(
     `UPDATE ai_video_jobs SET status = $2, video_url = $3, thumbnail_url = $4, duration_sec = $5, error = $6, updated_at = NOW()
      WHERE id = $1 RETURNING *`,
@@ -81,7 +95,19 @@ const failure = (error: unknown, fallback: string): Response => {
 export async function GET(req: Request) {
   const who = await tutor();
   if (who instanceof Response) return who;
-  const id = Number(new URL(req.url).searchParams.get("id"));
+  const params = new URL(req.url).searchParams;
+  const id = Number(params.get("id"));
+
+  const wantedLanguage = params.get("voices");
+  if (wantedLanguage !== null) {
+    if (!heygenConfigured()) return Response.json({ voices: [] });
+    const language = VOICE_LANGUAGES.find((l) => l === wantedLanguage) ?? VOICE_LANGUAGES[0];
+    try {
+      return Response.json({ language, voices: await loadVoices(language) });
+    } catch (error) {
+      return failure(error, "Couldn't load the voices.");
+    }
+  }
 
   if (Number.isSafeInteger(id) && id > 0) {
     const { rows } = await db.query<JobRow>("SELECT * FROM ai_video_jobs WHERE id = $1 AND owner_user_id = $2", [id, who.userId]);
@@ -99,13 +125,13 @@ export async function GET(req: Request) {
   const youtube = { delivery: videoDelivery(), connected: Boolean(connection), channelTitle: connection?.channelTitle ?? null };
   const { rows: recent } = await db.query<JobRow>("SELECT * FROM ai_video_jobs WHERE owner_user_id = $1 ORDER BY id DESC LIMIT 6", [who.userId]);
   const jobs = recent.map(publicJob);
-  if (!heygenConfigured()) return Response.json({ configured: false, presenters: [], voices: [], youtube, jobs });
+  const languages = [...VOICE_LANGUAGES];
+  if (!heygenConfigured()) return Response.json({ configured: false, presenters: [], languages, youtube, jobs });
   try {
-    const { presenters, voices } = await loadCatalog();
-    return Response.json({ configured: true, presenters, voices, youtube, jobs });
+    return Response.json({ configured: true, presenters: await loadPresenters(), languages, youtube, jobs });
   } catch (error) {
     const message = error instanceof AiVideoError ? error.message : "Couldn't load the presenters.";
-    return Response.json({ configured: true, presenters: [], voices: [], youtube, jobs, error: message });
+    return Response.json({ configured: true, presenters: [], languages, youtube, jobs, error: message });
   }
 }
 
@@ -162,15 +188,16 @@ export async function POST(req: Request) {
     if (!heygenConfigured()) return Response.json({ error: "AI video isn't set up on this server." }, { status: 503 });
     const script = cleanVideoScript(body.script);
     if (script.length < SCRIPT_MIN_CHARS) return Response.json({ error: "Write a script first: a few sentences at least." }, { status: 400 });
-    if (!isProviderId(body.avatarId) || !isProviderId(body.voiceId)) return Response.json({ error: "Choose a presenter and a voice." }, { status: 400 });
+    if (!isProviderId(body.presenterId)) return Response.json({ error: "Choose a presenter." }, { status: 400 });
+    // No voice chosen means the presenter's own voice.
+    const voiceId = isProviderId(body.voiceId) ? body.voiceId : null;
     const background = VIDEO_BACKGROUNDS.find((b) => b.key === body.background)?.value ?? VIDEO_BACKGROUNDS[0].value;
     const title = (typeof body.title === "string" ? body.title.replace(/\s+/g, " ").trim().slice(0, 100) : "") || "Lesson video";
-    const scenes = splitScriptIntoScenes(script);
-    if (!scenes.length) return Response.json({ error: "Write a script first." }, { status: 400 });
     const { limited, retryAfterMs } = renderLimiter.check(String(who.userId));
     if (limited) return rateLimitResponse(retryAfterMs, { json: true });
     try {
-      const providerId = await createPresenterVideo({ title, scenes, avatarId: body.avatarId, voiceId: body.voiceId, background });
+      const { lookId, engine } = await presenterLook(body.presenterId);
+      const providerId = await createPresenterVideo({ title, script, lookId, engine, voiceId, background });
       const { rows } = await db.query<JobRow>(
         `INSERT INTO ai_video_jobs (owner_user_id, provider, provider_video_id, title, script, status)
          VALUES ($1, 'heygen', $2, $3, $4, 'processing') RETURNING *`,

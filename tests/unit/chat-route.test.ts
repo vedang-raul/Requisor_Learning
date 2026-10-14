@@ -164,7 +164,9 @@ describe("POST /api/chat role-aware assistant", () => {
     await response.text();
 
     expect(response.status).toBe(200);
-    expect(mockQuery).toHaveBeenCalledTimes(2);
+    // Persona, the role's own data, then the user's ratings of earlier replies.
+    expect(mockQuery).toHaveBeenCalledTimes(3);
+    expect(String(mockQuery.mock.calls[2][0])).toContain("assistant_feedback");
     expect(String(mockQuery.mock.calls[0][0])).toContain("assistant_persona");
     expect(String(mockQuery.mock.calls[0][0])).not.toContain("FROM courses");
     expect(mockQuery.mock.calls[0][1]).toEqual([4]);
@@ -223,7 +225,9 @@ describe("POST /api/chat role-aware assistant", () => {
     }));
     await response.text();
 
-    expect(mockQuery).toHaveBeenCalledTimes(2);
+    // Persona, the role's own data, then the user's ratings of earlier replies.
+    expect(mockQuery).toHaveBeenCalledTimes(3);
+    expect(String(mockQuery.mock.calls[2][0])).toContain("assistant_feedback");
     expect(String(mockQuery.mock.calls[0][0])).toContain("FROM courses");
     expect(mockQuery.mock.calls[0][1]).toEqual([7]);
     expect(String(mockQuery.mock.calls[1][0])).toContain("assistant_persona");

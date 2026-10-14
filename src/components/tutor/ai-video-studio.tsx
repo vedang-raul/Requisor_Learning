@@ -22,14 +22,65 @@ import {
 type Job = {
   id: number; title: string; script: string; status: "processing" | "ready" | "failed";
   videoUrl: string | null; thumbnailUrl: string | null; durationSec: number | null; error: string | null; youtubeVideoId: string | null;
+  createdAt: string;
 };
 type Setup = {
-  configured: boolean; presenters: VideoPresenter[]; voices: VideoVoice[]; jobs: Job[]; error?: string;
+  configured: boolean; presenters: VideoPresenter[]; languages: string[]; jobs: Job[]; error?: string;
   youtube: { delivery: string; connected: boolean; channelTitle: string | null };
 };
 
 const selectClass = "focus-ring h-10 w-full rounded-xl border border-border bg-white px-3 text-sm text-zinc-900";
 const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+
+/**
+ * How long a render is likely to take, in seconds. The video service reports no
+ * percentage, so this is an estimate from the script's length: a short clip took
+ * about a minute, and longer scripts take proportionally longer.
+ */
+function expectedRenderSeconds(script: string): number {
+  return Math.round(45 + scriptSeconds(script) * 3);
+}
+
+/** Progress while a video renders: a bar that fills on the estimate, the time so far, and what is happening. */
+function RenderProgress({ job }: { job: Job }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const started = new Date(job.createdAt).getTime();
+  const elapsed = Math.max(0, Math.round((now - (Number.isFinite(started) ? started : now)) / 1000));
+  const expected = expectedRenderSeconds(job.script);
+  // Fills quickly at first and ever more slowly, so it keeps moving but never claims to be done before it is.
+  const percent = Math.min(96, Math.round(100 * (1 - Math.exp(-elapsed / (expected * 0.55)))));
+  const stage = percent < 15 ? "Sending the script to the presenter" : percent < 45 ? "Generating the voice" : percent < 85 ? "Animating the presenter" : "Finishing the video";
+  const overdue = elapsed > expected * 2.5;
+  return (
+    <div role="status" aria-live="polite" className="space-y-2">
+      <div className="flex items-center justify-between gap-3 text-sm">
+        <span className="flex min-w-0 items-center gap-2 font-medium text-zinc-800"><Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" aria-hidden="true" /><span className="truncate">{stage}…</span></span>
+        <span className="shrink-0 font-mono text-xs tabular-nums text-zinc-600">{percent}%</span>
+      </div>
+      <div
+        role="progressbar"
+        aria-label={`Rendering ${job.title}`}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent}
+        className="h-2.5 overflow-hidden rounded-full bg-zinc-200"
+      >
+        <div className="h-full rounded-full bg-gradient-to-r from-primary to-secondary transition-[width] duration-1000 ease-linear" style={{ width: `${percent}%` }} />
+      </div>
+      <p className="text-xs text-zinc-600">
+        {clock(elapsed)} so far · usually about {clock(expected)} for a script this long.{" "}
+        {overdue
+          ? "This one is taking longer than usual, but it is still rendering."
+          : "You can keep editing the lesson; it carries on if you leave this step."}
+      </p>
+      <p className="text-[11px] text-zinc-500">The bar is an estimate: the video service doesn&apos;t report exact progress.</p>
+    </div>
+  );
+}
 
 function Label({ children, hint }: { children: string; hint?: string }) {
   return (
@@ -70,7 +121,10 @@ export function AiVideoStudio({ lessonTitle, lessonDescription, lessonTakeaways,
   const [presenterId, setPresenterId] = useState("");
   const [presenterFilter, setPresenterFilter] = useState("");
   const [language, setLanguage] = useState("English");
+  // "" means the presenter's own voice.
   const [voiceId, setVoiceId] = useState("");
+  const [voices, setVoices] = useState<VideoVoice[]>([]);
+  const [voicesLoading, setVoicesLoading] = useState(false);
   const [background, setBackground] = useState<string>(VIDEO_BACKGROUNDS[0].key);
 
   const [job, setJob] = useState<Job | null>(null);
@@ -119,18 +173,29 @@ export function AiVideoStudio({ lessonTitle, lessonDescription, lessonTakeaways,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId, rendering]);
 
-  const languages = useMemo(() => [...new Set((setup?.voices ?? []).map((v) => v.language))].sort((a, b) => a.localeCompare(b)), [setup]);
-  const voices = useMemo(() => (setup?.voices ?? []).filter((v) => v.language === language), [setup, language]);
+  const configured = setup?.configured ?? false;
+  const languages = setup?.languages ?? [];
+  // Voices are fetched one language at a time: the library is too large to load whole.
+  useEffect(() => {
+    if (!configured) return;
+    let cancelled = false;
+    setVoicesLoading(true);
+    fetch(`/api/tutor/ai-video/?voices=${encodeURIComponent(language)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { voices?: VideoVoice[] } | null) => {
+        if (cancelled) return;
+        setVoices(data?.voices ?? []);
+        // A voice from another language no longer applies: back to the presenter's own.
+        setVoiceId((current) => (data?.voices?.some((v) => v.id === current) ? current : ""));
+      })
+      .catch(() => { if (!cancelled) setVoices([]); })
+      .finally(() => { if (!cancelled) setVoicesLoading(false); });
+    return () => { cancelled = true; };
+  }, [configured, language]);
   const presenters = useMemo(() => {
     const q = presenterFilter.trim().toLowerCase();
     return (setup?.presenters ?? []).filter((p) => !q || p.name.toLowerCase().includes(q) || p.gender === q).slice(0, 24);
   }, [setup, presenterFilter]);
-  useEffect(() => {
-    if (languages.length && !languages.includes(language)) setLanguage(languages.find((l) => /english/i.test(l)) ?? languages[0]);
-  }, [languages, language]);
-  useEffect(() => {
-    if (voices.length && !voices.some((v) => v.id === voiceId)) setVoiceId(voices[0].id);
-  }, [voices, voiceId]);
 
   async function post(payload: Record<string, unknown>) {
     const res = await fetch("/api/tutor/ai-video/", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
@@ -156,7 +221,7 @@ export function AiVideoStudio({ lessonTitle, lessonDescription, lessonTakeaways,
   async function createVideo() {
     setBusy("create"); setNote(null);
     try {
-      const { ok, data } = await post({ action: "create", title: lessonTitle || "Lesson video", script, avatarId: presenterId, voiceId, background });
+      const { ok, data } = await post({ action: "create", title: lessonTitle || "Lesson video", script, presenterId, voiceId: voiceId || undefined, background });
       if (!ok || !data.job) { setNote({ ok: false, text: data.error ?? "Couldn't start the video. Try again." }); return; }
       setJob(data.job);
       trackEvent("ai_video_generation_started", { provider: "heygen" });
@@ -164,6 +229,21 @@ export function AiVideoStudio({ lessonTitle, lessonDescription, lessonTakeaways,
       setNote({ ok: false, text: "Couldn't reach the server. Try again." });
     } finally {
       setBusy(null);
+    }
+  }
+
+  /** Reopens an earlier video, with fresh links to its file. */
+  async function openJob(id: number) {
+    setNote(null);
+    try {
+      const res = await fetch(`/api/tutor/ai-video/?id=${id}`);
+      const data = (await res.json().catch(() => ({}))) as { job?: Job; error?: string };
+      if (!res.ok || !data.job) { setNote({ ok: false, text: data.error ?? "Couldn't open that video." }); return; }
+      setJob(data.job);
+      setScript(data.job.script);
+      if (data.job.status === "ready") onScriptReady(data.job.script);
+    } catch {
+      setNote({ ok: false, text: "Couldn't reach the server. Try again." });
     }
   }
 
@@ -188,7 +268,7 @@ export function AiVideoStudio({ lessonTitle, lessonDescription, lessonTakeaways,
 
   const words = scriptWordCount(script);
   const scriptOk = script.trim().length >= SCRIPT_MIN_CHARS;
-  const canCreate = setup.configured && scriptOk && Boolean(presenterId) && Boolean(voiceId) && busy === null && !rendering;
+  const canCreate = setup.configured && scriptOk && Boolean(presenterId) && busy === null && !rendering;
   const canPostToYouTube = setup.youtube.delivery === "youtube" && setup.youtube.connected;
 
   return (
@@ -276,6 +356,7 @@ export function AiVideoStudio({ lessonTitle, lessonDescription, lessonTakeaways,
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={p.image} alt="" loading="lazy" className="aspect-square w-full object-cover" />
                     <span className="block truncate px-1.5 py-1 text-[11px] font-medium text-zinc-800">{p.name}</span>
+                    {p.own && <span className="absolute left-1 top-1 rounded-full bg-zinc-900/75 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white">Yours</span>}
                     {presenterId === p.id && <span className="absolute right-1 top-1 rounded-full bg-primary p-0.5 text-white"><Check className="h-3 w-3" /></span>}
                   </button>
                 ))}
@@ -285,7 +366,10 @@ export function AiVideoStudio({ lessonTitle, lessonDescription, lessonTakeaways,
           )}
           <div className="grid gap-3 sm:grid-cols-3">
             <label className="block"><Label>Language</Label><select className={selectClass} value={language} onChange={(e) => setLanguage(e.target.value)}>{languages.map((l) => <option key={l}>{l}</option>)}</select></label>
-            <label className="block"><Label>Voice</Label><select className={selectClass} value={voiceId} onChange={(e) => setVoiceId(e.target.value)}>{voices.map((v) => <option key={v.id} value={v.id}>{v.name}{v.gender ? ` (${v.gender})` : ""}</option>)}</select></label>
+            <label className="block"><Label>Voice</Label><select className={selectClass} value={voiceId} onChange={(e) => setVoiceId(e.target.value)} disabled={voicesLoading}>
+              <option value="">Presenter&apos;s own voice</option>
+              {voices.map((v) => <option key={v.id} value={v.id}>{v.own ? "Yours: " : ""}{v.name}{v.gender ? ` (${v.gender})` : ""}</option>)}
+            </select></label>
             <label className="block"><Label>Background</Label><select className={selectClass} value={background} onChange={(e) => setBackground(e.target.value)}>{VIDEO_BACKGROUNDS.map((b) => <option key={b.key} value={b.key}>{b.label}</option>)}</select></label>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -293,7 +377,7 @@ export function AiVideoStudio({ lessonTitle, lessonDescription, lessonTakeaways,
               {busy === "create" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Film className="h-4 w-4" />}Generate the video
             </Button>
             <span className="text-xs text-zinc-500">
-              {!scriptOk ? "Write the script first." : !presenterId ? "Choose a presenter." : "Uses video-service credits. Rendering takes a few minutes."}
+              {!scriptOk ? "Write the script first." : !presenterId ? "Choose a presenter." : "Each video is charged to the HeyGen account. Rendering takes a few minutes."}
             </span>
           </div>
         </section>
@@ -301,13 +385,32 @@ export function AiVideoStudio({ lessonTitle, lessonDescription, lessonTakeaways,
 
       {note && <p role="status" className={cn("text-xs", note.ok ? "text-emerald-800" : "text-red-700")}>{note.text}</p>}
 
+      {/* Earlier videos: a render finishes even if the tutor has left this step. */}
+      {!job && setup.jobs.length > 0 && (
+        <section className="space-y-1.5">
+          <h4 className="text-xs font-bold uppercase tracking-wide text-primary">Your recent AI videos</h4>
+          <ul className="divide-y divide-zinc-100 rounded-xl border border-zinc-200">
+            {setup.jobs.map((earlier) => (
+              <li key={earlier.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                <span className="min-w-0">
+                  <span className="block truncate font-medium text-zinc-800">{earlier.title}</span>
+                  <span className="block text-xs text-zinc-500">
+                    {earlier.status === "ready" ? `Ready${earlier.durationSec ? ` · ${clock(earlier.durationSec)}` : ""}` : earlier.status === "failed" ? "Couldn't be made" : "Rendering…"}
+                    {earlier.youtubeVideoId ? " · on YouTube" : ""}
+                  </span>
+                </span>
+                <Button type="button" size="sm" variant="outline" onClick={() => void openJob(earlier.id)}>Open</Button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {/* 4 · The result */}
       {job && (
         <section className="space-y-3 rounded-xl border border-zinc-200 bg-zinc-50 p-3">
           <h4 className="text-xs font-bold uppercase tracking-wide text-primary">4 · Your video</h4>
-          {job.status === "processing" && (
-            <p role="status" className="flex items-center gap-2 text-sm text-zinc-700"><Loader2 className="h-4 w-4 animate-spin text-primary" />Rendering “{job.title}”… this usually takes a few minutes. You can keep editing the lesson; it carries on if you leave this step.</p>
-          )}
+          {job.status === "processing" && <RenderProgress job={job} />}
           {job.status === "failed" && (
             <p role="alert" className="text-sm text-red-700">The video couldn&apos;t be made{job.error ? `: ${job.error}` : "."} Check the script and try again.</p>
           )}

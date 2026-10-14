@@ -13,11 +13,11 @@ export class InvalidJsonBodyError extends Error {
 }
 
 /**
- * Read a JSON request body with a hard byte ceiling. The stream is checked
+ * Read a request body with a hard byte ceiling. The stream is checked
  * chunk-by-chunk so callers are protected even when Content-Length is absent
  * or does not match the actual body.
  */
-export async function readJsonBody(req: Pick<Request, "headers" | "body">, maxBytes: number): Promise<unknown> {
+export async function readBodyBytes(req: Pick<Request, "headers" | "body">, maxBytes: number): Promise<ArrayBuffer> {
   const contentLength = req.headers.get("content-length");
   if (contentLength) {
     const declaredLength = Number(contentLength);
@@ -26,7 +26,7 @@ export async function readJsonBody(req: Pick<Request, "headers" | "body">, maxBy
     }
   }
 
-  if (!req.body) throw new InvalidJsonBodyError();
+  if (!req.body) return new ArrayBuffer(0);
 
   const reader = req.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -55,6 +55,11 @@ export async function readJsonBody(req: Pick<Request, "headers" | "body">, maxBy
     offset += chunk.byteLength;
   }
 
+  return bytes.buffer;
+}
+
+export async function readJsonBody(req: Pick<Request, "headers" | "body">, maxBytes: number): Promise<unknown> {
+  const bytes = await readBodyBytes(req, maxBytes);
   try {
     return JSON.parse(new TextDecoder().decode(bytes));
   } catch {
