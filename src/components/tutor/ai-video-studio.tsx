@@ -282,6 +282,9 @@ export function AiVideoStudio({ lessonTitle, lessonDescription, lessonTakeaways,
       {/* 1 · The brief */}
       <section className="space-y-3">
         <h4 className="text-xs font-bold uppercase tracking-wide text-primary">1 · What the video should cover</h4>
+        <p className="text-xs text-zinc-600">
+          Every brief and script is checked before it is written or rendered. Videos with sexual content or nudity, terrorism or extremism, violence, weapons, drugs, self-harm, hate, or a presenter speaking as a real person are refused. Teaching about a sensitive subject factually is fine.
+        </p>
         <label className="block">
           <Label hint="The more specific, the better the script">What should this video teach?</Label>
           <Textarea value={topic} onChange={(e) => setTopic(e.target.value)} rows={3} maxLength={800} placeholder="e.g. How to tell when a task needs an AI agent and when a simple automation rule is enough" />
