@@ -54,9 +54,11 @@ async function tutor(): Promise<{ userId: number } | Response> {
 
 // The presenter and voice lists are the same for everyone and change rarely.
 const CACHE_MS = 15 * 60_000;
+// The presenter list takes a couple of dozen requests to put together, so it is kept for longer.
+const PRESENTER_CACHE_MS = 6 * 60 * 60_000;
 let presenterCache: { at: number; presenters: VideoPresenter[] } | null = null;
 async function loadPresenters() {
-  if (presenterCache && Date.now() - presenterCache.at < CACHE_MS) return presenterCache.presenters;
+  if (presenterCache && Date.now() - presenterCache.at < PRESENTER_CACHE_MS) return presenterCache.presenters;
   const presenters = await listPresenters();
   presenterCache = { at: Date.now(), presenters };
   return presenters;
