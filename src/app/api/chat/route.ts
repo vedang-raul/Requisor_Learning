@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
+import { xaiFetch } from "@/lib/ai/usage";
 import { isLessonLive } from "@/lib/utils";
 import { authOptions } from "@/lib/auth/auth";
 import { db } from "@/lib/server/db";
@@ -682,7 +683,7 @@ YOUR NAME — in this conversation you go by "${escapePromptData(shownName)}": t
             clientAbort.signal.addEventListener("abort", onClientAbort, { once: true });
             roundTimeout = setTimeout(() => { timedOut = true; roundAbort.abort("timeout"); }, UPSTREAM_TIMEOUT_MS);
 
-            const xaiRes = await fetch(`${BASE_URL}/chat/completions`, {
+            const xaiRes = await xaiFetch({ userId: session.user.id, feature: "assistant" }, `${BASE_URL}/chat/completions`, {
               method: "POST",
               signal: roundAbort.signal,
               headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },

@@ -294,6 +294,20 @@ p.query(`
   );
   CREATE INDEX IF NOT EXISTS assistant_feedback_rating_idx ON assistant_feedback (rating, created_at DESC);
   CREATE INDEX IF NOT EXISTS assistant_feedback_user_idx ON assistant_feedback (user_id, mode, updated_at DESC);
+  -- Use of the paid AI services, per person: tokens for language models, units for voice and video.
+  CREATE TABLE IF NOT EXISTS ai_usage (
+    id BIGSERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    feature TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL DEFAULT '',
+    input_tokens INT NOT NULL DEFAULT 0,
+    output_tokens INT NOT NULL DEFAULT 0,
+    units INT NOT NULL DEFAULT 0,
+    unit TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS ai_usage_user_idx ON ai_usage (user_id, created_at DESC);
   CREATE TABLE IF NOT EXISTS ai_video_jobs (
     id SERIAL PRIMARY KEY,
     owner_user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

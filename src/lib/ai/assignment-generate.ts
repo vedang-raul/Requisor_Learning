@@ -1,5 +1,6 @@
 import { withAiConcurrency, AI_UPSTREAM_TIMEOUT_MS } from "@/lib/ai/ai-semaphore";
 import { guardrailPromptLines, type AssignmentAi } from "@/lib/ai/assignment-ai";
+import { xaiFetch } from "@/lib/ai/usage";
 import { toStructuredAssignment, type StructuredAssignment } from "@/lib/ai/assignment-format";
 import { lessonPromptLines, type AiLesson } from "@/lib/ai/personalized-learning";
 
@@ -45,7 +46,7 @@ export async function generateAssignment(apiKey: string, prompt: string, log: Re
     const aborter = new AbortController();
     const timeoutId = setTimeout(() => aborter.abort("upstream_timeout"), AI_UPSTREAM_TIMEOUT_MS);
     try {
-      const res = await fetch(`${BASE_URL}/chat/completions`, {
+      const res = await xaiFetch({ userId: log.userId, feature: log.preview ? "assignment_preview" : "assignment" }, `${BASE_URL}/chat/completions`, {
         method: "POST",
         signal: aborter.signal,
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },

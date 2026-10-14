@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 import { getServerSession } from "next-auth/next";
+import { recordUnits, xaiFetch } from "@/lib/ai/usage";
 import { authOptions } from "@/lib/auth/auth";
 import { db } from "@/lib/server/db";
 import { withAiConcurrency, SemaphoreFullError, AI_UPSTREAM_TIMEOUT_MS } from "@/lib/ai/ai-semaphore";
@@ -86,6 +87,7 @@ async function refresh(row: JobRow): Promise<JobRow> {
      WHERE id = $1 RETURNING *`,
     [row.id, now.status, now.videoUrl ?? null, now.thumbnailUrl ?? null, now.durationSec ?? null, now.error ?? null]
   );
+  if (row.status === "processing" && now.status === "ready") recordUnits({ userId: row.owner_user_id, feature: "video_render" }, "heygen", Math.ceil(now.durationSec ?? 0), "seconds");
   return rows[0] ?? row;
 }
 
@@ -116,7 +118,7 @@ async function checkVideoContent(kind: "brief" | "script", text: string, userId:
       const aborter = new AbortController();
       const timeoutId = setTimeout(() => aborter.abort("upstream_timeout"), AI_UPSTREAM_TIMEOUT_MS);
       try {
-        const res = await fetch(`${BASE_URL}/chat/completions`, {
+        const res = await xaiFetch({ userId, feature: "video_check" }, `${BASE_URL}/chat/completions`, {
           method: "POST", signal: aborter.signal,
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
           body: JSON.stringify({
@@ -215,7 +217,7 @@ export async function POST(req: Request) {
         const aborter = new AbortController();
         const timeoutId = setTimeout(() => aborter.abort("upstream_timeout"), AI_UPSTREAM_TIMEOUT_MS);
         try {
-          const res = await fetch(`${BASE_URL}/chat/completions`, {
+          const res = await xaiFetch({ userId: who.userId, feature: "video_script" }, `${BASE_URL}/chat/completions`, {
             method: "POST", signal: aborter.signal,
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
             body: JSON.stringify({ model: MODEL, max_tokens: 1800, messages: [{ role: "user", content: aiVideoScriptPrompt(brief) }] }),

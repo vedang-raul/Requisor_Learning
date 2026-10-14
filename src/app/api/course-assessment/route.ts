@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
+import { xaiFetch } from "@/lib/ai/usage";
 import { authOptions } from "@/lib/auth/auth";
 import { db, type DbUser } from "@/lib/server/db";
 import { seedCourses } from "@/lib/courses/data";
@@ -151,7 +152,7 @@ export async function POST(req: Request) {
       const aborter = new AbortController();
       const timeoutId = setTimeout(() => aborter.abort("upstream_timeout"), AI_UPSTREAM_TIMEOUT_MS);
       try {
-        const res = await fetch(`${BASE_URL}/chat/completions`, {
+        const res = await xaiFetch({ userId: session.user.id, feature: "course_assessment" }, `${BASE_URL}/chat/completions`, {
           method: "POST",
           signal: aborter.signal,
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },

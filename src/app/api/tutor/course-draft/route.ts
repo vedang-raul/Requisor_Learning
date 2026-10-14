@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
+import { xaiFetch } from "@/lib/ai/usage";
 import { authOptions } from "@/lib/auth/auth";
 import { acquireAiSlot, SemaphoreFullError } from "@/lib/ai/ai-semaphore";
 import { ensureCourseCatalog, getCourses, validateCourse } from "@/lib/courses/course-catalog";
@@ -170,7 +171,7 @@ export async function POST(req: Request) {
       `Lesson format: ${brief.lessonFormat}`,
       `Lesson count: ${brief.lessonCount}`,
     ].join("\n");
-    const response = await fetch(`${BASE_URL}/chat/completions`, {
+    const response = await xaiFetch({ userId: session.user.id, feature: "course_draft" }, `${BASE_URL}/chat/completions`, {
       method: "POST",
       signal: controller.signal,
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },

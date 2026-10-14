@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 export const maxDuration = 30;
 
 import { getServerSession } from "next-auth/next";
+import { recordUnits } from "@/lib/ai/usage";
 import { authOptions } from "@/lib/auth/auth";
 import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
 import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
@@ -61,6 +62,7 @@ export async function POST(req: Request) {
     console.error(`[tts] ElevenLabs answered ${upstream.status}`);
     return Response.json({ error: "The voice service is unavailable right now." }, { status: 502 });
   }
+  recordUnits({ userId: session.user.id, feature: "voice" }, "elevenlabs", text.length, "characters");
   return new Response(upstream.body, {
     headers: { "Content-Type": "audio/mpeg", "Cache-Control": "no-store" },
   });

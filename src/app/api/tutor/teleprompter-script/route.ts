@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
+import { xaiFetch } from "@/lib/ai/usage";
 import { authOptions } from "@/lib/auth/auth";
 import { acquireAiSlot, SemaphoreFullError } from "@/lib/ai/ai-semaphore";
 import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
@@ -56,7 +57,7 @@ export async function POST(req: Request) {
   req.signal.addEventListener("abort", () => controller.abort(), { once: true });
   try {
     release = await acquireAiSlot();
-    const response = await fetch(`${BASE_URL}/chat/completions`, {
+    const response = await xaiFetch({ userId: session.user.id, feature: "teleprompter" }, `${BASE_URL}/chat/completions`, {
       method: "POST",
       signal: controller.signal,
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },

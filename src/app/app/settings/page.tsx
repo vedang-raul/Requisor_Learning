@@ -15,6 +15,7 @@ import { PageTransition } from "@/components/ui/motion";
 import { cn, REPLAY_TOUR_KEY } from "@/lib/utils";
 import { checkJobTitle, JOB_TITLE_HINT, stripJobTitle } from "@/lib/auth/job-title";
 import { PersonaAvatar } from "@/components/assistant/persona-avatar";
+import { AiUsageCard } from "@/components/tutor/ai-usage-card";
 import { PERSONAS, LANGUAGES, COUNTRIES } from "@/lib/assistant/personas";
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
@@ -1004,6 +1005,9 @@ function BugReportCard() {
 /* ─── Page ───────────────────────────────────────────────────────────────── */
 export default function SettingsPage() {
   useStore();
+  const { data: session } = useSession();
+  // Tutors and admins see what their AI work has used.
+  const showsAiUsage = session?.user?.role === "tutor" || session?.user?.role === "admin";
   const [notif, setNotif] = useState<NotifSettings>(DEFAULT_NOTIF);
   const [notifLoaded, setNotifLoaded] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1043,6 +1047,7 @@ export default function SettingsPage() {
       </motion.div>
 
       <ProfileCard />
+      {showsAiUsage && <AiUsageCard />}
       <AiGuideCard />
       <BugReportCard />
 
