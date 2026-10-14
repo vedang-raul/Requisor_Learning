@@ -120,7 +120,7 @@ describe("search indexing headers", () => {
     },
   );
 
-  it.each(["/", "/robots.txt", "/sitemap.xml", "/social-image/"])(
+  it.each(["/", "/student-lms/", "/robots.txt", "/sitemap.xml", "/social-image/"])(
     "does not exclude public SEO resource %s",
     async path => {
       const response = await middleware(request(path));

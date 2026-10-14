@@ -1,4 +1,4 @@
-import { HOME_METADATA, SEO_DESCRIPTION, SITE_STRUCTURED_DATA, SITE_URL, serializeStructuredData } from "@/lib/courses/seo";
+import { HOME_METADATA, SEO_DESCRIPTION, SEO_TITLE, SITE_STRUCTURED_DATA, SITE_URL, STUDENT_LMS_METADATA, STUDENT_LMS_STRUCTURED_DATA, STUDENT_LMS_FAQS, serializeStructuredData } from "@/lib/courses/seo";
 import robots from "@/app/robots";
 import sitemap from "@/app/sitemap";
 
@@ -13,18 +13,39 @@ describe("public SEO and private route indexing boundaries", () => {
     expect(HOME_METADATA.robots).toMatchObject({ index: true, follow: true });
     expect(SEO_DESCRIPTION.length).toBeGreaterThanOrEqual(140);
     expect(SEO_DESCRIPTION.length).toBeLessThanOrEqual(165);
-    expect(SEO_DESCRIPTION).toMatch(/ElevenLabs/);
-    expect(SEO_DESCRIPTION).toMatch(/transcript/);
+    expect(SEO_TITLE).toMatch(/Student LMS/);
+    expect(SEO_TITLE.length).toBeLessThanOrEqual(65);
+    expect(SEO_DESCRIPTION).toMatch(/student LMS/);
+    expect(SEO_DESCRIPTION).toMatch(/progress tracking/);
     expect(SEO_DESCRIPTION).toMatch(/Tutors/);
     expect(SITE_URL).not.toContain("replit.dev");
   });
 
   it("lists only indexable public pages and excludes account and API paths", () => {
-    expect(sitemap()).toEqual([{ url: `${SITE_URL}/`, changeFrequency: "weekly", priority: 1 }]);
+    expect(sitemap()).toEqual([
+      { url: `${SITE_URL}/`, changeFrequency: "weekly", priority: 1 },
+      { url: `${SITE_URL}/student-lms/`, changeFrequency: "monthly", priority: 0.8 },
+    ]);
     expect(robots()).toMatchObject({
       rules: { userAgent: "*", allow: "/", disallow: ["/api/", "/app/", "/login/", "/reset-password/"] },
       sitemap: `${SITE_URL}/sitemap.xml`,
     });
+  });
+
+  it("gives the student guide its own canonical metadata and matching FAQ schema", () => {
+    expect(STUDENT_LMS_METADATA.alternates?.canonical).toBe(`${SITE_URL}/student-lms/`);
+    expect(STUDENT_LMS_METADATA.robots).toMatchObject({ index: true, follow: true });
+    expect(STUDENT_LMS_METADATA.openGraph).toMatchObject({ url: `${SITE_URL}/student-lms/` });
+    const faq = STUDENT_LMS_STRUCTURED_DATA["@graph"].find(item => item["@type"] === "FAQPage")!;
+    expect(faq.mainEntity).toHaveLength(STUDENT_LMS_FAQS.length);
+    expect(faq.mainEntity).toEqual(STUDENT_LMS_FAQS.map(item => ({
+      "@type": "Question",
+      name: item.question,
+      acceptedAnswer: { "@type": "Answer", text: item.answer },
+    })));
+    for (const item of sitemap()) {
+      expect(item.url).not.toMatch(/\/(?:app|api|login|reset-password)\//);
+    }
   });
 
   it("describes implemented features without invented ratings, offers or course records", () => {

@@ -3,6 +3,12 @@ name: SEO preview boundaries
 description: Separate workspace-proxy indexing restrictions and Next.js development sharing URLs from production SEO behavior.
 ---
 
+SEO positioning should target student learning LMS searches while retaining the Alma university brand and describing actual student-facing capabilities.
+
+**Why:** The user explicitly requested improved Google visibility for student learning LMS, rather than a product rating.
+
+**How to apply:** Use useful public content and natural wording about student learning, not keyword stuffing, fabricated ratings or guaranteed search positions. Keep private learning content and accounts out of search indexes.
+
 Do not infer production indexing policy from the preview proxy's combined HTTP headers.
 
 **Why:** The proxied workspace injects additional noindex directives on all responses, including public marketing pages and robots/sitemap files. These are independent of the application's own metadata and middleware headers.

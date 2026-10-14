@@ -384,7 +384,7 @@ export default function AlmaLanding() {
             </div>
           </div>
           <div className={s.heroBelow}>
-            <p className={s.lead}>No lecture halls. No cohort marching at one speed. A tutor that knows your industry, your background, and how you learn — and is incapable of leaving you behind.</p>
+            <p className={s.lead}>Alma 41 is an AI-powered student learning LMS: structured courses, an AI study assistant, progress tracking and multilingual voice support, with tutors guiding your learning.</p>
             <p className={s.heroTaught}>Taught by <a href="#team">Naveen Kankate</a> — founder, AI engineering instructor at MSOE &amp; <span className={s.nowrap}>UW-Milwaukee</span></p>
             <p className={s.heroAssoc}>In association with <span>Milwaukee School of Engineering</span></p>
           </div>
@@ -623,6 +623,7 @@ export default function AlmaLanding() {
             <nav aria-label="Footer" className={s.footerNav}>
               <div className={s.footerCol}>
                 <p>Learn</p>
+                <a className={s.navLink} href="/student-lms/">Student learning LMS</a>
                 {NAV.slice(0, 4).map(([href, label]) => <a key={href} className={s.navLink} href={href}>{label}</a>)}
               </div>
               <div className={s.footerCol}>
