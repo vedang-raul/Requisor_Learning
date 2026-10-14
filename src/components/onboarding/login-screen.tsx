@@ -5,6 +5,7 @@ import { Mail, ArrowRight, User, CheckCircle2, AlertCircle, Briefcase } from "lu
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
+import { RequisorAI } from "@/components/ui/requisor-ai";
 import { Turnstile } from "@marsidev/react-turnstile";
 import type { TurnstileInstance } from "@marsidev/react-turnstile";
 import { useStore } from "@/lib/store";
@@ -329,7 +330,7 @@ export function LoginScreen() {
       >
         <div className="mb-6 text-center">
           <img src="/requisor.png" alt="Requisor logo" className="mx-auto mb-4 h-24 w-24 rounded-xl object-contain" />
-          <h1 className="text-2xl font-bold">Alma 41 <span className="text-base font-medium text-zinc-500">by Requisor.io</span></h1>
+          <h1 className="text-2xl font-bold">Alma 41 <span className="text-base font-medium text-zinc-500">by <RequisorAI className="font-semibold text-zinc-700" /></span></h1>
           <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}

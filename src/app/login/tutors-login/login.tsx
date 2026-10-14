@@ -9,6 +9,7 @@ import {
   useEffect,
 } from "react";
 import { signIn } from "next-auth/react";
+import { RequisorAI } from "@/components/ui/requisor-ai";
 import { Turnstile } from "@marsidev/react-turnstile";
 import type { TurnstileInstance } from "@marsidev/react-turnstile";
 
@@ -316,7 +317,7 @@ export default function TutorAuth() {
           </div>
 
           <h1 className="text-center text-2xl font-bold [text-wrap:balance]">
-            Alma 41 <span className="text-base font-medium text-zinc-500">by Requisor.io</span>
+            Alma 41 <span className="text-base font-medium text-zinc-500">by <RequisorAI className="font-semibold text-zinc-700" /></span>
           </h1>
           <p className="mt-2 mb-6 min-h-[18px] text-center text-sm text-zinc-600">
             {activeCopy.subtitle}

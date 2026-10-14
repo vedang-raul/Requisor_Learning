@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
+import { RequisorAI } from "@/components/ui/requisor-ai";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { getCategoryMeta } from "@/components/course/category-icon";
@@ -150,7 +151,7 @@ export function Sidebar() {
               className="leading-tight"
             >
               <p className="text-sm font-bold text-zinc-900">Alma 41</p>
-              <p className="text-gradient text-[11px] font-semibold">by Requisor.io</p>
+              <p className="text-[11px] font-semibold text-zinc-500">by <RequisorAI className="text-zinc-700" /></p>
             </motion.div>
           )}
         </AnimatePresence>

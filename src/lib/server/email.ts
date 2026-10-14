@@ -106,7 +106,7 @@ function shell(title: string, body: string, cta?: { label: string; href: string 
       <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;padding:36px;text-align:left;">
         <tr><td style="padding-bottom:20px;">
           <span style="font-size:20px;font-weight:bold;color:#14b8a6;">Alma 41</span>
-          <span style="font-size:13px;font-weight:600;color:#6b7280;"> by Requisor.io</span>
+          <span style="font-size:13px;font-weight:600;color:#6b7280;"> by Requisor.<span style="font-weight:800;color:#0f766e;letter-spacing:0.04em;">AI</span></span>
         </td></tr>
         <tr><td style="font-size:18px;font-weight:bold;color:#111827;padding-bottom:12px;">${title}</td></tr>
         <tr><td style="font-size:14px;line-height:1.6;color:#374151;padding-bottom:24px;">${body}</td></tr>
