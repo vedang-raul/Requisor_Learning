@@ -3,20 +3,18 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Bell, Pencil, User, X, Check, Loader2, Briefcase, Calendar, GraduationCap,
-  Target, UserCircle2, Mail, ShieldCheck, Sparkles, BookOpenCheck, Megaphone, Award,
-  Bug, Upload, Clock, AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Image, Video, FileText,
-  Play, FileVideo, ImagePlus, Bot, Languages, Globe2, RotateCcw,
+  Target, UserCircle2, Mail, ShieldCheck, BookOpenCheck, Megaphone, Award,
+  Bug, Upload, Clock, AlertCircle, CheckCircle2, ChevronDown, Image, Video, FileText,
+  Play, FileVideo, ImagePlus,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useStore } from "@/lib/store";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/ui/motion";
-import { cn, REPLAY_TOUR_KEY } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { checkJobTitle, JOB_TITLE_HINT, stripJobTitle } from "@/lib/auth/job-title";
-import { PersonaAvatar } from "@/components/assistant/persona-avatar";
 import { AiUsageCard } from "@/components/tutor/ai-usage-card";
-import { PERSONAS, LANGUAGES, COUNTRIES } from "@/lib/assistant/personas";
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 interface ProfileData {
@@ -386,144 +384,6 @@ function ProfileCard() {
             </motion.div>
           )}
         </AnimatePresence>
-      )}
-    </Card>
-  );
-}
-
-/* ─── AI Guide Card ──────────────────────────────────────────────────────── */
-interface GuidePrefs {
-  assistantPersona: string;
-  preferredLanguage: string;
-  preferredCountry: string;
-}
-
-function AiGuideCard() {
-  const [prefs, setPrefs] = useState<GuidePrefs | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [savingField, setSavingField] = useState<keyof GuidePrefs | null>(null);
-
-  // A hard navigation, not router.push: this must force the shared /app/*
-  // layout to mount completely fresh so its one-shot "should I show the
-  // walkthrough" check reads the flag reliably, with no dependency on
-  // Next.js's client-side layout-persistence timing across a sibling route
-  // change (a client-side push here works in principle but proved fragile
-  // in practice, per issue report — this button is not a hot path, so the
-  // cost of a full reload is worth the reliability).
-  function replayTour() {
-    sessionStorage.setItem(REPLAY_TOUR_KEY, "1");
-    window.location.href = "/app/dashboard/";
-  }
-
-  useEffect(() => {
-    fetch("/api/profile")
-      .then((r) => r.json())
-      .then((data: GuidePrefs) => {
-        setPrefs({
-          assistantPersona: data.assistantPersona || "",
-          preferredLanguage: data.preferredLanguage || "",
-          preferredCountry: data.preferredCountry || "",
-        });
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
-
-  async function save(field: keyof GuidePrefs, value: string) {
-    if (!prefs) return;
-    const previous = prefs[field];
-    setPrefs({ ...prefs, [field]: value });
-    setSavingField(field);
-    try {
-      const res = await fetch("/api/profile", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [field]: value }),
-      });
-      if (!res.ok) setPrefs((p) => (p ? { ...p, [field]: previous } : p));
-    } catch {
-      setPrefs((p) => (p ? { ...p, [field]: previous } : p));
-    } finally {
-      setSavingField(null);
-    }
-  }
-
-  return (
-    <Card>
-      <div className="mb-1 flex items-center gap-2">
-        <motion.div
-          className="rounded-lg bg-primary/10 p-1.5"
-          animate={{ rotate: [0, -8, 8, 0] }}
-          transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
-        >
-          <Bot className="h-4 w-4 text-primary" />
-        </motion.div>
-        <CardTitle>AI Guide</CardTitle>
-      </div>
-      <p className="mb-4 text-xs text-zinc-500">
-        Pick how your on-screen guide looks and which language it replies in — a look you choose for
-        yourself, not something we infer about you.
-      </p>
-
-      {loading || !prefs ? (
-        <div className="flex items-center gap-2 py-4 text-sm text-zinc-400">
-          <Loader2 className="h-4 w-4 animate-spin" /> Loading…
-        </div>
-      ) : (
-        <div className="space-y-5">
-          <div>
-            <p className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-zinc-500">
-              <Sparkles className="h-3 w-3 text-zinc-400" /> Appearance
-              {savingField === "assistantPersona" && <Loader2 className="h-3 w-3 animate-spin text-primary" />}
-            </p>
-            <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-6">
-              {PERSONAS.map((p) => {
-                const selected = (prefs.assistantPersona || PERSONAS[0].id) === p.id;
-                return (
-                  <motion.button
-                    key={p.id}
-                    type="button"
-                    whileHover={{ y: -2 }}
-                    whileTap={{ scale: 0.96 }}
-                    onClick={() => save("assistantPersona", p.id)}
-                    className={cn(
-                      "flex flex-col items-center gap-1.5 rounded-xl border-2 p-2.5 text-center transition-colors",
-                      selected ? "border-primary bg-primary/5" : "border-transparent bg-zinc-50 hover:border-zinc-200"
-                    )}
-                  >
-                    <PersonaAvatar personaId={p.id} size="md" />
-                    <span className="text-[11px] font-medium text-zinc-700">{p.name}</span>
-                    {selected && <Check className="h-3 w-3 text-primary" />}
-                  </motion.button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <SelectField
-              icon={Languages}
-              label="Preferred language"
-              value={prefs.preferredLanguage}
-              options={[{ value: "", label: "English (default)" }, ...LANGUAGES.map((l) => ({ value: l.code, label: l.label }))]}
-              onChange={(v) => save("preferredLanguage", v)}
-            />
-            <SelectField
-              icon={Globe2}
-              label="Country"
-              value={prefs.preferredCountry}
-              options={[{ value: "", label: "Select…" }, ...COUNTRIES.map((c) => ({ value: c, label: c }))]}
-              onChange={(v) => save("preferredCountry", v)}
-            />
-          </div>
-          <p className="text-[11px] text-zinc-400">
-            Country is used only for locale-appropriate small talk (timezones, greetings) — never for
-            appearance or content decisions.
-          </p>
-          <Button variant="outline" size="sm" onClick={replayTour} className="gap-1.5">
-            <RotateCcw className="h-3.5 w-3.5" /> Replay welcome tour
-          </Button>
-        </div>
       )}
     </Card>
   );
@@ -1048,7 +908,6 @@ export default function SettingsPage() {
 
       <ProfileCard />
       {showsAiUsage && <AiUsageCard />}
-      <AiGuideCard />
       <BugReportCard />
 
       <Card>
