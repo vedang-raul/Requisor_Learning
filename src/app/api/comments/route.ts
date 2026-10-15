@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { manageReach } from "@/lib/server/course-scope";
 import { authOptions } from "@/lib/auth/auth";
 import { db } from "@/lib/server/db";
 import { seedCourses } from "@/lib/courses/data";
@@ -218,14 +219,12 @@ export async function DELETE(req: NextRequest) {
   const commentId = req.nextUrl.searchParams.get("id");
   if (!commentId) return NextResponse.json({ error: "Missing comment id" }, { status: 400 });
 
-  // Users can only delete their own comments; admins can delete any
-  const isAdmin = session.user.email === process.env.ADMIN_EMAIL || session.user.email === "support@requisor.io";
-
+  // People delete their own comments; super admins any, and a university admin those in their university's courses.
+  const reach = manageReach(session.user);
   const { rowCount } = await db.query(
-    isAdmin
-      ? `DELETE FROM lesson_comments WHERE id = $1`
-      : `DELETE FROM lesson_comments WHERE id = $1 AND user_id = $2`,
-    isAdmin ? [commentId] : [commentId, session.user.id]
+    `DELETE FROM lesson_comments lc
+      WHERE lc.id = $1 AND (lc.user_id = $2 OR ($3::boolean OR EXISTS (SELECT 1 FROM course_lessons l JOIN courses c ON c.slug = l.course_slug WHERE l.id = lc.lesson_id AND c.university_id IS NOT NULL AND c.university_id = $4::int)))`,
+    [commentId, session.user.id, reach.all, reach.universityId]
   );
 
   if (!rowCount) {

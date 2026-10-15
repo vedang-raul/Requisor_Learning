@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { db, roleForEmail } from "@/lib/server/db";
+import { membershipForNewAccount } from "@/lib/server/universities";
 import { sendVerificationEmail, skipEmailVerification } from "@/lib/server/email";
 import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
 import { verifyTurnstile } from "@/lib/auth/turnstile";
@@ -28,6 +29,7 @@ const SIGNUP_FIELDS = new Set([
   "employmentType",
   "position",
   "accountType",
+  "universityId",
   "turnstileToken",
 ]);
 
@@ -88,7 +90,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
 
-  const { name, email, password, employmentType, position, accountType, turnstileToken } = body;
+  const { name, email, password, employmentType, position, accountType, universityId, turnstileToken } = body;
   if (
     (typeof name !== "string" && name !== undefined) ||
     (typeof email !== "string" && email !== undefined) ||
@@ -141,6 +143,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Select a valid account type." }, { status: 400 });
     }
 
+    // The university: a matching email domain places the person at once; a
+    // university picked from the list waits for its admin. Asking to teach is
+    // only a request: a university admin decides (see /api/admin/people).
+    const isAdminAccount = roleForEmail(cleanEmail) === "admin";
+    const membership = isAdminAccount ? { universityId: null, status: null } : await membershipForNewAccount(cleanEmail, universityId);
+    const requestedRole = !isAdminAccount && requestedAccountType === "tutor" ? "tutor" : null;
+
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cleanEmail)) {
       return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
     }
@@ -175,9 +184,10 @@ export async function POST(req: Request) {
         await db.query("UPDATE users SET email_verified = TRUE, verification_token = NULL, verification_expires = NULL WHERE id = $1", [existingRow.id]);
       } else {
         await db.query(
-          `INSERT INTO users (email, name, password_hash, role, employment_type, position, email_verified)
-           VALUES ($1, $2, $3, $4, $5, $6, TRUE)`,
-          [cleanEmail, cleanName, await bcrypt.hash(password, 12), roleForEmail(cleanEmail) === "admin" ? "admin" : "employee", cleanType || null, cleanPosition || null]
+          `INSERT INTO users (email, name, password_hash, role, employment_type, position, email_verified, university_id, university_status, requested_role)
+           VALUES ($1, $2, $3, $4, $5, $6, TRUE, $7, $8, $9)`,
+          [cleanEmail, cleanName, await bcrypt.hash(password, 12), isAdminAccount ? "admin" : "employee", cleanType || null, cleanPosition || null,
+            membership.universityId, membership.status, requestedRole]
         );
       }
       return NextResponse.json({ ok: true, verified: true });
@@ -203,17 +213,21 @@ export async function POST(req: Request) {
       // Brand-new registration.
       const hash = await bcrypt.hash(password, 12);
       await db.query(
-        `INSERT INTO users (email, name, password_hash, role, employment_type, position, verification_token, verification_expires)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        `INSERT INTO users (email, name, password_hash, role, employment_type, position, verification_token, verification_expires,
+                            university_id, university_status, requested_role)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
         [
           cleanEmail,
           cleanName,
           hash,
-          roleForEmail(cleanEmail) === "admin" ? "admin" : "employee",
+          isAdminAccount ? "admin" : "employee",
           cleanType || null,
           cleanPosition || null,
           sha256(token),
           expires,
+          membership.universityId,
+          membership.status,
+          requestedRole,
         ]
       );
       emailStep = true;

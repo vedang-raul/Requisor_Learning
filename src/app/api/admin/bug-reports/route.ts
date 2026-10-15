@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth/auth";
-import { db, ADMIN_EMAIL } from "@/lib/server/db";
+import { db } from "@/lib/server/db";
+import { isSuperAdminEmail } from "@/lib/auth/roles";
 
+/** Bug reports are about the platform itself, so only super admins (the Requisor team) see them. */
 function isAdmin(email: string) {
-  return email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+  return isSuperAdminEmail(email);
 }
 
 export async function GET(req: NextRequest) {

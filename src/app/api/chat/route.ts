@@ -1,6 +1,8 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
+import { manageReach, manageSql, reachParams, seeReach, seeSql, type Reach } from "@/lib/server/course-scope";
+import { xaiFetch } from "@/lib/ai/usage";
 import { isLessonLive } from "@/lib/utils";
 import { authOptions } from "@/lib/auth/auth";
 import { db } from "@/lib/server/db";
@@ -144,6 +146,8 @@ async function getStudentGuidanceContext(
   userId: string,
   guide: GuidePrefs,
   conversation = "",
+  /** The courses this learner may see: platform courses and their own university's. */
+  see: Reach = { all: false, universityId: null },
 ): Promise<StudentGuidanceContext> {
   const numericUserId = Number(userId);
   if (!Number.isSafeInteger(numericUserId) || numericUserId <= 0) {
@@ -159,7 +163,7 @@ async function getStudentGuidanceContext(
     const [allPublished, completionResult] = await Promise.all([
       // Learners must only hear about what they can see: published courses,
       // minus draft lessons (same rule as GET /api/courses).
-      getCourses("WHERE c.published = TRUE"),
+      getCourses(`WHERE c.published = TRUE AND ${seeSql("c", 1, 2)}`, reachParams(see)),
       db.query<{ lesson_id: string }>(
         `SELECT lc.lesson_id
          FROM lesson_completions lc
@@ -441,15 +445,16 @@ async function getGuidePrefs(userId: string): Promise<GuidePrefs> {
   }
 }
 
-async function getTutorContext(role: "tutor" | "admin", userId: string): Promise<string> {
+async function getTutorContext(role: "tutor" | "admin", userId: string, manage: Reach = { all: false, universityId: null }): Promise<string> {
   const numericUserId = Number(userId);
   if (role === "tutor" && (!Number.isSafeInteger(numericUserId) || numericUserId <= 0)) {
     return "No managed courses are available in the current context.";
   }
 
   try {
-    const ownerClause = role === "tutor" ? "WHERE c.owner_user_id = $1" : "";
-    const params = role === "tutor" ? [numericUserId] : [];
+    // A tutor's own courses; an admin's also include every course of their university (all, for super admins).
+    const ownerClause = role === "tutor" ? "WHERE c.owner_user_id = $1" : `WHERE c.owner_user_id = $1 OR ${manageSql("c", 2, 3)}`;
+    const params = role === "tutor" ? [numericUserId] : [numericUserId, ...reachParams(manage)];
     const { rows } = await db.query<{
       title: string;
       level: string;
@@ -557,10 +562,10 @@ export async function POST(req: Request) {
   };
   if (role === "employee") {
     guidePrefs = await getGuidePrefs(session.user.id ?? "");
-    studentGuidance = await getStudentGuidanceContext(session.user.id ?? "", guidePrefs, learnerWords(messages));
+    studentGuidance = await getStudentGuidanceContext(session.user.id ?? "", guidePrefs, learnerWords(messages), seeReach(session.user));
   } else {
     [tutorContext, guidePrefs] = await Promise.all([
-      getTutorContext(role, session.user.id ?? ""),
+      getTutorContext(role, session.user.id ?? "", manageReach(session.user)),
       getGuidePrefs(session.user.id ?? ""),
     ]);
   }
@@ -581,7 +586,7 @@ export async function POST(req: Request) {
   let openLesson = "";
   if (viewingLessonId) {
     try {
-      const read = await runAssistantTool("get_lesson_content", JSON.stringify({ lesson_id: viewingLessonId }), { userId: Number(session.user.id), role });
+      const read = await runAssistantTool("get_lesson_content", JSON.stringify({ lesson_id: viewingLessonId }), { userId: Number(session.user.id), role, superAdmin: session.user.superAdmin === true, universityId: session.user.universityId ?? null });
       if (read.content.includes('"lesson_title"')) openLesson = read.content;
     } catch { /* the assistant can still look the lesson up itself */ }
   }
@@ -634,7 +639,9 @@ YOUR NAME — in this conversation you go by "${escapePromptData(shownName)}": t
   //    produce confirmation cards (see src/lib/assistant/assistant-tools.ts).
   const numericUserId = Number(session.user.id);
   const toolContext: ToolContext | null =
-    Number.isSafeInteger(numericUserId) && numericUserId > 0 ? { userId: numericUserId, role } : null;
+    Number.isSafeInteger(numericUserId) && numericUserId > 0
+      ? { userId: numericUserId, role, superAdmin: session.user.superAdmin === true, universityId: session.user.universityId ?? null }
+      : null;
   const tools = toolContext ? toolsForRole(role) : [];
 
   // Client disconnect aborts everything; each upstream round has its own timeout.
@@ -686,7 +693,7 @@ YOUR NAME — in this conversation you go by "${escapePromptData(shownName)}": t
             clientAbort.signal.addEventListener("abort", onClientAbort, { once: true });
             roundTimeout = setTimeout(() => { timedOut = true; roundAbort.abort("timeout"); }, UPSTREAM_TIMEOUT_MS);
 
-            const xaiRes = await fetch(`${BASE_URL}/chat/completions`, {
+            const xaiRes = await xaiFetch({ userId: session.user.id, feature: "assistant" }, `${BASE_URL}/chat/completions`, {
               method: "POST",
               signal: roundAbort.signal,
               headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },

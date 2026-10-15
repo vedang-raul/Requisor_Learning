@@ -1,4 +1,6 @@
+import { PartnerBadge } from "@/components/layout/partner-badge";
 import Link from "next/link";
+import { RequisorAI } from "@/components/ui/requisor-ai";
 
 export default function LoginPage() {
   return (
@@ -16,7 +18,7 @@ export default function LoginPage() {
               width="40"
               height="40"
             />
-            <span className="text-lg font-semibold">Alma 41 <span className="text-sm font-normal text-zinc-500">by Requisor.io</span></span>
+            <span className="text-lg font-semibold">Alma 41 <span className="text-sm font-normal text-zinc-500">by <RequisorAI className="font-semibold text-zinc-700" /></span></span>
           </Link>
           <h1 className="text-2xl font-bold sm:text-3xl">Choose your login</h1>
           <p className="mt-2 text-sm text-zinc-600 sm:text-base">
@@ -45,21 +47,7 @@ export default function LoginPage() {
           <p className="text-[11px] leading-relaxed text-zinc-500">
             Requisor © 2026. All rights reserved.
           </p>
-          <div className="mt-4 flex items-center justify-center gap-2.5 border-t border-zinc-200 pt-3">
-            <img
-              src="/msoe-logo.png"
-              alt="Milwaukee School of Engineering"
-              className="h-8 w-8 object-contain"
-              width="32"
-              height="32"
-            />
-            <span className="text-left text-[11px] leading-tight text-zinc-400">
-              In association with
-              <strong className="block font-medium text-zinc-500">
-                Milwaukee School of Engineering
-              </strong>
-            </span>
-          </div>
+          <PartnerBadge className="mt-4 justify-center border-t border-zinc-200 pt-3" />
         </div>
       </section>
     </main>

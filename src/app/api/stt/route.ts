@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 export const maxDuration = 30;
 
 import { getServerSession } from "next-auth/next";
+import { recordUnits } from "@/lib/ai/usage";
 import { authOptions } from "@/lib/auth/auth";
 import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
 import { audioUpload, cleanTranscript, STT_MAX_BYTES, sttConfigured, sttModel } from "@/lib/ai/stt";
@@ -61,5 +62,6 @@ export async function POST(req: Request) {
     return Response.json({ error: "Voice input is unavailable right now. You can type your message instead." }, { status: 502 });
   }
   const data = (await upstream.json().catch(() => null)) as { text?: unknown } | null;
+  recordUnits({ userId: session.user.id, feature: "voice_input" }, "elevenlabs", 1, "recordings");
   return Response.json({ text: cleanTranscript(data?.text) }, { headers: { "Cache-Control": "no-store" } });
 }

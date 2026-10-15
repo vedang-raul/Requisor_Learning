@@ -294,6 +294,20 @@ p.query(`
   );
   CREATE INDEX IF NOT EXISTS assistant_feedback_rating_idx ON assistant_feedback (rating, created_at DESC);
   CREATE INDEX IF NOT EXISTS assistant_feedback_user_idx ON assistant_feedback (user_id, mode, updated_at DESC);
+  -- Use of the paid AI services, per person: tokens for language models, units for voice and video.
+  CREATE TABLE IF NOT EXISTS ai_usage (
+    id BIGSERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    feature TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL DEFAULT '',
+    input_tokens INT NOT NULL DEFAULT 0,
+    output_tokens INT NOT NULL DEFAULT 0,
+    units INT NOT NULL DEFAULT 0,
+    unit TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS ai_usage_user_idx ON ai_usage (user_id, created_at DESC);
   CREATE TABLE IF NOT EXISTS ai_video_jobs (
     id SERIAL PRIMARY KEY,
     owner_user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -594,5 +608,62 @@ p.query(`
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
   );
   CREATE INDEX IF NOT EXISTS notifications_user_idx ON notifications (user_id, created_at DESC);
+
+  -- ── Universities ─────────────────────────────────────────────────────────
+  -- Super admin (Requisor team) > university admin > tutor > student.
+  -- Each university keeps its own people and courses. A course with no
+  -- university is a platform course that every learner can see.
+  CREATE TABLE IF NOT EXISTS universities (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    short_name TEXT NOT NULL DEFAULT '',
+    -- Signing up with one of these email domains joins the university at once.
+    email_domains TEXT[] NOT NULL DEFAULT '{}',
+    -- The logo is either a file shipped with the site or one uploaded by a super admin.
+    logo_path TEXT,
+    logo_data BYTEA,
+    logo_type TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS universities_name_key ON universities (lower(name));
+
+  ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS university_id INT REFERENCES universities(id) ON DELETE SET NULL,
+    -- 'active' once the person belongs to the university; 'pending' while its admin decides.
+    ADD COLUMN IF NOT EXISTS university_status VARCHAR(20),
+    -- 'tutor' when someone asked to teach at sign-up; cleared when an admin decides.
+    ADD COLUMN IF NOT EXISTS requested_role VARCHAR(20);
+  CREATE INDEX IF NOT EXISTS users_university_idx ON users (university_id, role);
+
+  ALTER TABLE courses ADD COLUMN IF NOT EXISTS university_id INT REFERENCES universities(id) ON DELETE SET NULL;
+  CREATE INDEX IF NOT EXISTS courses_university_idx ON courses (university_id);
+
+  -- Platform-wide switches set by super admins, such as which partner the public pages show.
+  CREATE TABLE IF NOT EXISTS site_settings (
+    key TEXT PRIMARY KEY,
+    value JSONB NOT NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
+
+  -- The first partner: MSOE, with its logo from the site's own files.
+  INSERT INTO universities (name, short_name, email_domains, logo_path)
+  SELECT 'Milwaukee School of Engineering', 'MSOE', ARRAY['msoe.edu'], '/msoe-logo.png'
+  WHERE NOT EXISTS (SELECT 1 FROM universities);
+  INSERT INTO site_settings (key, value)
+  SELECT 'public_partner', to_jsonb(id) FROM universities ORDER BY id LIMIT 1
+  ON CONFLICT (key) DO NOTHING;
+
+  -- People whose email matches a university's domain belong to it.
+  UPDATE users u SET university_id = un.id, university_status = 'active'
+    FROM universities un
+   WHERE u.university_id IS NULL AND split_part(lower(u.email), '@', 2) = ANY(un.email_domains);
+
+  -- Once only: a tutor's existing courses move into the tutor's university.
+  UPDATE courses c SET university_id = u.university_id
+    FROM users u
+   WHERE c.owner_user_id = u.id AND c.university_id IS NULL AND u.university_id IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM site_settings WHERE key = 'universities_v1');
+  INSERT INTO site_settings (key, value) VALUES ('universities_v1', 'true') ON CONFLICT (key) DO NOTHING;
 
 `).then(()=>{console.log('DB schema up to date');process.exit(0)}).catch(e=>{console.error(e.message);process.exit(1)});

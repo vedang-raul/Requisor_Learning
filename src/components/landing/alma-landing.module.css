@@ -72,6 +72,8 @@
 .wordmarkName { font-size: 25px; font-weight: 600; letter-spacing: -0.05em; line-height: 1; }
 .wordmarkDot { width: 8px; height: 8px; border-radius: 50%; background: conic-gradient(from 200deg, var(--accent), var(--brand-deep), var(--brand), var(--mint), var(--pulse), var(--apricot), var(--accent)); }
 .wordmarkBy { margin-left: 8px; font-size: 13px; font-weight: 500; letter-spacing: 0; color: var(--faint); }
+/* The "AI" in Requisor.AI, set apart so it reads first. */
+.wordmarkAi { font-weight: 800; letter-spacing: 0.04em; background: linear-gradient(90deg, var(--brand-deep), var(--accent)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .navLinks { display: flex; align-items: center; gap: 28px; font-size: 14px; }
 .navLink { color: var(--soft); text-decoration: none; transition: color 0.2s ease; }
 .navLink:hover { color: var(--ink); }

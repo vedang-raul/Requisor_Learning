@@ -26,20 +26,28 @@ describe("course route authorization and ownership isolation", () => {
     expect(mockGetCourses).not.toHaveBeenCalled();
   });
 
-  it("hides draft courses from the learner catalog", async () => {
-    session.mockResolvedValue({ user: { id: "8", role: "employee" } });
+  it("hides draft courses and other universities' courses from the learner catalog", async () => {
+    session.mockResolvedValue({ user: { id: "8", role: "employee", universityId: 4 } });
     mockGetCourses.mockResolvedValue([]);
     const response = await catalogGet();
     expect(response.status).toBe(200);
-    expect(mockGetCourses).toHaveBeenCalledWith("WHERE c.published = TRUE");
+    const [where, params] = mockGetCourses.mock.calls[0];
+    expect(where).toMatch(/^WHERE c\.published = TRUE AND /);
+    expect(where).toContain("c.university_id IS NULL OR c.university_id = $2::int");
+    expect(params).toEqual([false, 4]);
   });
 
-  it("lets admins load drafts for content management", async () => {
-    session.mockResolvedValue({ user: { id: "1", role: "admin" } });
+  it("lets a university admin load their own university's drafts, and a super admin every course", async () => {
+    session.mockResolvedValue({ user: { id: "1", role: "admin", superAdmin: false, universityId: 4 } });
     mockGetCourses.mockResolvedValue([]);
-    const response = await catalogGet();
-    expect(response.status).toBe(200);
-    expect(mockGetCourses).toHaveBeenCalledWith();
+    expect((await catalogGet()).status).toBe(200);
+    expect(mockGetCourses.mock.calls[0][0]).toContain("c.university_id = $4::int");
+    expect(mockGetCourses.mock.calls[0][1]).toEqual([false, 4, false, 4]);
+
+    mockGetCourses.mockClear();
+    session.mockResolvedValue({ user: { id: "2", role: "admin", superAdmin: true, universityId: null } });
+    expect((await catalogGet()).status).toBe(200);
+    expect(mockGetCourses.mock.calls[0][1]).toEqual([true, null, true, null]);
   });
 
   it("scopes tutor summary queries to their owner id and returns full course contract", async () => {
@@ -52,8 +60,10 @@ describe("course route authorization and ownership isolation", () => {
     }] });
     const response = await tutorGet();
     expect(response.status).toBe(200);
-    expect(mockGetCourses).toHaveBeenCalledWith("WHERE c.owner_user_id=$1", [7]);
-    expect(query.mock.calls[0][1]).toEqual([7]);
+    // A tutor reaches only their own courses: the university part is switched off for them.
+    expect(mockGetCourses.mock.calls[0][0]).toMatch(/^WHERE c\.owner_user_id=\$1 OR /);
+    expect(mockGetCourses.mock.calls[0][1]).toEqual([7, false, null]);
+    expect(query.mock.calls[0][1]).toEqual([7, false, null]);
     await expect(response.json()).resolves.toEqual({
       courses: [{ course, averageRating: 4.5, ratingCount: 2, ratingDistribution: { 1: 0, 2: 0, 3: 0, 4: 1, 5: 1 } }],
     });

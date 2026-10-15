@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 import { getServerSession } from "next-auth/next";
+import { recordUnits, xaiFetch } from "@/lib/ai/usage";
 import { authOptions } from "@/lib/auth/auth";
 import { db } from "@/lib/server/db";
 import { withAiConcurrency, SemaphoreFullError, AI_UPSTREAM_TIMEOUT_MS } from "@/lib/ai/ai-semaphore";
@@ -10,6 +11,7 @@ import {
   isProviderId, listPresenters, listVoices, presenterLook, readAiVideoBrief, SCRIPT_MIN_CHARS, VIDEO_BACKGROUNDS, VOICE_LANGUAGES,
   type VideoPresenter, type VideoVoice,
 } from "@/lib/video/ai-video";
+import { briefForReview, readVideoSafetyVerdict, screenVideoText, videoSafetyMessage, videoSafetyPrompt, type VideoSafetyVerdict } from "@/lib/video/video-safety";
 import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
 import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
 import { getConnection, refreshAccessToken, uploadVideo, videoDelivery, YouTubeError, youtubeConfigured } from "@/lib/video/youtube";
@@ -53,9 +55,11 @@ async function tutor(): Promise<{ userId: number } | Response> {
 
 // The presenter and voice lists are the same for everyone and change rarely.
 const CACHE_MS = 15 * 60_000;
+// The presenter list takes a couple of dozen requests to put together, so it is kept for longer.
+const PRESENTER_CACHE_MS = 6 * 60 * 60_000;
 let presenterCache: { at: number; presenters: VideoPresenter[] } | null = null;
 async function loadPresenters() {
-  if (presenterCache && Date.now() - presenterCache.at < CACHE_MS) return presenterCache.presenters;
+  if (presenterCache && Date.now() - presenterCache.at < PRESENTER_CACHE_MS) return presenterCache.presenters;
   const presenters = await listPresenters();
   presenterCache = { at: Date.now(), presenters };
   return presenters;
@@ -83,7 +87,57 @@ async function refresh(row: JobRow): Promise<JobRow> {
      WHERE id = $1 RETURNING *`,
     [row.id, now.status, now.videoUrl ?? null, now.thumbnailUrl ?? null, now.durationSec ?? null, now.error ?? null]
   );
+  if (row.status === "processing" && now.status === "ready") recordUnits({ userId: row.owner_user_id, feature: "video_render" }, "heygen", Math.ceil(now.durationSec ?? 0), "seconds");
   return rows[0] ?? row;
+}
+
+/**
+ * Checks a brief or script against the content rules (see src/lib/video/video-safety.ts).
+ * Returns null when it may go ahead, or the response refusing it. When the AI
+ * review can't give a verdict, `strict` decides: a render is refused (it is
+ * published and paid for), while writing a draft goes ahead, because the
+ * finished script is checked again before it is rendered.
+ */
+async function checkVideoContent(kind: "brief" | "script", text: string, userId: number, strict: boolean): Promise<Response | null> {
+  const refuse = (category: Parameters<typeof videoSafetyMessage>[0], how: string) => {
+    // Who and why, never the text itself.
+    console.warn(`[ai-video] ${kind} refused for user ${userId}: ${category} (${how})`);
+    return Response.json({ error: videoSafetyMessage(category), code: "content_policy", category }, { status: 422 });
+  };
+  const screened = screenVideoText(text);
+  if (screened) return refuse(screened, "screen");
+
+  const unchecked = () => strict
+    ? Response.json({ error: "The video's content couldn't be checked just now, so it wasn't made. Try again in a moment." }, { status: 503 })
+    : null;
+  const apiKey = process.env.XAI_API_KEY;
+  if (!apiKey) return unchecked();
+  let verdict: VideoSafetyVerdict | null = null;
+  try {
+    verdict = await withAiConcurrency(async () => {
+      const aborter = new AbortController();
+      const timeoutId = setTimeout(() => aborter.abort("upstream_timeout"), AI_UPSTREAM_TIMEOUT_MS);
+      try {
+        const res = await xaiFetch({ userId, feature: "video_check" }, `${BASE_URL}/chat/completions`, {
+          method: "POST", signal: aborter.signal,
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+          body: JSON.stringify({
+            model: MODEL, max_tokens: 600, temperature: 0, response_format: { type: "json_object" },
+            messages: [{ role: "user", content: videoSafetyPrompt(kind, text) }],
+          }),
+        });
+        if (!res.ok) throw new Error(`upstream ${res.status}`);
+        const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+        return readVideoSafetyVerdict(data.choices?.[0]?.message?.content);
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    });
+  } catch (error) {
+    console.error("[ai-video] content check failed", error instanceof Error ? error.message : "unknown");
+  }
+  if (!verdict) return unchecked();
+  return verdict.allowed ? null : refuse(verdict.category, "review");
 }
 
 const failure = (error: unknown, fallback: string): Response => {
@@ -156,12 +210,14 @@ export async function POST(req: Request) {
     if (!apiKey) return Response.json({ error: "AI writing isn't set up on this server." }, { status: 503 });
     const { limited, retryAfterMs } = scriptLimiter.check(String(who.userId));
     if (limited) return rateLimitResponse(retryAfterMs, { json: true });
+    const refused = await checkVideoContent("brief", briefForReview(brief), who.userId, false);
+    if (refused) return refused;
     try {
       const text = await withAiConcurrency(async () => {
         const aborter = new AbortController();
         const timeoutId = setTimeout(() => aborter.abort("upstream_timeout"), AI_UPSTREAM_TIMEOUT_MS);
         try {
-          const res = await fetch(`${BASE_URL}/chat/completions`, {
+          const res = await xaiFetch({ userId: who.userId, feature: "video_script" }, `${BASE_URL}/chat/completions`, {
             method: "POST", signal: aborter.signal,
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
             body: JSON.stringify({ model: MODEL, max_tokens: 1800, messages: [{ role: "user", content: aiVideoScriptPrompt(brief) }] }),
@@ -195,6 +251,9 @@ export async function POST(req: Request) {
     const title = (typeof body.title === "string" ? body.title.replace(/\s+/g, " ").trim().slice(0, 100) : "") || "Lesson video";
     const { limited, retryAfterMs } = renderLimiter.check(String(who.userId));
     if (limited) return rateLimitResponse(retryAfterMs, { json: true });
+    // The final words are checked, whoever wrote them, before anything is paid for or published.
+    const refused = await checkVideoContent("script", `Title: ${title}\n\n${script}`, who.userId, true);
+    if (refused) return refused;
     try {
       const { lookId, engine } = await presenterLook(body.presenterId);
       const providerId = await createPresenterVideo({ title, script, lookId, engine, voiceId, background });

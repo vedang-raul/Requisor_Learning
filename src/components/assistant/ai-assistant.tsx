@@ -864,32 +864,13 @@ export function AiAssistant() {
               </p>
             )}
             <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
-              {isTutorMode && (
-                <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
-                  <div className="flex items-center justify-between gap-2">
-                    <span><strong>Guided course builder:</strong> I’ll ask one question at a time.</span>
-                    {courseInterviewStep !== null && courseInterviewStep < COURSE_INTERVIEW_QUESTIONS.length && (
-                      <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 font-semibold">
-                        {courseInterviewStep + 1} / {COURSE_INTERVIEW_QUESTIONS.length}
-                      </span>
-                    )}
-                  </div>
-                  <p>After the final answer, I’ll create an unpublished draft for you to review. Nothing is saved automatically.</p>
-                  {isTutorMode && (
-                    <button type="button" onClick={startCourseInterview} disabled={draftLoading || streaming} className="focus-ring flex w-full items-center justify-center gap-1.5 rounded-lg bg-amber-900 px-3 py-2 font-semibold text-white disabled:opacity-60">
-                      <BookPlus className="h-3.5 w-3.5" />
-                      {courseInterviewStep === null ? "Start course interview" : "Restart course interview"}
-                    </button>
-                  )}
-                </div>
-              )}
               {draftError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{draftError}</div>}
               {messages.length === 0 && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }} className="space-y-4">
                   <p className="text-sm font-light text-zinc-600">
                     Hi {state.user?.name?.split(" ")[0] ?? "there"}.{" "}
                     {isTutorMode
-                      ? "Start the guided course interview and I’ll collect everything I need, one question at a time."
+                      ? "Ask me to create a course, add or edit a lesson, check submissions, or anything about your courses."
                       : "Ask which course fits your background, or what to learn next based on your progress."}
                   </p>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">

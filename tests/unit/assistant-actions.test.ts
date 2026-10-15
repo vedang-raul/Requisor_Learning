@@ -121,7 +121,8 @@ describe("assistant tools", () => {
     mockedGetCourses.mockResolvedValueOnce([]);
     const { data } = await outcome("propose_set_course_published", { course_slug: "someone-elses", published: false });
     expect(data.error).toMatch(/Course not found/);
-    expect(mockedGetCourses.mock.calls[0][1]).toEqual(["someone-elses", false, 7]);
+    // A tutor reaches only courses they own: the university part is switched off for them.
+    expect(mockedGetCourses.mock.calls[0][1]).toEqual(["someone-elses", 7, false, null]);
   });
 });
 

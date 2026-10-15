@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { manageReach } from "@/lib/server/course-scope";
 import { authOptions } from "@/lib/auth/auth";
 import { db } from "@/lib/server/db";
 import { ensureCourseCatalog } from "@/lib/courses/course-catalog";
@@ -55,7 +56,9 @@ export async function GET(req: NextRequest) {
 
   const userId = Number(session.user.id);
   if (!Number.isSafeInteger(userId) || userId < 1) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const ownerId = session.user.role === "admin" ? null : userId;
+  // A tutor's own courses; an admin's also every course of their university (all, for super admins).
+  const ownerId = userId;
+  const reach = manageReach(session.user);
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
   try {
@@ -64,9 +67,9 @@ export async function GET(req: NextRequest) {
       `SELECT c.slug, c.title, COUNT(l.id)::int AS lesson_count
        FROM courses c
        LEFT JOIN course_lessons l ON l.course_slug = c.slug
-       WHERE c.slug = $1 AND ($2::int IS NULL OR c.owner_user_id = $2)
+       WHERE c.slug = $1 AND (c.owner_user_id = $2 OR $3::boolean OR (c.university_id IS NOT NULL AND c.university_id = $4::int))
        GROUP BY c.slug, c.title`,
-      [courseSlug, ownerId],
+      [courseSlug, ownerId, reach.all, reach.universityId],
     );
     const course = courseResult.rows[0];
     if (!course) return NextResponse.json({ error: "Course not found." }, { status: 404 });
@@ -77,7 +80,7 @@ export async function GET(req: NextRequest) {
            SELECT c.slug, COUNT(l.id)::int AS lesson_count
            FROM courses c
            LEFT JOIN course_lessons l ON l.course_slug = c.slug
-           WHERE c.slug = $1 AND ($3::int IS NULL OR c.owner_user_id = $3)
+           WHERE c.slug = $1 AND (c.owner_user_id = $3 OR $4::boolean OR (c.university_id IS NOT NULL AND c.university_id = $5::int))
            GROUP BY c.slug
          ),
          activity AS (
@@ -133,13 +136,13 @@ export async function GET(req: NextRequest) {
            (SELECT COUNT(*) FROM learner_progress WHERE lesson_count > 0 AND completed_lessons >= lesson_count)::int AS completed_count,
            (SELECT AVG(CASE WHEN lesson_count > 0 THEN LEAST(100, completed_lessons * 100.0 / lesson_count) ELSE 0 END) FROM learner_progress)::float AS average_progress,
            (SELECT COUNT(*) FROM recent)::int AS recent_active_count`,
-        [courseSlug, since, ownerId],
+        [courseSlug, since, ownerId, reach.all, reach.universityId],
       ),
       db.query<LessonRow>(
         `WITH authorized AS (
            SELECT c.slug
            FROM courses c
-           WHERE c.slug = $1 AND ($3::int IS NULL OR c.owner_user_id = $3)
+           WHERE c.slug = $1 AND (c.owner_user_id = $3 OR $4::boolean OR (c.university_id IS NOT NULL AND c.university_id = $5::int))
          ),
          lesson_started AS (
            SELECT lv.lesson_id, lv.user_id
@@ -170,7 +173,7 @@ export async function GET(req: NextRequest) {
          LEFT JOIN lesson_completed lc ON lc.lesson_id = l.id
          GROUP BY l.id, l.title, l.position
          ORDER BY l.position, l.id`,
-        [courseSlug, since, ownerId],
+        [courseSlug, since, ownerId, reach.all, reach.universityId],
       ),
     ]);
 

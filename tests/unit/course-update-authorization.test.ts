@@ -34,7 +34,7 @@ describe("course update ownership and revision conflicts", () => {
   it("returns forbidden when the locked owner condition does not match", async () => {
     update.mockResolvedValue("not-found-or-forbidden");
     expect((await PUT(request, { params: Promise.resolve({ slug: "owned-course" }) })).status).toBe(403);
-    expect(update).toHaveBeenCalledWith(course, 9, false);
+    expect(update).toHaveBeenCalledWith(course, 9, expect.objectContaining({ role: "tutor" }));
   });
 
   it("returns conflict for a stale optimistic revision", async () => {
@@ -46,6 +46,6 @@ describe("course update ownership and revision conflicts", () => {
     remove.mockResolvedValue(true);
     const response = await DELETE(request, { params: Promise.resolve({ slug: "owned-course" }) });
     expect(response.status).toBe(204);
-    expect(remove).toHaveBeenCalledWith("owned-course", 9, false);
+    expect(remove).toHaveBeenCalledWith("owned-course", 9, expect.objectContaining({ role: "tutor" }));
   });
 });

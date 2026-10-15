@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
+import { newCourseUniversity } from "@/lib/server/course-scope";
 import { authOptions } from "@/lib/auth/auth";
 import { db } from "@/lib/server/db";
 import { replaceCourse, validateCourse, CourseConflictError } from "@/lib/courses/course-catalog";
@@ -45,7 +46,7 @@ export async function POST(req: Request) {
   if (!validated.ok) return Response.json({ error: `Invalid export file: ${validated.error}` }, { status: 400 });
 
   try {
-    await replaceCourse(validated.course as Course, userId, false, true);
+    await replaceCourse(validated.course as Course, userId, false, true, newCourseUniversity(session.user));
   } catch (error) {
     if (error instanceof CourseConflictError) {
       return Response.json({ error: "A course with that slug already exists — try importing again." }, { status: 409 });

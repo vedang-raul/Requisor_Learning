@@ -82,6 +82,9 @@ function RenderProgress({ job }: { job: Job }) {
   );
 }
 
+/** Presenters shown at a time. */
+const PRESENTER_PAGE = 24;
+
 function Label({ children, hint }: { children: string; hint?: string }) {
   return (
     <span className="mb-1.5 block">
@@ -192,10 +195,13 @@ export function AiVideoStudio({ lessonTitle, lessonDescription, lessonTakeaways,
       .finally(() => { if (!cancelled) setVoicesLoading(false); });
     return () => { cancelled = true; };
   }, [configured, language]);
-  const presenters = useMemo(() => {
+  // How many presenters are shown; "Show more" adds another page.
+  const [presenterLimit, setPresenterLimit] = useState(PRESENTER_PAGE);
+  const matchingPresenters = useMemo(() => {
     const q = presenterFilter.trim().toLowerCase();
-    return (setup?.presenters ?? []).filter((p) => !q || p.name.toLowerCase().includes(q) || p.gender === q).slice(0, 24);
+    return (setup?.presenters ?? []).filter((p) => !q || p.name.toLowerCase().includes(q) || p.gender === q);
   }, [setup, presenterFilter]);
+  const presenters = matchingPresenters.slice(0, presenterLimit);
 
   async function post(payload: Record<string, unknown>) {
     const res = await fetch("/api/tutor/ai-video/", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
@@ -291,6 +297,9 @@ export function AiVideoStudio({ lessonTitle, lessonDescription, lessonTakeaways,
       {/* 1 · The brief */}
       <section className="space-y-3">
         <h4 className="text-xs font-bold uppercase tracking-wide text-primary">1 · What the video should cover</h4>
+        <p className="text-xs text-zinc-600">
+          Every brief and script is checked before it is written or rendered. Videos with sexual content or nudity, terrorism or extremism, violence, weapons, drugs, self-harm, hate, or a presenter speaking as a real person are refused. Teaching about a sensitive subject factually is fine.
+        </p>
         <label className="block">
           <Label hint="The more specific, the better the script">What should this video teach?</Label>
           <Textarea value={topic} onChange={(e) => setTopic(e.target.value)} rows={3} maxLength={800} placeholder="e.g. How to tell when a task needs an AI agent and when a simple automation rule is enough" />
@@ -341,7 +350,7 @@ export function AiVideoStudio({ lessonTitle, lessonDescription, lessonTakeaways,
             <div>
               <div className="mb-2 flex items-center justify-between gap-3">
                 <Label>Presenter</Label>
-                <Input value={presenterFilter} onChange={(e) => setPresenterFilter(e.target.value)} placeholder="Search by name" aria-label="Search presenters" className="h-8 w-44 text-xs" />
+                <Input value={presenterFilter} onChange={(e) => { setPresenterFilter(e.target.value); setPresenterLimit(PRESENTER_PAGE); }} placeholder="Search by name" aria-label="Search presenters" className="h-8 w-44 text-xs" />
               </div>
               <div className="grid grid-cols-3 gap-2 sm:grid-cols-6" role="radiogroup" aria-label="Presenter">
                 {presenters.map((p) => (
@@ -362,6 +371,11 @@ export function AiVideoStudio({ lessonTitle, lessonDescription, lessonTakeaways,
                 ))}
               </div>
               {presenters.length === 0 && <p className="text-xs text-zinc-500">No presenter matches that search.</p>}
+              {matchingPresenters.length > presenters.length && (
+                <button type="button" onClick={() => setPresenterLimit((n) => n + PRESENTER_PAGE)} className="focus-ring mt-2 w-full rounded-lg border border-zinc-200 py-1.5 text-xs font-medium text-zinc-700 transition hover:bg-zinc-50">
+                  Show more presenters ({matchingPresenters.length - presenters.length} more)
+                </button>
+              )}
             </div>
           )}
           <div className="grid gap-3 sm:grid-cols-3">

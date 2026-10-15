@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 import { getServerSession } from "next-auth/next";
+import { xaiFetch } from "@/lib/ai/usage";
 import { authOptions } from "@/lib/auth/auth";
 import { withAiConcurrency, SemaphoreFullError, AI_UPSTREAM_TIMEOUT_MS } from "@/lib/ai/ai-semaphore";
 import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
@@ -81,7 +82,7 @@ export async function POST(req: Request) {
       const aborter = new AbortController();
       const timeoutId = setTimeout(() => aborter.abort("upstream_timeout"), AI_UPSTREAM_TIMEOUT_MS);
       try {
-        const res = await fetch(`${BASE_URL}/chat/completions`, {
+        const res = await xaiFetch({ userId: session.user.id, feature: "program_builder" }, `${BASE_URL}/chat/completions`, {
           method: "POST",
           signal: aborter.signal,
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },

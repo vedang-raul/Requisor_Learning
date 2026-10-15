@@ -1,5 +1,6 @@
 import { seedCourses } from "@/lib/courses/data";
 import { readAssignmentAi } from "@/lib/ai/assignment-ai";
+import { reachParams, seeSql, type Reach } from "../server/course-scope";
 import { db } from "@/lib/server/db";
 import { INSUFFICIENT_CONTENT_CODE } from "@/lib/ai/assignment-format";
 import type { Lesson } from "@/lib/types";
@@ -50,7 +51,11 @@ export function cleanLessonText(value: unknown, max: number): string {
  * learners get — so tutor drafts never reach the model. Tutor-written text is
  * returned flagged so prompts can fence it off as untrusted reference data.
  */
-export async function findLessonForAi(lessonId: string): Promise<AiLesson | null> {
+/**
+ * `see` limits the lesson to courses the person may see (platform courses and
+ * their own university's); the launch-time seed lessons are platform courses.
+ */
+export async function findLessonForAi(lessonId: string, see: Reach): Promise<AiLesson | null> {
   const seed = findTrustedLesson(lessonId);
   if (seed) {
     return {
@@ -65,8 +70,9 @@ export async function findLessonForAi(lessonId: string): Promise<AiLesson | null
   }>(
     `SELECT l.id, l.title, l.description, l.key_takeaways, l.assignment, l.assignment_ai
      FROM course_lessons l JOIN courses c ON c.slug = l.course_slug
-     WHERE l.id = $1 AND c.published = TRUE AND l.published = TRUE AND (l.publish_at IS NULL OR l.publish_at <= NOW())`,
-    [lessonId]
+     WHERE l.id = $1 AND c.published = TRUE AND l.published = TRUE AND (l.publish_at IS NULL OR l.publish_at <= NOW())
+       AND ${seeSql("c", 2, 3)}`,
+    [lessonId, ...reachParams(see)]
   );
   const row = rows[0];
   if (!row) return null;

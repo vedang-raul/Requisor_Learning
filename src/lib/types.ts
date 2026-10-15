@@ -64,6 +64,8 @@ export interface Course {
   baseAssessment?: string;
   /** Server-derived from owner_user_id — never write this, it's ignored on save. Null when unowned. */
   tutorName?: string | null;
+  /** The university the course belongs to; null for a platform course every learner can see. */
+  universityId?: number | null;
   /** Drafts are hidden from the general catalog. Undefined (e.g. static seed
    *  data never sent through the DB) is treated as published — only an
    *  explicit `false` hides a course. */

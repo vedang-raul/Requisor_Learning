@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
+import { manageReach, type Reach } from "@/lib/server/course-scope";
 import { authOptions } from "@/lib/auth/auth";
 import { db } from "@/lib/server/db";
 import { buildCanvasExport, type CanvasExportRubric } from "@/lib/courses/canvas-export";
@@ -23,7 +24,8 @@ export async function GET(req: Request) {
 
   const userId = Number(session.user.id);
   if (!Number.isSafeInteger(userId) || userId < 1) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  const isAdmin = session.user.role === "admin";
+  // Super admins reach every course; a university admin, their university's.
+  const adminReach = manageReach(session.user);
 
   const slug = new URL(req.url).searchParams.get("slug")?.trim();
   if (!slug || !SLUG_PATTERN.test(slug)) return Response.json({ error: "A valid course slug is required." }, { status: 400 });
@@ -33,8 +35,8 @@ export async function GET(req: Request) {
     tags: string[]; cover: string; added_at: string; base_assessment: string | null; published: boolean;
   }>(
     `SELECT title, tagline, category, level, tags, cover, added_at, base_assessment, published FROM courses
-     WHERE slug = $1 AND ($2::boolean OR owner_user_id = $3)`,
-    [slug, isAdmin, userId]
+     WHERE slug = $1 AND ($2::boolean OR (university_id IS NOT NULL AND university_id = $4::int) OR owner_user_id = $3)`,
+    [slug, adminReach.all, userId, adminReach.universityId]
   );
   const courseRow = courseRows[0];
   if (!courseRow) return Response.json({ error: "Course not found." }, { status: 404 });

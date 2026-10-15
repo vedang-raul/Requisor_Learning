@@ -7,6 +7,7 @@ import { LogOut, Menu, X, Library, ChevronDown, GraduationCap } from "lucide-rea
 import { useEffect, useState } from "react";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
+import { RequisorAI } from "@/components/ui/requisor-ai";
 import { navItems } from "@/components/layout/sidebar";
 import { getCategoryMeta } from "@/components/course/category-icon";
 
@@ -87,7 +88,7 @@ export function MobileNav() {
                 <img src="/requisor.png" alt="Requisor logo" className="h-9 w-9 shrink-0 rounded-lg object-contain" />
                 <div className="leading-tight">
                   <p className="text-sm font-bold text-zinc-900">Alma 41</p>
-                  <p className="text-gradient text-[11px] font-semibold">by Requisor.io</p>
+                  <p className="text-[11px] font-semibold text-zinc-500">by <RequisorAI className="text-zinc-700" /></p>
                 </div>
                 <div className="flex-1" />
                 <button onClick={() => setOpen(false)} aria-label="Close navigation menu" className="focus-ring rounded-lg p-1.5 text-zinc-500 hover:text-zinc-900">

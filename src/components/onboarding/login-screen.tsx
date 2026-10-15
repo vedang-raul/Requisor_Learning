@@ -1,10 +1,13 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Mail, ArrowRight, User, CheckCircle2, AlertCircle, Briefcase } from "lucide-react";
+import { PartnerBadge } from "@/components/layout/partner-badge";
+import { Mail, ArrowRight, User, CheckCircle2, AlertCircle, Briefcase, GraduationCap } from "lucide-react";
+import { universityForEmail, useUniversities } from "@/lib/branding-client";
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
+import { RequisorAI } from "@/components/ui/requisor-ai";
 import { Turnstile } from "@marsidev/react-turnstile";
 import type { TurnstileInstance } from "@marsidev/react-turnstile";
 import { useStore } from "@/lib/store";
@@ -53,6 +56,11 @@ export function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  // The university, from the list super admins keep; a matching email domain picks it automatically.
+  const universities = useUniversities();
+  const [universityId, setUniversityId] = useState("");
+  const emailUniversity = universityForEmail(universities, email);
+  useEffect(() => { if (emailUniversity) setUniversityId(String(emailUniversity.id)); }, [emailUniversity]);
   const [position, setPosition] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -232,7 +240,7 @@ export function LoginScreen() {
         const res = await fetch("/api/signup", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, email, password, position: position.trim(), turnstileToken: tok }),
+          body: JSON.stringify({ name, email, password, position: position.trim(), turnstileToken: tok, ...(universityId ? { universityId: Number(universityId) } : {}) }),
         });
         const data = await safeJson(res);
         if (!res.ok) {
@@ -336,7 +344,7 @@ export function LoginScreen() {
       >
         <div className="mb-6 text-center">
           <img src="/requisor.png" alt="Requisor logo" className="mx-auto mb-4 h-24 w-24 rounded-xl object-contain" />
-          <h1 className="text-2xl font-bold">Alma 41 <span className="text-base font-medium text-zinc-500">by Requisor.io</span></h1>
+          <h1 className="text-2xl font-bold">Alma 41 <span className="text-base font-medium text-zinc-500">by <RequisorAI className="font-semibold text-zinc-700" /></span></h1>
           <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -387,6 +395,28 @@ export function LoginScreen() {
                 </div>
                 <p id="jobTitleHint" className="text-[11px] text-zinc-500">{JOB_TITLE_HINT}</p>
               </div>
+              {universities && universities.length > 0 && (
+                <div className="space-y-1.5">
+                  <label htmlFor="university" className="text-xs font-medium text-zinc-700">University</label>
+                  <div className="relative">
+                    <GraduationCap className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                    <select
+                      id="university" value={universityId} onChange={(e) => setUniversityId(e.target.value)} aria-describedby="universityHint"
+                      className="focus-ring h-10 w-full appearance-none rounded-xl border border-border bg-white pl-10 pr-3 text-sm text-zinc-900"
+                    >
+                      <option value="">I&apos;m not with a university</option>
+                      {universities.map((u) => <option key={u.id} value={String(u.id)}>{u.name}</option>)}
+                    </select>
+                  </div>
+                  <p id="universityHint" className="text-[11px] text-zinc-500">
+                    {emailUniversity && String(emailUniversity.id) === universityId
+                      ? `Your ${emailUniversity.shortName} email adds you to ${emailUniversity.shortName} straight away.`
+                      : universityId
+                        ? "Your university's admin approves you before its courses open to you."
+                        : "You'll see the courses open to everyone."}
+                  </p>
+                </div>
+              )}
             </>
           )}
 
@@ -546,10 +576,7 @@ export function LoginScreen() {
            Requisor © 2026. All rights reserved.
         </p>
 
-        <div className="mt-4 flex items-center justify-center gap-2.5">
-          <img src="/msoe-logo.png" alt="Milwaukee School of Engineering" className="h-8 w-8 object-contain " />
-          <span className="text-[11px] text-zinc-400 leading-tight">In association with<br /><span className="font-medium text-zinc-500">Milwaukee School of Engineering</span></span>
-        </div>
+        <PartnerBadge className="mt-4 justify-center" />
       </motion.div>
     </div>
   );

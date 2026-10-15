@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import s from './alma-landing.module.css'
+import { usePartner } from '@/lib/branding-client'
 
-/* Alma 41 by Requisor.io — the public landing page.
+/* Alma 41 by Requisor.AI — the public landing page.
    Structure follows the "Alma landing page" design; colours are Requisor's
    (see alma-landing.module.css). Sign-in goes to /login/, and the Nova demo
    talks to the same anonymous endpoint the previous landing page used. */
@@ -177,7 +178,7 @@ function Wordmark({ by = false }) {
     <>
       <span className={s.wordmarkName}>alma 41</span>
       <span className={s.wordmarkDot} aria-hidden="true" />
-      {by && <span className={s.wordmarkBy}>by Requisor.io</span>}
+      {by && <span className={s.wordmarkBy}>by Requisor.<span className={s.wordmarkAi}>AI</span></span>}
     </>
   )
 }
@@ -341,6 +342,8 @@ function UnitState({ state }) {
 }
 
 export default function AlmaLanding() {
+  // The partner university super admins chose for the public pages.
+  const partner = usePartner()
   const [step, setStep] = useState(0)
   const [industryKey, setIndustryKey] = useState('finance')
   // The line art is thousands of points; draw it in the browser rather than shipping it in the page HTML.
@@ -358,7 +361,7 @@ export default function AlmaLanding() {
     <div id="top" className={s.root}>
       <header className={s.header}>
         <nav aria-label="Main" className={`${s.wrap} ${s.nav}`}>
-          <a href="#top" aria-label="Alma 41 by Requisor.io home" className={s.wordmark}><Wordmark by /></a>
+          <a href="#top" aria-label="Alma 41 by Requisor.AI home" className={s.wordmark}><Wordmark by /></a>
           <div className={s.navLinks}>
             {NAV.map(([href, label]) => <a key={href} className={s.navLink} href={href}>{label}</a>)}
           </div>
@@ -386,7 +389,7 @@ export default function AlmaLanding() {
           <div className={s.heroBelow}>
             <p className={s.lead}>Alma 41 is an AI-powered student learning LMS: structured courses, an AI study assistant, progress tracking and multilingual voice support, with tutors guiding your learning.</p>
             <p className={s.heroTaught}>Taught by <a href="#team">Naveen Kankate</a> — founder, AI engineering instructor at MSOE &amp; <span className={s.nowrap}>UW-Milwaukee</span></p>
-            <p className={s.heroAssoc}>In association with <span>Milwaukee School of Engineering</span></p>
+            {partner && <p className={s.heroAssoc}>In association with <span>{partner.name}</span></p>}
           </div>
         </section>
 
@@ -553,7 +556,7 @@ export default function AlmaLanding() {
               <h2 id="universities-title" className={s.h2}>Give every one of your students a personal tutor.</h2>
               <p className={s.lead}>Alma supports your faculty&apos;s courses with AI-assisted teaching tools. Tutors can create courses and edit courses and lessons through the assistant, reviewing and confirming changes before they are applied. Add lesson transcripts to give the learner&apos;s assistant relevant lesson context.</p>
               <div className={s.uniCta}><a className={`${s.btn} ${s.btnSolid}`} href="mailto:naveen@requisor.io?subject=Alma%20university%20pilot">Book a pilot call</a></div>
-              <p className={s.uniNote}>Built in association with the Milwaukee School of Engineering, where Alma&apos;s founder teaches AI engineering.</p>
+              {partner && <p className={s.uniNote}>{partner.shortName === 'MSOE' ? <>Built in association with the Milwaukee School of Engineering, where Alma&apos;s founder teaches AI engineering.</> : <>Built in association with {partner.name}.</>}</p>}
             </div>
             <dl className={s.defs}>
               {UNIVERSITY_POINTS.map(([term, text]) => <div key={term} className={s.def}><dt>{term}</dt><dd>{text}</dd></div>)}
@@ -618,7 +621,7 @@ export default function AlmaLanding() {
             <div className={s.footerBrand}>
               <span className={s.wordmark} style={{ marginRight: 0 }}><Wordmark by /></span>
               <p>The AI-Native University</p>
-              <p>In association with Milwaukee School of Engineering</p>
+              {partner && <p>In association with {partner.name}</p>}
             </div>
             <nav aria-label="Footer" className={s.footerNav}>
               <div className={s.footerCol}>

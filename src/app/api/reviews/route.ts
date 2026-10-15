@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { manageReach } from "@/lib/server/course-scope";
 import { authOptions } from "@/lib/auth/auth";
 import { db } from "@/lib/server/db";
 import { ensureCourseCatalog } from "@/lib/courses/course-catalog";
@@ -133,14 +134,12 @@ export async function DELETE(req: NextRequest) {
   const reviewId = req.nextUrl.searchParams.get("id");
   if (!reviewId) return NextResponse.json({ error: "Missing review id" }, { status: 400 });
 
-  const isAdmin =
-    session.user.email === process.env.ADMIN_EMAIL || session.user.email === "support@requisor.io";
-
+  // People delete their own reviews; super admins any, and a university admin those of their university's courses.
+  const reach = manageReach(session.user);
   const { rowCount } = await db.query(
-    isAdmin
-      ? `DELETE FROM course_reviews WHERE id = $1`
-      : `DELETE FROM course_reviews WHERE id = $1 AND user_id = $2`,
-    isAdmin ? [reviewId] : [reviewId, session.user.id]
+    `DELETE FROM course_reviews r
+      WHERE r.id = $1 AND (r.user_id = $2 OR ($3::boolean OR EXISTS (SELECT 1 FROM courses c WHERE c.slug = r.course_slug AND c.university_id IS NOT NULL AND c.university_id = $4::int)))`,
+    [reviewId, session.user.id, reach.all, reach.universityId]
   );
 
   if (!rowCount) {

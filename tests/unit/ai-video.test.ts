@@ -1,5 +1,5 @@
 import {
-  aiVideoBriefReady, aiVideoScriptPrompt, cleanVideoScript, createPresenterVideo, getPresenterVideo, heygenVideoRequest, listPresenters,
+  FEATURED_PRESENTERS, orderPresenters, aiVideoBriefReady, aiVideoScriptPrompt, cleanVideoScript, createPresenterVideo, getPresenterVideo, heygenVideoRequest, listPresenters,
   listVoices, presenterLook, readAiVideoBrief, readVideoStatus, scriptSeconds, AiVideoError, heygenConfigured,
 } from "@/lib/video/ai-video";
 
@@ -94,19 +94,40 @@ describe("AI lesson videos", () => {
     await expect(createPresenterVideo({ title: "T", script: "Hi.", lookId: "look_123456", engine: null, voiceId: null, background: "#FFFFFF" })).rejects.toBeInstanceOf(AiVideoError);
   });
 
-  it("lists the account's own presenters first, then stock ones, skipping broken entries", async () => {
+  it("lists the account's own presenters, then the featured ones, then HeyGen's studio ones, skipping broken and user-made entries", async () => {
     process.env.HEYGEN_API_KEY = "test-key";
-    global.fetch = jest.fn(async (url: string) => new Response(JSON.stringify(String(url).includes("ownership=private")
-      ? { data: [{ id: "group_mine_1", name: "Naveen", gender: "Man", preview_image_url: "https://files.heygen.ai/n.jpg" }] }
-      : { data: [
-          { id: "group_anna_1", name: "Anna", gender: "female", preview_image_url: "https://files.heygen.ai/a.jpg" },
-          { id: "group_carl_1", name: "Carl", gender: "male", preview_image_url: "http://insecure/c.jpg" },
-          { id: "x", name: "Bad id", gender: "male", preview_image_url: "https://files.heygen.ai/b.jpg" },
-        ] }), { status: 200 })) as unknown as typeof fetch;
-    expect(await listPresenters()).toEqual([
-      { id: "group_mine_1", name: "Naveen", gender: "male", image: "https://files.heygen.ai/n.jpg", own: true },
-      { id: "group_anna_1", name: "Anna", gender: "female", image: "https://files.heygen.ai/a.jpg", own: false },
+    const [kofi, khady] = FEATURED_PRESENTERS;
+    global.fetch = jest.fn(async (url: string) => {
+      const u = String(url);
+      if (u.includes(`/v3/avatars/${kofi.id}`)) return new Response(JSON.stringify({ data: { id: kofi.id, name: "Kofi", preview_image_url: "https://resource2.heygen.ai/public-avatars/Kofi/k.png" } }), { status: 200 });
+      if (u.includes("/v3/avatars/")) return new Response(JSON.stringify({ error: { code: "not_found", message: "Not found" } }), { status: 404 });
+      return new Response(JSON.stringify(u.includes("ownership=private")
+        ? { data: [{ id: "group_mine_1", name: "Naveen", gender: "Man", preview_image_url: "https://files.heygen.ai/n.jpg" }] }
+        : { data: [
+            { id: "group_anna_1", name: "Anna", gender: "female", preview_image_url: "https://resource2.heygen.ai/public-avatars/Anna/a.jpg" },
+            { id: kofi.id, name: "Kofi", gender: "male", preview_image_url: "https://resource2.heygen.ai/public-avatars/Kofi/k.png" },
+            { id: "group_bea_1", name: "Bea", gender: "Woman", preview_image_url: "https://files2.heygen.ai/avatar/v3/b/preview.webp" },
+            { id: "group_user_1", name: "Someone's photo", gender: "male", preview_image_url: "https://resource2.heygen.ai/community-avatar/image/u/original" },
+            { id: "group_carl_1", name: "Carl", gender: "male", preview_image_url: "http://insecure/c.jpg" },
+            { id: "x", name: "Bad id", gender: "male", preview_image_url: "https://files.heygen.ai/b.jpg" },
+          ] }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const listed = await listPresenters();
+    expect(listed).toEqual([
+      { id: "group_mine_1", name: "Naveen", gender: "male", image: "https://files.heygen.ai/n.jpg", own: true, featured: false },
+      { id: kofi.id, name: "Kofi", gender: "male", image: "https://resource2.heygen.ai/public-avatars/Kofi/k.png", own: false, featured: true },
+      { id: "group_anna_1", name: "Anna", gender: "female", image: "https://resource2.heygen.ai/public-avatars/Anna/a.jpg", own: false, featured: false },
+      { id: "group_bea_1", name: "Bea", gender: "female", image: "https://files2.heygen.ai/avatar/v3/b/preview.webp", own: false, featured: false },
     ]);
+    // A featured presenter HeyGen no longer has is left out rather than breaking the list.
+    expect(listed.some((p) => p.id === khady.id)).toBe(false);
+  });
+
+  it("keeps the featured presenters in their set order and lists each presenter once", () => {
+    const studio = (id: string) => ({ id, name: id, gender: "", image: `https://resource2.heygen.ai/public-avatars/${id}/a.jpg`, own: false, featured: false });
+    const ordered = orderPresenters([{ ...studio("mine_1"), own: true }], [studio("feat_1"), studio("feat_2")], [studio("other_1"), studio("feat_2")]);
+    expect(ordered.map((p) => p.id)).toEqual(["mine_1", "feat_1", "feat_2", "other_1"]);
+    expect(ordered.filter((p) => p.featured).map((p) => p.id)).toEqual(["feat_1", "feat_2"]);
   });
 
   it("lists voices for one language, the account's own first, each name once", async () => {

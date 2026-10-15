@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import { isValidAssignmentAi, readAssignmentAi } from "@/lib/ai/assignment-ai";
+import { manageReach, manageSql, reachParams, type ScopeUser } from "../server/course-scope";
 import { db } from "@/lib/server/db";
 import { seedCourses } from "@/lib/courses/data";
 import type { Course, Lesson, Resource } from "@/lib/types";
@@ -17,6 +18,7 @@ type CourseRow = {
   cover: string;
   added_at: string;
   owner_user_id: number | null;
+  university_id: number | null;
   base_assessment: string | null;
   revision: number;
   tutor_name: string | null;
@@ -148,7 +150,7 @@ export function ensureCourseCatalog(): Promise<void> {
 export async function getCourses(where = "", params: unknown[] = []): Promise<Course[]> {
   const { rows } = await db.query<CourseRow & LessonRow>(
     `SELECT c.slug, c.title, c.tagline, c.category, c.level, c.tags, c.cover, c.added_at,
-             c.base_assessment, c.owner_user_id, c.revision, c.published, c.syllabus, u.name AS tutor_name,
+             c.base_assessment, c.owner_user_id, c.revision, c.published, c.syllabus, c.university_id, u.name AS tutor_name,
             l.id, l.course_slug, l.title AS lesson_title, l.description AS lesson_description,
              l.youtube_id, l.duration_min, l.resources, l.key_takeaways, l.assignment,
              l.assignment_marks, l.assignment_due_date, l.assignment_ai,
@@ -163,7 +165,7 @@ export async function getCourses(where = "", params: unknown[] = []): Promise<Co
     if (!course) {
       course = { slug: row.slug, title: row.title, tagline: row.tagline, category: row.category,
         level: row.level, tags: row.tags, cover: row.cover, addedAt: new Date(row.added_at).toISOString().slice(0, 10), revision: row.revision,
-        tutorName: row.tutor_name ?? null, published: row.published, ...(row.syllabus ? { syllabus: row.syllabus } : {}),
+        tutorName: row.tutor_name ?? null, published: row.published, universityId: row.university_id ?? null, ...(row.syllabus ? { syllabus: row.syllabus } : {}),
         lessons: [], ...(row.base_assessment ? { baseAssessment: row.base_assessment } : {}) };
       courses.set(row.slug, course);
     }
@@ -285,15 +287,17 @@ export async function replaceCourse(
   course: Course,
   ownerId: number | null,
   preserveOwner = false,
-  createOnly = false
+  createOnly = false,
+  /** The university a new course belongs to; null makes it a platform course. Ignored when replacing one. */
+  universityId: number | null = null
 ) {
   const client = await db.connect();
   try {
     await client.query("BEGIN");
     await client.query(
       createOnly
-        ? `INSERT INTO courses (slug,title,tagline,category,level,tags,cover,added_at,base_assessment,owner_user_id,published)
-           VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11)`
+        ? `INSERT INTO courses (slug,title,tagline,category,level,tags,cover,added_at,base_assessment,owner_user_id,published,university_id)
+           VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12)`
         : `INSERT INTO courses (slug,title,tagline,category,level,tags,cover,added_at,base_assessment,owner_user_id,published)
        VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11)
        ON CONFLICT (slug) DO UPDATE SET title=EXCLUDED.title,tagline=EXCLUDED.tagline,category=EXCLUDED.category,
@@ -301,7 +305,7 @@ export async function replaceCourse(
        base_assessment=EXCLUDED.base_assessment,published=EXCLUDED.published,
        owner_user_id=CASE WHEN $12 THEN courses.owner_user_id ELSE EXCLUDED.owner_user_id END`,
       [course.slug, course.title, course.tagline, course.category, course.level, JSON.stringify(course.tags), course.cover,
-        course.addedAt, course.baseAssessment ?? null, ownerId, course.published ?? false, ...(!createOnly ? [preserveOwner] : [])]);
+        course.addedAt, course.baseAssessment ?? null, ownerId, course.published ?? false, createOnly ? universityId : preserveOwner]);
     if (ownerId !== null) await assertResourceFileOwnership(client, course, ownerId);
     await client.query("DELETE FROM course_lessons WHERE course_slug=$1", [course.slug]);
     for (let i = 0; i < course.lessons.length; i++) {
@@ -332,17 +336,18 @@ export async function replaceCourse(
 export type UpdateCourseResult = "updated" | "not-found-or-forbidden" | "stale";
 
 /** Owner authorization and replacement share one row lock/transaction. */
-export async function updateOwnedCourse(course: Course, userId: number, isAdmin: boolean): Promise<UpdateCourseResult> {
+export async function updateOwnedCourse(course: Course, userId: number, manager: ScopeUser): Promise<UpdateCourseResult> {
+  const reach = manageReach(manager);
   const client = await db.connect();
   try {
     await client.query("BEGIN");
     const lock = await client.query<{ revision: number }>(
-      "SELECT revision FROM courses WHERE slug=$1 AND ($2::boolean OR owner_user_id=$3) FOR UPDATE",
-      [course.slug, isAdmin, userId]
+      `SELECT revision FROM courses c WHERE slug=$1 AND (owner_user_id=$2 OR ${manageSql("c", 3, 4)}) FOR UPDATE`,
+      [course.slug, userId, ...reachParams(reach)]
     );
     if (!lock.rows[0]) { await client.query("ROLLBACK"); return "not-found-or-forbidden"; }
     if (lock.rows[0].revision !== course.revision) { await client.query("ROLLBACK"); return "stale"; }
-    await assertResourceFileOwnership(client, course, userId, isAdmin);
+    await assertResourceFileOwnership(client, course, userId, reach.all || reach.universityId !== null);
     const next = lock.rows[0].revision + 1;
     await client.query(
       // published uses COALESCE, not a bare value: an editor that doesn't
@@ -370,13 +375,13 @@ export async function updateOwnedCourse(course: Course, userId: number, isAdmin:
 }
 
 /** Deletes dependent reviews explicitly for legacy schemas before the course. */
-export async function deleteOwnedCourse(slug: string, userId: number, isAdmin: boolean): Promise<boolean> {
+export async function deleteOwnedCourse(slug: string, userId: number, manager: ScopeUser): Promise<boolean> {
   const client = await db.connect();
   try {
     await client.query("BEGIN");
     const locked = await client.query(
-      "SELECT slug FROM courses WHERE slug=$1 AND ($2::boolean OR owner_user_id=$3) FOR UPDATE",
-      [slug, isAdmin, userId]
+      `SELECT slug FROM courses c WHERE slug=$1 AND (owner_user_id=$2 OR ${manageSql("c", 3, 4)}) FOR UPDATE`,
+      [slug, userId, ...reachParams(manageReach(manager))]
     );
     if (!locked.rows[0]) { await client.query("ROLLBACK"); return false; }
     await client.query("DELETE FROM course_reviews WHERE course_slug=$1", [slug]);
@@ -396,6 +401,8 @@ export type LessonLocation = {
   courseSlug: string;
   courseTitle: string;
   ownerUserId: number | null;
+  /** The course's university; null for a platform course. */
+  universityId: number | null;
   /** Course and lesson are both published and any scheduled launch has passed, i.e. learners can see it. */
   visibleToLearners: boolean;
 };
@@ -415,9 +422,9 @@ export async function findLessonLocation(lessonId: unknown): Promise<LessonLocat
   if (typeof lessonId !== "string" || !lessonIdPattern.test(lessonId)) return null;
   const { rows } = await db.query<{
     id: string; title: string; requires_submission: boolean;
-    course_slug: string; course_title: string; owner_user_id: number | null; visible: boolean;
+    course_slug: string; course_title: string; owner_user_id: number | null; university_id: number | null; visible: boolean;
   }>(
-    `SELECT l.id, l.title, l.requires_submission, c.slug AS course_slug, c.title AS course_title, c.owner_user_id,
+    `SELECT l.id, l.title, l.requires_submission, c.slug AS course_slug, c.title AS course_title, c.owner_user_id, c.university_id,
             (c.published AND l.published AND (l.publish_at IS NULL OR l.publish_at <= NOW())) AS visible
      FROM course_lessons l JOIN courses c ON c.slug = l.course_slug
      WHERE l.id = $1`,
@@ -427,7 +434,7 @@ export async function findLessonLocation(lessonId: unknown): Promise<LessonLocat
   if (!row) return null;
   return {
     lessonId: row.id, lessonTitle: row.title, requiresSubmission: row.requires_submission,
-    courseSlug: row.course_slug, courseTitle: row.course_title, ownerUserId: row.owner_user_id,
+    courseSlug: row.course_slug, courseTitle: row.course_title, ownerUserId: row.owner_user_id, universityId: row.university_id ?? null,
     visibleToLearners: Boolean(row.visible),
   };
 }

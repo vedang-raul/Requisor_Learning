@@ -8,7 +8,10 @@ import {
   type ReactNode,
   useEffect,
 } from "react";
+import { universityForEmail, useUniversities } from "@/lib/branding-client";
+import { PartnerBadge } from "@/components/layout/partner-badge";
 import { signIn } from "next-auth/react";
+import { RequisorAI } from "@/components/ui/requisor-ai";
 import { Turnstile } from "@marsidev/react-turnstile";
 import type { TurnstileInstance } from "@marsidev/react-turnstile";
 
@@ -55,6 +58,12 @@ export default function TutorAuth() {
   }, []);
   const [googleError, setGoogleError] = useState("");
   const [formError, setFormError] = useState("");
+  // The university picked at sign-up; an email on a university's domain picks it automatically.
+  const universities = useUniversities();
+  const [signupUniversity, setSignupUniversity] = useState("");
+  const [signupEmail, setSignupEmail] = useState("");
+  const emailUniversity = universityForEmail(universities, signupEmail);
+  useEffect(() => { if (emailUniversity) setSignupUniversity(String(emailUniversity.id)); }, [emailUniversity]);
   const [successCopy, setSuccessCopy] = useState<SuccessCopy>({
     title: "Welcome back",
     body: "You're signed in to the tutor workspace.",
@@ -230,7 +239,8 @@ export default function TutorAuth() {
     }
     try {
       const subject = String(fields.get("subject") ?? "");
-      const university = String(fields.get("university") ?? "");
+      const universityId = String(fields.get("university") ?? "");
+      const university = universities?.find((u) => String(u.id) === universityId)?.name ?? "";
       const response = await fetch("/api/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -243,6 +253,7 @@ export default function TutorAuth() {
           employmentType: "faculty",
           position: [subject, university].filter(Boolean).join(" — "),
           accountType: "tutor",
+          ...(universityId ? { universityId: Number(universityId) } : {}),
           turnstileToken: token,
         }),
       });
@@ -316,7 +327,7 @@ export default function TutorAuth() {
           </div>
 
           <h1 className="text-center text-2xl font-bold [text-wrap:balance]">
-            Alma 41 <span className="text-base font-medium text-zinc-500">by Requisor.io</span>
+            Alma 41 <span className="text-base font-medium text-zinc-500">by <RequisorAI className="font-semibold text-zinc-700" /></span>
           </h1>
           <p className="mt-2 mb-6 min-h-[18px] text-center text-sm text-zinc-600">
             {activeCopy.subtitle}
@@ -432,11 +443,21 @@ export default function TutorAuth() {
               </Field>
 
               <Field label="Email">
-                <IconInput icon={<MailIcon />} name="email" type="email" placeholder="you@requisor.io" autoComplete="email" required />
+                <IconInput icon={<MailIcon />} name="email" type="email" placeholder="you@requisor.io" autoComplete="email" required onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setSignupEmail(e.target.value)} />
               </Field>
 
               <Field label="University">
-                <IconInput icon={<CapIcon />} name="university" type="text" placeholder="Your university" autoComplete="organization" required />
+                <IconInput as="select" icon={<CapIcon />} name="university" value={signupUniversity} onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setSignupUniversity(e.target.value)} aria-describedby="tutorUniversityHint">
+                  <option value="">My university isn&apos;t listed</option>
+                  {(universities ?? []).map((u) => <option key={u.id} value={String(u.id)}>{u.name}</option>)}
+                </IconInput>
+                <p id="tutorUniversityHint" className="text-[11px] text-zinc-500">
+                  {emailUniversity && String(emailUniversity.id) === signupUniversity
+                    ? `Your ${emailUniversity.shortName} email adds you to ${emailUniversity.shortName} right away. Its admin then approves you as a tutor.`
+                    : signupUniversity
+                      ? "Your university's admin approves you as a member and as a tutor."
+                      : "Not listed? Sign up anyway; we'll be in touch about adding your university."}
+                </p>
               </Field>
               <Field label="Password">
                 <IconInput
@@ -562,13 +583,7 @@ export default function TutorAuth() {
 
           <div className="mt-6 text-center">
             <p className="mb-2.5 text-[11px] leading-relaxed text-zinc-500">Requisor © 2026. All rights reserved.</p>
-            <div className="group flex items-center justify-center gap-2.5 border-t border-zinc-200 pt-3">
-             <img src="/msoe-logo.png" alt="Milwaukee School of Engineering" className="size-7 shrink-0 object-contain sm:size-8" width="32" height="32" />
-              <div className="text-left text-[11px] leading-tight text-zinc-400">
-                In association with
-                <b className="block font-medium text-zinc-500">Milwaukee School of Engineering</b>
-              </div>
-            </div>
+            <PartnerBadge className="justify-center border-t border-zinc-200 pt-3" logoClassName="size-7 sm:size-8" />
           </div>
         </div>
       </div>

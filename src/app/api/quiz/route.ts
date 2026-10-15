@@ -1,6 +1,8 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
+import { seeReach } from "@/lib/server/course-scope";
+import { xaiFetch } from "@/lib/ai/usage";
 import { authOptions } from "@/lib/auth/auth";
 import { db, type DbUser } from "@/lib/server/db";
 import {
@@ -113,7 +115,7 @@ export async function POST(req: Request) {
   const parsed = await readLessonId(req);
   if (parsed instanceof Response) return parsed;
 
-  const lesson = await findLessonForAi(parsed.lessonId);
+  const lesson = await findLessonForAi(parsed.lessonId, seeReach(session.user));
   if (!lesson) return Response.json({ error: "Lesson not found." }, { status: 404 });
   // Don't spend tokens on a placeholder lesson.
   if (!lessonHasEnoughContent(lesson)) return insufficientContentResponse("quiz");
@@ -165,7 +167,7 @@ export async function POST(req: Request) {
       const aborter = new AbortController();
       const timeoutId = setTimeout(() => aborter.abort("upstream_timeout"), AI_UPSTREAM_TIMEOUT_MS);
       try {
-        const response = await fetch(`${BASE_URL}/chat/completions`, {
+        const response = await xaiFetch({ userId: user.id, feature: "quiz" }, `${BASE_URL}/chat/completions`, {
           method: "POST",
           signal: aborter.signal,
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },

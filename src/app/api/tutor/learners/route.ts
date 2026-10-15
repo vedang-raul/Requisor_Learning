@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { manageReach } from "@/lib/server/course-scope";
 import { authOptions } from "@/lib/auth/auth";
 import { db } from "@/lib/server/db";
 import { ensureCourseCatalog } from "@/lib/courses/course-catalog";
@@ -57,7 +58,9 @@ export async function GET(req: NextRequest) {
 
   const userId = Number(session.user.id);
   if (!Number.isSafeInteger(userId) || userId < 1) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const ownerId = session.user.role === "admin" ? null : userId;
+  // A tutor's own courses; an admin's also every course of their university (all, for super admins).
+  const ownerId = userId;
+  const reach = manageReach(session.user);
   const isTutor = session.user.role === "tutor";
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
@@ -70,7 +73,7 @@ export async function GET(req: NextRequest) {
            SELECT c.slug, c.title, COUNT(l.id)::int AS lesson_count
            FROM courses c
            LEFT JOIN course_lessons l ON l.course_slug = c.slug
-           WHERE ($1::int IS NULL OR c.owner_user_id = $1)
+           WHERE (c.owner_user_id = $1 OR $3::boolean OR (c.university_id IS NOT NULL AND c.university_id = $4::int))
            GROUP BY c.slug, c.title
          ),
          activity AS (
@@ -122,11 +125,11 @@ export async function GET(req: NextRequest) {
          LEFT JOIN course_progress cp ON cp.course_slug = a.slug AND cp.user_id = act.user_id
          GROUP BY a.slug, a.title, a.lesson_count
          ORDER BY a.title`,
-        [ownerId, since]
+        [ownerId, since, reach.all, reach.universityId]
       ),
       db.query<{ total: string }>(
         `WITH authorized AS (
-           SELECT c.slug FROM courses c WHERE ($1::int IS NULL OR c.owner_user_id = $1)
+           SELECT c.slug FROM courses c WHERE (c.owner_user_id = $1 OR $2::boolean OR (c.university_id IS NOT NULL AND c.university_id = $3::int))
          )
          SELECT COUNT(DISTINCT user_id)::int AS total FROM (
            SELECT ce.user_id FROM course_enrollments ce
@@ -141,11 +144,11 @@ export async function GET(req: NextRequest) {
              JOIN authorized a ON a.slug = lc.course_slug
              JOIN users u ON u.id = lc.user_id AND u.role = 'employee'
          ) combined`,
-        [ownerId]
+        [ownerId, reach.all, reach.universityId]
       ),
       db.query<{ total: string }>(
         `WITH authorized AS (
-           SELECT c.slug FROM courses c WHERE ($1::int IS NULL OR c.owner_user_id = $1)
+           SELECT c.slug FROM courses c WHERE (c.owner_user_id = $1 OR $3::boolean OR (c.university_id IS NOT NULL AND c.university_id = $4::int))
          )
          SELECT COUNT(DISTINCT user_id)::int AS total FROM (
            SELECT lv.user_id FROM lesson_views lv
@@ -158,7 +161,7 @@ export async function GET(req: NextRequest) {
              JOIN users u ON u.id = lc.user_id AND u.role = 'employee'
              WHERE lc.completed_at >= $2
          ) combined`,
-        [ownerId, since]
+        [ownerId, since, reach.all, reach.universityId]
       ),
     ]);
 

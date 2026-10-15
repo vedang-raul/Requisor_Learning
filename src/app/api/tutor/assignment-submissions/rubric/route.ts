@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
+import { manageReach, type Reach } from "@/lib/server/course-scope";
 import { authOptions } from "@/lib/auth/auth";
 import { db } from "@/lib/server/db";
 
@@ -18,11 +19,11 @@ const MAX_CRITERIA = 20;
 const MAX_TITLE_LENGTH = 200;
 const MAX_DESCRIPTION_LENGTH = 1000;
 
-async function ownedLesson(lessonId: string, userId: number, isAdmin: boolean) {
+async function ownedLesson(lessonId: string, userId: number, adminReach: Reach) {
   const { rows } = await db.query<{ id: string }>(
     `SELECT l.id FROM course_lessons l JOIN courses c ON c.slug = l.course_slug
-     WHERE l.id = $1 AND ($2::boolean OR c.owner_user_id = $3)`,
-    [lessonId, isAdmin, userId]
+     WHERE l.id = $1 AND ($2::boolean OR (c.university_id IS NOT NULL AND c.university_id = $4::int) OR c.owner_user_id = $3)`,
+    [lessonId, adminReach.all, userId, adminReach.universityId]
   );
   return Boolean(rows[0]);
 }
@@ -34,13 +35,14 @@ export async function GET(req: Request) {
 
   const userId = Number(session.user.id);
   if (!Number.isSafeInteger(userId) || userId < 1) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  const isAdmin = session.user.role === "admin";
+  // Super admins reach every course; a university admin, their university's.
+  const adminReach = manageReach(session.user);
 
   const lessonId = new URL(req.url).searchParams.get("lessonId")?.trim();
   if (!lessonId || !LESSON_ID_PATTERN.test(lessonId)) {
     return Response.json({ error: "A valid lessonId is required." }, { status: 400 });
   }
-  if (!(await ownedLesson(lessonId, userId, isAdmin))) {
+  if (!(await ownedLesson(lessonId, userId, adminReach))) {
     return Response.json({ error: "Lesson not found." }, { status: 404 });
   }
 
@@ -61,7 +63,8 @@ export async function PUT(req: Request) {
 
   const userId = Number(session.user.id);
   if (!Number.isSafeInteger(userId) || userId < 1) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  const isAdmin = session.user.role === "admin";
+  // Super admins reach every course; a university admin, their university's.
+  const adminReach = manageReach(session.user);
 
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
   const lessonId = typeof body.lessonId === "string" ? body.lessonId.trim() : "";
@@ -90,7 +93,7 @@ export async function PUT(req: Request) {
     criteria.push({ id, title, description, maxPoints });
   }
 
-  if (!(await ownedLesson(lessonId, userId, isAdmin))) {
+  if (!(await ownedLesson(lessonId, userId, adminReach))) {
     return Response.json({ error: "Lesson not found." }, { status: 404 });
   }
 
