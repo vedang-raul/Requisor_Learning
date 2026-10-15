@@ -160,6 +160,8 @@ function CourseView() {
             <h1 className="text-3xl font-bold text-white drop-shadow md:text-4xl">{course.title}</h1>
             <p className="mt-2 text-sm text-white/85 md:text-base">{course.tagline}</p>
             <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-white/85">
+              {/* The tutor who wrote the course; courses made by the platform team have none. */}
+              {course.tutorName && <span className="inline-flex items-center gap-1.5 font-medium text-white"><GraduationCap className="h-4 w-4" aria-hidden="true" />Taught by {course.tutorName}</span>}
               <span className="inline-flex items-center gap-1.5"><Video className="h-4 w-4" />{course.lessons.length} lessons</span>
               <span className="inline-flex items-center gap-1.5"><Clock className="h-4 w-4" />{formatMinutes(totalMin)} total</span>
               <span className="inline-flex items-center gap-1.5"><CheckCircle2 className="h-4 w-4" />{completed}/{total} done</span>

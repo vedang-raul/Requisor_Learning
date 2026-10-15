@@ -99,7 +99,7 @@ export function CourseCard({ course }: { course: Course }) {
           {/* Two lines are always reserved, so cards in a row are the same height whatever the tagline length. */}
           <p className="mt-1 line-clamp-2 min-h-[2.4375rem] text-xs leading-relaxed text-zinc-600">{course.tagline}</p>
           <p className="mt-1 flex h-4 items-center gap-1 text-[11px] text-zinc-500">
-            {course.tutorName && <><GraduationCap className="h-3 w-3 shrink-0" /><span className="truncate">{course.tutorName}</span></>}
+            {course.tutorName && <><GraduationCap className="h-3 w-3 shrink-0" aria-hidden="true" /><span className="truncate">by {course.tutorName}</span></>}
           </p>
         </div>
 
