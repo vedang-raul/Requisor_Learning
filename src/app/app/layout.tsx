@@ -1,0 +1,118 @@
+"use client";
+
+import { Suspense, useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { Sidebar } from "@/components/layout/sidebar";
+import { Topbar } from "@/components/layout/topbar";
+import { useStore } from "@/lib/store";
+import { GradientBlobs } from "@/components/ui/gradient-blobs";
+import { AiAssistant } from "@/components/assistant/ai-assistant";
+import { OnboardingGuide } from "@/components/onboarding/onboarding-guide";
+import TutorSurvey from "@/components/onboarding/onboarding-survey-tutor";
+import { InactivityGuard } from "@/components/layout/inactivity-guard";
+import { REPLAY_TOUR_KEY } from "@/lib/utils";
+import { trackEvent } from "@/lib/analytics";
+
+interface MeData {
+  onboardingDone: boolean;
+  dateOfBirth: string | null;
+}
+
+function Shell({ children }: { children: React.ReactNode }) {
+  const { state, hydrated } = useStore();
+  const router = useRouter();
+  const pathname = usePathname();
+  const [meData, setMeData] = useState<MeData | null>(null);
+  const [meLoaded, setMeLoaded] = useState(false);
+  const [replayTour, setReplayTour] = useState(false);
+
+  useEffect(() => {
+    if (hydrated && !state.user) router.replace("/");
+  }, [hydrated, state.user, router]);
+
+  // Fetch onboarding status once the user is confirmed
+  useEffect(() => {
+    if (!hydrated || !state.user) return;
+    fetch("/api/me")
+      .then((r) => r.json())
+      .then((data: MeData) => { setMeData(data); setMeLoaded(true); })
+      .catch(() => setMeLoaded(true)); // fail open — don't block the app
+  }, [hydrated, state.user]);
+
+  // Re-check after sibling-route navigation because this layout remains mounted
+  // when Settings sets the session flag and sends the user to the dashboard.
+  useEffect(() => {
+    if (sessionStorage.getItem(REPLAY_TOUR_KEY) === "1") setReplayTour(true);
+  }, [pathname]);
+
+  // Plain white screen while session resolves or redirect is in-flight —
+  // no skeleton structure means no layout shift (shake) during transitions.
+  if (!hydrated || !state.user) {
+    return <div className="min-h-screen bg-white" />;
+  }
+
+  const user = state.user;
+  const showSurvey = meLoaded && meData !== null && (!meData.onboardingDone || replayTour);
+  const isTutor = user.role === "tutor";
+
+  function dismissTour() {
+    sessionStorage.removeItem(REPLAY_TOUR_KEY);
+    setReplayTour(false);
+  }
+
+  async function completeTutorSurvey(answers: {
+    expertise: string;
+    qualification: string;
+    experience: string;
+    purpose: string;
+  }) {
+    const response = await fetch("/api/profile", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: user.name,
+        employmentType: answers.experience,
+        position: answers.expertise,
+        qualification: answers.qualification,
+        learningGoal: answers.purpose,
+        onboardingDone: true,
+      }),
+    });
+    if (!response.ok) throw new Error("Unable to save tutor profile.");
+    trackEvent("onboarding_completed", { role: "tutor" });
+    setMeData((data) => data ? { ...data, onboardingDone: true } : data);
+    dismissTour();
+  }
+
+  return (
+    <div className="relative flex min-h-screen animate-in fade-in duration-200">
+      <GradientBlobs />
+      <Sidebar />
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        <Topbar />
+        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 has-[[data-wide-page]]:max-w-none md:px-8 has-[[data-wide-page]]:md:px-5">{children}</main>
+      </div>
+      <InactivityGuard />
+      <AiAssistant />
+      {showSurvey && (
+        isTutor
+          ? <TutorSurvey onSubmit={completeTutorSurvey} />
+          : <OnboardingGuide
+              hasDob={!!meData?.dateOfBirth}
+              onComplete={() => {
+                setMeData((data) => data ? { ...data, onboardingDone: true } : data);
+                dismissTour();
+              }}
+            />
+      )}
+    </div>
+  );
+}
+
+export default function AppLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense>
+      <Shell children={children} />
+    </Suspense>
+  );
+}

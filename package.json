@@ -1,0 +1,73 @@
+{
+  "name": "requisor-learning",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Requisor Learning — internal employee learning platform",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "jest --runInBand",
+    "test:e2e": "bash scripts/run-e2e.sh",
+    "prebuild": "rm -rf .next",
+    "db:migrate": "node scripts/migrate.js",
+    "db:seed-demo": "node scripts/seed-msoe-demo.js"
+  },
+  "engines": {
+    "node": ">=20.9"
+  },
+  "dependencies": {
+    "@codemirror/lang-python": "^6.2.1",
+    "@marsidev/react-turnstile": "^1.6.0",
+    "@replit/connectors-sdk": "^0.4.1",
+    "@uiw/react-codemirror": "^4.25.12",
+    "bcryptjs": "^3.0.3",
+    "clsx": "^2.1.1",
+    "docx-preview": "^0.4.1",
+    "framer-motion": "^11.11.0",
+    "lucide-react": "^0.453.0",
+    "next": "^16.3.0",
+    "next-auth": "^4.24.15",
+    "pdfjs-dist": "^6.3.289",
+    "pg": "^8.22.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwind-merge": "^2.5.4"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^20.16.0",
+    "@types/pg": "^8.20.0",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.1",
+    "autoprefixer": "^10.4.20",
+    "jest": "^30.4.2",
+    "jest-environment-node": "^30.4.1",
+    "postcss": "^8.5.25",
+    "tailwindcss": "^3.4.13",
+    "ts-jest": "^29.4.12",
+    "typescript": "^5.6.3"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "transform": {
+      "^.+\\.(ts|tsx)$": [
+        "ts-jest",
+        {
+          "tsconfig": {
+            "jsx": "react"
+          }
+        }
+      ]
+    },
+    "moduleNameMapper": {
+      "^@/(.*)$": "<rootDir>/src/$1"
+    },
+    "testMatch": [
+      "<rootDir>/tests/unit/**/*.test.ts"
+    ]
+  }
+}

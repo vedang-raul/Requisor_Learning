@@ -1,0 +1,491 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap");
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --heading-main: #23AE97;
+}
+
+html {
+  scroll-behavior: smooth;
+  background: #f3f4f6;
+}
+
+h1,h2,h3,h4 { color: var(--heading-main); }
+
+body {
+  @apply bg-background text-zinc-900 antialiased;
+  background-color: #f3f4f6; /* light gray */
+  color: #111827;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-zinc-300;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-zinc-400;
+}
+
+@layer components {
+  /* Plain light surfaces (kept class names from the old theme) */
+  .glass {
+    @apply border border-zinc-200 bg-white;
+  }
+  .glass-card {
+    @apply rounded-2xl border border-zinc-200 bg-card shadow-soft;
+  }
+  .gradient-border {
+    @apply rounded-2xl border border-zinc-200 bg-white;
+  }
+  .text-gradient {
+    color: var(--heading-main);
+  }
+  .bg-mesh {
+    background-image: none;
+  }
+  .skeleton {
+    @apply relative overflow-hidden rounded-lg bg-zinc-200;
+  }
+  .skeleton::after {
+    content: "";
+    @apply absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/60 to-transparent;
+  }
+}
+
+@layer utilities {
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+  }
+}
+
+/* ── Orb trigger button ──────────────────────────────────────────────── */
+.container-vao {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.orb {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  padding: 0;
+  transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  cursor: pointer;
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 1))
+    drop-shadow(0 0 12px rgba(255, 255, 255, 1))
+    drop-shadow(0 0 12px rgba(92, 200, 184, 0.5))
+    drop-shadow(0 0 5px rgba(35, 174, 151, 0.3));
+}
+
+.orb:hover {
+  transform: scale(1.15);
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 1))
+    drop-shadow(0 0 8px rgba(255, 255, 255, 1))
+    drop-shadow(0 0 12px rgba(255, 255, 255, 1))
+    drop-shadow(0 0 10px rgba(92, 200, 184, 0.6))
+    drop-shadow(0 6px 26px rgba(35, 174, 151, 0.4));
+}
+
+.orb:hover .icons .svg {
+  transform: scale(1.1);
+  filter: drop-shadow(0 0 4px rgba(35, 174, 151, 0.8));
+  opacity: 1;
+}
+
+.orb:active {
+  transform: scale(0.95);
+}
+
+.icons {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #23AE97;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.3s ease-in-out;
+  z-index: 2;
+}
+
+.icons .svg {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  opacity: 0.85;
+  transition: all 0.3s ease-in-out;
+}
+
+.ball {
+  display: flex;
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+  border-radius: 50px;
+  background-color: #5cc8b8;
+  filter: url(#gooey);
+  animation: circle2 4.2s ease-in-out infinite;
+}
+
+@keyframes circle2 {
+  0%   { transform: scale(1); }
+  15%  { transform: scale(1.05); }
+  30%  { transform: scale(0.98); }
+  45%  { transform: scale(0.95); }
+  60%  { transform: scale(0.98); }
+  85%  { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+
+.container-lines {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100px;
+  height: 100px;
+  background-image: radial-gradient(
+    ellipse at center,
+    rgba(255, 255, 255, 0.9) 15%,
+    #23AE97 50%
+  );
+  clip-path: polygon(
+    50% 25%, 65% 30%, 75% 42%, 75% 58%, 65% 70%,
+    50% 75%, 35% 70%, 26% 58%, 25% 42%, 35% 30%
+  );
+  animation: animation-ball 15s both ease infinite;
+  pointer-events: none;
+}
+
+@keyframes animation-ball {
+  2% {
+    clip-path: polygon(
+      50% 25%, 50% 0, 75% 42%, 75% 58%, 65% 70%,
+      50% 75%, 35% 70%, 26% 58%, 25% 42%, 50% 0
+    );
+  }
+  4% {
+    clip-path: polygon(
+      50% 25%, 70% 0, 75% 42%, 85% 66%, 65% 100%,
+      50% 75%, 35% 100%, 15% 65%, 25% 42%, 30% 0
+    );
+  }
+  6% {
+    clip-path: polygon(
+      50% 25%, 50% 15%, 75% 42%, 75% 58%, 65% 70%,
+      50% 75%, 35% 70%, 26% 58%, 25% 42%, 50% 15%
+    );
+  }
+  7%, 59% {
+    clip-path: polygon(
+      50% 25%, 100% 12%, 75% 42%, 85% 66%, 65% 70%,
+      50% 75%, 35% 70%, 15% 65%, 25% 42%, 0 12%
+    );
+  }
+  9%, 57% {
+    clip-path: polygon(
+      50% 25%, 50% 0, 75% 42%, 75% 58%, 65% 70%,
+      50% 75%, 35% 70%, 26% 58%, 25% 42%, 50% 0
+    );
+  }
+  12%, 55%, 61% {
+    clip-path: polygon(
+      50% 25%, 65% 30%, 75% 42%, 75% 58%, 65% 70%,
+      50% 75%, 35% 70%, 26% 58%, 25% 42%, 35% 30%
+    );
+  }
+}
+
+.container-rings {
+  aspect-ratio: 1;
+  border-radius: 50%;
+  position: absolute;
+  inset: 0;
+  perspective: 11rem;
+}
+
+.container-rings::before,
+.container-rings::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 6px solid transparent;
+  mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+  background: linear-gradient(white, #5cc8b8, #23AE97, #a8e6de, #f0fbf9) border-box;
+  mask-composite: exclude;
+}
+
+.container-rings::before {
+  animation: ring180 10s linear infinite;
+}
+
+.container-rings::after {
+  animation: ring90 10s linear infinite;
+}
+
+@keyframes ring180 {
+  0%   { transform: rotateY(180deg) rotateX(180deg) rotateZ(180deg); }
+  50%  { transform: rotateY(360deg) rotateX(360deg) rotateZ(360deg) scale(1.1); }
+  100% { transform: rotateY(540deg) rotateX(540deg) rotateZ(540deg); }
+}
+
+@keyframes ring90 {
+  0%   { transform: rotateY(90deg) rotateX(90deg) rotateZ(90deg); }
+  50%  { transform: rotateY(270deg) rotateX(270deg) rotateZ(270deg) scale(1.1); }
+  100% { transform: rotateY(450deg) rotateX(450deg) rotateZ(450deg); }
+}
+
+/* ── Listening state modifier ─────────────────────────────────────────── */
+.orb-listening {
+  transform: scale(1.05);
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 1))
+    drop-shadow(0 0 16px rgba(255, 255, 255, 1))
+    drop-shadow(0 0 20px rgba(92, 200, 184, 0.85))
+    drop-shadow(0 0 12px rgba(35, 174, 151, 0.65));
+}
+
+.orb-listening:hover {
+  transform: scale(1.15);
+}
+
+/* ── Input-row orb — scaled down to fit the composer row ─────────────── */
+.container-vao-input {
+  position: relative;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+}
+
+.orb-input {
+  width: 36px;
+  height: 36px;
+}
+
+.orb-input .ball {
+  width: 36px;
+  height: 36px;
+  filter: url(#gooey-mic);
+}
+
+.orb-input .container-lines {
+  width: 56px;
+  height: 56px;
+}
+
+.orb-input .icons .svg {
+  width: 16px;
+  height: 16px;
+}
+@layer properties {
+  @property --elh {
+    syntax: '<number>';
+    inherits: true;
+    initial-value: 1;
+  }
+  @property --erx {
+    syntax: '<percentage>';
+    inherits: true;
+    initial-value: 0%;
+  }
+  @property --fx {
+    syntax: '<percentage>';
+    inherits: true;
+    initial-value: 0%;
+  }
+  @property --ealw {
+    syntax: '<number>';
+    inherits: true;
+    initial-value: 1;
+  }
+  @property --earw {
+    syntax: '<number>';
+    inherits: true;
+    initial-value: 1;
+  }
+  @property --erh {
+    syntax: '<number>';
+    inherits: true;
+    initial-value: 1;
+  }
+  @property --mh {
+    syntax: '<number>';
+    inherits: true;
+    initial-value: 1;
+  }
+  @property --mw {
+    syntax: '<number>';
+    inherits: true;
+    initial-value: 1;
+  }
+}
+
+.ai-bot {
+  --c: #1a9b86;
+  --c2: #0b8077;
+  --c3: #0f3e3a;
+  --surface: #cceee8;
+  opacity: 1;
+  scale: 1.4;
+  width: 34px;
+  aspect-ratio: 1;
+  position: relative;
+  display: grid;
+  place-items: center;
+  animation:
+    ai-bot-blink 2.4s ease infinite,
+    ai-bot-move-head 4.2s linear(0 0%, 0 2.27%, 0.02 4.53%, 0.04 6.8%, 0.06 9.07%, 0.1 11.33%, 0.14 13.6%, 0.25 18.15%, 0.39 22.7%, 0.56 27.25%, 0.77 31.8%, 1 36.35%, 0.89 40.9%, 0.85 43.18%, 0.81 45.45%, 0.79 47.72%, 0.77 50%, 0.75 52.27%, 0.75 54.55%, 0.75 56.82%, 0.77 59.1%, 0.79 61.38%, 0.81 63.65%, 0.85 65.93%, 0.89 68.2%, 1 72.7%, 0.97 74.98%, 0.95 77.25%, 0.94 79.53%, 0.94 81.8%, 0.94 84.08%, 0.95 86.35%, 0.97 88.63%, 1 90.9%, 0.99 93.18%, 0.98 95.45%, 0.99 97.73%, 1 100%) infinite,
+    ai-bot-mouth 1.2s ease-in infinite;
+}
+.ai-bot .head {
+  background: linear-gradient(var(--c) 80%, color-mix(in srgb, var(--c), black 30%), var(--c));
+  border-radius: 0.375rem;
+  position: absolute;
+  width: 28px;
+  height: 20px;
+  filter: drop-shadow(0 0 3px rgba(0,0,0,0.18));
+}
+.ai-bot .head:before,
+.ai-bot .head:after {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: 6px;
+  width: 2px;
+  height: 8px;
+  background: var(--c, 1);
+  border-radius: 2px 0 0 2px;
+  scale: var(--ealw, 1) 1;
+}
+.ai-bot .head:after {
+  right: -4px;
+  left: unset;
+  border-radius: 0 2px 2px 0;
+  scale: var(--earw, 1) 1;
+}
+.ai-bot .face {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: absolute;
+  inset: 0 3px;
+  background: var(--surface);
+  translate: var(--fx) 0;
+  border-radius: 4px;
+  padding: 4px 4px 2px 4px;
+  gap: 3px;
+}
+.ai-bot .face:before {
+  content: '';
+  background: var(--c);
+  position: absolute;
+  height: 1px;
+  width: 10px;
+  top: -2px;
+  border-radius: 2px 2px 0 0;
+  mask: radial-gradient(circle at 50% 100%, transparent 45%, black 45%);
+}
+.ai-bot .eyes {
+  display: flex;
+  height: 8px;
+  gap: 6px;
+}
+.ai-bot .eyes:before,
+.ai-bot .eyes:after {
+  content: '';
+  width: 5px;
+  height: 8px;
+  scale: 1 var(--elh);
+  filter: drop-shadow(0 0 2px var(--c2));
+  background:
+    repeating-linear-gradient(to bottom, var(--c), var(--c) 0.25px, transparent 0.25px, transparent 0.6px),
+    linear-gradient(to bottom, var(--c3), transparent 60%),
+    var(--c2);
+  border-radius: 1px;
+  translate: var(--erx) 0;
+}
+.ai-bot .eyes:after {
+  scale: 1 var(--erh);
+  translate: var(--erx) 0;
+}
+.ai-bot .mouth {
+  width: 10px;
+  height: 2px;
+  background: var(--c2);
+  border-radius: 0 0 1px 1px;
+  filter: drop-shadow(0 0 2px var(--c2));
+  scale: var(--mw, 1) var(--mh, 1);
+}
+
+@layer animations {
+  @keyframes ai-bot-blink {
+    from, 10%, to {
+      --elh: 1;
+      --erh: 1;
+    }
+    2% { --elh: 0.2; }
+    8% { --erh: 0.1; }
+  }
+  @keyframes ai-bot-mouth {
+    from, 30%, 70%, to {
+      --mh: 1;
+      --mw: 1;
+    }
+    20% { --mh: 0.5; }
+    60% { --mw: 0.7; }
+  }
+  @keyframes ai-bot-move-head {
+    from, 20%, 40%, to {
+      --erx: 0%;
+      --fx: 0%;
+      --ealw: 1;
+      --earw: 1;
+    }
+    10% {
+      --erx: 20%;
+      --fx: 10%;
+      --ealw: 1.5;
+      --earw: 0.5;
+    }
+    30% {
+      --erx: -20%;
+      --fx: -10%;
+      --ealw: 0.5;
+      --earw: 1.5;
+    }
+  }
+}
+
+/* Program Builder: printing the proposal prints only the proposal. It is copied
+   into .program-print-root (a direct child of <body>) while the proposal is open. */
+.program-print-root { display: none; }
+@media print {
+  body.print-program-proposal > *:not(.program-print-root) { display: none !important; }
+  body.print-program-proposal { background: #fff !important; }
+  body.print-program-proposal > .program-print-root { display: block !important; }
+}

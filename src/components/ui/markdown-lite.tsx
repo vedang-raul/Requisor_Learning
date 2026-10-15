@@ -1,0 +1,200 @@
+"use client";
+
+import Link from "next/link";
+import { ChevronRight, PlayCircle } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+/** Resolves a {{lesson|Course Title|Lesson Title}} tag to a real link, or null if no match. */
+export type LessonResolver = (courseTitle: string, lessonTitle: string) => string | null;
+
+const INLINE_PATTERN = /(\*\*[^*]+\*\*|\*[^*]+\*|\{\{lesson\|[^|}]+\|[^}]+\}\}|\{\{course\|[^|}]+\|[^}]+\}\})/g;
+
+function formatInline(text: string, keyPrefix: string, resolveLesson?: LessonResolver): React.ReactNode[] {
+  return text
+    .split(INLINE_PATTERN)
+    .filter((seg) => seg.length > 0)
+    .map((seg, i) => {
+      const key = `${keyPrefix}-${i}`;
+
+      // {{course|slug|Course Title}} — link to the course overview page
+      if (seg.startsWith("{{course|") && seg.endsWith("}}")) {
+        const [slug, courseTitle] = seg.slice(9, -2).split("|");
+        const cleanSlug = slug?.trim() ?? "";
+        const cleanTitle = courseTitle?.trim() ?? cleanSlug;
+        if (cleanSlug) {
+          return (
+            <Link
+              key={key}
+              href={`/app/course/?slug=${cleanSlug}`}
+              title={cleanTitle}
+              className="my-1.5 flex max-w-full items-center gap-2 rounded-xl border border-primary/20 bg-primary/[0.06] px-2.5 py-2 text-[13px] font-medium text-zinc-800 shadow-soft transition hover:border-primary/40 hover:bg-primary/10"
+            >
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                <PlayCircle className="h-3.5 w-3.5" />
+              </span>
+              <span className="min-w-0 flex-1 truncate">{cleanTitle}</span>
+              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
+            </Link>
+          );
+        }
+        return <span key={key} className="font-semibold">{cleanTitle}</span>;
+      }
+
+      // {{lesson|Course Title|Lesson Title}} — link to a specific lesson
+      if (seg.startsWith("{{lesson|") && seg.endsWith("}}")) {
+        const [courseTitle, lessonTitle] = seg.slice(9, -2).split("|");
+        const href = resolveLesson?.(courseTitle?.trim() ?? "", lessonTitle?.trim() ?? "");
+        if (href) {
+          const title = lessonTitle?.trim() ?? "";
+          return (
+            <Link
+              key={key}
+              href={href}
+              title={title}
+              className="my-1.5 flex max-w-full items-center gap-2 rounded-xl border border-primary/20 bg-primary/[0.06] px-2.5 py-2 text-[13px] font-medium text-zinc-800 shadow-soft transition hover:border-primary/40 hover:bg-primary/10"
+            >
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                <PlayCircle className="h-3.5 w-3.5" />
+              </span>
+              <span className="min-w-0 flex-1 truncate">{title}</span>
+              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
+            </Link>
+          );
+        }
+        return <span key={key} className="font-semibold">{lessonTitle?.trim() ?? seg}</span>;
+      }
+      if (seg.startsWith("**") && seg.endsWith("**")) {
+        return (
+          <strong key={key} className="font-semibold">
+            {seg.slice(2, -2)}
+          </strong>
+        );
+      }
+      if (seg.startsWith("*") && seg.endsWith("*")) {
+        return <em key={key}>{seg.slice(1, -1)}</em>;
+      }
+      return <span key={key}>{seg}</span>;
+    });
+}
+
+type Block =
+  | { type: "p"; lines: string[] }
+  | { type: "ul"; items: string[] }
+  | { type: "h"; level: 2 | 3; text: string }
+  | { type: "code"; language?: string; content: string };
+
+/** Groups raw lines into paragraph/list/heading/code blocks — a "- " line starts a
+ * list even mid-paragraph (e.g. a "By path:" header immediately followed by bullets),
+ * and a fenced ```lang ... ``` block is lifted out verbatim (no inline formatting inside it). */
+function groupBlocks(content: string): Block[] {
+  const blocks: Block[] = [];
+  let paraBuffer: string[] = [];
+  let listBuffer: string[] = [];
+  let codeBuffer: string[] | null = null;
+  let codeLang: string | undefined;
+
+  const flushPara = () => {
+    if (paraBuffer.length) blocks.push({ type: "p", lines: paraBuffer });
+    paraBuffer = [];
+  };
+  const flushList = () => {
+    if (listBuffer.length) blocks.push({ type: "ul", items: listBuffer });
+    listBuffer = [];
+  };
+
+  for (const raw of content.split("\n")) {
+    const trimmed = raw.trim();
+    if (codeBuffer !== null) {
+      if (trimmed === "```") {
+        blocks.push({ type: "code", language: codeLang, content: codeBuffer.join("\n") });
+        codeBuffer = null;
+        codeLang = undefined;
+      } else {
+        codeBuffer.push(raw);
+      }
+    } else if (trimmed.startsWith("```")) {
+      flushPara();
+      flushList();
+      codeBuffer = [];
+      codeLang = trimmed.slice(3).trim() || undefined;
+    } else if (trimmed.startsWith("## ")) {
+      flushPara();
+      flushList();
+      blocks.push({ type: "h", level: 3, text: trimmed.slice(3) });
+    } else if (trimmed.startsWith("# ")) {
+      flushPara();
+      flushList();
+      blocks.push({ type: "h", level: 2, text: trimmed.slice(2) });
+    } else if (trimmed === "") {
+      flushPara();
+      flushList();
+    } else if (trimmed.startsWith("- ")) {
+      flushPara();
+      listBuffer.push(trimmed.slice(2));
+    } else {
+      flushList();
+      paraBuffer.push(raw);
+    }
+  }
+  // An unterminated fence (streaming AI text) is shown as plain text so far rather than dropped.
+  if (codeBuffer !== null) blocks.push({ type: "code", language: codeLang, content: codeBuffer.join("\n") });
+  flushPara();
+  flushList();
+  return blocks;
+}
+
+/** Renders **bold**, *italic*, "- " bullet lists and {{lesson|Course|Lesson}} action
+ * chips from a model reply. `cursor` (if given) is appended to the very last line. */
+export function renderMarkdownLite(content: string, cursor: React.ReactNode = null, resolveLesson?: LessonResolver): React.ReactNode {
+  const blocks = groupBlocks(content);
+  return blocks.map((block, bi) => {
+    const isLastBlock = bi === blocks.length - 1;
+    if (block.type === "code") {
+      return (
+        <pre key={bi} className="mb-3 overflow-x-auto rounded-xl bg-zinc-900 px-4 py-3 text-[12.5px] leading-relaxed text-zinc-100 last:mb-0">
+          <code>{block.content}</code>
+        </pre>
+      );
+    }
+    if (block.type === "h") {
+      const HeadingTag = block.level === 2 ? "h2" : "h3";
+      return (
+        <HeadingTag key={bi} className={cn("mb-2 mt-4 font-semibold text-zinc-900 first:mt-0", block.level === 2 ? "text-lg" : "text-base")}>
+          {formatInline(block.text, `${bi}-h`, resolveLesson)}
+        </HeadingTag>
+      );
+    }
+    if (block.type === "ul") {
+      return (
+        <ul key={bi} className="mb-2 list-disc space-y-1 pl-4 last:mb-0">
+          {block.items.map((item, li) => (
+            <li key={li}>
+              {formatInline(item, `${bi}-${li}`, resolveLesson)}
+              {isLastBlock && li === block.items.length - 1 && cursor}
+            </li>
+          ))}
+        </ul>
+      );
+    }
+    return (
+      <p key={bi} className="mb-2 last:mb-0">
+        {block.lines.map((line, li) => (
+          <span key={li}>
+            {formatInline(line, `${bi}-${li}`, resolveLesson)}
+            {isLastBlock && li === block.lines.length - 1 && cursor}
+            {li < block.lines.length - 1 && <br />}
+          </span>
+        ))}
+      </p>
+    );
+  });
+}
+
+/** True if `revealedText` ends mid-way through an unclosed {{...}} tag.
+ *  Also holds when the text ends with a bare "{" that may be the start of "{{". */
+export function endsInOpenTag(revealedText: string): boolean {
+  if (revealedText.endsWith("{")) return true;
+  const lastOpen = revealedText.lastIndexOf("{{");
+  const lastClose = revealedText.lastIndexOf("}}");
+  return lastOpen > lastClose;
+}

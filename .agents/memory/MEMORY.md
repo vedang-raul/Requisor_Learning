@@ -1,0 +1,15 @@
+- [Imported zip quirks](imported-zip-quirks.md) — original files are CRLF (strip before exact-string edits); node_modules/.bin may need `chmod +x`.
+- [Auth decisions](auth-decisions.md) — NextAuth JWT; admin role derived strictly from email support@requisor.io; tokens stored SHA-256 hashed; emails via Gmail connector.
+- [DB schema additions](db-schema-additions.md) — lesson_completions, lesson_comments tables + last_login_at on users; post-merge.sh is idempotent source of truth.
+- [Video auto-complete](video-auto-complete.md) — YouTube IFrame API used (not plain iframe) so onEnded fires; onEnded stored in ref to avoid player recreation on re-renders.
+- [Session uid resolution](session-uid-resolution.md) — missing users row → empty token.uid → silent 401s on all APIs; authorize paths must upsert the row, jwt retries lookup.
+- [AI provider switch](ai-provider.md) — Switched from Anthropic to xAI Grok (XAI_API_KEY); both chat and quiz routes use fetch against https://api.x.ai/v1, default model grok-3-mini; no extra package needed.
+- [Onboarding & personalisation](onboarding-personalization.md) — Post-login survey gate in layout; qualification/learning_goal/onboarding_done on users; quiz + assignment AI prompts personalised via /api/me profile signals.
+- [Bounded JSON request bodies](bounded-json-request-bodies.md) — resource limits must be enforced while streaming request bytes, before JSON parsing.
+- [DB indexes](db-indexes.md) — leaderboard + analytics indexes in post-merge.sh; shell quoting rule for SQL comments; Index Only Scan heap-fetch caveat.
+- [Turnstile activation](turnstile-activation.md) — CAPTCHA is paused by user choice; only enable after matching real keys and approved production domain.
+- [Turnstile hostname authorization](turnstile-hostname-authorization.md) — Cloudflare must authorize every production and development hostname before widget tokens can be issued.
+- [Tutor-owned catalogs](tutor-owned-catalogs.md) — ownership checks are transactional, edits are revisioned, tutor ratings are aggregate-only, and seed import must never resurrect deletions.
+- [Role-aware AI assistant](role-aware-ai-assistant.md) — tutor AI is a server-selected, draft-only course copilot; learner progress must never enter tutor prompts.
+- [Tutor insights privacy](tutor-insights-privacy.md) — suppress every small metric cohort, and retain logical lesson activity across catalog row replacement.
+- [Protected file previews](protected-file-previews.md) — same-origin PDF iframe routes need aligned CSP/X-Frame exceptions, including Next.js trailing-slash paths.

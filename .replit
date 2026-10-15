@@ -1,0 +1,55 @@
+modules = ["nodejs-24", "python-base-3.13", "postgresql-16"]
+[nix]
+channel = "stable-25_05"
+
+[agent]
+expertMode = true
+
+[workflows]
+runButton = "Project"
+
+author = "agent"
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev -- -p 5000"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[[ports]]
+localPort = 5001
+externalPort = 3000
+
+[deployment]
+deploymentTarget = "autoscale"
+run = ["npm", "run", "start", "--", "-p", "5000"]
+build = ["npm", "run", "build"]
+
+[userenv]
+
+[userenv.shared]
+
+
+[userenv.production]
+NEXTAUTH_URL = "https://learning.requisor.io"
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 120000

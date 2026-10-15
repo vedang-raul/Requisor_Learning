@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "node",
+      "react",
+      "react-dom"
+    ],
+    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.check.tsbuildinfo"
+  },
+  "exclude": [
+    "node_modules",
+    "tests",
+    "docs/archive"
+  ]
+}
