@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { PartnerBadge } from "@/components/layout/partner-badge";
 import { usePathname, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -267,7 +268,7 @@ export function Sidebar() {
         {bottomItems.map((item, i) => renderItem(item, i + 2))}
       </nav>
 
-      {/* MSOE association */}
+      {/* The partner university, set by super admins */}
       <AnimatePresence>
         {!collapsed && (
           <motion.div
@@ -278,8 +279,7 @@ export function Sidebar() {
             transition={{ duration: 0.2 }}
             className="mx-3 mb-2 flex items-center gap-2 rounded-xl border border-zinc-100 bg-zinc-50/60 px-3 py-2 transition-shadow duration-200 hover:shadow-sm"
           >
-            <img src="/msoe-logo.png" alt="MSOE" className="h-7 w-7 shrink-0 object-contain" />
-            <span className="text-[10px] leading-tight text-zinc-400">In association with<br /><span className="font-medium text-zinc-500">MSOE University</span></span>
+            <PartnerBadge className="gap-2" logoClassName="h-7 w-7" textClassName="text-[10px] text-zinc-400" useShortName />
           </motion.div>
         )}
       </AnimatePresence>

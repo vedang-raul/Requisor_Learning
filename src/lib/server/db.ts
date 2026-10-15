@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import { FOUNDING_SUPER_ADMIN, isSuperAdminEmail } from "../auth/roles";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -87,10 +88,14 @@ export interface DbUser {
   } | null;
 }
 
-export const ADMIN_EMAIL = "support@requisor.io";
+export const ADMIN_EMAIL = FOUNDING_SUPER_ADMIN;
 export type UserRole = "employee" | "tutor" | "admin";
 
-/** The support mailbox is the only identity that can ever be an admin. */
+/**
+ * The role a brand-new account is created with: admin only for the super admin
+ * emails on the server list (see src/lib/auth/roles.ts). University admins and
+ * tutors are made by a super admin or university admin, never at sign-up.
+ */
 export function roleForEmail(email: string): "employee" | "admin" {
-  return email.trim().toLowerCase() === ADMIN_EMAIL ? "admin" : "employee";
+  return isSuperAdminEmail(email) ? "admin" : "employee";
 }

@@ -20,10 +20,15 @@ import { Tag } from "@/components/ui/badge";
 import { PageTransition } from "@/components/ui/motion";
 import { ProgressBar } from "@/components/ui/progress";
 import { TeamInsights } from "@/components/admin/team-insights";
+import { PeoplePanel } from "@/components/admin/people-panel";
+import { UniversitiesPanel } from "@/components/admin/universities-panel";
+import { useUniversities } from "@/lib/branding-client";
+import { useSession } from "next-auth/react";
+import { Building2, UserCog } from "lucide-react";
 import { getCategoryCover, DEFAULT_COURSE_ICON } from "@/components/course/category-icon";
 import { CourseIconPicker } from "@/components/course/course-icon-picker";
 
-type TabKey = "analytics" | "content" | "users" | "reviews" | "bugs";
+type TabKey = "analytics" | "content" | "users" | "people" | "universities" | "reviews" | "bugs";
 const AI_COURSE_DRAFT_KEY = "requisor-ai-course-draft";
 const AI_COURSE_DRAFT_EVENT = "requisor:open-ai-course-draft";
 
@@ -62,6 +67,11 @@ function formatLoginTime(iso: string | null): string {
 export default function AdminPage() {
   const { state, hydrated } = useStore();
   const [tab, setTab] = useState<TabKey>("analytics");
+  // Super admins (the Requisor team) see every university; a university admin sees their own.
+  const { data: session } = useSession();
+  const superAdmin = session?.user?.superAdmin === true;
+  const universities = useUniversities() ?? [];
+  const ownUniversity = universities.find((u) => u.id === session?.user?.universityId);
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
   const router = useRouter();
@@ -102,7 +112,9 @@ export default function AdminPage() {
         </motion.div>
         <div>
           <h1 className="text-2xl font-bold md:text-3xl">Admin <span className="text-gradient">Panel</span></h1>
-          <p className="mt-1 text-sm text-zinc-600">Manage content, users and analytics for Alma 41.</p>
+          <p className="mt-1 text-sm text-zinc-600">
+            {superAdmin ? "Super admin: every university on Alma 41." : ownUniversity ? `Manage ${ownUniversity.name} on Alma 41.` : "Manage content, users and analytics for Alma 41."}
+          </p>
         </div>
       </motion.div>
 
@@ -115,8 +127,11 @@ export default function AdminPage() {
           ["analytics", "Analytics", BarChart3],
           ["content", "Courses & Lessons", LayoutGrid],
           ["users", "Users", Users],
+          ["people", "People & roles", UserCog],
+          ...(superAdmin ? [["universities", "Universities", Building2]] : []),
           ["reviews", "Reviews & Ratings", Star],
-          ["bugs", "Bug Reports", Bug],
+          // Bug reports are about the platform itself, so only the Requisor team handles them.
+          ...(superAdmin ? [["bugs", "Bug Reports", Bug]] : []),
         ] as [TabKey, string, typeof BarChart3][]).map(([key, label, Icon]) => {
           const active = tab === key;
           return (
@@ -145,7 +160,9 @@ export default function AdminPage() {
           {tab === "content" && <ContentManager />}
           {tab === "users" && <UserManager analytics={analytics} loading={analyticsLoading} />}
           {tab === "reviews" && <ReviewsPanel />}
-          {tab === "bugs" && <BugReportsPanel />}
+          {tab === "people" && <PeoplePanel superAdmin={superAdmin} universities={universities} />}
+          {tab === "universities" && superAdmin && <UniversitiesPanel />}
+          {tab === "bugs" && superAdmin && <BugReportsPanel />}
         </motion.div>
       </AnimatePresence>
     </PageTransition>

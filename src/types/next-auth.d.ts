@@ -5,6 +5,10 @@ declare module "next-auth" {
     user: {
       id: string;
       role: "employee" | "tutor" | "admin";
+      /** The Requisor team: an admin with no university limit (see src/lib/auth/roles.ts). */
+      superAdmin: boolean;
+      /** The university this person belongs to, once it has accepted them. */
+      universityId: number | null;
       name?: string | null;
       email?: string | null;
       image?: string | null;

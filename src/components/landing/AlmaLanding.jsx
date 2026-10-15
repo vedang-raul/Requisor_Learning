@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import s from './alma-landing.module.css'
+import { usePartner } from '@/lib/branding-client'
 
 /* Alma 41 by Requisor.AI — the public landing page.
    Structure follows the "Alma landing page" design; colours are Requisor's
@@ -341,6 +342,8 @@ function UnitState({ state }) {
 }
 
 export default function AlmaLanding() {
+  // The partner university super admins chose for the public pages.
+  const partner = usePartner()
   const [step, setStep] = useState(0)
   const [industryKey, setIndustryKey] = useState('finance')
   // The line art is thousands of points; draw it in the browser rather than shipping it in the page HTML.
@@ -386,7 +389,7 @@ export default function AlmaLanding() {
           <div className={s.heroBelow}>
             <p className={s.lead}>No lecture halls. No cohort marching at one speed. A tutor that knows your industry, your background, and how you learn — and is incapable of leaving you behind.</p>
             <p className={s.heroTaught}>Taught by <a href="#team">Naveen Kankate</a> — founder, AI engineering instructor at MSOE &amp; <span className={s.nowrap}>UW-Milwaukee</span></p>
-            <p className={s.heroAssoc}>In association with <span>Milwaukee School of Engineering</span></p>
+            {partner && <p className={s.heroAssoc}>In association with <span>{partner.name}</span></p>}
           </div>
         </section>
 
@@ -553,7 +556,7 @@ export default function AlmaLanding() {
               <h2 id="universities-title" className={s.h2}>Give every one of your students a personal tutor.</h2>
               <p className={s.lead}>Alma doesn&apos;t replace your institution — it&apos;s your faculty&apos;s course, amplified. Your curriculum, your credit, delivered through an intelligence that meets each student where they are and hands you the evidence.</p>
               <div className={s.uniCta}><a className={`${s.btn} ${s.btnSolid}`} href="mailto:naveen@requisor.io?subject=Alma%20university%20pilot">Book a pilot call</a></div>
-              <p className={s.uniNote}>Built in association with the Milwaukee School of Engineering, where Alma&apos;s founder teaches AI engineering.</p>
+              {partner && <p className={s.uniNote}>{partner.shortName === 'MSOE' ? <>Built in association with the Milwaukee School of Engineering, where Alma&apos;s founder teaches AI engineering.</> : <>Built in association with {partner.name}.</>}</p>}
             </div>
             <dl className={s.defs}>
               {UNIVERSITY_POINTS.map(([term, text]) => <div key={term} className={s.def}><dt>{term}</dt><dd>{text}</dd></div>)}
@@ -618,7 +621,7 @@ export default function AlmaLanding() {
             <div className={s.footerBrand}>
               <span className={s.wordmark} style={{ marginRight: 0 }}><Wordmark by /></span>
               <p>The AI-Native University</p>
-              <p>In association with Milwaukee School of Engineering</p>
+              {partner && <p>In association with {partner.name}</p>}
             </div>
             <nav aria-label="Footer" className={s.footerNav}>
               <div className={s.footerCol}>

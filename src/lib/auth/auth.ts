@@ -4,10 +4,13 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
 import { db, roleForEmail, ADMIN_EMAIL, type DbUser } from "../server/db";
+import { accessFor, type MembershipRow } from "./roles";
 import { skipEmailVerification } from "../server/email";
 import { sendWelcomeEmail } from "../server/email";
 
 const GOOGLE_SIGNIN_FAILED_ERROR = "/?error=GoogleSignInFailed";
+/** How often a signed-in person's role and university are read again from the database. */
+const ACCESS_RECHECK_SECONDS = 5 * 60;
 
 type GoogleProfile = {
   email?: unknown;
@@ -243,9 +246,15 @@ export const authOptions: NextAuthOptions = {
       // Public Google sign-in never grants a privileged role. Existing roles
       // are handled above; only the canonical admin address is elevated here.
       const createdRole = roleForEmail(profileEmail) === "admin" ? "admin" : "employee";
+      // A matching email domain places the person in that university straight away.
       const { rows: createdRows } = await db.query<Pick<DbUser, "id">>(
-        `INSERT INTO users (email, name, google_id, email_verified, role)
-         VALUES ($1, $2, $3, TRUE, $4)
+        `WITH matched AS (
+           SELECT id FROM universities
+            WHERE $4 <> 'admin' AND split_part(lower($1::text), '@', 2) = ANY(email_domains)
+            ORDER BY id LIMIT 1
+         )
+         INSERT INTO users (email, name, google_id, email_verified, role, university_id, university_status)
+         SELECT $1, $2, $3, TRUE, $4, (SELECT id FROM matched), CASE WHEN EXISTS (SELECT 1 FROM matched) THEN 'active' END
          ON CONFLICT DO NOTHING
          RETURNING id`,
         [profileEmail, name, googleId, createdRole]
@@ -265,16 +274,22 @@ export const authOptions: NextAuthOptions = {
       // Resolve the DB user id on first sign-in, and retry on later requests
       // if it's still missing (e.g. the users row was created after sign-in).
       const email = (user?.email ?? token.email)?.toLowerCase();
-      if (email && (user?.email || !token.uid)) {
-        const { rows } = await db.query<DbUser>("SELECT id, role, name FROM users WHERE email = $1", [email]);
+      // Role and university are read again every few minutes, so a promotion,
+      // a demotion or an approval takes effect without signing out.
+      const nowCheck = Math.floor(Date.now() / 1000);
+      const stale = typeof token.accessCheckedAt !== "number" || nowCheck - token.accessCheckedAt > ACCESS_RECHECK_SECONDS;
+      if (email && (user?.email || !token.uid || stale)) {
+        const { rows } = await db.query<Pick<DbUser, "id" | "name"> & MembershipRow>(
+          "SELECT id, role, name, university_id, university_status FROM users WHERE email = $1",
+          [email]
+        );
         token.uid = rows[0] ? String(rows[0].id) : undefined;
-        // Preserve established database roles. The canonical support address
-        // remains admin even if an old row contains a stale role value.
-        token.role = roleForEmail(email) === "admin"
-          ? "admin"
-          : rows[0]?.role === "tutor"
-            ? "tutor"
-            : "employee";
+        // The super admin list decides super admins; a university admin must belong to a university.
+        const access = accessFor(email, rows[0]);
+        token.role = access.role;
+        token.superAdmin = access.superAdmin;
+        token.universityId = access.universityId;
+        token.accessCheckedAt = nowCheck;
         if (rows[0]?.name) token.name = rows[0].name;
       }
 
@@ -300,6 +315,8 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         session.user.id = (token.uid as string) ?? "";
         session.user.role = (token.role as "employee" | "tutor" | "admin") ?? "employee";
+        session.user.superAdmin = token.superAdmin === true;
+        session.user.universityId = typeof token.universityId === "number" ? token.universityId : null;
         if (token.name) session.user.name = token.name as string;
       }
       return session;
