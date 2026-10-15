@@ -53,6 +53,7 @@ describe("public tutor-only testing shortcut", () => {
     expect(ids).not.toContain("dev-tutor");
     expect(ids).not.toContain("dev-student");
     expect(ids).not.toContain("dev-admin");
+    expect(ids).not.toContain("dev-uni-admin");
     expect(ids).toEqual(expect.arrayContaining(["google", "credentials"]));
   });
 
@@ -63,6 +64,7 @@ describe("public tutor-only testing shortcut", () => {
     expect(ids).toContain("dev-tutor");
     expect(ids).not.toContain("dev-student");
     expect(ids).not.toContain("dev-admin");
+    expect(ids).not.toContain("dev-uni-admin");
     expect(ids).toEqual(expect.arrayContaining(["google", "credentials"]));
   });
 
@@ -84,7 +86,7 @@ describe("public tutor-only testing shortcut", () => {
 
   it("preserves local development shortcuts", () => {
     Object.assign(process.env, { NODE_ENV: "development" });
-    expect(providers().map(p => p.id)).toEqual(expect.arrayContaining(["dev-tutor", "dev-student", "dev-admin"]));
+    expect(providers().map(p => p.id)).toEqual(expect.arrayContaining(["dev-tutor", "dev-student", "dev-admin", "dev-uni-admin"]));
   });
 
   it("does not enable a production shortcut for an invalid opt-in value", () => {

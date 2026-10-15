@@ -28,7 +28,7 @@ import { Building2, UserCog } from "lucide-react";
 import { getCategoryCover, DEFAULT_COURSE_ICON } from "@/components/course/category-icon";
 import { CourseIconPicker } from "@/components/course/course-icon-picker";
 
-type TabKey = "analytics" | "content" | "users" | "people" | "universities" | "reviews" | "bugs";
+type TabKey = "analytics" | "content" | "people" | "universities" | "reviews" | "bugs";
 const AI_COURSE_DRAFT_KEY = "requisor-ai-course-draft";
 const AI_COURSE_DRAFT_EVENT = "requisor:open-ai-course-draft";
 
@@ -126,7 +126,6 @@ export default function AdminPage() {
         {([
           ["analytics", "Analytics", BarChart3],
           ["content", "Courses & Lessons", LayoutGrid],
-          ["users", "Users", Users],
           ["people", "People & roles", UserCog],
           ...(superAdmin ? [["universities", "Universities", Building2]] : []),
           ["reviews", "Reviews & Ratings", Star],
@@ -158,7 +157,6 @@ export default function AdminPage() {
         <motion.div key={tab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.22 }}>
           {tab === "analytics" && <Analytics analytics={analytics} loading={analyticsLoading} onRefresh={loadAnalytics} />}
           {tab === "content" && <ContentManager />}
-          {tab === "users" && <UserManager analytics={analytics} loading={analyticsLoading} />}
           {tab === "reviews" && <ReviewsPanel />}
           {tab === "people" && <PeoplePanel superAdmin={superAdmin} universities={universities} />}
           {tab === "universities" && superAdmin && <UniversitiesPanel />}
@@ -826,127 +824,6 @@ function LessonForm({ courseSlug, lesson, nextIndex, onSave, onClose }: { course
         </motion.div>
       </Card>
     </motion.div>
-  );
-}
-
-/* ---------------- Users ---------------- */
-function UserManager({ analytics, loading }: { analytics: AnalyticsData | null; loading: boolean }) {
-  const { state } = useStore();
-  const [assignOpen, setAssignOpen] = useState<string | null>(null);
-  const [assignments, setAssignments] = useState<Record<string, string[]>>({});
-
-  if (loading) {
-    return (
-      <Card className="space-y-3 p-5">
-        {[1, 2, 3, 4].map((i) => <div key={i} className="h-12 animate-pulse rounded-xl bg-zinc-100" />)}
-      </Card>
-    );
-  }
-
-  const users = analytics?.users ?? [];
-  if (users.length === 0) {
-    return (
-      <Card className="py-12 text-center">
-        <p className="text-sm text-zinc-500">No employees have signed up yet.</p>
-      </Card>
-    );
-  }
-
-  return (
-    <Card className="overflow-x-auto p-0">
-      <table className="w-full min-w-[760px] text-left text-sm">
-        <thead>
-          <tr className="border-b border-zinc-200 text-xs uppercase tracking-wider text-zinc-500">
-            <th className="px-5 py-3.5 font-medium">Employee</th>
-            <th className="px-5 py-3.5 font-medium">Type / Position</th>
-            <th className="px-5 py-3.5 font-medium">Assigned courses</th>
-            <th className="px-5 py-3.5 font-medium">Completions</th>
-            <th className="px-5 py-3.5 font-medium"><span className="inline-flex items-center gap-1"><Calendar className="h-3 w-3" />Last login</span></th>
-            <th className="px-5 py-3.5 font-medium">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {users.map((u, i) => {
-            const open = assignOpen === u.email;
-            return (
-              <motion.tr
-                key={u.email}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: Math.min(i, 10) * 0.03 }}
-                className="border-b border-zinc-100 transition-colors hover:bg-white/[0.03]"
-              >
-                <td className="px-5 py-3.5">
-                  <div className="flex items-center gap-3">
-                    <motion.div whileHover={{ scale: 1.1 }} transition={springHover} className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-secondary text-xs font-bold text-white">{u.name[0]}</motion.div>
-                    <div>
-                      <p className="font-medium text-zinc-900">{u.name}</p>
-                      <p className="flex items-center gap-1 text-xs text-zinc-500"><Mail className="h-3 w-3" />{u.email}</p>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-5 py-3.5">
-                  <div className="space-y-0.5">
-                    {u.employment_type && <p className="text-xs font-medium text-zinc-700">{u.employment_type}</p>}
-                    {u.position && <p className="text-[11px] text-zinc-500">{u.position}</p>}
-                    {!u.employment_type && !u.position && <span className="text-xs text-zinc-400">—</span>}
-                  </div>
-                </td>
-                <td className="px-5 py-3.5">
-                  <div className="flex flex-wrap gap-1.5">
-                    {(assignments[u.email] ?? []).map((slug) => {
-                      const c = state.courses.find((x) => x.slug === slug);
-                      return c ? <Tag key={slug} tone="primary">{c.title}</Tag> : null;
-                    })}
-                    {(assignments[u.email] ?? []).length === 0 && <span className="text-xs text-zinc-400">None</span>}
-                  </div>
-                  <AnimatePresence>
-                    {open && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="mt-2 flex flex-wrap gap-1.5 overflow-hidden"
-                      >
-                        {state.courses.map((c) => {
-                          const has = (assignments[u.email] ?? []).includes(c.slug);
-                          return (
-                            <motion.button
-                              key={c.slug}
-                              whileHover={{ scale: 1.04 }}
-                              whileTap={{ scale: 0.96 }}
-                              onClick={() => setAssignments((a) => ({ ...a, [u.email]: has ? a[u.email].filter((s) => s !== c.slug) : [...(a[u.email] ?? []), c.slug] }))}
-                              className={cn("focus-ring rounded-full border px-2.5 py-1 text-[11px] transition-colors", has ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700" : "border-border text-zinc-500 hover:text-zinc-700")}
-                            >
-                              {has ? "✓ " : "+ "}{c.title}
-                            </motion.button>
-                          );
-                        })}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </td>
-                <td className="px-5 py-3.5">
-                  <Tag tone={u.completion_count > 0 ? "success" : "default"}>{u.completion_count} lessons</Tag>
-                </td>
-                <td className="px-5 py-3.5 text-xs text-zinc-600">{formatLoginTime(u.last_login_at)}</td>
-                <td className="px-5 py-3.5">
-                  <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
-                    <Button size="sm" variant="outline" onClick={() => setAssignOpen(open ? null : u.email)}>
-                      {open ? "Done" : "Assign"}
-                      <motion.span animate={{ rotate: open ? 180 : 0 }} transition={{ duration: 0.2 }} className="inline-flex">
-                        <ChevronDown className="h-3.5 w-3.5" />
-                      </motion.span>
-                    </Button>
-                  </motion.div>
-                </td>
-              </motion.tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </Card>
   );
 }
 

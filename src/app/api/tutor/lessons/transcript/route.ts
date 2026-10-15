@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
+import { manageReach } from "@/lib/server/course-scope";
 import { authOptions } from "@/lib/auth/auth";
 import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
 import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
@@ -28,7 +29,8 @@ async function tutor() {
   if ((role !== "admin" && role !== "tutor") || !Number.isSafeInteger(userId)) {
     return { error: Response.json({ error: "Forbidden" }, { status: 403 }) } as const;
   }
-  return { userId, isAdmin: role === "admin" } as const;
+  // Tutors reach their own courses; admins also their university's (all, for super admins).
+  return { userId, reach: manageReach(session.user) } as const;
 }
 
 async function jsonBody(req: Request): Promise<Record<string, unknown> | Response> {
@@ -46,7 +48,7 @@ export async function GET(req: Request) {
   const who = await tutor();
   if ("error" in who) return who.error;
   const lessonId = new URL(req.url).searchParams.get("lessonId") ?? "";
-  if (!LESSON_ID.test(lessonId) || !(await canManageLesson(lessonId, who.userId, who.isAdmin))) {
+  if (!LESSON_ID.test(lessonId) || !(await canManageLesson(lessonId, who.userId, who.reach))) {
     return Response.json({ error: "Lesson not found." }, { status: 404 });
   }
   const saved = await getLessonTranscript(lessonId);
@@ -59,7 +61,7 @@ export async function PUT(req: Request) {
   const body = await jsonBody(req);
   if (body instanceof Response) return body;
   const lessonId = typeof body.lessonId === "string" ? body.lessonId : "";
-  if (!LESSON_ID.test(lessonId) || !(await canManageLesson(lessonId, who.userId, who.isAdmin))) {
+  if (!LESSON_ID.test(lessonId) || !(await canManageLesson(lessonId, who.userId, who.reach))) {
     return Response.json({ error: "Lesson not found." }, { status: 404 });
   }
   const transcript = cleanTranscript(body.transcript);

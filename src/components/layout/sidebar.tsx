@@ -18,10 +18,11 @@ import { getCategoryMeta } from "@/components/course/category-icon";
 export const navItems = [
   { href: "/app/dashboard/",  label: "Dashboard",   icon: LayoutDashboard },
   { href: "/app/my-learning/",label: "My Learning", icon: MonitorPlay, learnerOnly: true },
-  { href: "/app/badges/",     label: "Badges",      icon: Trophy, learnerOnly: true },
-  { href: "/app/submissions/",label: "Submissions", icon: FileCheck2, learnerOnly: true },
+  // Badges, Submissions and Check Assignments are hidden from admins (university and super): they manage, not learn or grade.
+  { href: "/app/badges/",     label: "Badges",      icon: Trophy, learnerOnly: true, notForAdmins: true },
+  { href: "/app/submissions/",label: "Submissions", icon: FileCheck2, learnerOnly: true, notForAdmins: true },
   { href: "/app/tutor/",      label: "Tutor Workspace", icon: GraduationCap, tutorOnly: true },
-  { href: "/app/tutor/assignment/", label: "Check Assignments", icon: ClipboardCheck, tutorOnly: true },
+  { href: "/app/tutor/assignment/", label: "Check Assignments", icon: ClipboardCheck, tutorOnly: true, notForAdmins: true },
   { href: "/app/admin/",      label: "Admin Panel", icon: ShieldCheck, adminOnly: true },
   { href: "/app/settings/",   label: "Profile",    icon: CircleUserRound },
 ];
@@ -67,7 +68,8 @@ export function Sidebar() {
       (!("adminOnly" in item && item.adminOnly) || state.user?.role === "admin") &&
       (!("learnerOnly" in item && item.learnerOnly) || state.user?.role !== "tutor" || workspaceMode === "student") &&
       (!("tutorOnly" in item && item.tutorOnly) || state.user?.role === "admin" || (state.user?.role === "tutor" && workspaceMode === "tutor")) &&
-      (!("employeeOnly" in item && item.employeeOnly) || state.user?.role === "employee")
+      (!("employeeOnly" in item && item.employeeOnly) || state.user?.role === "employee") &&
+      (!("notForAdmins" in item && item.notForAdmins) || state.user?.role !== "admin")
   );
   const showLearnerNavigation = state.user?.role !== "tutor" || workspaceMode === "student";
 

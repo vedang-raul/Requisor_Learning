@@ -40,7 +40,8 @@ export function MobileNav() {
       (!("adminOnly" in item && item.adminOnly) || state.user?.role === "admin") &&
       (!("learnerOnly" in item && item.learnerOnly) || state.user?.role !== "tutor" || workspaceMode === "student") &&
       (!("tutorOnly" in item && item.tutorOnly) || state.user?.role === "admin" || (state.user?.role === "tutor" && workspaceMode === "tutor")) &&
-      (!("employeeOnly" in item && item.employeeOnly) || state.user?.role === "employee")
+      (!("employeeOnly" in item && item.employeeOnly) || state.user?.role === "employee") &&
+      (!("notForAdmins" in item && item.notForAdmins) || state.user?.role !== "admin")
   );
   const showLearnerNavigation = state.user?.role !== "tutor" || workspaceMode === "student";
 

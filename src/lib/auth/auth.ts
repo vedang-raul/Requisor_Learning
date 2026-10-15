@@ -114,6 +114,27 @@ export const authOptions: NextAuthOptions = {
               return { id: String(rows[0].id), email: rows[0].email, name: rows[0].name ?? "Admin" };
             },
           }),
+          CredentialsProvider({
+            id: "dev-uni-admin",
+            name: "Dev University Admin",
+            credentials: {},
+            async authorize() {
+              // A reserved synthetic account: the admin of the first university (MSOE on a fresh
+              // database). Re-placed there on every sign-in, so it can always be used for testing.
+              const { rows } = await db.query<DbUser>(
+                `INSERT INTO users (email, name, email_verified, role, university_id, university_status)
+                 SELECT 'dev-uni-admin@requisor.local', 'Development University Admin', TRUE, 'admin', id, 'active'
+                   FROM universities ORDER BY id LIMIT 1
+                 ON CONFLICT (email) DO UPDATE
+                   SET email_verified = TRUE, role = 'admin', university_id = EXCLUDED.university_id, university_status = 'active'
+                 RETURNING *`
+              );
+              // No university on this database yet: there is nothing for it to administer.
+              if (!rows[0]) return null;
+              db.query("UPDATE users SET last_login_at = NOW() WHERE id = $1", [rows[0].id]).catch(() => {});
+              return { id: String(rows[0].id), email: rows[0].email, name: rows[0].name ?? "Development University Admin" };
+            },
+          }),
         ]
       : []),
     // ─── Shared test tutor (independently configurable) ────────────────

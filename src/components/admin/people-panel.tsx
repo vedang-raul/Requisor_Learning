@@ -7,9 +7,9 @@ import { cn } from "@/lib/utils";
 import type { UniversityOption } from "@/lib/branding-client";
 
 /**
- * Managing people. A university admin sees their own university: approves
- * people who asked to join, approves tutor requests, switches people between
- * tutor and student, and takes people out. A super admin sees everyone and can
+ * Managing people. A university admin sees their own university's students and
+ * tutors: approves tutor requests (students join freely), switches people
+ * between tutor and student, and takes people out. A super admin sees everyone and can
  * also move people between universities and make university admins.
  * The rules live in src/lib/auth/people-rules.ts; this only shows them.
  */
@@ -24,7 +24,7 @@ const selectClass = "focus-ring h-8 rounded-lg border border-zinc-200 bg-white p
 
 export function PeoplePanel({ superAdmin, universities }: { superAdmin: boolean; universities: UniversityOption[] }) {
   const [people, setPeople] = useState<PersonRow[] | null>(null);
-  const [filter, setFilter] = useState<"" | "pending" | "tutor-requests">("");
+  const [filter, setFilter] = useState<"" | "tutor-requests">("");
   const [university, setUniversity] = useState("");
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState<number | null>(null);
@@ -86,7 +86,6 @@ export function PeoplePanel({ superAdmin, universities }: { superAdmin: boolean;
           )}
           <select className={selectClass} value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)} aria-label="Show">
             <option value="">Everyone</option>
-            <option value="pending">Waiting to join</option>
             <option value="tutor-requests">Asked to teach</option>
           </select>
           <label className="relative">
@@ -98,7 +97,7 @@ export function PeoplePanel({ superAdmin, universities }: { superAdmin: boolean;
       <p className="mb-3 text-xs text-zinc-500">
         {superAdmin
           ? "Everyone on the platform. Super admins are set on the server and can't be changed here."
-          : "The tutors and students of your university. People who picked your university without its email wait here for your approval."}
+          : "The students and tutors of your university. Students join freely; people who ask to teach wait here for your approval."}
         {(pendingCount > 0 || tutorRequests > 0) && <span className="ml-1 font-medium text-amber-700">{pendingCount > 0 && `${pendingCount} waiting to join. `}{tutorRequests > 0 && `${tutorRequests} asked to teach.`}</span>}
       </p>
       {note && <p role={note.ok ? "status" : "alert"} className={cn("mb-3 rounded-lg px-3 py-2 text-xs", note.ok ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-700")}>{note.text}</p>}

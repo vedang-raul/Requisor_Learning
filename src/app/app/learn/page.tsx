@@ -326,6 +326,11 @@ function LearnView() {
             <span className="mr-0.5 transition-transform duration-200 group-hover:-translate-x-0.5">←</span> {course.title}
           </Link>
           <h1 className="mt-0.5 truncate text-xl font-bold md:text-2xl">{lesson.title}</h1>
+          {course.tutorName && (
+            <p className="mt-0.5 flex items-center gap-1 text-xs text-zinc-600">
+              <GraduationCap className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />Taught by <span className="font-medium text-zinc-800">{course.tutorName}</span>
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2 text-xs text-zinc-600">
           <Tag><Clock className="h-3 w-3" />{formatMinutes(lesson.durationMin)} est.</Tag>

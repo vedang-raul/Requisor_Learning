@@ -666,4 +666,7 @@ p.query(`
      AND NOT EXISTS (SELECT 1 FROM site_settings WHERE key = 'universities_v1');
   INSERT INTO site_settings (key, value) VALUES ('universities_v1', 'true') ON CONFLICT (key) DO NOTHING;
 
+  -- Students join the university they pick straight away; only tutor requests wait for an admin.
+  UPDATE users SET university_status = 'active' WHERE university_status = 'pending';
+
 `).then(()=>{console.log('DB schema up to date');process.exit(0)}).catch(e=>{console.error(e.message);process.exit(1)});

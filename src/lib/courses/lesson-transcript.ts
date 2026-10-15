@@ -1,4 +1,5 @@
 import { db } from "@/lib/server/db";
+import { manageSql, reachParams, type Reach } from "../server/course-scope";
 
 /**
  * Where lesson transcripts are kept. They live in their own table, keyed by
@@ -31,12 +32,15 @@ export async function saveLessonTranscript(lessonId: string, transcript: string,
   );
 }
 
-/** A tutor may edit the transcript of a lesson in a course they own; an admin, any lesson. */
-export async function canManageLesson(lessonId: string, userId: number, isAdmin: boolean): Promise<boolean> {
+/**
+ * A tutor may edit the transcript of a lesson in a course they own; a university admin,
+ * any lesson of their university; a super admin, any lesson.
+ */
+export async function canManageLesson(lessonId: string, userId: number, reach: Reach): Promise<boolean> {
   const { rows } = await db.query(
     `SELECT 1 FROM course_lessons l JOIN courses c ON c.slug = l.course_slug
-     WHERE l.id = $1 AND ($2::boolean OR c.owner_user_id = $3)`,
-    [lessonId, isAdmin, userId]
+     WHERE l.id = $1 AND (c.owner_user_id = $2 OR ${manageSql("c", 3, 4)})`,
+    [lessonId, userId, ...reachParams(reach)]
   );
   return rows.length > 0;
 }

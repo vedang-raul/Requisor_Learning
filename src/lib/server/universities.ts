@@ -46,16 +46,15 @@ export async function universityIdForEmail(email: string): Promise<number | null
 }
 
 /**
- * Where a new account belongs. A matching email domain places the person at
- * once; picking a university without a matching email waits for that
- * university's admin to approve, so nobody can see a university's courses just
- * by choosing it.
+ * Where a new account belongs: the university whose email domain matches, else
+ * the one picked at sign-up. Either way the person joins at once; only asking
+ * to teach waits for the university's admin (see requested_role).
  */
 export async function membershipForNewAccount(email: string, chosen: unknown): Promise<{ universityId: number | null; status: "active" | "pending" | null }> {
   const byDomain = await universityIdForEmail(email);
   if (byDomain) return { universityId: byDomain, status: "active" };
   const chosenId = Number(chosen);
-  if (Number.isSafeInteger(chosenId) && chosenId > 0 && (await getUniversity(chosenId))) return { universityId: chosenId, status: "pending" };
+  if (Number.isSafeInteger(chosenId) && chosenId > 0 && (await getUniversity(chosenId))) return { universityId: chosenId, status: "active" };
   return { universityId: null, status: null };
 }
 

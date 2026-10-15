@@ -11,7 +11,8 @@
     "test": "jest --runInBand",
     "test:e2e": "bash scripts/run-e2e.sh",
     "prebuild": "rm -rf .next",
-    "db:migrate": "node scripts/migrate.js"
+    "db:migrate": "node scripts/migrate.js",
+    "db:seed-demo": "node scripts/seed-msoe-demo.js"
   },
   "engines": {
     "node": ">=20.9"
