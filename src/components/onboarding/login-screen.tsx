@@ -405,7 +405,7 @@ export function LoginScreen() {
                     {emailUniversity && String(emailUniversity.id) === universityId
                       ? `Your ${emailUniversity.shortName} email adds you to ${emailUniversity.shortName} straight away.`
                       : universityId
-                        ? "Your university's admin approves you before its courses open to you."
+                        ? "You'll see your university's courses as soon as you sign in."
                         : "You'll see the courses open to everyone."}
                   </p>
                 </div>
