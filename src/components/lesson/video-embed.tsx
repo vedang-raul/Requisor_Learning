@@ -7,8 +7,8 @@ import { ExternalLink, FileText, Loader2, MonitorPlay } from "lucide-react";
 import { renderMarkdownLite } from "@/components/ui/markdown-lite";
 
 // CodeMirror touches the DOM at mount time — load it client-only.
-const PythonPlayground = dynamic(
-  () => import("@/components/lesson/python-playground").then((m) => m.PythonPlayground),
+const CodePlayground = dynamic(
+  () => import("@/components/lesson/code-playground").then((m) => m.CodePlayground),
   { ssr: false, loading: () => <div className="glass h-64 w-full animate-pulse rounded-2xl" /> }
 );
 /* ── YouTube IFrame API globals ─────────────────────────────────────── */
@@ -63,6 +63,7 @@ export function VideoEmbed({
   body,
   bodyFileUrl,
   starterCode,
+  language,
   resourceUrl,
   onEnded,
 }: {
@@ -74,6 +75,8 @@ export function VideoEmbed({
   bodyFileUrl?: string;
   /** "code-tutorial" lessons only: starter code for the "Try it Yourself" editor. */
   starterCode?: string;
+  /** "code-tutorial" lessons only: which runtime powers the editor. Defaults to "python". */
+  language?: "python" | "javascript";
   /** Called when the YouTube video reaches the end. */
   onEnded?: () => void;
 }) {
@@ -157,7 +160,7 @@ export function VideoEmbed({
             </div>
           </div>
         )}
-        <PythonPlayground starterCode={starterCode} />
+        <CodePlayground language={language ?? "python"} starterCode={starterCode} />
       </div>
     );
   }

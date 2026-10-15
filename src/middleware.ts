@@ -43,6 +43,24 @@ export async function middleware(req: NextRequest) {
     return response;
   }
 
+  // The JavaScript "Try it Yourself" worker runs learner-written code via
+  // eval() in its own isolated worker realm (no DOM/document access there).
+  // Same per-resource-CSP mechanism as the Pyodide worker above, scoped to
+  // just 'unsafe-eval' on this one path — the main document's CSP keeps
+  // 'strict-dynamic' with no eval allowed.
+  if (req.nextUrl.pathname === "/js-worker.js") {
+    const response = NextResponse.next();
+    response.headers.set("Content-Security-Policy", [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-eval'",
+      "connect-src 'self'",
+      "worker-src 'self'",
+      "object-src 'none'",
+      "base-uri 'self'",
+    ].join("; "));
+    return response;
+  }
+
   // ── Per-request nonce ───────────────────────────────────────────────────
   // A fresh cryptographic nonce is generated for every HTML response.
   // Buffer.from(...).toString("base64") produces standard base64 which matches

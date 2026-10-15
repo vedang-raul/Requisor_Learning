@@ -21,6 +21,13 @@ beforeEach(() => {
 afterEach(() => { process.env = originalEnv; });
 
 describe("Python worker security policy", () => {
+  it("restricts JavaScript eval permission to its worker response", async () => {
+    const worker = await middleware(request("/js-worker.js"));
+    expect(worker.headers.get("Content-Security-Policy")).toContain("'unsafe-eval'");
+    expect(worker.headers.get("Content-Security-Policy")).not.toContain("cdn.jsdelivr.net");
+    const page = await middleware(request("/"));
+    expect(page.headers.get("Content-Security-Policy")).not.toContain("'unsafe-eval'");
+  });
   it("allows the pinned runtime CDN and WebAssembly only on the worker response", async () => {
     const response = await middleware(request("/pyodide-worker.js"));
     const policy = response.headers.get("Content-Security-Policy")!;

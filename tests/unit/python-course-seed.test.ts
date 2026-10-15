@@ -18,7 +18,7 @@ describe("one-time Python course import", () => {
   }
 
   it("adds Python to an existing catalog without importing old deleted seeds", async () => {
-    const db = client(["seed-v1"]);
+    const db = client(["seed-v1", "seed-programming"]);
     await initializeCourseCatalog(db as never);
     const courses = db.query.mock.calls.filter(([sql]) => sql.startsWith("INSERT INTO courses"));
     expect(courses.map(([, params]) => params?.[0])).toEqual(["python"]);
@@ -29,14 +29,23 @@ describe("one-time Python course import", () => {
   });
 
   it("does not modify lessons if the Python slug is already in use", async () => {
-    const db = client(["seed-v1"], true);
+    const db = client(["seed-v1", "seed-programming"], true);
     await initializeCourseCatalog(db as never);
     expect(db.query.mock.calls.filter(([sql]) => sql.includes("INSERT INTO course_lessons"))).toHaveLength(0);
   });
 
   it("does not resurrect Python after its one-time import was recorded", async () => {
-    const db = client(["seed-v1", "seed-python"]);
+    const db = client(["seed-v1", "seed-python", "seed-programming"]);
     await initializeCourseCatalog(db as never);
     expect(db.query.mock.calls.filter(([sql]) => sql.startsWith("INSERT INTO courses"))).toHaveLength(0);
+  });
+
+  it("adds JavaScript and Java once without reimporting Python or old seeds", async () => {
+    const db = client(["seed-v1", "seed-python"]);
+    await initializeCourseCatalog(db as never);
+    const courses = () => db.query.mock.calls.filter(([sql]) => sql.startsWith("INSERT INTO courses"));
+    expect(courses().map(([, params]) => params?.[0])).toEqual(["javascript", "java"]);
+    await initializeCourseCatalog(db as never);
+    expect(courses()).toHaveLength(2);
   });
 });

@@ -762,6 +762,7 @@ function LessonForm({ courseSlug, lesson, nextIndex, onSave, onClose }: { course
   const [mode, setMode] = useState<"video" | "reading" | "code-tutorial">(lesson?.format === "reading" ? "reading" : lesson?.format === "code-tutorial" ? "code-tutorial" : "video");
   const [body, setBody] = useState(lesson?.body ?? "");
   const [starterCode, setStarterCode] = useState(lesson?.starterCode ?? "");
+  const [codeLanguage, setCodeLanguage] = useState<"python" | "javascript">(lesson?.language ?? "python");
   const videoId = useMemo(() => (url.trim() ? extractYouTubeId(url) : null), [url]);
   const urlInvalid = mode === "video" && url.trim().length > 0 && !videoId;
   const contentOk = mode === "video" ? true : mode === "reading" ? Boolean(body.trim() || lesson?.bodyFileUrl) : Boolean(body.trim() || starterCode.trim());
@@ -818,8 +819,12 @@ function LessonForm({ courseSlug, lesson, nextIndex, onSave, onClose }: { course
         )}
         {mode === "code-tutorial" && (
           <div className="space-y-2">
-            <Textarea placeholder={"Lesson text — use # / ## headings, blank lines between paragraphs, and ```python fenced blocks``` for example code"} value={body} onChange={(e) => setBody(e.target.value)} className="min-h-[140px] font-mono text-xs" />
-            <Textarea placeholder='Starter code for the live "Try it Yourself" editor, e.g. print("Hello, World!")' value={starterCode} onChange={(e) => setStarterCode(e.target.value)} className="min-h-[80px] font-mono text-xs" />
+            <select value={codeLanguage} onChange={(e) => setCodeLanguage(e.target.value as "python" | "javascript")} className="focus-ring h-9 w-40 rounded-lg border border-border bg-white px-2 text-xs text-zinc-700" aria-label="Editor language">
+              <option value="python">Python</option>
+              <option value="javascript">JavaScript</option>
+            </select>
+            <Textarea placeholder={`Lesson text — use # / ## headings, blank lines between paragraphs, and \`\`\`${codeLanguage} fenced blocks\`\`\` for example code`} value={body} onChange={(e) => setBody(e.target.value)} className="min-h-[140px] font-mono text-xs" />
+            <Textarea placeholder={codeLanguage === "python" ? 'Starter code for the live "Try it Yourself" editor, e.g. print("Hello, World!")' : 'Starter code for the live "Try it Yourself" editor, e.g. console.log("Hello, World!");'} value={starterCode} onChange={(e) => setStarterCode(e.target.value)} className="min-h-[80px] font-mono text-xs" />
           </div>
         )}
         <div className="flex gap-3">
@@ -844,6 +849,7 @@ function LessonForm({ courseSlug, lesson, nextIndex, onSave, onClose }: { course
                 body: mode !== "video" && body.trim() ? body.trim() : undefined,
                 bodyFileUrl: mode === "reading" && !body.trim() ? lesson?.bodyFileUrl : undefined,
                 starterCode: mode === "code-tutorial" && starterCode.trim() ? starterCode.trim() : undefined,
+                language: mode === "code-tutorial" ? codeLanguage : undefined,
               })
             }
           >

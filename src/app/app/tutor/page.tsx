@@ -1133,6 +1133,15 @@ const WIZARD_STEPS = [
 ] as const;
 type WizardStep = (typeof WIZARD_STEPS)[number]["key"];
 
+const CODE_LESSON_PLACEHOLDER: Record<"python" | "javascript", string> = {
+  python: "# Python Variables\n\nA variable is created the moment you assign it a value.\n\n```python\nx = 5\nprint(x)\n```",
+  javascript: "# JavaScript Variables\n\nDeclare a variable with let or const.\n\n```javascript\nlet x = 5;\nconsole.log(x);\n```",
+};
+const STARTER_CODE_PLACEHOLDER: Record<"python" | "javascript", string> = {
+  python: 'print("Hello, World!")',
+  javascript: 'console.log("Hello, World!");',
+};
+
 function WizardTracker({ current, completed, onJump }: { current: number; completed: boolean[]; onJump: (index: number) => void }) {
   return (
     <nav aria-label="Lesson steps" className="overflow-x-auto pb-1">
@@ -1198,6 +1207,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
   const [body, setBody] = useState(lesson?.body ?? "");
   const [bodyFileUrl, setBodyFileUrl] = useState(lesson?.bodyFileUrl);
   const [starterCode, setStarterCode] = useState(lesson?.starterCode ?? "");
+  const [codeLanguage, setCodeLanguage] = useState<"python" | "javascript">(lesson?.language ?? "python");
   // The video's transcript: what the learner's assistant answers from. Saved separately, after the lesson itself.
   const [transcript, setTranscript] = useState("");
   const [savedTranscript, setSavedTranscript] = useState("");
@@ -1314,6 +1324,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
       body: (format === "reading" || format === "code-tutorial") && body.trim() ? body.trim() : undefined,
       bodyFileUrl: format === "reading" && !body.trim() ? bodyFileUrl : undefined,
       starterCode: format === "code-tutorial" && starterCode.trim() ? starterCode.trim() : undefined,
+      language: format === "code-tutorial" ? codeLanguage : undefined,
       published,
       publishAt,
     };
@@ -1598,17 +1609,23 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
                 )}
                 {videoMode === "code" && (
                   <div className="space-y-3">
+                    <Field label="Editor language">
+                      <Select value={codeLanguage} onChange={(e) => setCodeLanguage(e.target.value as "python" | "javascript")}>
+                        <option value="python">Python</option>
+                        <option value="javascript">JavaScript</option>
+                      </Select>
+                    </Field>
                     <Field label="Lesson text" action={aiButton("body", Boolean(body.trim()))}>
                       <span className="mb-1.5 block text-xs font-normal text-zinc-500">
-                        The explanation above the live editor. Use # and ## for headings, blank lines between paragraphs, - for bullets, and ```python fenced blocks``` for example code.
+                        The explanation above the live editor. Use # and ## for headings, blank lines between paragraphs, - for bullets, and {"```"}{codeLanguage} fenced blocks{"```"} for example code.
                       </span>
-                      <Textarea value={body} onChange={(e) => setBody(e.target.value)} maxLength={20000} rows={10} className="font-mono text-xs" placeholder={"# Python Variables\n\nA variable is created the moment you assign it a value.\n\n```python\nx = 5\nprint(x)\n```"} />
+                      <Textarea value={body} onChange={(e) => setBody(e.target.value)} maxLength={20000} rows={10} className="font-mono text-xs" placeholder={CODE_LESSON_PLACEHOLDER[codeLanguage]} />
                     </Field>
                     <Field label="Starter code (optional)">
                       <span className="mb-1.5 block text-xs font-normal text-zinc-500">
                         What the live &quot;Try it Yourself&quot; editor is pre-filled with when a learner opens this lesson.
                       </span>
-                      <Textarea value={starterCode} onChange={(e) => setStarterCode(e.target.value)} maxLength={20000} rows={6} className="font-mono text-xs" placeholder={'print("Hello, World!")'} />
+                      <Textarea value={starterCode} onChange={(e) => setStarterCode(e.target.value)} maxLength={20000} rows={6} className="font-mono text-xs" placeholder={STARTER_CODE_PLACEHOLDER[codeLanguage]} />
                     </Field>
                   </div>
                 )}
