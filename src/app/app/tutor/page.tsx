@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Activity, BarChart3, BookPlus, Briefcase, Check, CheckCircle2, Download, Eye, EyeOff, FileText, GraduationCap, Inbox, LayoutGrid, Paperclip, Upload,
-  ListChecks, Loader2, Pencil, Plus, Send, Star, Trash2, TrendingUp, Users, X,BookOpen, ChevronDown, ChevronLeft, ChevronRight, Clock, Layers, Sparkles, Video, Youtube
+  ListChecks, Loader2, Pencil, Plus, Send, Star, Terminal, Trash2, TrendingUp, Users, X,BookOpen, ChevronDown, ChevronLeft, ChevronRight, Clock, Layers, Sparkles, Video, Youtube
 } from "lucide-react";
 import { RecordStudio } from "@/components/tutor/video-recorder";
 import { ProgramBuilder } from "@/components/tutor/program-builder";
@@ -929,7 +929,9 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, allowUplo
   const formRef = useRef<HTMLDivElement>(null);
   const formOpen = adding || editing !== null;
   const totalMinutes = course.lessons.reduce((sum, l) => sum + (l.durationMin || 0), 0);
-  const videoCount = course.lessons.filter((l) => l.format !== "reading").length;
+  const videoCount = course.lessons.filter((l) => l.format !== "reading" && l.format !== "code-tutorial").length;
+  const codeCount = course.lessons.filter((l) => l.format === "code-tutorial").length;
+  const readingCount = course.lessons.length - videoCount - codeCount;
 
   function openNew() { setCreatedLesson(null); setEditing(null); setAdding(true); queueMicrotask(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })); }
   function openEdit(lesson: Lesson) { setCreatedLesson(null); setAdding(false); setEditing(lesson); setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 120); }
@@ -965,7 +967,7 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, allowUplo
         <div>
           <h2 className="flex items-center gap-2 font-semibold text-zinc-900"><Layers className="h-4 w-4 text-primary" aria-hidden="true" />Lessons</h2>
           <p className="mt-0.5 text-xs text-zinc-500">
-            {course.lessons.length === 0 ? "Nothing here yet — add the first lesson to start building the path." : `${course.lessons.length} lesson${course.lessons.length === 1 ? "" : "s"} · ${videoCount} video · ${course.lessons.length - videoCount} reading · ~${totalMinutes} min total`}
+            {course.lessons.length === 0 ? "Nothing here yet — add the first lesson to start building the path." : `${course.lessons.length} lesson${course.lessons.length === 1 ? "" : "s"} · ${videoCount} video · ${readingCount} reading${codeCount ? ` · ${codeCount} code tutorial` : ""} · ~${totalMinutes} min total`}
           </p>
         </div>
         <motion.div whileTap={{ scale: 0.97 }}>
@@ -987,13 +989,14 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, allowUplo
         <motion.button type="button" onClick={openNew} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="focus-ring mt-3 flex w-full flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50/60 px-4 py-8 text-center transition-colors hover:border-primary/40 hover:bg-primary/5">
           <motion.span animate={{ y: [0, -3, 0] }} transition={{ repeat: Infinity, duration: 2.2, ease: "easeInOut" }} className="rounded-xl bg-primary/10 p-2.5"><Sparkles className="h-5 w-5 text-primary" aria-hidden="true" /></motion.span>
           <span className="text-sm font-medium text-zinc-800">Create your first lesson</span>
-          <span className="text-xs text-zinc-500">A video with a YouTube link, or a reading with written content or an attached PDF.</span>
+          <span className="text-xs text-zinc-500">A video with a YouTube link, a reading with written content or an attached PDF, or a live code tutorial.</span>
         </motion.button>
       ) : (
         <motion.ol layout className="mt-3 space-y-2">
           <AnimatePresence initial={false}>
             {course.lessons.flatMap((lesson, index) => {
-              const isVideo = lesson.format !== "reading";
+              const isCode = lesson.format === "code-tutorial";
+              const isVideo = lesson.format !== "reading" && !isCode;
               const missingVideo = isVideo && isPlaceholder(lesson.youtubeId);
               const isEditing = editing?.id === lesson.id;
               const row = (
@@ -1007,8 +1010,8 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, allowUplo
                   className={cn("group flex items-center gap-3 rounded-xl border p-3 text-sm transition-colors", isEditing ? "border-primary/50 ring-2 ring-primary/15" : "hover:border-zinc-300")}
                 >
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-xs font-bold text-primary">{index + 1}</span>
-                  <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", isVideo ? "bg-rose-50 text-rose-600" : "bg-sky-50 text-sky-600")} title={isVideo ? "Video lesson" : "Reading lesson"}>
-                    {isVideo ? <Video className="h-4 w-4" aria-hidden="true" /> : <BookOpen className="h-4 w-4" aria-hidden="true" />}
+                  <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", isCode ? "bg-emerald-50 text-emerald-600" : isVideo ? "bg-rose-50 text-rose-600" : "bg-sky-50 text-sky-600")} title={isCode ? "Code tutorial" : isVideo ? "Video lesson" : "Reading lesson"}>
+                    {isCode ? <Terminal className="h-4 w-4" aria-hidden="true" /> : isVideo ? <Video className="h-4 w-4" aria-hidden="true" /> : <BookOpen className="h-4 w-4" aria-hidden="true" />}
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium text-zinc-900">{lesson.title}</p>
@@ -1182,15 +1185,19 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
   const [description, setDescription] = useState(lesson?.description ?? "");
   const [duration, setDuration] = useState(String(lesson?.durationMin ?? 20));
   const [section, setSection] = useState(lesson?.section ?? "");
-  // Step 2 — video or reading content
+  // Step 2 — video, reading or code-tutorial content
   // Step 2 decides the lesson format: a YouTube video (pasted, or made by
-  // recorded in the Record tab) or a text lesson. Neither is mandatory until publishing.
-  const [videoMode, setVideoMode] = useState<"youtube" | "edit" | "ai" | "text">(lesson?.format === "reading" ? "text" : "youtube");
+  // recorded in the Record tab), a text lesson, or a live Python "Try it
+  // Yourself" tutorial. Neither is mandatory until publishing.
+  const [videoMode, setVideoMode] = useState<"youtube" | "edit" | "ai" | "text" | "code">(
+    lesson?.format === "reading" ? "text" : lesson?.format === "code-tutorial" ? "code" : "youtube"
+  );
   const [editJobId, setEditJobId] = useState<number | null>(null);
-  const format: "video" | "reading" = videoMode === "text" ? "reading" : "video";
+  const format: "video" | "reading" | "code-tutorial" = videoMode === "text" ? "reading" : videoMode === "code" ? "code-tutorial" : "video";
   const [youtubeId, setYoutubeId] = useState(lesson?.youtubeId === "REPLACE_ME" ? "" : lesson?.youtubeId ?? "");
   const [body, setBody] = useState(lesson?.body ?? "");
   const [bodyFileUrl, setBodyFileUrl] = useState(lesson?.bodyFileUrl);
+  const [starterCode, setStarterCode] = useState(lesson?.starterCode ?? "");
   // The video's transcript: what the learner's assistant answers from. Saved separately, after the lesson itself.
   const [transcript, setTranscript] = useState("");
   const [savedTranscript, setSavedTranscript] = useState("");
@@ -1249,7 +1256,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
 
   // What each step needs; used for the tracker ticks and the publish checklist.
   const detailsOk = Boolean(title.trim() && description.trim());
-  const contentOk = format === "video" ? Boolean(detectedVideoId) : Boolean(body.trim() || bodyFileUrl);
+  const contentOk = format === "video" ? Boolean(detectedVideoId) : format === "code-tutorial" ? Boolean(body.trim() || starterCode.trim()) : Boolean(body.trim() || bodyFileUrl);
   const assignmentOk = guardrailsOk && (!requiresSubmission || Boolean((assignment.trim() || aiAssignment) && assignmentMarks && assignmentDueDate));
   const completed = [
     detailsOk,
@@ -1284,7 +1291,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
     if (requiresSubmission && (!assignmentMarks || !assignmentDueDate)) throw new Error("Set total points and a due date for the submission (step 3).");
     if (!guardrailsOk) throw new Error("Write the guardrails for the AI-curated assignment, or switch it off (step 3).");
     if (published && !contentOk) {
-      throw new Error("Add a YouTube video or write a text lesson (step 2) before publishing — or save it as a draft.");
+      throw new Error("Add a YouTube video, write a text lesson, or write a code tutorial (step 2) before publishing — or save it as a draft.");
     }
     let publishAt: string | undefined;
     if (published && scheduleOn) {
@@ -1296,7 +1303,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
     return {
       id: lesson?.id ?? `${courseSlug}-${Date.now()}`,
       title: title.trim(), description: description.trim(), format,
-      youtubeId: format === "reading" ? "" : detectedVideoId ?? PLACEHOLDER_VIDEO,
+      youtubeId: format === "reading" || format === "code-tutorial" ? "" : detectedVideoId ?? PLACEHOLDER_VIDEO,
       durationMin: Math.min(1440, Math.max(1, Math.round(Number(duration) || 20))),
       section: section.trim() || undefined, assignment: assignment.trim() || undefined, requiresSubmission,
       assignmentMarks: requiresSubmission && assignmentMarks ? Number(assignmentMarks) : undefined,
@@ -1304,8 +1311,9 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
       assignmentAi: aiAssignment ? { guardrails: guardrails.trim(), use: ASSIGNMENT_DATA.map((d) => d.key).filter((key) => aiData.includes(key)) } : undefined,
       keyTakeaways: takeawayList,
       resources: finalResources,
-      body: format === "reading" && body.trim() ? body.trim() : undefined,
+      body: (format === "reading" || format === "code-tutorial") && body.trim() ? body.trim() : undefined,
       bodyFileUrl: format === "reading" && !body.trim() ? bodyFileUrl : undefined,
+      starterCode: format === "code-tutorial" && starterCode.trim() ? starterCode.trim() : undefined,
       published,
       publishAt,
     };
@@ -1417,7 +1425,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
   // The fields AI can write on each step. A text lesson's body is only offered in "Text lesson" mode.
   const AI_STEP_FIELDS: Record<WizardStep, LessonAiField[]> = {
     details: ["title", "description", "durationMin", "section"],
-    video: videoMode === "text" ? ["body"] : [],
+    video: videoMode === "text" || videoMode === "code" ? ["body"] : [],
     assignment: aiAssignment ? ["assignment", "guardrails"] : ["assignment"],
     takeaways: ["takeaways"],
     publish: [],
@@ -1527,12 +1535,13 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
 
             {step === "video" && (
               <div className="space-y-3">
-                <p className="text-sm text-zinc-600">Paste a YouTube link, record your video here, generate one with AI, or write a text lesson. You only need one.</p>
+                <p className="text-sm text-zinc-600">Paste a YouTube link, record your video here, generate one with AI, write a text lesson, or write a live Python tutorial. You only need one.</p>
                 <div className="flex w-fit flex-wrap gap-1 rounded-xl bg-zinc-100 p-1 text-xs font-medium" role="tablist" aria-label="Lesson content type">
                   <button type="button" role="tab" aria-selected={videoMode === "youtube"} onClick={() => setVideoMode("youtube")} className={cn("flex items-center gap-1.5 rounded-lg px-3 py-1.5", videoMode === "youtube" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}><Youtube className="h-3.5 w-3.5" />YouTube link</button>
                   <button type="button" role="tab" aria-selected={videoMode === "edit"} onClick={() => setVideoMode("edit")} className={cn("flex items-center gap-1.5 rounded-lg px-3 py-1.5", videoMode === "edit" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}><Video className="h-3.5 w-3.5" />Record</button>
                   <button type="button" role="tab" aria-selected={videoMode === "ai"} onClick={() => setVideoMode("ai")} className={cn("flex items-center gap-1.5 rounded-lg px-3 py-1.5", videoMode === "ai" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}><Sparkles className="h-3.5 w-3.5" />AI video</button>
                   <button type="button" role="tab" aria-selected={videoMode === "text"} onClick={() => setVideoMode("text")} className={cn("flex items-center gap-1.5 rounded-lg px-3 py-1.5", videoMode === "text" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}><BookOpen className="h-3.5 w-3.5" />Text lesson</button>
+                  <button type="button" role="tab" aria-selected={videoMode === "code"} onClick={() => setVideoMode("code")} className={cn("flex items-center gap-1.5 rounded-lg px-3 py-1.5", videoMode === "code" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}><Terminal className="h-3.5 w-3.5" />Code tutorial</button>
                 </div>
                 {videoMode === "youtube" && (
                   <Field label="YouTube URL or video ID (optional)">
@@ -1586,6 +1595,22 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
                 )}
                 {videoMode === "text" && (
                   <LessonContentField action={aiButton("body", Boolean(body.trim()))} body={body} bodyFileUrl={bodyFileUrl} uploading={uploading} setUploading={setUploading} allowUploads={allowUploads} onChange={({ body: nextBody, bodyFileUrl: nextUrl }) => { setBody(nextBody); setBodyFileUrl(nextUrl); }} />
+                )}
+                {videoMode === "code" && (
+                  <div className="space-y-3">
+                    <Field label="Lesson text" action={aiButton("body", Boolean(body.trim()))}>
+                      <span className="mb-1.5 block text-xs font-normal text-zinc-500">
+                        The explanation above the live editor. Use # and ## for headings, blank lines between paragraphs, - for bullets, and ```python fenced blocks``` for example code.
+                      </span>
+                      <Textarea value={body} onChange={(e) => setBody(e.target.value)} maxLength={20000} rows={10} className="font-mono text-xs" placeholder={"# Python Variables\n\nA variable is created the moment you assign it a value.\n\n```python\nx = 5\nprint(x)\n```"} />
+                    </Field>
+                    <Field label="Starter code (optional)">
+                      <span className="mb-1.5 block text-xs font-normal text-zinc-500">
+                        What the live &quot;Try it Yourself&quot; editor is pre-filled with when a learner opens this lesson.
+                      </span>
+                      <Textarea value={starterCode} onChange={(e) => setStarterCode(e.target.value)} maxLength={20000} rows={6} className="font-mono text-xs" placeholder={'print("Hello, World!")'} />
+                    </Field>
+                  </div>
                 )}
               </div>
             )}

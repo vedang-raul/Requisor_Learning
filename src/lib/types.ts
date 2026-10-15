@@ -25,10 +25,14 @@ export interface Lesson {
   assignmentAi?: import("@/lib/ai/assignment-ai").AssignmentAi;
   /** Optional sub-part / module name used to group lessons on the course page. */
   section?: string;
-  /** "reading" lessons are article/tool links with no video by design — not a video pending upload. Defaults to "video". */
-  format?: "video" | "reading";
+  /** "reading" lessons are article/tool links with no video by design — not a video pending upload.
+   *  "code-tutorial" is a w3schools-style page: markdown `body` plus a live
+   *  in-browser Python editor seeded with `starterCode`. Defaults to "video". */
+  format?: "video" | "reading" | "code-tutorial";
   body?:string;
   bodyFileUrl?:string;
+  /** "code-tutorial" lessons only: starter code the "Try it Yourself" editor loads. */
+  starterCode?: string;
   /** false = a draft lesson only the course's tutor can see. Absent/true =
    *  visible to learners (whenever the course itself is published). */
   published?: boolean;

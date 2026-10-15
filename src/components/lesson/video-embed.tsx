@@ -1,9 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { extractYouTubeId, isPlaceholder } from "@/lib/utils";
 import { ExternalLink, FileText, Loader2, MonitorPlay } from "lucide-react";
 import { renderMarkdownLite } from "@/components/ui/markdown-lite";
+
+// CodeMirror touches the DOM at mount time — load it client-only.
+const PythonPlayground = dynamic(
+  () => import("@/components/lesson/python-playground").then((m) => m.PythonPlayground),
+  { ssr: false, loading: () => <div className="glass h-64 w-full animate-pulse rounded-2xl" /> }
+);
 /* ── YouTube IFrame API globals ─────────────────────────────────────── */
 declare global {
   interface Window {
@@ -55,15 +62,18 @@ export function VideoEmbed({
   format = "video",
   body,
   bodyFileUrl,
+  starterCode,
   resourceUrl,
   onEnded,
 }: {
   youtubeId: string;
   title: string;
-  format?: "video" | "reading";
+  format?: "video" | "reading" | "code-tutorial";
   resourceUrl?: string;
   body?: string;
   bodyFileUrl?: string;
+  /** "code-tutorial" lessons only: starter code for the "Try it Yourself" editor. */
+  starterCode?: string;
   /** Called when the YouTube video reaches the end. */
   onEnded?: () => void;
 }) {
@@ -136,6 +146,21 @@ export function VideoEmbed({
       playerRef.current = null;
     };
   }, [normalizedVideoId, format]);
+
+  if (format === "code-tutorial") {
+    return (
+      <div className="space-y-4">
+        {body?.trim() && (
+          <div className="glass w-full rounded-2xl p-6">
+            <div className="prose prose-sm max-w-none text-sm leading-relaxed text-zinc-800">
+              {renderMarkdownLite(body)}
+            </div>
+          </div>
+        )}
+        <PythonPlayground starterCode={starterCode} />
+      </div>
+    );
+  }
 
   if (format === "reading" && body?.trim()) {
     return (

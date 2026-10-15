@@ -7,7 +7,7 @@ import {
   Mail, Pencil, Plus, ShieldCheck, Trash2, TrendingUp, TrendingDown, Video, X, Youtube, LayoutGrid, Upload,
   Clock, FileText, Send, RefreshCw, Star, MessageSquare, Smile, Meh, Frown, Hash, Filter, Quote,
   ThumbsUp, ThumbsDown, Layers, Copy, ShieldAlert, Tags, Angry, HelpCircle, PartyPopper,
-  Gauge, Sparkles, ScanText, Bug, AlertCircle, CheckCircle2, ChevronUp, Image, Loader2,
+  Gauge, Sparkles, ScanText, Bug, AlertCircle, CheckCircle2, ChevronUp, Image, Loader2, Terminal,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { Course, Lesson } from "@/lib/types";
@@ -542,8 +542,10 @@ function ContentManager() {
                   >
                     <span className="w-6 text-center text-xs font-semibold text-zinc-600">{i + 1}</span>
                     <div className="relative hidden h-10 w-16 shrink-0 overflow-hidden rounded-md sm:block">
-                      {l.format === "reading" ? (
-                        <div className="flex h-full w-full items-center justify-center bg-zinc-200"><FileText className="h-4 w-4 text-zinc-600" /></div>
+                      {l.format === "reading" || l.format === "code-tutorial" ? (
+                        <div className="flex h-full w-full items-center justify-center bg-zinc-200">
+                          {l.format === "code-tutorial" ? <Terminal className="h-4 w-4 text-zinc-600" /> : <FileText className="h-4 w-4 text-zinc-600" />}
+                        </div>
                       ) : isPlaceholder(l.youtubeId) ? (
                         <div className="flex h-full w-full items-center justify-center bg-zinc-200"><Youtube className="h-4 w-4 text-zinc-600" /></div>
                       ) : (
@@ -553,15 +555,15 @@ function ContentManager() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="flex items-center gap-1.5 truncate text-sm text-zinc-900">
-                        {l.format === "reading" ? <FileText className="h-3 w-3 shrink-0 text-zinc-400" /> : <Video className="h-3 w-3 shrink-0 text-zinc-400" />}
+                        {l.format === "code-tutorial" ? <Terminal className="h-3 w-3 shrink-0 text-zinc-400" /> : l.format === "reading" ? <FileText className="h-3 w-3 shrink-0 text-zinc-400" /> : <Video className="h-3 w-3 shrink-0 text-zinc-400" />}
                         {l.title}
                       </p>
                       <p className="text-[11px] text-zinc-500">
-                        {formatMinutes(l.durationMin)} · {l.format === "reading" ? "Reading lesson" : isPlaceholder(l.youtubeId) ? "No video yet" : `youtu.be/${l.youtubeId}`}
+                        {formatMinutes(l.durationMin)} · {l.format === "code-tutorial" ? "Code tutorial" : l.format === "reading" ? "Reading lesson" : isPlaceholder(l.youtubeId) ? "No video yet" : `youtu.be/${l.youtubeId}`}
                       </p>
                     </div>
-                    {l.format === "reading" ? <Tag tone="accent">Reading</Tag> : isPlaceholder(l.youtubeId) && <Tag tone="warning">Needs video</Tag>}
-                    {!aiDraft && l.format !== "reading" && !isPlaceholder(l.youtubeId) && <NotifyButton course={course} lesson={l} />}
+                    {l.format === "code-tutorial" ? <Tag tone="accent">Code</Tag> : l.format === "reading" ? <Tag tone="accent">Reading</Tag> : isPlaceholder(l.youtubeId) && <Tag tone="warning">Needs video</Tag>}
+                    {!aiDraft && l.format !== "reading" && l.format !== "code-tutorial" && !isPlaceholder(l.youtubeId) && <NotifyButton course={course} lesson={l} />}
                     {!aiDraft && <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
                       <Button size="icon" variant="ghost" aria-label={`Edit ${l.title}`} onClick={() => { setEditingLesson(l); setCreatingLesson(false); }}><Pencil className="h-4 w-4" /></Button>
                     </motion.div>}
@@ -757,8 +759,12 @@ function LessonForm({ courseSlug, lesson, nextIndex, onSave, onClose }: { course
   const [url, setUrl] = useState(lesson && !isPlaceholder(lesson.youtubeId) ? `https://youtu.be/${lesson.youtubeId}` : "");
   const [duration, setDuration] = useState(String(lesson?.durationMin ?? 20));
   const [description, setDescription] = useState(lesson?.description ?? "");
+  const [mode, setMode] = useState<"video" | "reading" | "code-tutorial">(lesson?.format === "reading" ? "reading" : lesson?.format === "code-tutorial" ? "code-tutorial" : "video");
+  const [body, setBody] = useState(lesson?.body ?? "");
+  const [starterCode, setStarterCode] = useState(lesson?.starterCode ?? "");
   const videoId = useMemo(() => (url.trim() ? extractYouTubeId(url) : null), [url]);
-  const urlInvalid = url.trim().length > 0 && !videoId;
+  const urlInvalid = mode === "video" && url.trim().length > 0 && !videoId;
+  const contentOk = mode === "video" ? true : mode === "reading" ? Boolean(body.trim() || lesson?.bodyFileUrl) : Boolean(body.trim() || starterCode.trim());
 
   return (
     <motion.div
@@ -776,46 +782,68 @@ function LessonForm({ courseSlug, lesson, nextIndex, onSave, onClose }: { course
           </motion.button>
         </div>
         <Input placeholder="Lesson title" value={title} onChange={(e) => setTitle(e.target.value)} />
-        <div>
-          <div className="relative">
-            <Youtube className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-red-600" />
-            <Input placeholder="Paste YouTube URL (watch, share, embed or shorts link)" value={url} onChange={(e) => setUrl(e.target.value)} className={cn("pl-10", urlInvalid && "border-red-500/50")} />
-          </div>
-          {urlInvalid && <p className="mt-1 text-[11px] text-red-600">Couldn&apos;t find a video ID in that URL.</p>}
-          <AnimatePresence>
-            {videoId && (
-              <motion.div
-                initial={{ opacity: 0, y: -6, height: 0 }}
-                animate={{ opacity: 1, y: 0, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                className="mt-2 flex items-center gap-3 overflow-hidden rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-2.5"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={youTubeThumb(videoId)} alt="Video thumbnail preview" className="h-12 w-20 rounded-md object-cover" />
-                <p className="text-xs text-emerald-700">Video detected — thumbnail, player and embed generated automatically.</p>
-              </motion.div>
-            )}
-          </AnimatePresence>
+        <div className="flex w-fit flex-wrap gap-1 rounded-xl bg-zinc-100 p-1 text-xs font-medium" role="tablist" aria-label="Lesson content type">
+          <button type="button" role="tab" aria-selected={mode === "video"} onClick={() => setMode("video")} className={cn("flex items-center gap-1.5 rounded-lg px-3 py-1.5", mode === "video" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}><Youtube className="h-3.5 w-3.5" />Video</button>
+          <button type="button" role="tab" aria-selected={mode === "reading"} onClick={() => setMode("reading")} className={cn("flex items-center gap-1.5 rounded-lg px-3 py-1.5", mode === "reading" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}><FileText className="h-3.5 w-3.5" />Reading</button>
+          <button type="button" role="tab" aria-selected={mode === "code-tutorial"} onClick={() => setMode("code-tutorial")} className={cn("flex items-center gap-1.5 rounded-lg px-3 py-1.5", mode === "code-tutorial" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}><Terminal className="h-3.5 w-3.5" />Code tutorial</button>
         </div>
+        {mode === "video" && (
+          <div>
+            <div className="relative">
+              <Youtube className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-red-600" />
+              <Input placeholder="Paste YouTube URL (watch, share, embed or shorts link)" value={url} onChange={(e) => setUrl(e.target.value)} className={cn("pl-10", urlInvalid && "border-red-500/50")} />
+            </div>
+            {urlInvalid && <p className="mt-1 text-[11px] text-red-600">Couldn&apos;t find a video ID in that URL.</p>}
+            <AnimatePresence>
+              {videoId && (
+                <motion.div
+                  initial={{ opacity: 0, y: -6, height: 0 }}
+                  animate={{ opacity: 1, y: 0, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="mt-2 flex items-center gap-3 overflow-hidden rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-2.5"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={youTubeThumb(videoId)} alt="Video thumbnail preview" className="h-12 w-20 rounded-md object-cover" />
+                  <p className="text-xs text-emerald-700">Video detected — thumbnail, player and embed generated automatically.</p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
+        {mode === "reading" && (
+          <div>
+            <Textarea placeholder="Lesson text (plain text, blank lines between paragraphs)" value={body} onChange={(e) => setBody(e.target.value)} className="min-h-[140px] font-mono text-xs" />
+            {!body.trim() && lesson?.bodyFileUrl && <p className="mt-1 text-[11px] text-zinc-500">Keeps the attached file this lesson already has. Type here to replace it with written text instead.</p>}
+          </div>
+        )}
+        {mode === "code-tutorial" && (
+          <div className="space-y-2">
+            <Textarea placeholder={"Lesson text — use # / ## headings, blank lines between paragraphs, and ```python fenced blocks``` for example code"} value={body} onChange={(e) => setBody(e.target.value)} className="min-h-[140px] font-mono text-xs" />
+            <Textarea placeholder='Starter code for the live "Try it Yourself" editor, e.g. print("Hello, World!")' value={starterCode} onChange={(e) => setStarterCode(e.target.value)} className="min-h-[80px] font-mono text-xs" />
+          </div>
+        )}
         <div className="flex gap-3">
           <Input type="number" min={1} placeholder="Duration (min)" value={duration} onChange={(e) => setDuration(e.target.value)} className="w-40" aria-label="Duration in minutes" />
           <Textarea placeholder="Short description" value={description} onChange={(e) => setDescription(e.target.value)} className="min-h-[40px] flex-1" />
         </div>
-        <motion.div whileHover={{ scale: !title.trim() || urlInvalid ? 1 : 1.02 }} whileTap={{ scale: !title.trim() || urlInvalid ? 1 : 0.98 }}>
+        <motion.div whileHover={{ scale: !title.trim() || urlInvalid || !contentOk ? 1 : 1.02 }} whileTap={{ scale: !title.trim() || urlInvalid || !contentOk ? 1 : 0.98 }}>
           <Button
-            disabled={!title.trim() || urlInvalid}
+            disabled={!title.trim() || urlInvalid || !contentOk}
             onClick={() =>
               onSave({
                 id: lesson?.id ?? `${courseSlug}-${String(nextIndex).padStart(2, "0")}-${Date.now().toString(36)}`,
                 title: title.trim(),
                 description: description.trim() || "New lesson.",
-                youtubeId: videoId ?? lesson?.youtubeId ?? PLACEHOLDER_VIDEO,
+                youtubeId: mode === "video" ? videoId ?? lesson?.youtubeId ?? PLACEHOLDER_VIDEO : "",
                 durationMin: Math.max(1, parseInt(duration) || 20),
                 resources: lesson?.resources ?? [],
                 keyTakeaways: lesson?.keyTakeaways ?? [],
                 assignment: lesson?.assignment,
                 requiresSubmission: lesson?.requiresSubmission,
-                format: lesson?.format,
+                format: mode,
+                body: mode !== "video" && body.trim() ? body.trim() : undefined,
+                bodyFileUrl: mode === "reading" && !body.trim() ? lesson?.bodyFileUrl : undefined,
+                starterCode: mode === "code-tutorial" && starterCode.trim() ? starterCode.trim() : undefined,
               })
             }
           >

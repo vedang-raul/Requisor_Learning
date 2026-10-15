@@ -343,7 +343,7 @@ function LearnView() {
               transition={{ duration: 0.15 }}
             >
               <Tag tone={completed ? "success" : "default"}>
-                {completed ? "Completed" : progress?.watchPct ? `${progress.watchPct}% ${lesson.format === "reading" ? "read" : "watched"}` : "Not started"}
+                {completed ? "Completed" : progress?.watchPct ? `${progress.watchPct}% ${lesson.format === "reading" || lesson.format === "code-tutorial" ? "read" : "watched"}` : "Not started"}
               </Tag>
             </motion.div>
           </AnimatePresence>
@@ -378,8 +378,9 @@ function LearnView() {
             title={lesson.title}
             format={lesson.format}
             resourceUrl={lesson.format === "reading" ? lesson.resources[0]?.url : undefined}
-            body={lesson.format === "reading" ? lesson.body : undefined}
+            body={lesson.format === "reading" || lesson.format === "code-tutorial" ? lesson.body : undefined}
             bodyFileUrl={lesson.format === "reading" ? lesson.bodyFileUrl : undefined}
+            starterCode={lesson.format === "code-tutorial" ? lesson.starterCode : undefined}
             onEnded={onVideoEnded}
           />
 

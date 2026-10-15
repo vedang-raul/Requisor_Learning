@@ -221,6 +221,335 @@ seedCourses.push(
   )
 );
 
+/** A w3schools-style Python lesson: markdown `body` plus a live "Try it
+ *  Yourself" editor seeded with `starterCode`. No video — see format below. */
+function pythonLesson(
+  index: number,
+  title: string,
+  durationMin: number,
+  description: string,
+  keyTakeaways: string[],
+  body: string,
+  starterCode: string,
+  section?: string
+): Lesson {
+  return {
+    id: `python-${String(index + 1).padStart(2, "0")}`,
+    title,
+    description,
+    youtubeId: "",
+    durationMin,
+    format: "code-tutorial",
+    section,
+    resources: [{ label: "Python docs — " + title, url: "https://docs.python.org/3/", type: "link" }],
+    keyTakeaways,
+    body,
+    starterCode,
+  };
+}
+
+seedCourses.push({
+  slug: "python",
+  title: "Python Programming",
+  tagline: "Learn Python the w3schools way — short lessons, real code, run it instantly.",
+  category: "code",
+  level: "Beginner",
+  tags: ["Python", "Programming", "Coding"],
+  cover: "from-slate-600 via-slate-700 to-zinc-800",
+  addedAt: "2026-07-10",
+  baseAssessment: "Write a short Python program (at least 15 lines) that uses a variable, a loop, a conditional and a function, then run it in the course's own editor and paste the output.",
+  lessons: [
+    pythonLesson(
+      0, "Python Introduction", 5,
+      "What Python is, why it's everywhere, and how this course's live editor works.",
+      ["Python is a general-purpose, beginner-friendly language", "No install needed here — every lesson has a live editor", "Click Run to execute real Python in your browser"],
+      `# Python Introduction
+
+Python is one of the most popular programming languages in the world. It is used for web development, data analysis, automation, AI and much more.
+
+Python is known for its simple, readable syntax — close to plain English — which makes it a great first language.
+
+## Why Python?
+- Runs on Windows, Mac, Linux and more
+- A huge standard library plus thousands of third-party packages
+- Readable syntax that reads almost like English
+- Used heavily in AI, data science and automation
+
+## Your first line of Python
+Every lesson in this course has a live editor like the one below. Press **Run** to execute the code and see its output.
+
+\`\`\`python
+print("Hello, World!")
+\`\`\`
+
+Try changing the text inside the quotes and running it again.`,
+      'print("Hello, World!")',
+      "Python Basics"
+    ),
+    pythonLesson(
+      1, "Python Syntax", 6,
+      "print(), comments and why indentation matters in Python.",
+      ["print() writes text to the output", "# starts a comment — Python ignores the rest of the line", "Indentation (not braces) defines blocks of code"],
+      `# Python Syntax
+
+## print()
+print() outputs text or values:
+
+\`\`\`python
+print("Learning Python")
+print(2 + 3)
+\`\`\`
+
+## Comments
+A line starting with # is a comment — Python skips it entirely. Use comments to explain *why*, not *what*.
+
+\`\`\`python
+# This is a comment, Python ignores this line
+print("This runs")
+\`\`\`
+
+## Indentation
+Unlike many languages, Python uses indentation (spaces) — not curly braces { } — to mark a block of code. This will matter a lot once you reach if-statements and loops.
+
+\`\`\`python
+if 5 > 2:
+    print("Five is greater than two!")
+\`\`\``,
+      `print("Learning Python")\nprint(2 + 3)\n\n# Try adding your own comment and print statement below\n`,
+      "Python Basics"
+    ),
+    pythonLesson(
+      2, "Python Variables", 7,
+      "Creating variables, naming rules, and Python's dynamic typing.",
+      ["A variable is created the moment you first assign it a value", "No need to declare a type — Python infers it", "Variable names are case-sensitive and can't start with a number"],
+      `# Python Variables
+
+Variables store data. Python has no command for declaring a variable — it's created the moment you assign a value:
+
+\`\`\`python
+x = 5
+y = "Hello, World!"
+print(x)
+print(y)
+\`\`\`
+
+## Naming rules
+- Must start with a letter or underscore, not a number
+- Can contain letters, numbers and underscores (A-z, 0-9, _)
+- Case-sensitive: \`age\`, \`Age\` and \`AGE\` are three different variables
+
+## Dynamic typing
+A variable's type can change as your program runs:
+
+\`\`\`python
+x = 5       # x is an integer
+x = "five"  # now x is a string
+print(x)
+\`\`\``,
+      `x = 5\ny = "Hello, World!"\nprint(x)\nprint(y)\n`,
+      "Python Basics"
+    ),
+    pythonLesson(
+      3, "Python Data Types", 8,
+      "The built-in types: str, int, float, bool, list and dict — and how to check one with type().",
+      ["Common types: str, int, float, bool, list, dict", "type() tells you a value's data type", "Numbers, text and collections are all first-class values"],
+      `# Python Data Types
+
+Python has several built-in data types:
+- **str** — text, e.g. "hello"
+- **int** — whole numbers, e.g. 42
+- **float** — decimal numbers, e.g. 3.14
+- **bool** — True / False
+- **list** — an ordered collection, e.g. [1, 2, 3]
+- **dict** — key/value pairs, e.g. {"a": 1}
+
+Use type() to check what you're working with:
+
+\`\`\`python
+name = "Alex"
+age = 30
+height = 1.75
+is_member = True
+
+print(type(name))
+print(type(age))
+print(type(height))
+print(type(is_member))
+\`\`\``,
+      `name = "Alex"\nage = 30\nheight = 1.75\nis_member = True\n\nprint(type(name))\nprint(type(age))\nprint(type(height))\nprint(type(is_member))\n`,
+      "Python Basics"
+    ),
+    pythonLesson(
+      4, "Python Strings", 8,
+      "Quoting, concatenation, f-strings and slicing text.",
+      ["Strings can use single or double quotes", "f-strings (f\"...\") embed variables directly in text", "Slice a string with [start:end]"],
+      `# Python Strings
+
+Strings are text, wrapped in single or double quotes:
+
+\`\`\`python
+greeting = "Hello"
+name = 'World'
+print(greeting + ", " + name + "!")
+\`\`\`
+
+## f-strings
+The easiest way to mix variables into text is an f-string — put an f before the quotes:
+
+\`\`\`python
+name = "Alex"
+age = 30
+print(f"{name} is {age} years old.")
+\`\`\`
+
+## Slicing
+Grab part of a string with [start:end] (end is excluded):
+
+\`\`\`python
+text = "Hello, World!"
+print(text[0:5])   # Hello
+print(text[7:])    # World!
+print(text.upper())
+\`\`\``,
+      `name = "Alex"\nage = 30\nprint(f"{name} is {age} years old.")\n\ntext = "Hello, World!"\nprint(text[0:5])\nprint(text.upper())\n`,
+      "Python Basics"
+    ),
+    pythonLesson(
+      5, "Python Lists", 9,
+      "Creating lists, indexing, and the most common list methods.",
+      ["A list holds an ordered, changeable collection of items", "Indexing starts at 0; negative indexes count from the end", "append(), remove() and len() are the methods you'll use most"],
+      `# Python Lists
+
+A list stores multiple items in a single variable:
+
+\`\`\`python
+fruits = ["apple", "banana", "cherry"]
+print(fruits)
+print(fruits[0])    # first item
+print(fruits[-1])   # last item
+\`\`\`
+
+## Changing a list
+\`\`\`python
+fruits = ["apple", "banana", "cherry"]
+fruits.append("orange")
+fruits.remove("banana")
+print(fruits)
+print(len(fruits))
+\`\`\`
+
+## Looping over a list
+\`\`\`python
+for fruit in fruits:
+    print(fruit)
+\`\`\``,
+      `fruits = ["apple", "banana", "cherry"]\nfruits.append("orange")\nprint(fruits)\n\nfor fruit in fruits:\n    print(fruit)\n`,
+      "Control Flow"
+    ),
+    pythonLesson(
+      6, "Python If...Else", 9,
+      "Comparison and logical operators, and writing conditional branches.",
+      ["if, elif and else branch your program's logic", "Comparison operators: ==, !=, >, <, >=, <=", "Combine conditions with and, or, not"],
+      `# Python If...Else
+
+Python relies on indentation to mark which lines belong to a condition:
+
+\`\`\`python
+age = 20
+
+if age < 13:
+    print("Child")
+elif age < 20:
+    print("Teenager")
+else:
+    print("Adult")
+\`\`\`
+
+## Logical operators
+\`\`\`python
+age = 20
+has_id = True
+
+if age >= 18 and has_id:
+    print("Entry allowed")
+else:
+    print("Entry denied")
+\`\`\``,
+      `age = 20\nhas_id = True\n\nif age >= 18 and has_id:\n    print("Entry allowed")\nelse:\n    print("Entry denied")\n`,
+      "Control Flow"
+    ),
+    pythonLesson(
+      7, "Python Loops", 9,
+      "for loops, while loops, range(), and break/continue.",
+      ["for loops iterate over a sequence; while loops repeat while a condition holds", "range(n) generates numbers 0 to n-1", "break exits a loop early; continue skips to the next iteration"],
+      `# Python Loops
+
+## for loop
+\`\`\`python
+for i in range(5):
+    print(i)
+\`\`\`
+
+## while loop
+\`\`\`python
+count = 0
+while count < 5:
+    print(count)
+    count += 1
+\`\`\`
+
+## break and continue
+\`\`\`python
+for i in range(10):
+    if i == 3:
+        continue   # skip 3
+    if i == 6:
+        break      # stop at 6
+    print(i)
+\`\`\``,
+      `for i in range(5):\n    print(i)\n\ncount = 0\nwhile count < 3:\n    print("count is", count)\n    count += 1\n`,
+      "Control Flow"
+    ),
+    pythonLesson(
+      8, "Python Functions", 10,
+      "Defining reusable functions with def, parameters, defaults and return values.",
+      ["def defines a reusable block of code", "Parameters can have default values", "return sends a value back to the caller"],
+      `# Python Functions
+
+A function is a reusable block of code, defined with def:
+
+\`\`\`python
+def greet(name):
+    return f"Hello, {name}!"
+
+print(greet("Alex"))
+\`\`\`
+
+## Default parameters
+\`\`\`python
+def greet(name="World"):
+    return f"Hello, {name}!"
+
+print(greet())
+print(greet("Python"))
+\`\`\`
+
+## Multiple parameters and return values
+\`\`\`python
+def add(a, b):
+    return a + b
+
+result = add(4, 7)
+print(result)
+\`\`\`
+
+Now try writing your own function in the editor below — this is your final exercise for the Python basics path.`,
+      `def greet(name="World"):\n    return f"Hello, {name}!"\n\nprint(greet())\nprint(greet("Python"))\n\ndef add(a, b):\n    return a + b\n\nprint(add(4, 7))\n`,
+      "Control Flow"
+    ),
+  ],
+});
+
 export const announcements = [
   { id: "a1", title: "Welcome, July 2026 cohort! 🎉", body: "Your onboarding learning paths are live. Start with your track's fundamentals this week.", at: "2026-07-01" },
   { id: "a2", title: "New path: Agentic AI", body: "11 lessons covering AI agents, core AI concepts and practical AI tools like ChatGPT and Lovable.dev.", at: "2026-06-20" },

@@ -25,6 +25,24 @@ export async function middleware(req: NextRequest) {
     return response;
   }
 
+  // The Pyodide (in-browser Python) worker is fetched as its own resource,
+  // so per spec it enforces whatever CSP header THAT response carries —
+  // not the strict-dynamic policy below meant for HTML documents. Scope the
+  // relaxation (CDN script/connect, 'wasm-unsafe-eval' for WASM compilation)
+  // to just this one path instead of loosening the app's real CSP.
+  if (req.nextUrl.pathname === "/pyodide-worker.js") {
+    const response = NextResponse.next();
+    response.headers.set("Content-Security-Policy", [
+      "default-src 'self'",
+      "script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval'",
+      "connect-src 'self' https://cdn.jsdelivr.net",
+      "worker-src 'self'",
+      "object-src 'none'",
+      "base-uri 'self'",
+    ].join("; "));
+    return response;
+  }
+
   // ── Per-request nonce ───────────────────────────────────────────────────
   // A fresh cryptographic nonce is generated for every HTML response.
   // Buffer.from(...).toString("base64") produces standard base64 which matches

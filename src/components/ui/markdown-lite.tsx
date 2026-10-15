@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ChevronRight, PlayCircle } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 /** Resolves a {{lesson|Course Title|Lesson Title}} tag to a real link, or null if no match. */
 export type LessonResolver = (courseTitle: string, lessonTitle: string) => string | null;
@@ -76,14 +77,21 @@ function formatInline(text: string, keyPrefix: string, resolveLesson?: LessonRes
     });
 }
 
-type Block = { type: "p"; lines: string[] } | { type: "ul"; items: string[] };
+type Block =
+  | { type: "p"; lines: string[] }
+  | { type: "ul"; items: string[] }
+  | { type: "h"; level: 2 | 3; text: string }
+  | { type: "code"; language?: string; content: string };
 
-/** Groups raw lines into paragraph/list blocks — a "- " line starts a list even
- * mid-paragraph (e.g. a "By path:" header immediately followed by bullets). */
+/** Groups raw lines into paragraph/list/heading/code blocks — a "- " line starts a
+ * list even mid-paragraph (e.g. a "By path:" header immediately followed by bullets),
+ * and a fenced ```lang ... ``` block is lifted out verbatim (no inline formatting inside it). */
 function groupBlocks(content: string): Block[] {
   const blocks: Block[] = [];
   let paraBuffer: string[] = [];
   let listBuffer: string[] = [];
+  let codeBuffer: string[] | null = null;
+  let codeLang: string | undefined;
 
   const flushPara = () => {
     if (paraBuffer.length) blocks.push({ type: "p", lines: paraBuffer });
@@ -96,7 +104,28 @@ function groupBlocks(content: string): Block[] {
 
   for (const raw of content.split("\n")) {
     const trimmed = raw.trim();
-    if (trimmed === "") {
+    if (codeBuffer !== null) {
+      if (trimmed === "```") {
+        blocks.push({ type: "code", language: codeLang, content: codeBuffer.join("\n") });
+        codeBuffer = null;
+        codeLang = undefined;
+      } else {
+        codeBuffer.push(raw);
+      }
+    } else if (trimmed.startsWith("```")) {
+      flushPara();
+      flushList();
+      codeBuffer = [];
+      codeLang = trimmed.slice(3).trim() || undefined;
+    } else if (trimmed.startsWith("## ")) {
+      flushPara();
+      flushList();
+      blocks.push({ type: "h", level: 3, text: trimmed.slice(3) });
+    } else if (trimmed.startsWith("# ")) {
+      flushPara();
+      flushList();
+      blocks.push({ type: "h", level: 2, text: trimmed.slice(2) });
+    } else if (trimmed === "") {
       flushPara();
       flushList();
     } else if (trimmed.startsWith("- ")) {
@@ -107,6 +136,8 @@ function groupBlocks(content: string): Block[] {
       paraBuffer.push(raw);
     }
   }
+  // An unterminated fence (streaming AI text) is shown as plain text so far rather than dropped.
+  if (codeBuffer !== null) blocks.push({ type: "code", language: codeLang, content: codeBuffer.join("\n") });
   flushPara();
   flushList();
   return blocks;
@@ -118,6 +149,21 @@ export function renderMarkdownLite(content: string, cursor: React.ReactNode = nu
   const blocks = groupBlocks(content);
   return blocks.map((block, bi) => {
     const isLastBlock = bi === blocks.length - 1;
+    if (block.type === "code") {
+      return (
+        <pre key={bi} className="mb-3 overflow-x-auto rounded-xl bg-zinc-900 px-4 py-3 text-[12.5px] leading-relaxed text-zinc-100 last:mb-0">
+          <code>{block.content}</code>
+        </pre>
+      );
+    }
+    if (block.type === "h") {
+      const HeadingTag = block.level === 2 ? "h2" : "h3";
+      return (
+        <HeadingTag key={bi} className={cn("mb-2 mt-4 font-semibold text-zinc-900 first:mt-0", block.level === 2 ? "text-lg" : "text-base")}>
+          {formatInline(block.text, `${bi}-h`, resolveLesson)}
+        </HeadingTag>
+      );
+    }
     if (block.type === "ul") {
       return (
         <ul key={bi} className="mb-2 list-disc space-y-1 pl-4 last:mb-0">

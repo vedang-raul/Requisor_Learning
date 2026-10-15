@@ -216,7 +216,7 @@ p.query(`
     key_takeaways JSONB NOT NULL DEFAULT '[]',
     assignment TEXT,
     section VARCHAR(200),
-    format VARCHAR(10) NOT NULL DEFAULT 'video' CHECK (format IN ('video','reading')),
+    format VARCHAR(20) NOT NULL DEFAULT 'video' CHECK (format IN ('video','reading','code-tutorial')),
     position INT NOT NULL DEFAULT 0,
     requires_submission BOOLEAN NOT NULL DEFAULT FALSE,
     assignment_marks INT CHECK (assignment_marks BETWEEN 1 AND 10000),

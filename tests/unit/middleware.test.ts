@@ -20,6 +20,19 @@ beforeEach(() => {
 
 afterEach(() => { process.env = originalEnv; });
 
+describe("Python worker security policy", () => {
+  it("allows the pinned runtime CDN and WebAssembly only on the worker response", async () => {
+    const response = await middleware(request("/pyodide-worker.js"));
+    const policy = response.headers.get("Content-Security-Policy")!;
+    expect(policy).toContain("https://cdn.jsdelivr.net");
+    expect(policy).toContain("'wasm-unsafe-eval'");
+    expect(policy).not.toContain("'unsafe-eval'");
+    const page = await middleware(request("/"));
+    expect(page.headers.get("Content-Security-Policy")).not.toContain("cdn.jsdelivr.net");
+    expect(page.headers.get("Content-Security-Policy")).not.toContain("'wasm-unsafe-eval'");
+  });
+});
+
 describe("public login origin", () => {
   beforeEach(() => {
     process.env = { ...originalEnv, NODE_ENV: "production", NEXTAUTH_URL: "https://learning.requisor.io" };

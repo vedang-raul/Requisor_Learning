@@ -105,10 +105,11 @@ describe("seedCourses — static data integrity", () => {
     "data-analytics",
     "agentic-ai",
     "cyber-security",
+    "python",
   ];
 
-  it("contains exactly 4 courses", () => {
-    expect(seedCourses).toHaveLength(4);
+  it("contains exactly 5 courses", () => {
+    expect(seedCourses).toHaveLength(5);
   });
 
   it.each(EXPECTED_SLUGS)('course "%s" has a baseAssessment', (slug) => {
