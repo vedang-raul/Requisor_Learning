@@ -381,6 +381,7 @@ function LearnView() {
             body={lesson.format === "reading" || lesson.format === "code-tutorial" ? lesson.body : undefined}
             bodyFileUrl={lesson.format === "reading" ? lesson.bodyFileUrl : undefined}
             starterCode={lesson.format === "code-tutorial" ? lesson.starterCode : undefined}
+            language={lesson.format === "code-tutorial" ? lesson.language : undefined}
             onEnded={onVideoEnded}
           />
 

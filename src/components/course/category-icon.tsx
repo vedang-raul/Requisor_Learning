@@ -1,6 +1,6 @@
 import {
   BarChart3, BookOpen, Bot, Briefcase, Code2, FlaskConical, Globe, GraduationCap, HeartPulse, Landmark, Languages, Layers, Leaf,
-  Lightbulb, LucideIcon, Megaphone, Package, Palette, Rocket, Shield, Users, Wrench,
+  Lightbulb, LucideIcon, Megaphone, Package, Palette, Rocket, Shield, Terminal, Users, Wrench,
 } from "lucide-react";
 
 /**
@@ -28,6 +28,7 @@ export const COURSE_ICONS: { key: string; name: string; icon: LucideIcon; cover:
   { key: "ai", name: "Robot", icon: Bot, cover: "from-violet-500 via-purple-500 to-indigo-600" },
   { key: "security", name: "Shield", icon: Shield, cover: "from-emerald-500 via-teal-500 to-cyan-600" },
   { key: "code", name: "Code", icon: Code2, cover: "from-slate-600 via-slate-700 to-zinc-800" },
+  { key: "programming", name: "Programming", icon: Terminal, cover: "from-sky-600 via-blue-600 to-indigo-700" },
   { key: "design", name: "Palette", icon: Palette, cover: "from-rose-500 via-pink-500 to-fuchsia-600" },
   { key: "business", name: "Briefcase", icon: Briefcase, cover: "from-amber-500 via-orange-500 to-red-600" },
   { key: "marketing", name: "Megaphone", icon: Megaphone, cover: "from-orange-500 via-rose-500 to-pink-600" },

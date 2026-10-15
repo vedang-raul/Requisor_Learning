@@ -221,41 +221,76 @@ seedCourses.push(
   )
 );
 
-/** A w3schools-style Python lesson: markdown `body` plus a live "Try it
- *  Yourself" editor seeded with `starterCode`. No video — see format below. */
-function pythonLesson(
-  index: number,
-  title: string,
-  durationMin: number,
-  description: string,
-  keyTakeaways: string[],
-  body: string,
-  starterCode: string,
-  section?: string
-): Lesson {
-  return {
-    id: `python-${String(index + 1).padStart(2, "0")}`,
-    title,
-    description,
-    youtubeId: "",
-    durationMin,
-    format: "code-tutorial",
-    section,
-    resources: [{ label: "Python docs — " + title, url: "https://docs.python.org/3/", type: "link" }],
-    keyTakeaways,
-    body,
-    starterCode,
+/** A w3schools-style code lesson: markdown `body` plus a live "Try it
+ *  Yourself" editor (CodeMirror + a Web Worker runtime) seeded with
+ *  `starterCode`. No video — see format "code-tutorial". */
+function makeCodeLessonFactory(courseSlug: string, language: "python" | "javascript", docsUrl: string, docsLabel: string) {
+  return function codeLesson(
+    index: number,
+    title: string,
+    durationMin: number,
+    description: string,
+    keyTakeaways: string[],
+    body: string,
+    starterCode: string,
+    section?: string
+  ): Lesson {
+    return {
+      id: `${courseSlug}-${String(index + 1).padStart(2, "0")}`,
+      title,
+      description,
+      youtubeId: "",
+      durationMin,
+      format: "code-tutorial",
+      language,
+      section,
+      resources: [{ label: `${docsLabel} — ${title}`, url: docsUrl, type: "link" }],
+      keyTakeaways,
+      body,
+      starterCode,
+    };
   };
 }
+
+/** A w3schools-style reading lesson for a language with no in-browser runtime
+ *  (e.g. Java — no lightweight in-browser JVM): markdown `body` with fenced
+ *  code examples, same renderer as a code-tutorial lesson's text, just
+ *  without a live editor. */
+function makeReadingLessonFactory(courseSlug: string, docsUrl: string, docsLabel: string) {
+  return function readingLesson(
+    index: number,
+    title: string,
+    durationMin: number,
+    description: string,
+    keyTakeaways: string[],
+    body: string,
+    section?: string
+  ): Lesson {
+    return {
+      id: `${courseSlug}-${String(index + 1).padStart(2, "0")}`,
+      title,
+      description,
+      youtubeId: "",
+      durationMin,
+      format: "reading",
+      section,
+      resources: [{ label: `${docsLabel} — ${title}`, url: docsUrl, type: "link" }],
+      keyTakeaways,
+      body,
+    };
+  };
+}
+
+const pythonLesson = makeCodeLessonFactory("python", "python", "https://docs.python.org/3/", "Python docs");
 
 seedCourses.push({
   slug: "python",
   title: "Python Programming",
   tagline: "Learn Python the w3schools way — short lessons, real code, run it instantly.",
-  category: "code",
+  category: "programming",
   level: "Beginner",
   tags: ["Python", "Programming", "Coding"],
-  cover: "from-slate-600 via-slate-700 to-zinc-800",
+  cover: "from-sky-600 via-blue-600 to-indigo-700",
   addedAt: "2026-07-10",
   baseAssessment: "Write a short Python program (at least 15 lines) that uses a variable, a loop, a conditional and a function, then run it in the course's own editor and paste the output.",
   lessons: [
@@ -545,6 +580,611 @@ print(result)
 
 Now try writing your own function in the editor below — this is your final exercise for the Python basics path.`,
       `def greet(name="World"):\n    return f"Hello, {name}!"\n\nprint(greet())\nprint(greet("Python"))\n\ndef add(a, b):\n    return a + b\n\nprint(add(4, 7))\n`,
+      "Control Flow"
+    ),
+  ],
+});
+
+const javascriptLesson = makeCodeLessonFactory("javascript", "javascript", "https://developer.mozilla.org/en-US/docs/Web/JavaScript", "MDN");
+
+seedCourses.push({
+  slug: "javascript",
+  title: "JavaScript Programming",
+  tagline: "Learn JavaScript the w3schools way — short lessons, real code, run it instantly.",
+  category: "programming",
+  level: "Beginner",
+  tags: ["JavaScript", "Programming", "Coding", "Web"],
+  cover: "from-amber-500 via-orange-500 to-red-600",
+  addedAt: "2026-07-11",
+  baseAssessment: "Write a short JavaScript program (at least 15 lines) that uses a variable, a loop, a conditional and a function, then run it in the course's own editor and paste the output.",
+  lessons: [
+    javascriptLesson(
+      0, "JavaScript Introduction", 5,
+      "What JavaScript is, why it's everywhere, and how this course's live editor works.",
+      ["JavaScript is the language of the web — every browser runs it", "No install needed here — every lesson has a live editor", "Click Run to execute real JavaScript and see console output"],
+      `# JavaScript Introduction
+
+JavaScript is the programming language of the web. It runs in every browser and powers interactivity on nearly every website — and, via Node.js, on servers too.
+
+## Why JavaScript?
+- Runs natively in every web browser, no install needed
+- One language for both frontend (browsers) and backend (Node.js)
+- Huge ecosystem (npm) and a role in almost every web app
+
+## Your first line of JavaScript
+Every lesson in this course has a live editor like the one below. Press **Run** to execute the code — output goes to the console panel below the editor, same as \`console.log\` in a browser's DevTools.
+
+\`\`\`javascript
+console.log("Hello, World!");
+\`\`\`
+
+Try changing the text inside the quotes and running it again.`,
+      'console.log("Hello, World!");',
+      "JavaScript Basics"
+    ),
+    javascriptLesson(
+      1, "JavaScript Syntax", 6,
+      "console.log(), comments, statements and semicolons.",
+      ["console.log() writes a value to the console", "// starts a single-line comment; /* */ for multi-line", "Statements usually end with a semicolon"],
+      `# JavaScript Syntax
+
+## console.log()
+console.log() outputs a value to the console:
+
+\`\`\`javascript
+console.log("Learning JavaScript");
+console.log(2 + 3);
+\`\`\`
+
+## Comments
+A line starting with // is a comment — JavaScript skips it entirely. Use /* ... */ for a multi-line comment.
+
+\`\`\`javascript
+// This is a comment, JavaScript ignores this line
+console.log("This runs");
+\`\`\`
+
+## Statements and semicolons
+Each instruction is a statement, usually ending with a semicolon:
+
+\`\`\`javascript
+let x = 5;
+console.log(x);
+\`\`\``,
+      `console.log("Learning JavaScript");\nconsole.log(2 + 3);\n\n// Try adding your own comment and console.log below\n`,
+      "JavaScript Basics"
+    ),
+    javascriptLesson(
+      2, "JavaScript Variables", 7,
+      "let, const and var — declaring variables and when to use each.",
+      ["let declares a variable that can change", "const declares a variable that can't be reassigned", "Prefer const by default, let when a value needs to change; avoid var"],
+      `# JavaScript Variables
+
+Variables store data. Modern JavaScript declares them with let or const:
+
+\`\`\`javascript
+let x = 5;
+const y = "Hello, World!";
+console.log(x);
+console.log(y);
+\`\`\`
+
+## let vs const vs var
+- **let** — can be reassigned later
+- **const** — cannot be reassigned after it's set
+- **var** — the old way, avoid it in new code (confusing scoping rules)
+
+\`\`\`javascript
+let age = 30;
+age = 31; // fine, let can change
+
+const name = "Alex";
+// name = "Sam"; // error — const can't be reassigned
+console.log(age, name);
+\`\`\``,
+      `let x = 5;\nconst y = "Hello, World!";\nconsole.log(x);\nconsole.log(y);\n`,
+      "JavaScript Basics"
+    ),
+    javascriptLesson(
+      3, "JavaScript Data Types", 8,
+      "The built-in types: string, number, boolean, array, object — and typeof.",
+      ["Common types: string, number, boolean, array, object", "typeof tells you a value's data type", "JavaScript has one number type for both integers and decimals"],
+      `# JavaScript Data Types
+
+JavaScript has several built-in data types:
+- **string** — text, e.g. "hello"
+- **number** — integers and decimals, e.g. 42 or 3.14
+- **boolean** — true / false
+- **array** — an ordered collection, e.g. [1, 2, 3]
+- **object** — key/value pairs, e.g. { a: 1 }
+
+Use typeof to check what you're working with:
+
+\`\`\`javascript
+let name = "Alex";
+let age = 30;
+let height = 1.75;
+let isMember = true;
+
+console.log(typeof name);
+console.log(typeof age);
+console.log(typeof height);
+console.log(typeof isMember);
+\`\`\``,
+      `let name = "Alex";\nlet age = 30;\nlet height = 1.75;\nlet isMember = true;\n\nconsole.log(typeof name);\nconsole.log(typeof age);\nconsole.log(typeof height);\nconsole.log(typeof isMember);\n`,
+      "JavaScript Basics"
+    ),
+    javascriptLesson(
+      4, "JavaScript Strings", 8,
+      "Quoting, concatenation, template literals and common string methods.",
+      ["Strings can use single, double quotes, or backticks", "Template literals (`...`) embed variables with ${}", "slice(), toUpperCase() and length are common string tools"],
+      `# JavaScript Strings
+
+Strings are text, wrapped in single quotes, double quotes, or backticks:
+
+\`\`\`javascript
+let greeting = "Hello";
+let name = 'World';
+console.log(greeting + ", " + name + "!");
+\`\`\`
+
+## Template literals
+The easiest way to mix variables into text is a template literal — backticks with \${...}:
+
+\`\`\`javascript
+let name = "Alex";
+let age = 30;
+console.log(\`\${name} is \${age} years old.\`);
+\`\`\`
+
+## Useful string methods
+\`\`\`javascript
+let text = "Hello, World!";
+console.log(text.slice(0, 5));   // Hello
+console.log(text.toUpperCase());
+console.log(text.length);
+\`\`\``,
+      `let name = "Alex";\nlet age = 30;\nconsole.log(\`\${name} is \${age} years old.\`);\n\nlet text = "Hello, World!";\nconsole.log(text.slice(0, 5));\nconsole.log(text.toUpperCase());\n`,
+      "JavaScript Basics"
+    ),
+    javascriptLesson(
+      5, "JavaScript Arrays", 9,
+      "Creating arrays, indexing, and the most common array methods.",
+      ["An array holds an ordered, changeable list of items", "Indexing starts at 0", "push(), splice() and length are the methods you'll use most"],
+      `# JavaScript Arrays
+
+An array stores multiple items in a single variable:
+
+\`\`\`javascript
+let fruits = ["apple", "banana", "cherry"];
+console.log(fruits);
+console.log(fruits[0]);               // first item
+console.log(fruits[fruits.length - 1]); // last item
+\`\`\`
+
+## Changing an array
+\`\`\`javascript
+let fruits = ["apple", "banana", "cherry"];
+fruits.push("orange");
+console.log(fruits);
+console.log(fruits.length);
+\`\`\`
+
+## Looping over an array
+\`\`\`javascript
+for (const fruit of fruits) {
+  console.log(fruit);
+}
+\`\`\``,
+      `let fruits = ["apple", "banana", "cherry"];\nfruits.push("orange");\nconsole.log(fruits);\n\nfor (const fruit of fruits) {\n  console.log(fruit);\n}\n`,
+      "Control Flow"
+    ),
+    javascriptLesson(
+      6, "JavaScript If...Else", 9,
+      "Comparison and logical operators, and writing conditional branches.",
+      ["if, else if and else branch your program's logic", "Comparison operators: ===, !==, >, <, >=, <=", "Combine conditions with && and ||"],
+      `# JavaScript If...Else
+
+\`\`\`javascript
+let age = 20;
+
+if (age < 13) {
+  console.log("Child");
+} else if (age < 20) {
+  console.log("Teenager");
+} else {
+  console.log("Adult");
+}
+\`\`\`
+
+## Logical operators
+Always use === (strict equality), not ==, to avoid type-coercion surprises.
+
+\`\`\`javascript
+let age = 20;
+let hasId = true;
+
+if (age >= 18 && hasId) {
+  console.log("Entry allowed");
+} else {
+  console.log("Entry denied");
+}
+\`\`\``,
+      `let age = 20;\nlet hasId = true;\n\nif (age >= 18 && hasId) {\n  console.log("Entry allowed");\n} else {\n  console.log("Entry denied");\n}\n`,
+      "Control Flow"
+    ),
+    javascriptLesson(
+      7, "JavaScript Loops", 9,
+      "for loops, while loops, and break/continue.",
+      ["for loops repeat a fixed number of times; while loops repeat while a condition holds", "break exits a loop early; continue skips to the next iteration", "for...of iterates directly over an array's values"],
+      `# JavaScript Loops
+
+## for loop
+\`\`\`javascript
+for (let i = 0; i < 5; i++) {
+  console.log(i);
+}
+\`\`\`
+
+## while loop
+\`\`\`javascript
+let count = 0;
+while (count < 3) {
+  console.log("count is", count);
+  count++;
+}
+\`\`\`
+
+## break and continue
+\`\`\`javascript
+for (let i = 0; i < 10; i++) {
+  if (i === 3) continue; // skip 3
+  if (i === 6) break;    // stop at 6
+  console.log(i);
+}
+\`\`\``,
+      `for (let i = 0; i < 5; i++) {\n  console.log(i);\n}\n\nlet count = 0;\nwhile (count < 3) {\n  console.log("count is", count);\n  count++;\n}\n`,
+      "Control Flow"
+    ),
+    javascriptLesson(
+      8, "JavaScript Functions", 10,
+      "Defining reusable functions, default parameters, arrow functions and return values.",
+      ["function defines a reusable block of code", "Parameters can have default values", "Arrow functions (=>) are a shorter function syntax"],
+      `# JavaScript Functions
+
+A function is a reusable block of code:
+
+\`\`\`javascript
+function greet(name) {
+  return \`Hello, \${name}!\`;
+}
+
+console.log(greet("Alex"));
+\`\`\`
+
+## Default parameters
+\`\`\`javascript
+function greet(name = "World") {
+  return \`Hello, \${name}!\`;
+}
+
+console.log(greet());
+console.log(greet("JavaScript"));
+\`\`\`
+
+## Arrow functions
+A shorter syntax, common in modern JavaScript:
+
+\`\`\`javascript
+const add = (a, b) => a + b;
+console.log(add(4, 7));
+\`\`\`
+
+Now try writing your own function in the editor below — this is your final exercise for the JavaScript basics path.`,
+      `function greet(name = "World") {\n  return \`Hello, \${name}!\`;\n}\n\nconsole.log(greet());\nconsole.log(greet("JavaScript"));\n\nconst add = (a, b) => a + b;\nconsole.log(add(4, 7));\n`,
+      "Control Flow"
+    ),
+  ],
+});
+
+const javaLesson = makeReadingLessonFactory("java", "https://docs.oracle.com/en/java/javase/21/docs/api/index.html", "Java docs");
+
+seedCourses.push({
+  slug: "java",
+  title: "Java Programming",
+  tagline: "Learn Java the w3schools way — short lessons with real, runnable-looking code examples.",
+  category: "programming",
+  level: "Beginner",
+  tags: ["Java", "Programming", "Coding", "OOP"],
+  cover: "from-red-600 via-orange-600 to-amber-600",
+  addedAt: "2026-07-12",
+  baseAssessment: "Write a short Java class (at least 15 lines) that uses a variable, a loop, a conditional and a method, and walk through what it would print.",
+  lessons: [
+    javaLesson(
+      0, "Java Introduction", 6,
+      "What Java is, why it's used, and the write-once-run-anywhere idea.",
+      ["Java is a general-purpose, strongly-typed, object-oriented language", "Code compiles to bytecode that runs on the Java Virtual Machine (JVM)", "Used heavily in enterprise backends, Android apps and large systems"],
+      `# Java Introduction
+
+Java is a general-purpose, object-oriented programming language. It is strongly typed (every variable has a fixed type) and compiles to bytecode that runs on the Java Virtual Machine (JVM) — the same Java program can run on Windows, Mac or Linux without changes.
+
+## Why Java?
+- Strong typing catches many bugs before the program ever runs
+- Runs anywhere the JVM is installed — "write once, run anywhere"
+- The dominant language for Android apps and large enterprise backends
+
+## A minimal Java program
+Every Java program lives inside a **class**, and execution starts at a method called \`main\`:
+
+\`\`\`java
+public class Main {
+    public static void main(String[] args) {
+        System.out.println("Hello, World!");
+    }
+}
+\`\`\`
+
+\`System.out.println(...)\` is Java's equivalent of Python's \`print()\` — it writes a line to the console.`,
+      "Java Basics"
+    ),
+    javaLesson(
+      1, "Java Syntax", 7,
+      "Classes, the main method, statements and semicolons, and comments.",
+      ["Every Java program needs at least one class", "Execution starts at public static void main(String[] args)", "Statements end with a semicolon; // and /* */ start comments"],
+      `# Java Syntax
+
+## Classes and main()
+Unlike Python, Java code can't exist outside a class. Execution always starts at \`main\`:
+
+\`\`\`java
+public class Main {
+    public static void main(String[] args) {
+        System.out.println("Learning Java");
+    }
+}
+\`\`\`
+
+## Comments
+\`\`\`java
+// This is a single-line comment
+/* This is a
+   multi-line comment */
+System.out.println("This runs");
+\`\`\`
+
+## Semicolons
+Every statement ends with a semicolon — missing one is the most common first mistake:
+
+\`\`\`java
+int x = 5;
+System.out.println(x);
+\`\`\``,
+      "Java Basics"
+    ),
+    javaLesson(
+      2, "Java Variables", 8,
+      "Declaring typed variables, naming rules, and Java's static typing.",
+      ["Every variable must be declared with a type (int, String, etc.)", "A variable's type cannot change once declared", "Variable names are case-sensitive and can't start with a number"],
+      `# Java Variables
+
+Unlike Python, Java is **statically typed** — you declare a variable's type, and it can never hold a different type afterward:
+
+\`\`\`java
+int x = 5;
+String y = "Hello, World!";
+System.out.println(x);
+System.out.println(y);
+\`\`\`
+
+## Naming rules
+- Must start with a letter, \$ or _, not a number
+- Can contain letters, numbers and underscores
+- Case-sensitive: \`age\`, \`Age\` and \`AGE\` are three different variables
+
+## No changing type
+\`\`\`java
+int x = 5;
+// x = "five"; // compile error — x is an int, always
+x = 6; // fine — still an int
+\`\`\``,
+      "Java Basics"
+    ),
+    javaLesson(
+      3, "Java Data Types", 9,
+      "Primitive types (int, double, boolean, char) vs reference types (String, arrays).",
+      ["Primitive types: int, double, boolean, char, long", "String is a reference type, not a primitive, but behaves like text usually does", "Each primitive type has a fixed size and range"],
+      `# Java Data Types
+
+Java has two kinds of types: **primitives** (built directly into the language) and **reference types** (objects).
+
+## Common primitive types
+- **int** — whole numbers, e.g. 42
+- **double** — decimal numbers, e.g. 3.14
+- **boolean** — true / false
+- **char** — a single character, e.g. 'A'
+
+## Reference types
+- **String** — text, e.g. "hello" (technically an object, not a primitive)
+- Arrays, e.g. \`int[] numbers = {1, 2, 3};\`
+
+\`\`\`java
+int age = 30;
+double height = 1.75;
+boolean isMember = true;
+char grade = 'A';
+String name = "Alex";
+
+System.out.println(age);
+System.out.println(height);
+System.out.println(isMember);
+System.out.println(grade);
+System.out.println(name);
+\`\`\``,
+      "Java Basics"
+    ),
+    javaLesson(
+      4, "Java Strings", 9,
+      "Creating strings, concatenation, and common String methods.",
+      ["Strings are created with double quotes", "+ concatenates strings (and converts other types to text)", "length(), substring() and toUpperCase() are common String methods"],
+      `# Java Strings
+
+Strings are text, wrapped in double quotes:
+
+\`\`\`java
+String greeting = "Hello";
+String name = "World";
+System.out.println(greeting + ", " + name + "!");
+\`\`\`
+
+## Mixing in other types
+The + operator converts non-string values to text automatically:
+
+\`\`\`java
+String name = "Alex";
+int age = 30;
+System.out.println(name + " is " + age + " years old.");
+\`\`\`
+
+## Useful String methods
+\`\`\`java
+String text = "Hello, World!";
+System.out.println(text.substring(0, 5)); // Hello
+System.out.println(text.toUpperCase());
+System.out.println(text.length());
+\`\`\``,
+      "Java Basics"
+    ),
+    javaLesson(
+      5, "Java Arrays", 9,
+      "Creating fixed-size arrays, indexing, and looping over them.",
+      ["An array has a fixed size, set when it's created", "Indexing starts at 0", "A for-each loop (for (type item : array)) is the easiest way to iterate"],
+      `# Java Arrays
+
+An array stores a fixed number of values of the same type:
+
+\`\`\`java
+String[] fruits = {"apple", "banana", "cherry"};
+System.out.println(fruits[0]);               // first item
+System.out.println(fruits[fruits.length - 1]); // last item
+System.out.println(fruits.length);
+\`\`\`
+
+## Looping over an array
+\`\`\`java
+String[] fruits = {"apple", "banana", "cherry"};
+for (String fruit : fruits) {
+    System.out.println(fruit);
+}
+\`\`\`
+
+Unlike a Python list or JavaScript array, a Java array's size is fixed once created — for a growable list, Java has \`ArrayList\` (covered later in this path).`,
+      "Control Flow"
+    ),
+    javaLesson(
+      6, "Java If...Else", 9,
+      "Comparison and logical operators, and writing conditional branches.",
+      ["if, else if and else branch your program's logic", "Comparison operators: ==, !=, >, <, >=, <=", "Combine conditions with && and ||"],
+      `# Java If...Else
+
+\`\`\`java
+int age = 20;
+
+if (age < 13) {
+    System.out.println("Child");
+} else if (age < 20) {
+    System.out.println("Teenager");
+} else {
+    System.out.println("Adult");
+}
+\`\`\`
+
+## Logical operators
+\`\`\`java
+int age = 20;
+boolean hasId = true;
+
+if (age >= 18 && hasId) {
+    System.out.println("Entry allowed");
+} else {
+    System.out.println("Entry denied");
+}
+\`\`\`
+
+Note: use == to compare primitives like int and boolean, but .equals() to compare String objects — == on two String objects compares identity, not content.`,
+      "Control Flow"
+    ),
+    javaLesson(
+      7, "Java Loops", 9,
+      "for loops, while loops, and break/continue.",
+      ["for loops repeat a fixed number of times; while loops repeat while a condition holds", "break exits a loop early; continue skips to the next iteration"],
+      `# Java Loops
+
+## for loop
+\`\`\`java
+for (int i = 0; i < 5; i++) {
+    System.out.println(i);
+}
+\`\`\`
+
+## while loop
+\`\`\`java
+int count = 0;
+while (count < 3) {
+    System.out.println("count is " + count);
+    count++;
+}
+\`\`\`
+
+## break and continue
+\`\`\`java
+for (int i = 0; i < 10; i++) {
+    if (i == 3) continue; // skip 3
+    if (i == 6) break;    // stop at 6
+    System.out.println(i);
+}
+\`\`\``,
+      "Control Flow"
+    ),
+    javaLesson(
+      8, "Java Methods", 10,
+      "Defining reusable methods, parameters, return types, and a first look at classes.",
+      ["A method is a reusable block of code, declared with a return type", "void means the method returns nothing", "Java methods live inside a class — this is the start of object-oriented programming"],
+      `# Java Methods
+
+A method is a reusable block of code. Unlike Python or JavaScript, you must declare its return type:
+
+\`\`\`java
+public class Main {
+    static String greet(String name) {
+        return "Hello, " + name + "!";
+    }
+
+    public static void main(String[] args) {
+        System.out.println(greet("Alex"));
+    }
+}
+\`\`\`
+
+## void methods
+A method that returns nothing uses \`void\` as its return type:
+
+\`\`\`java
+static void sayHello() {
+    System.out.println("Hello!");
+}
+\`\`\`
+
+## Parameters and return values
+\`\`\`java
+static int add(int a, int b) {
+    return a + b;
+}
+
+int result = add(4, 7);
+System.out.println(result);
+\`\`\`
+
+Every method you've seen so far is \`static\`, meaning it belongs to the class itself. Once you start creating objects from a class (e.g. \`new Car()\`), you'll write non-static methods that belong to each object — that's the next step into object-oriented programming.`,
       "Control Flow"
     ),
   ],

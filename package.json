@@ -18,6 +18,7 @@
     "node": ">=20.9"
   },
   "dependencies": {
+    "@codemirror/lang-javascript": "^6.2.5",
     "@codemirror/lang-python": "^6.2.1",
     "@marsidev/react-turnstile": "^1.6.0",
     "@replit/connectors-sdk": "^0.4.1",

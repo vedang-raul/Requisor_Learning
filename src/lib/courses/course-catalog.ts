@@ -31,6 +31,7 @@ type LessonRow = {
   assignment_marks: number | null; assignment_due_date: string | null; assignment_ai: unknown;
   section: string | null; format: "video" | "reading" | "code-tutorial" | null; requires_submission: boolean | null; body: string | null; body_file_url: string | null;
   starter_code: string | null;
+  language: "python" | "javascript" | null;
   lesson_published: boolean | null; publish_at: Date | string | null;
 };
 
@@ -63,7 +64,8 @@ export async function initializeCourseCatalog(client: CatalogClient): Promise<vo
         ADD COLUMN IF NOT EXISTS assignment_due_date DATE,
         ADD COLUMN IF NOT EXISTS published BOOLEAN NOT NULL DEFAULT TRUE,
         ADD COLUMN IF NOT EXISTS publish_at TIMESTAMPTZ,
-        ADD COLUMN IF NOT EXISTS starter_code TEXT
+        ADD COLUMN IF NOT EXISTS starter_code TEXT,
+        ADD COLUMN IF NOT EXISTS language TEXT
     `);
     await client.query("ALTER TABLE courses ADD COLUMN IF NOT EXISTS syllabus JSONB");
     const marker = await client.query("SELECT 1 FROM course_catalog_metadata WHERE key=$1", ["seed-v1"]);
@@ -79,12 +81,12 @@ export async function initializeCourseCatalog(client: CatalogClient): Promise<vo
         for (const lesson of course.lessons) {
           await client.query(
             `INSERT INTO course_lessons
-            (id, course_slug, title, description, youtube_id, duration_min, resources, key_takeaways, assignment, section, format, body, body_file_url, starter_code)
-             VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13,$14)
+            (id, course_slug, title, description, youtube_id, duration_min, resources, key_takeaways, assignment, section, format, body, body_file_url, starter_code, language)
+             VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13,$14,$15)
              ON CONFLICT (id) DO NOTHING`,
             [lesson.id, course.slug, lesson.title, lesson.description, lesson.youtubeId, lesson.durationMin,
               JSON.stringify(lesson.resources), JSON.stringify(lesson.keyTakeaways), lesson.assignment ?? null,
-              lesson.section ?? null, lesson.format ?? "video" , lesson.body ?? null, lesson.bodyFileUrl ?? null, lesson.starterCode ?? null]
+              lesson.section ?? null, lesson.format ?? "video" , lesson.body ?? null, lesson.bodyFileUrl ?? null, lesson.starterCode ?? null, lesson.language ?? null]
           );
         }
       }
@@ -156,7 +158,7 @@ export async function getCourses(where = "", params: unknown[] = []): Promise<Co
             l.id, l.course_slug, l.title AS lesson_title, l.description AS lesson_description,
              l.youtube_id, l.duration_min, l.resources, l.key_takeaways, l.assignment,
              l.assignment_marks, l.assignment_due_date, l.assignment_ai,
-             l.section, l.format, l.body, l.body_file_url, l.starter_code, l.requires_submission, l.published AS lesson_published, l.publish_at
+             l.section, l.format, l.body, l.body_file_url, l.starter_code, l.language, l.requires_submission, l.published AS lesson_published, l.publish_at
      FROM courses c
      LEFT JOIN course_lessons l ON l.course_slug = c.slug
      LEFT JOIN users u ON u.id = c.owner_user_id
@@ -184,6 +186,7 @@ export async function getCourses(where = "", params: unknown[] = []): Promise<Co
       ...(row.body ? { body: row.body } : {}),
       ...(row.body_file_url ? { bodyFileUrl: row.body_file_url } : {}),
       ...(row.starter_code ? { starterCode: row.starter_code } : {}),
+      ...(row.language ? { language: row.language } : {}),
       format: row.format ?? "video", requiresSubmission: Boolean(row.requires_submission),
       ...(row.lesson_published === false ? { published: false } : {}),
       // Only a launch that is still ahead matters; once it passes the lesson is simply live.
@@ -247,7 +250,7 @@ export function validateCourse(value: unknown, expectedSlug?: string, requireRev
   for (const raw of c.lessons) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ok: false, error: "Invalid lesson." };
     const l = raw as Record<string, unknown>;
-    const lessonKeys = new Set(["id", "title", "description", "youtubeId", "durationMin", "resources", "keyTakeaways", "assignment", "assignmentMarks", "assignmentDueDate", "assignmentAi", "section", "format", "body", "bodyFileUrl", "starterCode", "requiresSubmission", "published", "publishAt"]);
+    const lessonKeys = new Set(["id", "title", "description", "youtubeId", "durationMin", "resources", "keyTakeaways", "assignment", "assignmentMarks", "assignmentDueDate", "assignmentAi", "section", "format", "body", "bodyFileUrl", "starterCode", "language", "requiresSubmission", "published", "publishAt"]);
     const format = l.format ?? "video";
     const isTextLesson = format === "reading" || format === "code-tutorial";
     const rawYoutubeId = typeof l.youtubeId === "string" ? l.youtubeId.trim() : "";
@@ -272,6 +275,7 @@ export function validateCourse(value: unknown, expectedSlug?: string, requireRev
       (l.bodyFileUrl !== undefined && (format !== "reading" || !string(l.bodyFileUrl, 200) || !isResourceFileUrl(l.bodyFileUrl as string))) ||
       (l.body !== undefined && l.bodyFileUrl !== undefined) ||
       (l.starterCode !== undefined && (format !== "code-tutorial" || !string(l.starterCode, 20000, 0))) ||
+      (l.language !== undefined && (format !== "code-tutorial" || (l.language !== "python" && l.language !== "javascript"))) ||
       (l.requiresSubmission !== undefined && typeof l.requiresSubmission !== "boolean") ||
       (l.published !== undefined && typeof l.published !== "boolean") ||
       (l.publishAt !== undefined && (!string(l.publishAt, 40) || Number.isNaN(Date.parse(l.publishAt as string)))) ||
@@ -315,9 +319,9 @@ export async function replaceCourse(
     await client.query("DELETE FROM course_lessons WHERE course_slug=$1", [course.slug]);
     for (let i = 0; i < course.lessons.length; i++) {
       const l = course.lessons[i];
-      await client.query(`INSERT INTO course_lessons (id,course_slug,title,description,youtube_id,duration_min,resources,key_takeaways,assignment,section,format,position,requires_submission,body,body_file_url,starter_code,assignment_marks,assignment_due_date,published,publish_at,assignment_ai)
-        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21::jsonb)`,
-      [l.id, course.slug, l.title, l.description, l.youtubeId, l.durationMin, JSON.stringify(l.resources), JSON.stringify(l.keyTakeaways), l.assignment ?? null, l.section ?? null, l.format ?? "video", i, l.requiresSubmission ?? false, l.body ?? null, l.bodyFileUrl ?? null, l.starterCode ?? null, l.assignmentMarks ?? null, l.assignmentDueDate ?? null, l.published ?? true, l.published !== false && l.publishAt ? new Date(l.publishAt).toISOString() : null, l.assignmentAi ? JSON.stringify(l.assignmentAi) : null]);
+      await client.query(`INSERT INTO course_lessons (id,course_slug,title,description,youtube_id,duration_min,resources,key_takeaways,assignment,section,format,position,requires_submission,body,body_file_url,starter_code,language,assignment_marks,assignment_due_date,published,publish_at,assignment_ai)
+        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22::jsonb)`,
+      [l.id, course.slug, l.title, l.description, l.youtubeId, l.durationMin, JSON.stringify(l.resources), JSON.stringify(l.keyTakeaways), l.assignment ?? null, l.section ?? null, l.format ?? "video", i, l.requiresSubmission ?? false, l.body ?? null, l.bodyFileUrl ?? null, l.starterCode ?? null, l.language ?? null, l.assignmentMarks ?? null, l.assignmentDueDate ?? null, l.published ?? true, l.published !== false && l.publishAt ? new Date(l.publishAt).toISOString() : null, l.assignmentAi ? JSON.stringify(l.assignmentAi) : null]);
 
     }
     await client.query("COMMIT");
@@ -366,9 +370,9 @@ export async function updateOwnedCourse(course: Course, userId: number, manager:
     await client.query("DELETE FROM course_lessons WHERE course_slug=$1", [course.slug]);
     for (let i = 0; i < course.lessons.length; i++) {
       const l = course.lessons[i];
-      await client.query(`INSERT INTO course_lessons (id,course_slug,title,description,youtube_id,duration_min,resources,key_takeaways,assignment,section,format,position,requires_submission,body,body_file_url,starter_code,assignment_marks,assignment_due_date,published,publish_at,assignment_ai)
-        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21::jsonb)`,
-      [l.id, course.slug, l.title, l.description, l.youtubeId, l.durationMin, JSON.stringify(l.resources), JSON.stringify(l.keyTakeaways), l.assignment ?? null, l.section ?? null, l.format ?? "video", i, l.requiresSubmission ?? false, l.body ?? null, l.bodyFileUrl ?? null, l.starterCode ?? null, l.assignmentMarks ?? null, l.assignmentDueDate ?? null, l.published ?? true, l.published !== false && l.publishAt ? new Date(l.publishAt).toISOString() : null, l.assignmentAi ? JSON.stringify(l.assignmentAi) : null]);
+      await client.query(`INSERT INTO course_lessons (id,course_slug,title,description,youtube_id,duration_min,resources,key_takeaways,assignment,section,format,position,requires_submission,body,body_file_url,starter_code,language,assignment_marks,assignment_due_date,published,publish_at,assignment_ai)
+        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22::jsonb)`,
+      [l.id, course.slug, l.title, l.description, l.youtubeId, l.durationMin, JSON.stringify(l.resources), JSON.stringify(l.keyTakeaways), l.assignment ?? null, l.section ?? null, l.format ?? "video", i, l.requiresSubmission ?? false, l.body ?? null, l.bodyFileUrl ?? null, l.starterCode ?? null, l.language ?? null, l.assignmentMarks ?? null, l.assignmentDueDate ?? null, l.published ?? true, l.published !== false && l.publishAt ? new Date(l.publishAt).toISOString() : null, l.assignmentAi ? JSON.stringify(l.assignmentAi) : null]);
     }
     await client.query("COMMIT");
     course.revision = next;

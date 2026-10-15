@@ -33,6 +33,9 @@ export interface Lesson {
   bodyFileUrl?:string;
   /** "code-tutorial" lessons only: starter code the "Try it Yourself" editor loads. */
   starterCode?: string;
+  /** "code-tutorial" lessons only: which in-browser runtime powers the "Try it
+   *  Yourself" editor. Defaults to "python" (the format's original language). */
+  language?: "python" | "javascript";
   /** false = a draft lesson only the course's tutor can see. Absent/true =
    *  visible to learners (whenever the course itself is published). */
   published?: boolean;
