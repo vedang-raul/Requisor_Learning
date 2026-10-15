@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
+import { manageReach, type Reach } from "@/lib/server/course-scope";
 import { authOptions } from "@/lib/auth/auth";
 import { db } from "@/lib/server/db";
 
@@ -15,12 +16,12 @@ const KINDS = new Set(["comment", "highlight", "draw"]);
 const MAX_BODY_LENGTH = 2000;
 const MAX_STROKE_POINTS_LENGTH = 20_000; // ~ a few hundred points as "x,y;x,y;..."
 
-async function ownedSubmission(submissionId: number, userId: number, isAdmin: boolean) {
+async function ownedSubmission(submissionId: number, userId: number, adminReach: Reach) {
   const { rows } = await db.query<{ id: number }>(
     `SELECT s.id FROM assignment_submissions s
      JOIN courses c ON c.slug = s.course_slug
-     WHERE s.id = $1 AND ($2::boolean OR c.owner_user_id = $3)`,
-    [submissionId, isAdmin, userId]
+     WHERE s.id = $1 AND ($2::boolean OR (c.university_id IS NOT NULL AND c.university_id = $4::int) OR c.owner_user_id = $3)`,
+    [submissionId, adminReach.all, userId, adminReach.universityId]
   );
   return Boolean(rows[0]);
 }
@@ -32,13 +33,14 @@ export async function GET(req: Request) {
 
   const userId = Number(session.user.id);
   if (!Number.isSafeInteger(userId) || userId < 1) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  const isAdmin = session.user.role === "admin";
+  // Super admins reach every course; a university admin, their university's.
+  const adminReach = manageReach(session.user);
 
   const submissionId = Number(new URL(req.url).searchParams.get("submissionId"));
   if (!Number.isSafeInteger(submissionId) || submissionId < 1) {
     return Response.json({ error: "A valid submissionId is required." }, { status: 400 });
   }
-  if (!(await ownedSubmission(submissionId, userId, isAdmin))) {
+  if (!(await ownedSubmission(submissionId, userId, adminReach))) {
     return Response.json({ error: "Submission not found." }, { status: 404 });
   }
 
@@ -68,7 +70,8 @@ export async function POST(req: Request) {
 
   const userId = Number(session.user.id);
   if (!Number.isSafeInteger(userId) || userId < 1) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  const isAdmin = session.user.role === "admin";
+  // Super admins reach every course; a university admin, their university's.
+  const adminReach = manageReach(session.user);
 
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
   const submissionId = Number(body.submissionId);
@@ -93,7 +96,7 @@ export async function POST(req: Request) {
   ) {
     return Response.json({ error: "Invalid annotation." }, { status: 400 });
   }
-  if (!(await ownedSubmission(submissionId, userId, isAdmin))) {
+  if (!(await ownedSubmission(submissionId, userId, adminReach))) {
     return Response.json({ error: "Submission not found." }, { status: 404 });
   }
 
@@ -116,7 +119,8 @@ export async function DELETE(req: Request) {
 
   const userId = Number(session.user.id);
   if (!Number.isSafeInteger(userId) || userId < 1) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  const isAdmin = session.user.role === "admin";
+  // Super admins reach every course; a university admin, their university's.
+  const adminReach = manageReach(session.user);
 
   const id = Number(new URL(req.url).searchParams.get("id"));
   if (!Number.isSafeInteger(id) || id < 1) return Response.json({ error: "A valid id is required." }, { status: 400 });
@@ -127,8 +131,8 @@ export async function DELETE(req: Request) {
     `DELETE FROM assignment_annotations a
      USING assignment_submissions s, courses c
      WHERE a.id = $1 AND a.submission_id = s.id AND s.course_slug = c.slug
-        AND ($3::boolean OR (c.owner_user_id = $2 AND a.created_by = $2))`,
-    [id, userId, isAdmin]
+        AND ($3::boolean OR (c.university_id IS NOT NULL AND c.university_id = $4::int) OR (c.owner_user_id = $2 AND a.created_by = $2))`,
+    [id, userId, adminReach.all, adminReach.universityId]
   );
   if (!rowCount) return Response.json({ error: "Annotation not found." }, { status: 404 });
 

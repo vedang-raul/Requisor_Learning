@@ -1,7 +1,6 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/auth";
 import { xaiFetch } from "@/lib/ai/usage";
-import { ADMIN_EMAIL } from "@/lib/server/db";
 import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
 import { withAiConcurrency, SemaphoreFullError, AI_UPSTREAM_TIMEOUT_MS } from "@/lib/ai/ai-semaphore";
 
@@ -24,10 +23,8 @@ function buildSystemPrompt(): string {
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
-  if (
-    !session?.user?.email ||
-    session.user.email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()
-  ) {
+  // University admins and super admins; each sends the summary of the people they manage.
+  if (!session?.user?.email || session.user.role !== "admin") {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 

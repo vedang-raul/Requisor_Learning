@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { manageReach, manageSql, reachParams } from "@/lib/server/course-scope";
 import { authOptions } from "@/lib/auth/auth";
 import { db } from "@/lib/server/db";
 import { ensureCourseCatalog, getCourses } from "@/lib/courses/course-catalog";
@@ -19,9 +20,10 @@ export async function GET() {
   if (!canManage(session.user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   try {
     await ensureCourseCatalog();
-    const admin = session.user.role === "admin";
-    const ownerWhere = admin ? "" : "WHERE c.owner_user_id=$1";
-    const courses = await getCourses(ownerWhere, admin ? [] : [Number(session.user.id)]);
+    // A tutor's own courses; an admin also every course of their university (all, for super admins).
+    const ownerWhere = `WHERE c.owner_user_id=$1 OR ${manageSql("c", 2, 3)}`;
+    const ownerParams = [Number(session.user.id), ...reachParams(manageReach(session.user))];
+    const courses = await getCourses(ownerWhere, ownerParams);
     const { rows } = await db.query<SummaryRow>(
       `SELECT c.slug AS course_slug, AVG(r.rating)::float AS average_rating, COUNT(r.id)::int AS review_count,
               COUNT(*) FILTER (WHERE r.rating=1)::int AS one_star,
@@ -32,7 +34,7 @@ export async function GET() {
        FROM courses c LEFT JOIN course_reviews r ON r.course_slug=c.slug
        ${ownerWhere}
        GROUP BY c.slug`,
-      admin ? [] : [Number(session.user.id)]
+      ownerParams
     );
     const summaries = new Map(rows.map((row) => [row.course_slug, row]));
     return NextResponse.json({ courses: courses.map((course: Course) => {

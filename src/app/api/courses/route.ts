@@ -1,5 +1,6 @@
 import { isLessonLive } from "@/lib/utils";
 import { HIDDEN_ASSIGNMENT_AI } from "@/lib/ai/assignment-ai";
+import { manageReach, manageSql, newCourseUniversity, reachParams, seeReach, seeSql } from "@/lib/server/course-scope";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/auth";
@@ -14,11 +15,14 @@ export async function GET() {
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     await ensureCourseCatalog();
+    // Everyone sees published platform courses and their own university's. An admin
+    // also sees every course they manage, drafts included.
+    const see = reachParams(seeReach(session.user));
     const courses = session.user.role === "admin"
-      ? await getCourses()
+      ? await getCourses(`WHERE (c.published = TRUE AND ${seeSql("c", 1, 2)}) OR ${manageSql("c", 3, 4)}`, [...see, ...reachParams(manageReach(session.user))])
       // Learners (and tutors browsing as learners) never receive draft lessons;
       // tutors edit their drafts through /api/tutor/courses instead.
-      : (await getCourses("WHERE c.published = TRUE")).map((course) => ({
+      : (await getCourses(`WHERE c.published = TRUE AND ${seeSql("c", 1, 2)}`, see)).map((course) => ({
           ...course,
           lessons: course.lessons.filter((lesson) => isLessonLive(lesson))
             .map((lesson) => (lesson.assignmentAi ? { ...lesson, assignmentAi: HIDDEN_ASSIGNMENT_AI } : lesson)),
@@ -37,7 +41,7 @@ export async function POST(req: NextRequest) {
     await ensureCourseCatalog();
     const exists = await getCourses("WHERE c.slug = $1", [result.course.slug]);
     if (exists.length) return NextResponse.json({ error: "Course slug already exists." }, { status: 409 });
-    await replaceCourse(result.course, Number(session.user.id), false, true);
+    await replaceCourse(result.course, Number(session.user.id), false, true, newCourseUniversity(session.user));
     result.course.revision = 1;
     return NextResponse.json({ course: result.course }, { status: 201 });
   } catch (error) {

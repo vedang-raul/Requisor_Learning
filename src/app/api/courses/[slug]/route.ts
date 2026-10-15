@@ -14,7 +14,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ slug
     const course = validateCourse(await readJsonBody(req, 256_000), slug, true);
     if (!course.ok) return NextResponse.json({ error: course.error }, { status: 422 });
     await ensureCourseCatalog();
-    const result = await updateOwnedCourse(course.course, Number(session.user.id), session.user.role === "admin");
+    const result = await updateOwnedCourse(course.course, Number(session.user.id), session.user);
     if (result === "not-found-or-forbidden") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     if (result === "stale") return NextResponse.json({ error: "Course was updated by another editor. Refresh and try again." }, { status: 409 });
     return NextResponse.json({ course: course.course });
@@ -25,7 +25,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!manager(session.user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   try { await ensureCourseCatalog();
-    const deleted = await deleteOwnedCourse(slug, Number(session.user.id), session.user.role === "admin");
+    const deleted = await deleteOwnedCourse(slug, Number(session.user.id), session.user);
     if (!deleted) return NextResponse.json({ error: "Course not found." }, { status: 404 }); return new NextResponse(null, { status: 204 });
   } catch (error) { return fail("courses.delete", requestId, error); }
 }

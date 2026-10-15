@@ -70,7 +70,7 @@ describe("tutor learner insights", () => {
     expect(query).toHaveBeenCalledTimes(1);
     expect(query.mock.calls[0][0]).toContain("c.owner_user_id = $2");
     expect(query.mock.calls[0][1][0]).toBe("owned-course");
-    expect(query.mock.calls[0][1]).toEqual(["owned-course", 7]);
+    expect(query.mock.calls[0][1]).toEqual(["owned-course", 7, false, null]);
   });
 
   it("returns aggregate-only metrics with consistent definitions", async () => {
@@ -98,7 +98,7 @@ describe("tutor learner insights", () => {
     expect(query.mock.calls[2][0]).toContain("lv.last_viewed_at >= $2");
     expect(query.mock.calls[1][0].match(/u\.role = 'employee'/g)).toHaveLength(5);
     expect(query.mock.calls[2][0].match(/u\.role = 'employee'/g)).toHaveLength(3);
-    expect(query.mock.calls[0][1]).toEqual(["owned-course", 7]);
+    expect(query.mock.calls[0][1]).toEqual(["owned-course", 7, false, null]);
     for (const call of query.mock.calls.slice(1)) {
       expect(call[0]).not.toMatch(/user_name|user_email|lesson_notes|lesson_comments/i);
       expect(call[1][2]).toBe(7);
@@ -121,12 +121,12 @@ describe("tutor learner insights", () => {
 
     jest.clearAllMocks();
     ensureCatalog.mockResolvedValue(undefined);
-    session.mockResolvedValue({ user: { id: "1", role: "admin" } });
+    session.mockResolvedValue({ user: { id: "1", role: "admin", superAdmin: true, universityId: null } });
     mockInsights("12", "4");
     const adminData = await (await GET(request("courseSlug=owned-course&days=90"))).json();
     expect(adminData.privacy.suppressed).toBe(false);
     expect(adminData.summary.enrolled).toBe(12);
-    expect(query.mock.calls[0][1]).toEqual(["owned-course", null]);
+    expect(query.mock.calls[0][1]).toEqual(["owned-course", 1, true, null]);
   });
 
   it("suppresses a small historical cohort even with no activity in the selected period", async () => {

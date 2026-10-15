@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { manageReach, type Reach } from "@/lib/server/course-scope";
 import { authOptions } from "@/lib/auth/auth";
 import { db } from "@/lib/server/db";
 import { isValidResourceFileId, resourceFileUrl } from "@/lib/courses/resource-files";
@@ -24,7 +25,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   if (!isValidResourceFileId(id)) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
   const userId = Number(session.user.id);
-  const isAdmin = session.user.role === "admin";
+  // Super admins reach every course; a university admin, their university's.
+  const adminReach = manageReach(session.user);
   const url = resourceFileUrl(id);
   // A file ID is not an authorization token. Learners may read a file only
   // once it is referenced by a published course; tutors may read files in
@@ -38,14 +40,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
          JOIN courses c ON c.slug=l.course_slug
          WHERE (l.body_file_url=$4
             OR l.resources @> jsonb_build_array(jsonb_build_object('url', $4)))
-           AND (c.published OR c.owner_user_id=$3)
+           AND (c.published OR c.owner_user_id=$3 OR c.university_id = $5::int)
        ) OR EXISTS (
          -- an uploaded course syllabus
          SELECT 1 FROM courses c
-         WHERE c.syllabus->>'fileUrl'=$4 AND (c.published OR c.owner_user_id=$3)
+         WHERE c.syllabus->>'fileUrl'=$4 AND (c.published OR c.owner_user_id=$3 OR c.university_id = $5::int)
        )
      )`,
-    [id, isAdmin, userId, url]
+    [id, adminReach.all, userId, url, adminReach.universityId]
   );
   const row = rows[0];
   if (!row) return NextResponse.json({ error: "Not found." }, { status: 404 });

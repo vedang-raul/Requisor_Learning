@@ -12,6 +12,8 @@
  */
 
 import { db } from "@/lib/server/db";
+import { canSeeCourse } from "../server/course-scope";
+import { manageReach, manageSql, reachParams, seeReach, seeSql } from "../server/course-scope";
 import { getCourses, validateCourse, findLessonLocation } from "@/lib/courses/course-catalog";
 import { findLessonForAi, lessonHasEnoughContent } from "@/lib/ai/personalized-learning";
 import { assignmentSummary } from "@/lib/ai/assignment-format";
@@ -25,7 +27,10 @@ import { cleanDiscoveryFields, FORMATS, INDUSTRIES, PROGRAM_RUNS, type ProgramRu
 import { transcriptForAi } from "@/lib/courses/transcript";
 
 export type AssistantRole = "employee" | "tutor" | "admin";
-export type ToolContext = { userId: number; role: AssistantRole };
+/** Who the assistant acts for. superAdmin and universityId decide which universities' courses it reaches. */
+export type ToolContext = { userId: number; role: AssistantRole; superAdmin?: boolean; universityId?: number | null };
+const see = (ctx: ToolContext) => reachParams(seeReach(ctx));
+const manage = (ctx: ToolContext) => reachParams(manageReach(ctx));
 export type ToolOutcome = { content: string; action?: AssistantAction };
 
 type Args = Record<string, unknown>;
@@ -52,8 +57,8 @@ const newId = () => crypto.randomUUID();
 async function managedCourse(slug: string, ctx: ToolContext): Promise<Course | null> {
   if (!slug) return null;
   const [course] = await getCourses(
-    "WHERE c.slug = $1 AND ($2::boolean OR c.owner_user_id = $3)",
-    [slug, ctx.role === "admin", ctx.userId]
+    `WHERE c.slug = $1 AND (c.owner_user_id = $2 OR ${manageSql("c", 3, 4)})`,
+    [slug, ctx.userId, ...manage(ctx)]
   );
   return course ?? null;
 }
@@ -105,8 +110,8 @@ const TOOLS: ToolDef[] = [
     async run(args, ctx) {
       const words = str(args.query, 200).toLowerCase().split(/\s+/).filter((w) => w.length > 1);
       const courses = ctx.role === "employee"
-        ? await getCourses("WHERE c.published = TRUE")
-        : await getCourses("WHERE c.published = TRUE OR ($1::boolean OR c.owner_user_id = $2)", [ctx.role === "admin", ctx.userId]);
+        ? await getCourses(`WHERE c.published = TRUE AND ${seeSql("c", 1, 2)}`, see(ctx))
+        : await getCourses(`WHERE (c.published = TRUE AND ${seeSql("c", 1, 2)}) OR c.owner_user_id = $3 OR ${manageSql("c", 4, 5)}`, [...see(ctx), ctx.userId, ...manage(ctx)]);
       const matches = courses.flatMap((c) => c.lessons
         .filter((l) => ctx.role !== "employee" || isLessonLive(l))
         .map((l) => ({ l, c, hay: `${l.title} ${c.title}`.toLowerCase() }))
@@ -124,8 +129,8 @@ const TOOLS: ToolDef[] = [
       const lessonId = str(args.lesson_id, 120);
       if (!/^[a-z0-9-]{3,120}$/i.test(lessonId)) return fail("Unknown lesson. Use find_lessons to get the lesson_id.");
       const [course] = ctx.role === "employee"
-        ? await getCourses("WHERE c.published = TRUE AND c.slug = (SELECT course_slug FROM course_lessons WHERE id = $1)", [lessonId])
-        : await getCourses("WHERE c.slug = (SELECT course_slug FROM course_lessons WHERE id = $1) AND (c.published = TRUE OR $2::boolean OR c.owner_user_id = $3)", [lessonId, ctx.role === "admin", ctx.userId]);
+        ? await getCourses(`WHERE c.published = TRUE AND c.slug = (SELECT course_slug FROM course_lessons WHERE id = $1) AND ${seeSql("c", 2, 3)}`, [lessonId, ...see(ctx)])
+        : await getCourses(`WHERE c.slug = (SELECT course_slug FROM course_lessons WHERE id = $1) AND ((c.published = TRUE AND ${seeSql("c", 2, 3)}) OR c.owner_user_id = $4 OR ${manageSql("c", 5, 6)})`, [lessonId, ...see(ctx), ctx.userId, ...manage(ctx)]);
       const lesson = course?.lessons.find((l) => l.id === lessonId);
       // Learners only ever get lessons they can open (not drafts, not scheduled ones).
       if (!course || !lesson || (ctx.role === "employee" && !isLessonLive(lesson))) return fail("Lesson not found. Use find_lessons to get the lesson_id.");
@@ -160,7 +165,7 @@ const TOOLS: ToolDef[] = [
     roles: ["employee"],
     async run(_args, ctx) {
       const [courses, submitted] = await Promise.all([
-        getCourses("WHERE c.published = TRUE"),
+        getCourses(`WHERE c.published = TRUE AND ${seeSql("c", 1, 2)}`, see(ctx)),
         db.query<{ lesson_id: string }>("SELECT DISTINCT lesson_id FROM assignment_submissions WHERE user_id = $1 AND source = 'tutor'", [ctx.userId]),
       ]);
       const done = new Set(submitted.rows.map((row) => row.lesson_id));
@@ -199,9 +204,9 @@ const TOOLS: ToolDef[] = [
     description: "Propose generating the learner's personalised AI practice assignment for a lesson (shown as a confirmation card).",
     parameters: { type: "object", properties: { lesson_id: { type: "string" } }, required: ["lesson_id"] },
     roles: ["employee"],
-    async run(args) {
+    async run(args, ctx) {
       const lessonId = str(args.lesson_id, 120);
-      const lesson = await findLessonForAi(lessonId);
+      const lesson = await findLessonForAi(lessonId, seeReach(ctx));
       const location = lesson ? await findLessonLocation(lessonId) : null;
       if (!lesson || !location?.visibleToLearners) return fail("Lesson not found. Use find_lessons to get a valid lesson_id.");
       if (!lessonHasEnoughContent(lesson)) return fail("This lesson doesn't have enough content yet to build a useful practice assignment.");
@@ -216,9 +221,9 @@ const TOOLS: ToolDef[] = [
     description: "Propose opening the 'Test yourself' quiz for a lesson.",
     parameters: { type: "object", properties: { lesson_id: { type: "string" } }, required: ["lesson_id"] },
     roles: ["employee", "tutor", "admin"],
-    async run(args) {
+    async run(args, ctx) {
       const lessonId = str(args.lesson_id, 120);
-      const lesson = await findLessonForAi(lessonId);
+      const lesson = await findLessonForAi(lessonId, seeReach(ctx));
       const location = lesson ? await findLessonLocation(lessonId) : null;
       if (!lesson || !location?.visibleToLearners) return fail("Lesson not found. Use find_lessons to get a valid lesson_id.");
       if (!lessonHasEnoughContent(lesson)) return fail("This lesson doesn't have enough content yet to build a useful quiz.");
@@ -246,7 +251,7 @@ const TOOLS: ToolDef[] = [
       if (page === "submissions") return go("/app/submissions/", "your submissions");
       if (page === "lesson") {
         const location = await findLessonLocation(str(args.lesson_id, 120));
-        if (!location || (!location.visibleToLearners && !isManager)) return fail("Lesson not found.");
+        if (!location || (!location.visibleToLearners && !isManager) || !canSeeCourse(ctx, location.universityId)) return fail("Lesson not found.");
         return go(`/app/learn/?course=${encodeURIComponent(location.courseSlug)}&lesson=${encodeURIComponent(location.lessonId)}`, `the lesson "${location.lessonTitle}"`);
       }
       if (!isManager) return fail("That page is only for tutors.");
@@ -262,11 +267,11 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "list_my_courses",
-    description: "List the courses this tutor manages (admins: all), with each lesson's id, format, whether it has a video, and draft/published state.",
+    description: "List the courses this tutor manages (admins: every course of their university), with each lesson's id, format, whether it has a video, and draft/published state.",
     parameters: { type: "object", properties: {} },
     roles: MANAGERS,
     async run(_args, ctx) {
-      const courses = ctx.role === "admin" ? await getCourses() : await getCourses("WHERE c.owner_user_id = $1", [ctx.userId]);
+      const courses = await getCourses(`WHERE c.owner_user_id = $1 OR ${manageSql("c", 2, 3)}`, [ctx.userId, ...manage(ctx)]);
       return {
         content: json({
           courses: courses.slice(0, 25).map((c) => ({
@@ -552,7 +557,7 @@ const TOOLS: ToolDef[] = [
       if (!title) return fail("A course title is required.");
       if (!courseLevel) return fail("level must be Beginner, Intermediate or Advanced.");
       const base = slugify(title) || "course";
-      const mine = ctx.role === "admin" ? await getCourses() : await getCourses("WHERE c.owner_user_id = $1", [ctx.userId]);
+      const mine = await getCourses(`WHERE c.owner_user_id = $1 OR ${manageSql("c", 2, 3)}`, [ctx.userId, ...manage(ctx)]);
       if (mine.some((c) => c.title.trim().toLowerCase() === title.toLowerCase())) return fail(`You already have a course called "${title}". Add lessons to it, or choose a different title.`);
       let slug = base;
       for (let n = 2; (await getCourses("WHERE c.slug = $1", [slug])).length; n++) {

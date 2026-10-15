@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
+import { manageReach, type Reach } from "@/lib/server/course-scope";
 import { authOptions } from "@/lib/auth/auth";
 import { db } from "@/lib/server/db";
 
@@ -14,7 +15,8 @@ export async function GET(req: Request) {
 
   const userId = Number(session.user.id);
   if (!Number.isSafeInteger(userId) || userId < 1) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  const isAdmin = session.user.role === "admin";
+  // Super admins reach every course; a university admin, their university's.
+  const adminReach = manageReach(session.user);
 
   const url = new URL(req.url);
   const submissionId = Number(url.searchParams.get("submissionId"));
@@ -29,8 +31,8 @@ export async function GET(req: Request) {
     `SELECT s.file_name, s.mime_type, s.content
      FROM assignment_submissions s
      JOIN courses c ON c.slug = s.course_slug
-     WHERE s.id = $1 AND ($2::boolean OR c.owner_user_id = $3)`,
-    [submissionId, isAdmin, userId]
+     WHERE s.id = $1 AND ($2::boolean OR (c.university_id IS NOT NULL AND c.university_id = $4::int) OR c.owner_user_id = $3)`,
+    [submissionId, adminReach.all, userId, adminReach.universityId]
   );
   const submission = rows[0];
   if (!submission) return Response.json({ error: "Submission not found." }, { status: 404 });

@@ -184,7 +184,8 @@ describe("GET /api/tutor/courses/export", () => {
       resources: validPackage.lessons[0].resources,
       rubric: [{ title: "Clarity", description: "Sets clear expectations.", maxPoints: 20 }],
     })]);
-    expect(mockQuery.mock.calls[0][1]).toEqual(["leading-teams", false, 17]);
+    // A tutor: no admin reach, so only the owner check applies.
+    expect(mockQuery.mock.calls[0][1]).toEqual(["leading-teams", false, 17, null]);
   });
 });
 
@@ -222,7 +223,8 @@ describe("POST /api/tutor/courses/import", () => {
       expect.objectContaining({ published: false }),
       23,
       false,
-      true
+      true,
+      null
     );
     expect(client.query).toHaveBeenCalledWith(
       expect.stringContaining("INSERT INTO assignment_rubric_criteria"),

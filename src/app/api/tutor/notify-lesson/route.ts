@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
+import { manageReach, type Reach } from "@/lib/server/course-scope";
 import { authOptions } from "@/lib/auth/auth";
 import { db } from "@/lib/server/db";
 import { sendNewVideoEmail } from "@/lib/server/email";
@@ -48,12 +49,13 @@ export async function POST(req: NextRequest) {
 
   const userId = Number(session.user.id);
   if (!Number.isSafeInteger(userId) || userId < 1) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const isAdmin = session.user.role === "admin";
+  // Super admins reach every course; a university admin, their university's.
+  const adminReach = manageReach(session.user);
 
   try {
     const { rows: courseRows } = await db.query<{ slug: string; title: string }>(
-      `SELECT slug, title FROM courses WHERE slug = $1 AND ($2::int IS NULL OR owner_user_id = $2)`,
-      [courseSlug, isAdmin ? null : userId]
+      `SELECT slug, title FROM courses WHERE slug = $1 AND (owner_user_id = $2 OR $3::boolean OR (university_id IS NOT NULL AND university_id = $4::int))`,
+      [courseSlug, userId, adminReach.all, adminReach.universityId]
     );
     const course = courseRows[0];
     if (!course) return NextResponse.json({ error: "Course not found." }, { status: 404 });

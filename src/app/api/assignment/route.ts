@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
+import { seeReach } from "@/lib/server/course-scope";
 import { authOptions } from "@/lib/auth/auth";
 import { db, type DbUser } from "@/lib/server/db";
 import {
@@ -69,7 +70,7 @@ export async function GET(req: Request) {
   if (!session?.user?.email) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const lessonId = new URL(req.url).searchParams.get("lessonId")?.trim();
-  const lesson = lessonId ? await findLessonForAi(lessonId) : null;
+  const lesson = lessonId ? await findLessonForAi(lessonId, seeReach(session.user)) : null;
   if (!lesson) return Response.json({ error: "Lesson not found." }, { status: 404 });
 
   const { rows: userRows } = await db.query<Pick<DbUser, "id">>(
@@ -97,7 +98,7 @@ export async function POST(req: Request) {
   const parsed = await readLessonId(req);
   if (parsed instanceof Response) return parsed;
 
-  const lesson = await findLessonForAi(parsed.lessonId);
+  const lesson = await findLessonForAi(parsed.lessonId, seeReach(session.user));
   if (!lesson) return Response.json({ error: "Lesson not found." }, { status: 404 });
   // Don't spend tokens on a placeholder lesson. (Saved assignments stay
   // readable via GET, which never regenerates.)

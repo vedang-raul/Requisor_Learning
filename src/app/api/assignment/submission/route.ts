@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
+import { canSeeCourse } from "@/lib/server/course-scope";
 import { authOptions } from "@/lib/auth/auth";
 import { db } from "@/lib/server/db";
 import { findLessonLocation } from "@/lib/courses/course-catalog";
@@ -46,8 +47,8 @@ export async function GET(req: Request) {
 
   const lessonId = new URL(req.url).searchParams.get("lessonId")?.trim();
   const location = await findLessonLocation(lessonId);
-  // Learners can only submit to lessons they can see (not drafts).
-  if (!location || !location.visibleToLearners) return Response.json({ error: "Lesson not found." }, { status: 404 });
+  // Learners can only submit to lessons they can see: not drafts, not another university's.
+  if (!location || !location.visibleToLearners || !canSeeCourse(session.user, location.universityId)) return Response.json({ error: "Lesson not found." }, { status: 404 });
 
   const { rows: userRows } = await db.query<{ id: number }>(
     "SELECT id FROM users WHERE email = $1",
@@ -121,8 +122,8 @@ export async function POST(req: Request) {
   }
 
   const location = await findLessonLocation(lessonId);
-  // Learners can only submit to lessons they can see (not drafts).
-  if (!location || !location.visibleToLearners) return Response.json({ error: "Lesson not found." }, { status: 404 });
+  // Learners can only submit to lessons they can see: not drafts, not another university's.
+  if (!location || !location.visibleToLearners || !canSeeCourse(session.user, location.universityId)) return Response.json({ error: "Lesson not found." }, { status: 404 });
 
   const { rows: userRows } = await db.query<{ id: number; name: string | null }>(
     "SELECT id, name FROM users WHERE email = $1",

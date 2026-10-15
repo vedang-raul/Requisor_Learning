@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
+import { manageReach, type Reach } from "@/lib/server/course-scope";
 import { authOptions } from "@/lib/auth/auth";
 import { db } from "@/lib/server/db";
 import { toSubmissionSource } from "@/lib/courses/submission-source";
@@ -27,7 +28,8 @@ export async function GET(req: Request) {
 
   const userId = Number(session.user.id);
   if (!Number.isSafeInteger(userId) || userId < 1) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  const isAdmin = session.user.role === "admin";
+  // Super admins reach every course; a university admin, their university's.
+  const adminReach = manageReach(session.user);
 
   const lessonId = new URL(req.url).searchParams.get("lessonId")?.trim();
   if (lessonId && !LESSON_ID_PATTERN.test(lessonId)) {
@@ -49,10 +51,10 @@ export async function GET(req: Request) {
        JOIN courses c ON c.slug = s.course_slug
        LEFT JOIN course_lessons l ON l.id = s.lesson_id
        LEFT JOIN assignment_grades g ON g.submission_id = s.id
-       WHERE ($1::boolean OR c.owner_user_id = $2)
+       WHERE ($1::boolean OR (c.university_id IS NOT NULL AND c.university_id = $3::int) OR c.owner_user_id = $2)
        ORDER BY s.submitted_at DESC
        LIMIT 200`,
-      [isAdmin, userId]
+      [adminReach.all, userId, adminReach.universityId]
     );
     const graded = submissions.filter((submission) => submission.marks !== null);
     const averageMarks = graded.length
@@ -79,8 +81,8 @@ export async function GET(req: Request) {
   const { rows: lessonRows } = await db.query<{ id: string; course_slug: string }>(
     `SELECT l.id, l.course_slug FROM course_lessons l
      JOIN courses c ON c.slug = l.course_slug
-     WHERE l.id = $1 AND ($2::boolean OR c.owner_user_id = $3)`,
-    [lessonId, isAdmin, userId]
+     WHERE l.id = $1 AND ($2::boolean OR (c.university_id IS NOT NULL AND c.university_id = $4::int) OR c.owner_user_id = $3)`,
+    [lessonId, adminReach.all, userId, adminReach.universityId]
   );
   const lesson = lessonRows[0];
   if (!lesson) return Response.json({ error: "Lesson not found." }, { status: 404 });

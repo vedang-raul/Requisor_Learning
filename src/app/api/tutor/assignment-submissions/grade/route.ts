@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
+import { manageReach, type Reach } from "@/lib/server/course-scope";
 import { authOptions } from "@/lib/auth/auth";
 import { db } from "@/lib/server/db";
 
@@ -23,23 +24,23 @@ const canManage = (role: unknown) => role === "admin" || role === "tutor";
 // quality remarks (Excellent, Good, …) before statuses replaced them.
 const STATUSES = new Set(["Excused", "Missing", "Late"]);
 
-async function ownedSubmissionLesson(submissionId: number, userId: number, isAdmin: boolean) {
+async function ownedSubmissionLesson(submissionId: number, userId: number, adminReach: Reach) {
   const { rows } = await db.query<{ lesson_id: string }>(
     `SELECT s.lesson_id FROM assignment_submissions s JOIN courses c ON c.slug = s.course_slug
-     WHERE s.id = $1 AND ($2::boolean OR c.owner_user_id = $3)`,
-    [submissionId, isAdmin, userId]
+     WHERE s.id = $1 AND ($2::boolean OR (c.university_id IS NOT NULL AND c.university_id = $4::int) OR c.owner_user_id = $3)`,
+    [submissionId, adminReach.all, userId, adminReach.universityId]
   );
   return rows[0]?.lesson_id ?? null;
 }
 
 /** What a flat grade is out of: the lesson's total points, or 100 if it sets none. Null = not this tutor's submission. */
-async function submissionTotalPoints(submissionId: number, userId: number, isAdmin: boolean): Promise<number | null> {
+async function submissionTotalPoints(submissionId: number, userId: number, adminReach: Reach): Promise<number | null> {
   const { rows } = await db.query<{ total: number }>(
     `SELECT COALESCE(l.assignment_marks, 100) AS total
      FROM assignment_submissions s JOIN courses c ON c.slug = s.course_slug
      LEFT JOIN course_lessons l ON l.id = s.lesson_id
-     WHERE s.id = $1 AND ($2::boolean OR c.owner_user_id = $3)`,
-    [submissionId, isAdmin, userId]
+     WHERE s.id = $1 AND ($2::boolean OR (c.university_id IS NOT NULL AND c.university_id = $4::int) OR c.owner_user_id = $3)`,
+    [submissionId, adminReach.all, userId, adminReach.universityId]
   );
   return rows[0] ? Number(rows[0].total) : null;
 }
@@ -51,7 +52,8 @@ export async function PUT(req: Request) {
 
   const userId = Number(session.user.id);
   if (!Number.isSafeInteger(userId) || userId < 1) return Response.json({ error: "Unauthorized" }, { status: 401 });
-  const isAdmin = session.user.role === "admin";
+  // Super admins reach every course; a university admin, their university's.
+  const adminReach = manageReach(session.user);
 
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
   const submissionId = Number(body.submissionId);
@@ -65,14 +67,14 @@ export async function PUT(req: Request) {
   const remark = STATUSES.has(rawStatus) ? rawStatus : null;
 
   if (Array.isArray(body.scores)) {
-    return gradeWithRubric(submissionId, body.scores, remark, userId, isAdmin);
+    return gradeWithRubric(submissionId, body.scores, remark, userId, adminReach);
   }
 
   let marks: number;
   let rawScore: number | null = null;
   let rawMax: number | null = null;
   if (body.points !== undefined) {
-    const total = await submissionTotalPoints(submissionId, userId, isAdmin);
+    const total = await submissionTotalPoints(submissionId, userId, adminReach);
     if (total === null) return Response.json({ error: "Submission not found." }, { status: 404 });
     const points = Number(body.points);
     if (body.points === null || body.points === "" || !Number.isFinite(points) || points < 0 || points > total) {
@@ -91,10 +93,10 @@ export async function PUT(req: Request) {
     `INSERT INTO assignment_grades (submission_id, marks, raw_score, raw_max, remark, graded_by, graded_at)
      SELECT s.id, $2, $6, $7, $3, $4, NOW()
      FROM assignment_submissions s JOIN courses c ON c.slug = s.course_slug
-     WHERE s.id = $1 AND ($5::boolean OR c.owner_user_id = $4)
+     WHERE s.id = $1 AND ($5::boolean OR (c.university_id IS NOT NULL AND c.university_id = $8::int) OR c.owner_user_id = $4)
      ON CONFLICT (submission_id) DO UPDATE SET marks = EXCLUDED.marks, raw_score = EXCLUDED.raw_score, raw_max = EXCLUDED.raw_max, remark = EXCLUDED.remark, graded_by = EXCLUDED.graded_by, graded_at = NOW()
      RETURNING graded_at`,
-    [submissionId, marks, remark, userId, isAdmin, rawScore, rawMax]
+    [submissionId, marks, remark, userId, adminReach.all, rawScore, rawMax, adminReach.universityId]
   );
   if (!rows[0]) return Response.json({ error: "Submission not found." }, { status: 404 });
 
@@ -105,8 +107,8 @@ export async function PUT(req: Request) {
   return Response.json({ marks, rawScore, rawMax, status: remark, gradedAt: rows[0].graded_at });
 }
 
-async function gradeWithRubric(submissionId: number, scoresInput: unknown[], remark: string | null, userId: number, isAdmin: boolean) {
-  const lessonId = await ownedSubmissionLesson(submissionId, userId, isAdmin);
+async function gradeWithRubric(submissionId: number, scoresInput: unknown[], remark: string | null, userId: number, adminReach: Reach) {
+  const lessonId = await ownedSubmissionLesson(submissionId, userId, adminReach);
   if (!lessonId) return Response.json({ error: "Submission not found." }, { status: 404 });
 
   const { rows: criteria } = await db.query<{ id: number; max_points: number }>(
