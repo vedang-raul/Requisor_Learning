@@ -45,14 +45,20 @@ export default function TutorAuth() {
   const [view, setView] = useState<View>("login");
   const [direction, setDirection] = useState<Direction>("forward");
   const [entering, setEntering] = useState<View | null>(null);
-  const [submitting, setSubmitting] = useState<false | "login" | "signup" | "google" | "dev-tutor">(false);
+  const [submitting, setSubmitting] = useState<false | "login" | "signup" | "google" | "dev-tutor" | "dev-admin">(false);
   // Test-login buttons appear only where the server offers them (see testLoginsEnabled in src/lib/auth/auth.ts).
   const [testLogins, setTestLogins] = useState(false);
+  // The test super admin exists only on a local development copy (the dev-admin provider is never offered in production).
+  const [testSuperAdmin, setTestSuperAdmin] = useState(false);
   useEffect(() => {
     let cancelled = false;
     fetch("/api/auth/providers")
       .then((r) => (r.ok ? r.json() : null))
-      .then((providers: Record<string, unknown> | null) => { if (!cancelled) setTestLogins(Boolean(providers && providers["dev-student"] && providers["dev-tutor"])); })
+      .then((providers: Record<string, unknown> | null) => {
+        if (cancelled) return;
+        setTestLogins(Boolean(providers && providers["dev-student"] && providers["dev-tutor"]));
+        setTestSuperAdmin(Boolean(providers && providers["dev-admin"]));
+      })
       .catch(() => undefined);
     return () => { cancelled = true; };
   }, []);
@@ -197,6 +203,24 @@ export default function TutorAuth() {
       window.location.assign("/app/tutor/");
     } catch {
       setFormError("Network error. Please try again.");
+      setSubmitting(false);
+    }
+  }
+
+  /** Local development only: signs in as the support mailbox, which is always a super admin. */
+  async function handleDevSuperAdmin() {
+    setFormError("");
+    setSubmitting("dev-admin");
+    try {
+      const result = await signIn("dev-admin", { callbackUrl: "/app/admin/", redirect: false });
+      if (result?.error) {
+        setFormError("Test super admin access is unavailable.");
+        setSubmitting(false);
+        return;
+      }
+      window.location.assign("/app/admin/");
+    } catch {
+      setFormError("Test super admin access is unavailable.");
       setSubmitting(false);
     }
   }
@@ -417,6 +441,16 @@ export default function TutorAuth() {
                   >
                     {submitting === "dev-tutor" ? "Opening tutor workspace…" : "Log in as test tutor"}
                   </button>
+                  {testSuperAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => void handleDevSuperAdmin()}
+                      disabled={Boolean(submitting)}
+                      className="focus-ring mt-2 w-full rounded-lg border border-amber-400 bg-white px-3 py-2 text-xs font-semibold text-amber-900 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {submitting === "dev-admin" ? "Opening the admin panel…" : "Log in as test super admin"}
+                    </button>
+                  )}
                 </div>
               )}
 
