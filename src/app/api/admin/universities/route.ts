@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 
 import { db } from "@/lib/server/db";
+import { skipEmailVerification } from "@/lib/server/email";
 import { requireAccess } from "@/lib/server/access";
 import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
 import { listUniversities, publicPartnerId, setPublicPartnerId } from "@/lib/server/universities";
@@ -70,19 +71,28 @@ export async function POST(req: Request) {
        VALUES ($1, $2, $3, $4, $5) RETURNING id`,
       [input.name, input.shortName, input.domains, logo?.data ?? null, logo?.type ?? null]
     );
-    // People who already signed up with the new domain join it.
-    if (input.domains.length) {
-      await db.query(
-        `UPDATE users SET university_id = $1, university_status = 'active'
-          WHERE university_id IS NULL AND split_part(lower(email), '@', 2) = ANY($2::text[])`,
-        [rows[0].id, input.domains]
-      );
-    }
+    await adoptMatchingAccounts(rows[0].id, input.domains);
     return Response.json({ id: rows[0].id }, { status: 201 });
   } catch (error) {
     if (isDuplicate(error)) return Response.json({ error: "A university with that name already exists." }, { status: 409 });
     throw error;
   }
+}
+
+/**
+ * People who already signed up with one of the university's domains, and
+ * aren't in any university, join it — only with a verified address. With
+ * verification switched off for testing, "verified" proves nothing, so they
+ * wait for the admin instead (same rule as sign-up).
+ */
+async function adoptMatchingAccounts(universityId: number, domains: string[]): Promise<void> {
+  if (!domains.length) return;
+  await db.query(
+    `UPDATE users SET university_id = $1, university_status = $3
+      WHERE university_id IS NULL AND email_verified = TRUE AND role <> 'admin'
+        AND split_part(lower(email), '@', 2) = ANY($2::text[])`,
+    [universityId, domains, skipEmailVerification() ? "pending" : "active"]
+  );
 }
 
 export async function PATCH(req: Request) {
@@ -108,6 +118,7 @@ export async function PATCH(req: Request) {
       [id, input.name, input.shortName, input.domains, body.logo !== undefined, logo?.data ?? null, logo?.type ?? null]
     );
     if (!rowCount) return Response.json({ error: "University not found." }, { status: 404 });
+    await adoptMatchingAccounts(id, input.domains);
     return Response.json({ ok: true });
   } catch (error) {
     if (isDuplicate(error)) return Response.json({ error: "A university with that name already exists." }, { status: 409 });

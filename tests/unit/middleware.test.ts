@@ -45,11 +45,47 @@ describe("admin route middleware", () => {
     expect(response.headers.get("x-middleware-next")).toBe("1");
   });
 
-  it("does not inspect session cookies for non-admin routes", async () => {
+  it("lets signed-in people who aren't waiting for approval use other app pages", async () => {
+    mockedGetToken.mockResolvedValue({ role: "employee", pending: false });
+
     const response = await middleware(request("/app/dashboard/"));
 
     expect(response.headers.get("x-middleware-next")).toBe("1");
+  });
+
+  it("does not inspect session cookies for public pages", async () => {
+    const response = await middleware(request("/"));
+
+    expect(response.headers.get("x-middleware-next")).toBe("1");
     expect(mockedGetToken).not.toHaveBeenCalled();
+  });
+});
+
+describe("people waiting to join a university", () => {
+  beforeEach(() => mockedGetToken.mockResolvedValue({ role: "employee", pending: true }));
+
+  it("sends every app page to the waiting page", async () => {
+    for (const path of ["/app/dashboard/", "/app/learn/?course=x", "/app/tutor/", "/app"]) {
+      const response = await middleware(request(path));
+      expect(response.status).toBe(307);
+      // Next keeps the request's trailing-slash style; both reach the same page.
+      expect(response.headers.get("location")).toMatch(/^https:\/\/learning\.example\/pending\/?$/);
+    }
+  });
+
+  it("answers every data API with 403", async () => {
+    for (const path of ["/api/courses/", "/api/assignment", "/api/chat", "/api/me", "/api/authority"]) {
+      const response = await middleware(request(path));
+      expect(response.status).toBe(403);
+      await expect(response.json()).resolves.toMatchObject({ code: "pending_approval" });
+    }
+  });
+
+  it("still lets them reach sign-in/out, the waiting page and public endpoints", async () => {
+    for (const path of ["/pending/", "/api/auth/session", "/api/auth/signout", "/api/branding", "/api/health"]) {
+      const response = await middleware(request(path));
+      expect(response.headers.get("x-middleware-next")).toBe("1");
+    }
   });
 });
 

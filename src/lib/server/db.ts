@@ -79,6 +79,7 @@ export interface DbUser {
   onboarding_done: boolean;
   assistant_persona: string | null;
   preferred_language: string | null;
+  accessibility?: unknown;
   preferred_country: string | null;
   notification_settings: {
     courses: boolean;

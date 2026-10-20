@@ -5,16 +5,20 @@ import {
   Bell, Pencil, User, X, Check, Loader2, Briefcase, Calendar, GraduationCap,
   Target, UserCircle2, Mail, ShieldCheck, BookOpenCheck, Megaphone, Award,
   Bug, Upload, Clock, AlertCircle, CheckCircle2, ChevronDown, Image, Video, FileText,
-  Play, FileVideo, ImagePlus,
+  Play, FileVideo, ImagePlus, Accessibility, RotateCcw,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/ui/motion";
-import { cn } from "@/lib/utils";
+import { cn, REPLAY_TOUR_KEY } from "@/lib/utils";
 import { checkJobTitle, JOB_TITLE_HINT, stripJobTitle } from "@/lib/auth/job-title";
 import { AiUsageCard } from "@/components/tutor/ai-usage-card";
+import { AccessibilityChoices } from "@/components/accessibility/accessibility-choices";
+import { useAccessibility } from "@/components/layout/accessibility-provider";
+import type { AccessibilityPrefs } from "@/lib/accessibility/preferences";
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 interface ProfileData {
@@ -862,6 +866,67 @@ function BugReportCard() {
   );
 }
 
+/* ─── Accessibility Card ─────────────────────────────────────────────────── */
+/** The same switches as onboarding; each change is saved and applied at once. */
+function AccessibilityCard() {
+  const { prefs, save } = useAccessibility();
+  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+
+  async function change(next: AccessibilityPrefs) {
+    setStatus("saving");
+    try {
+      await save(next);
+      setStatus("saved");
+    } catch {
+      setStatus("error");
+    }
+  }
+
+  return (
+    <Card>
+      <div className="mb-1 flex items-center gap-2">
+        <div className="rounded-lg bg-primary/10 p-1.5">
+          <Accessibility className="h-4 w-4 text-primary" aria-hidden="true" />
+        </div>
+        <CardTitle>Accessibility</CardTitle>
+        <span className="ml-auto text-xs text-zinc-500" role="status" aria-live="polite">
+          {status === "saving" ? "Saving…" : status === "saved" ? "Saved" : status === "error" ? "Couldn't save — try again" : ""}
+        </span>
+      </div>
+      <p className="mb-4 text-sm text-zinc-600">Turn on anything that makes Alma 41 easier for you to use. Changes apply straight away.</p>
+      <AccessibilityChoices prefs={prefs} onChange={change} />
+    </Card>
+  );
+}
+
+/* ─── Retake onboarding (learners) ───────────────────────────────────────── */
+/** Opens the onboarding walkthrough again on the dashboard (src/app/app/layout.tsx). */
+function RetakeOnboardingCard() {
+  const router = useRouter();
+  function retake() {
+    try { sessionStorage.setItem(REPLAY_TOUR_KEY, "1"); } catch { /* private window */ }
+    router.push("/app/dashboard/");
+  }
+  return (
+    <Card>
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="rounded-lg bg-primary/10 p-1.5">
+          <RotateCcw className="h-4 w-4 text-primary" aria-hidden="true" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <CardTitle>Retake onboarding</CardTitle>
+          <p className="mt-0.5 text-sm text-zinc-600">
+            Goals changed? Answer the setup questions again to update your background, goals and course recommendation.
+          </p>
+        </div>
+        <Button variant="outline" onClick={retake} className="gap-1.5">
+          <RotateCcw className="h-4 w-4" aria-hidden="true" /> Retake
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
 /* ─── Page ───────────────────────────────────────────────────────────────── */
 export default function SettingsPage() {
   useStore();
@@ -907,6 +972,8 @@ export default function SettingsPage() {
       </motion.div>
 
       <ProfileCard />
+      {session?.user?.role === "employee" && <RetakeOnboardingCard />}
+      <AccessibilityCard />
       {showsAiUsage && <AiUsageCard />}
       <BugReportCard />
 

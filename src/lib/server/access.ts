@@ -19,6 +19,9 @@ export async function currentAccess(): Promise<RequestAccess | null> {
   const session = await getServerSession(authOptions);
   const userId = Number(session?.user?.id);
   if (!session?.user?.email || !Number.isSafeInteger(userId) || userId < 1) return null;
+  // Waiting for a university's approval: no access to anything yet. (The
+  // middleware already blocks these requests; this is the second line.)
+  if (session.user.pending === true) return null;
   return {
     userId,
     email: session.user.email.toLowerCase(),

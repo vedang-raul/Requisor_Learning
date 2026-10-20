@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Building2, ImagePlus, Loader2, Pencil, Plus, Radio, Trash2, X } from "lucide-react";
+import { AlertTriangle, Building2, ImagePlus, Loader2, Pencil, Plus, Radio, Trash2, X } from "lucide-react";
 import { Card, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { cleanDomains, isPublicEmailDomain, MAX_UNIVERSITY_DOMAINS } from "@/lib/auth/roles";
 import { refreshBranding } from "@/lib/branding-client";
 
 /**
@@ -20,6 +21,46 @@ type Draft = { id: number | null; name: string; shortName: string; domains: stri
 
 const EMPTY: Draft = { id: null, name: "", shortName: "", domains: "", logo: undefined, preview: null };
 const inputClass = "focus-ring h-9 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900";
+
+/**
+ * The university's email domains, typed comma-separated and shown as tags
+ * exactly as the server will save them (same cleanDomains rules). Matching is
+ * exact, so each subdomain students use (e.g. students.msoe.edu) is listed on
+ * its own. Free providers like gmail.com get a warning: listing one would let
+ * anyone with that provider join.
+ */
+function DomainsField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const domains = cleanDomains(value);
+  const publicOnes = domains.filter(isPublicEmailDomain);
+  const typedCount = value.split(/[\s,;]+/).filter(Boolean).length;
+  return (
+    <div className="space-y-1.5">
+      <label className="block text-xs font-medium text-zinc-700">Email domains
+        <input className={cn(inputClass, "mt-1")} value={value} placeholder="e.g. msoe.edu, students.msoe.edu" onChange={(e) => onChange(e.target.value)} />
+      </label>
+      {domains.length > 0 && (
+        <div className="flex flex-wrap gap-1.5" aria-label="Domains that will be saved">
+          {domains.map((d) => (
+            <span key={d} className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", isPublicEmailDomain(d) ? "bg-amber-100 text-amber-800" : "bg-zinc-100 text-zinc-700")}>@{d}</span>
+          ))}
+        </div>
+      )}
+      {publicOnes.length > 0 && (
+        <p role="alert" className="flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">
+          <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          {publicOnes.map((d) => `@${d}`).join(", ")} {publicOnes.length === 1 ? "is a public email provider" : "are public email providers"} — anyone with an address there would join this university straight away.
+        </p>
+      )}
+      {typedCount > domains.length && domains.length < MAX_UNIVERSITY_DOMAINS && (
+        <p className="text-[11px] text-red-700">Some entries aren&apos;t valid domains and will be skipped.</p>
+      )}
+      <span className="block text-[11px] text-zinc-500">
+        People who sign up with an address on one of these domains join straight away; anyone else who picks this university waits for its university admin to approve them.
+        Add each subdomain students use separately, separated with commas (up to {MAX_UNIVERSITY_DOMAINS}).
+      </span>
+    </div>
+  );
+}
 
 export function UniversitiesPanel({ onChanged }: { onChanged?: () => void }) {
   const [rows, setRows] = useState<UniversityRow[] | null>(null);
@@ -80,7 +121,7 @@ export function UniversitiesPanel({ onChanged }: { onChanged?: () => void }) {
   }
 
   async function remove(row: UniversityRow) {
-    if (!window.confirm(`Remove ${row.name}? Its ${row.people} people and ${row.courses} courses stay on the platform without a university, and its admins become students.`)) return;
+    if (!window.confirm(`Remove ${row.name}? Its ${row.people} people and ${row.courses} courses stay on the platform without a university, and its university admins become students.`)) return;
     try {
       await send("DELETE", { id: row.id });
       changed(`${row.name} was removed.`);
@@ -156,10 +197,7 @@ export function UniversitiesPanel({ onChanged }: { onChanged?: () => void }) {
                 <input className={cn(inputClass, "mt-1")} value={draft.shortName} maxLength={40} placeholder="e.g. MSOE" onChange={(e) => setDraft({ ...draft, shortName: e.target.value })} />
               </label>
             </div>
-            <label className="block text-xs font-medium text-zinc-700">Email domains
-              <input className={cn(inputClass, "mt-1")} value={draft.domains} placeholder="e.g. msoe.edu" onChange={(e) => setDraft({ ...draft, domains: e.target.value })} />
-              <span className="mt-1 block font-normal text-zinc-500">People who sign up with these email domains join this university straight away. Separate several with commas.</span>
-            </label>
+            <DomainsField value={draft.domains} onChange={(domains) => setDraft({ ...draft, domains })} />
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-zinc-200 bg-white">
                 {/* eslint-disable-next-line @next/next/no-img-element */}

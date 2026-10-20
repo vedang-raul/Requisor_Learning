@@ -497,9 +497,9 @@ export default function TutorAuth() {
                 </IconInput>
                 <p id="tutorUniversityHint" className="text-[11px] text-zinc-500">
                   {emailUniversity && String(emailUniversity.id) === signupUniversity
-                    ? `Your ${emailUniversity.shortName} email adds you to ${emailUniversity.shortName}. Its admin then approves you as a tutor.`
+                    ? `Your ${emailUniversity.shortName} email adds you to ${emailUniversity.shortName}. Its university admin then approves you as a tutor.`
                     : signupUniversity
-                      ? "Your university's admin approves you as a tutor."
+                      ? "Your university admin approves you as a tutor."
                       : "Not listed? Sign up anyway; we'll be in touch about adding your university."}
                 </p>
               </Field>

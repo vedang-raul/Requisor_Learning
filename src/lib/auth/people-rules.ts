@@ -69,7 +69,7 @@ export function planPeopleChange(manager: Manager, person: Person, action: Peopl
     case "decline-tutor":
       return { requestedRole: null };
     case "set-role": {
-      if (!assignableRoles(manager).includes(action.role)) return { error: "Only a super admin can make someone an admin." };
+      if (!assignableRoles(manager).includes(action.role)) return { error: "Only a super admin can make someone a university admin." };
       if (action.role !== "employee" && person.status !== "active") return { error: "They need to be an approved member of a university first." };
       return { role: action.role, requestedRole: null };
     }

@@ -4,47 +4,38 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AccessibilityChoices } from "@/components/accessibility/accessibility-choices";
+import { useAccessibility } from "@/components/layout/accessibility-provider";
+import type { AccessibilityPrefs } from "@/lib/accessibility/preferences";
+import { ChoiceChips } from "@/components/onboarding/choice-chips";
+import { joinChoices, TUTOR_EXPERIENCE, TUTOR_PURPOSES, TUTOR_QUALIFICATIONS, TUTOR_SUBJECTS } from "@/lib/onboarding/choices";
+import { stripJobTitle } from "@/lib/auth/job-title";
 
 type QuestionKey = "expertise" | "qualification" | "experience" | "purpose";
 
+/** Each question is answered by tapping options (src/lib/onboarding/choices.ts); "Other" takes a few words. */
 type Question = {
   key: QuestionKey;
   label: string;
-  hint?: string;
-  placeholder: string;
-  multiline?: boolean;
+  options: string[];
+  multiple: boolean;
+  max?: number;
+  otherPlaceholder: string;
+  cleanOther?: (value: string) => string;
 };
 
 const QUESTIONS: Question[] = [
-  {
-    key: "expertise",
-    label: "What subjects do you teach?",
-    hint: "Separate multiple subjects with commas.",
-    placeholder: "e.g. Calculus, Organic Chemistry, Python",
-  },
-  {
-    key: "qualification",
-    label: "What's your highest qualification?",
-    hint: "Degree, institution, and year, if you have it handy.",
-    placeholder: "e.g. M.Sc. Mathematics — Stanford University, 2021",
-  },
-  {
-    key: "experience",
-    label: "How much teaching experience do you have?",
-    hint: "A rough number is fine.",
-    placeholder: "e.g. 5 years, mostly high-school algebra",
-  },
-  {
-    key: "purpose",
-    label: "Why did you choose Requisor?",
-    hint: "One or two sentences is plenty.",
-    placeholder: "Tell us what brought you here…",
-    multiline: true,
-  },
+  // Saved as the profile's job title, which allows letters only and 80 characters (src/lib/auth/job-title.ts).
+  { key: "expertise", label: "What do you teach?", options: TUTOR_SUBJECTS, multiple: true, max: 3, otherPlaceholder: "e.g. Chemistry", cleanOther: (v) => stripJobTitle(v).slice(0, 30) },
+  { key: "qualification", label: "Your highest qualification", options: TUTOR_QUALIFICATIONS, multiple: false, otherPlaceholder: "e.g. Diploma in Education" },
+  { key: "experience", label: "Teaching experience", options: TUTOR_EXPERIENCE, multiple: false, otherPlaceholder: "In a few words" },
+  { key: "purpose", label: "Why did you choose Requisor?", options: TUTOR_PURPOSES, multiple: true, otherPlaceholder: "In a few words" },
 ];
 
 type Answers = Record<QuestionKey, string>;
-const EMPTY_ANSWERS: Answers = { expertise: "", qualification: "", experience: "", purpose: "" };
+type Picks = Record<QuestionKey, string[]>;
+const NO_PICKS: Picks = { expertise: [], qualification: [], experience: [], purpose: [] };
+const NO_OTHER: Answers = { expertise: "", qualification: "", experience: "", purpose: "" };
 
 export interface TutorSurveyProps {
   onSubmit?: (answers: Answers) => void | Promise<void>;
@@ -55,39 +46,57 @@ const swipeVariants = {
   center: { x: 0, opacity: 1 },
   exit: (direction: number) => ({ x: direction > 0 ? -80 : 80, opacity: 0 }),
 };
-const swipeTransition = { type: "spring" as const, stiffness: 320, damping: 30 };
+const swipeTransition = { duration: 0.18, ease: "easeOut" as const };
+
+/** Step 1, right after the welcome: what would make the site easier to use (applies at once). */
+const ACCESS_STEP = 1;
 
 export default function TutorSurvey({ onSubmit }: TutorSurveyProps) {
+  const accessibility = useAccessibility();
+  const [a11y, setA11y] = useState<AccessibilityPrefs>(accessibility.prefs);
+  // 0 = welcome, 1 = accessibility, 2.. = one question per step.
   const [step, setStep] = useState(0);
   const [direction, setDirection] = useState(1);
-  const [answers, setAnswers] = useState<Answers>(EMPTY_ANSWERS);
+  const [picks, setPicks] = useState<Picks>(NO_PICKS);
+  const [other, setOther] = useState<Answers>(NO_OTHER);
+  const answerFor = (key: QuestionKey) => joinChoices(picks[key], other[key]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
   const total = QUESTIONS.length;
-  const currentQuestion = step > 0 ? QUESTIONS[step - 1] : null;
+  const currentQuestion = step > ACCESS_STEP ? QUESTIONS[step - ACCESS_STEP - 1] : null;
+  const lastStep = total + ACCESS_STEP;
 
-  function updateAnswer(value: string) {
-    if (!currentQuestion) return;
-    setAnswers((current) => ({ ...current, [currentQuestion.key]: value }));
+  function changeA11y(next: AccessibilityPrefs) {
+    setA11y(next);
+    accessibility.preview(next);
+  }
+
+  function pick(key: QuestionKey, value: string[]) {
+    setPicks((current) => ({ ...current, [key]: value }));
+    if (error) setError("");
+  }
+  function type(key: QuestionKey, value: string) {
+    setOther((current) => ({ ...current, [key]: value }));
     if (error) setError("");
   }
 
   function next() {
     if (!currentQuestion) {
+      if (step === ACCESS_STEP) accessibility.save(a11y).catch(() => {});
       setDirection(1);
-      setStep(1);
+      setStep((current) => current + 1);
       return;
     }
 
-    if (!answers[currentQuestion.key].trim()) {
-      setError(`Please answer: ${currentQuestion.label}`);
+    if (!answerFor(currentQuestion.key).trim()) {
+      setError("Pick an answer, or choose Other and type a few words.");
       return;
     }
 
     setError("");
     setDirection(1);
-    if (step === total) {
+    if (step === lastStep) {
       void submit();
     } else {
       setStep((current) => current + 1);
@@ -100,22 +109,16 @@ export default function TutorSurvey({ onSubmit }: TutorSurveyProps) {
     setStep((current) => Math.max(0, current - 1));
   }
 
-  function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) {
-    if (event.key === "Enter" && (!currentQuestion?.multiline || !event.shiftKey)) {
-      event.preventDefault();
-      next();
-    }
-  }
 
   async function submit() {
     setSaving(true);
     setError("");
     try {
       await onSubmit?.({
-        expertise: answers.expertise.trim(),
-        qualification: answers.qualification.trim(),
-        experience: answers.experience.trim(),
-        purpose: answers.purpose.trim(),
+        expertise: answerFor("expertise"),
+        qualification: answerFor("qualification"),
+        experience: answerFor("experience"),
+        purpose: answerFor("purpose"),
       });
     } catch {
       setError("We couldn't save your profile. Please try again.");
@@ -125,7 +128,7 @@ export default function TutorSurvey({ onSubmit }: TutorSurveyProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+    <div role="dialog" aria-modal="true" aria-label="Set up your tutor profile" className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm">
       <AnimatePresence mode="wait" custom={direction}>
         {step === 0 ? (
           <motion.div
@@ -145,7 +148,7 @@ export default function TutorSurvey({ onSubmit }: TutorSurveyProps) {
             </motion.div>
             <h2 className="text-xl font-bold text-zinc-900">Set up your tutor profile</h2>
             <p className="mt-2 text-sm leading-relaxed text-zinc-600">
-              Answer {total} quick questions so learners can get the best guidance from you.
+              {total} quick questions — just tap your answers — so learners get the best guidance from you.
             </p>
             <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
               <Button className="mt-6 w-full gap-2" onClick={next}>
@@ -164,12 +167,12 @@ export default function TutorSurvey({ onSubmit }: TutorSurveyProps) {
           >
             <div className="mb-6">
               <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-zinc-900">Quick tutor profile</h2>
-                <span className="text-xs font-medium text-zinc-400">{step} / {total}</span>
+                <h2 className="text-lg font-bold text-zinc-900">{step === ACCESS_STEP ? "Make it easier to use" : "Quick tutor profile"}</h2>
+                <span className="text-xs font-medium text-zinc-400">{step} / {lastStep}</span>
               </div>
-              <div className="flex items-center gap-1.5" aria-label={`Question ${step} of ${total}`}>
-                {QUESTIONS.map((question, index) => (
-                  <div key={question.key} className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-100">
+              <div className="flex items-center gap-1.5" aria-label={`Step ${step} of ${lastStep}`}>
+                {["access", ...QUESTIONS.map((question) => question.key)].map((key, index) => (
+                  <div key={key} className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-100">
                     <motion.div
                       className="h-full rounded-full bg-gradient-to-r from-primary to-secondary"
                       initial={false}
@@ -184,7 +187,7 @@ export default function TutorSurvey({ onSubmit }: TutorSurveyProps) {
             <div className="relative min-h-[128px] overflow-hidden">
               <AnimatePresence mode="wait" custom={direction} initial={false}>
                 <motion.div
-                  key={currentQuestion?.key}
+                  key={currentQuestion?.key ?? "access"}
                   custom={direction}
                   variants={swipeVariants}
                   initial="enter"
@@ -193,36 +196,28 @@ export default function TutorSurvey({ onSubmit }: TutorSurveyProps) {
                   transition={swipeTransition}
                   className="w-full"
                 >
-                  {currentQuestion && (
-                    <div className="flex flex-col gap-1.5">
-                      <label htmlFor={`tutor-survey-${currentQuestion.key}`} className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-                        {currentQuestion.label} <span className="text-red-500">*</span>
-                      </label>
-                      {currentQuestion.multiline ? (
-                        <textarea
-                          id={`tutor-survey-${currentQuestion.key}`}
-                          autoFocus
-                          value={answers[currentQuestion.key]}
-                          onChange={(event) => updateAnswer(event.target.value)}
-                          onKeyDown={handleKeyDown}
-                          placeholder={currentQuestion.placeholder}
-                          rows={3}
-                          className="focus-ring w-full resize-none rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-sm text-zinc-900 placeholder:text-zinc-400 transition-colors hover:border-zinc-300 focus:border-primary/50"
-                        />
-                      ) : (
-                        <input
-                          id={`tutor-survey-${currentQuestion.key}`}
-                          autoFocus
-                          type="text"
-                          value={answers[currentQuestion.key]}
-                          onChange={(event) => updateAnswer(event.target.value)}
-                          onKeyDown={handleKeyDown}
-                          placeholder={currentQuestion.placeholder}
-                          className="focus-ring rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-sm text-zinc-900 placeholder:text-zinc-400 transition-colors hover:border-zinc-300 focus:border-primary/50"
-                        />
-                      )}
-                      <p className="text-[11px] text-zinc-400">{currentQuestion.hint}</p>
+                  {step === ACCESS_STEP && (
+                    <div className="space-y-2">
+                      <p className="text-sm text-zinc-600">
+                        Anything that would make the site easier for you to use? Pick any that help, or press Next. You can change these later in Settings.
+                      </p>
+                      <AccessibilityChoices prefs={a11y} onChange={changeA11y} columns={1} />
                     </div>
+                  )}
+                  {currentQuestion && (
+                    <ChoiceChips
+                      key={currentQuestion.key}
+                      label={currentQuestion.label}
+                      options={currentQuestion.options}
+                      multiple={currentQuestion.multiple}
+                      max={currentQuestion.max}
+                      picked={picks[currentQuestion.key]}
+                      onPickedChange={(value) => pick(currentQuestion.key, value)}
+                      other={other[currentQuestion.key]}
+                      onOtherChange={(value) => type(currentQuestion.key, value)}
+                      otherPlaceholder={currentQuestion.otherPlaceholder}
+                      cleanOther={currentQuestion.cleanOther}
+                    />
                   )}
                 </motion.div>
               </AnimatePresence>
@@ -239,7 +234,7 @@ export default function TutorSurvey({ onSubmit }: TutorSurveyProps) {
                 <ChevronLeft className="h-4 w-4" /> Back
               </Button>
               <Button className="w-full gap-2" onClick={next} disabled={saving}>
-                {saving ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving…</> : step === total ? <>Save &amp; start teaching <ChevronRight className="h-4 w-4" /></> : <>Next <ChevronRight className="h-4 w-4" /></>}
+                {saving ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving…</> : step === lastStep ? <>Save &amp; start teaching <ChevronRight className="h-4 w-4" /></> : <>Next <ChevronRight className="h-4 w-4" /></>}
               </Button>
             </div>
           </motion.div>

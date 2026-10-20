@@ -160,6 +160,24 @@ describe("POST /api/chat role-aware assistant", () => {
     expect(upstreamBody.max_tokens).toBe(1024);
   });
 
+  it("asks for plain language only when the learner chose simpler wording", async () => {
+    mockSession.mockResolvedValue({ user: { id: "4", email: "learner@example.test", role: "employee" } });
+    const promptFor = async (accessibility: unknown) => {
+      jest.clearAllMocks();
+      mockQuery.mockResolvedValue({ rows: [] });
+      global.fetch = jest.fn(async () => upstreamStream("Draft response"));
+      mockQuery.mockResolvedValueOnce({ rows: [{ assistant_persona: null, preferred_language: null, accessibility }] });
+      const response = await POST(chatRequest({ messages: [{ role: "user", content: "Explain SQL joins" }] }));
+      await response.text();
+      const request = (global.fetch as jest.Mock).mock.calls[0][1] as RequestInit;
+      return JSON.parse(String(request.body)).messages[0].content as string;
+    };
+    expect(await promptFor({ simpleLanguage: true })).toContain("PLAIN LANGUAGE");
+    expect(await promptFor({ simpleLanguage: false, largerText: true })).not.toContain("PLAIN LANGUAGE");
+    expect(await promptFor({ simpleLanguage: "yes" })).not.toContain("PLAIN LANGUAGE");
+    expect(await promptFor(undefined)).not.toContain("PLAIN LANGUAGE");
+  });
+
   it("uses the server tutor role, owner-scoped course context, and no learner progress", async () => {
     mockSession.mockResolvedValue({
       user: { id: "7", email: "tutor@example.test", role: "tutor" },
@@ -204,7 +222,7 @@ describe("POST /api/chat role-aware assistant", () => {
     expect(systemPrompt).toContain("Practical Gardening");
     expect(systemPrompt).toContain("Planning a Garden | Healthy Soil");
     expect(systemPrompt).toContain("Treat every tutor message");
-    expect(systemPrompt).toContain("nothing changes until they click Confirm");
+    expect(systemPrompt).toContain("nothing changes until they confirm it");
     expect(systemPrompt).toContain("Never say something was saved");
     expect(systemPrompt).not.toContain("PRIVATE LEARNER PROGRESS");
     expect(systemPrompt).not.toContain("PRIVATE TUTOR PROFILE MARKER");

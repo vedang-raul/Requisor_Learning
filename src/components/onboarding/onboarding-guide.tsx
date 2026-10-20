@@ -1,43 +1,75 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, ChevronRight, ChevronLeft, Check, Volume2, VolumeX } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { Loader2, ChevronRight, ChevronLeft, Check, Volume2, VolumeX, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PersonaAvatar } from "@/components/assistant/persona-avatar";
-import { AI_GUIDE_PREFERENCES_UPDATED, PERSONAS, LANGUAGES, DEFAULT_PERSONA_ID, getPersona } from "@/lib/assistant/personas";
+import { DEFAULT_PERSONA_ID } from "@/lib/assistant/personas";
 import { useVoice } from "@/hooks/use-voice";
 import { useStore } from "@/lib/store";
 import { scoreCourses } from "@/lib/ai/course-match";
 import { cn } from "@/lib/utils";
 import { trackEvent } from "@/lib/analytics";
+import { AccessibilityChoices } from "@/components/accessibility/accessibility-choices";
+import { useAccessibility } from "@/components/layout/accessibility-provider";
+import type { AccessibilityPrefs } from "@/lib/accessibility/preferences";
+import { ChoiceChips } from "@/components/onboarding/choice-chips";
+import { dateFromParts, joinChoices, LEARNER_BACKGROUNDS, LEARNER_REASONS, MONTHS } from "@/lib/onboarding/choices";
 
 /**
  * A standalone, one-time (replayable) onboarding walkthrough — distinct from
  * the always-available chat assistant (src/components/assistant/ai-assistant.tsx) and the
  * anonymous landing widget (landing/components/TutorDemo.jsx). A large,
  * persistent on-screen persona narrates each step, replacing the plain form
- * that used to be here; the persona itself is picked by the user, not
- * inferred from anything about them (see src/lib/assistant/personas.ts).
+ * that used to be here. Its look and the reply language aren't asked about
+ * here; they can be changed later in the assistant.
+ *
+ * The second step asks what would make the site easier to use (larger text,
+ * less motion, voice control...). Choices apply immediately, so the rest of the
+ * walkthrough already uses them, and are saved to the account.
  */
 
 interface Props {
   hasDob: boolean;
   onComplete: () => void;
+  /** When retaking it from the profile: leave without changing anything. */
+  onCancel?: () => void;
 }
 
-type StepKey = "welcome" | "tour" | "persona" | "qualification" | "goal" | "dob" | "recommend";
+type StepKey = "welcome" | "access" | "qualification" | "goal" | "dob" | "recommend";
 
 const MUTE_KEY = "onboarding-guide-muted";
 
-export function OnboardingGuide({ hasDob, onComplete }: Props) {
+export function OnboardingGuide({ hasDob, onComplete, onCancel }: Props) {
   const { state } = useStore();
   const voice = useVoice();
+  const accessibility = useAccessibility();
+  const [a11y, setA11y] = useState<AccessibilityPrefs>(accessibility.prefs);
+  const [a11yTouched, setA11yTouched] = useState(false);
+  // What's saved on the account, so exiting a retake can undo an unsaved preview.
+  const savedA11yRef = useRef(accessibility.prefs);
+  if (!a11yTouched) savedA11yRef.current = accessibility.prefs;
+  // Steps switch instantly for "less motion" (chosen here, or set on the device).
+  const deviceReducedMotion = useReducedMotion();
+  const stepTransition = deviceReducedMotion || accessibility.prefs.reduceMotion ? { duration: 0 } : { duration: 0.18, ease: "easeOut" as const };
+  // Replaying the walkthrough: start from what they chose before (it loads a moment after sign-in).
+  useEffect(() => { if (!a11yTouched) setA11y(accessibility.prefs); }, [accessibility.prefs, a11yTouched]);
 
-  const [personaId, setPersonaId] = useState(DEFAULT_PERSONA_ID);
-  const [language, setLanguage] = useState("");
-  const [qualification, setQualification] = useState("");
-  const [learningGoal, setLearningGoal] = useState("");
-  const [dob, setDob] = useState("");
+  const personaId = DEFAULT_PERSONA_ID;
+  // Answers are picked, not typed (src/lib/onboarding/choices.ts); "Other" allows a few words.
+  const [background, setBackground] = useState<string[]>([]);
+  const [backgroundOther, setBackgroundOther] = useState("");
+  const [reasons, setReasons] = useState<string[]>([]);
+  const [topics, setTopics] = useState<string[]>([]);
+  const [reasonOther, setReasonOther] = useState("");
+  const [dobYear, setDobYear] = useState("");
+  const [dobMonth, setDobMonth] = useState("");
+  const [dobDay, setDobDay] = useState("");
+  const qualification = joinChoices(background, backgroundOther);
+  // Saved as one sentence; the topics are course names, so they also steer the recommendation.
+  const learningGoal = [joinChoices(reasons, reasonOther), topics.length ? `Interested in ${topics.join(", ")}` : ""].filter(Boolean).join(". ");
+  const dob = dateFromParts(dobYear, dobMonth, dobDay);
+  const thisYear = new Date().getFullYear();
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [muted, setMuted] = useState<boolean>(() => {
@@ -46,7 +78,7 @@ export function OnboardingGuide({ hasDob, onComplete }: Props) {
   });
 
   const steps: StepKey[] = useMemo(
-    () => ["welcome", "tour", "persona", "qualification", "goal", ...(!hasDob ? (["dob"] as StepKey[]) : []), "recommend"],
+    () => ["welcome", "access", "qualification", "goal", ...(!hasDob ? (["dob"] as StepKey[]) : []), "recommend"],
     [hasDob]
   );
   const [stepIndex, setStepIndex] = useState(0);
@@ -60,12 +92,11 @@ export function OnboardingGuide({ hasDob, onComplete }: Props) {
   }, [step, state.courses, state.progress, qualification, learningGoal]);
 
   const narration: Record<StepKey, string> = {
-    welcome: "Hi — I'm your Requisor guide. I'll help you get set up and find the right path to start with. It only takes a minute.",
-    tour: "Alma 41 has four tracks: Product Management, Data Analytics, Agentic AI, and Cyber Security. As you go you'll earn XP and badges, and I'll keep track of your progress so I can pick up right where you left off.",
-    persona: "First, make it yours — pick how I should look, and which language you'd like me to use.",
-    qualification: "Tell me a bit about your background.",
-    goal: "And what brings you here — what are you hoping to get out of Alma 41?",
-    dob: "One more thing — your date of birth helps calibrate content complexity. It's kept private.",
+    welcome: "Hi — I'm your Requisor guide. I'll help you get set up and find the right path to start with. As you learn you'll earn XP and badges, and I'll keep track of your progress. It only takes a minute.",
+    access: "Is there anything that would make the site easier for you to use? Pick any that help — they apply straight away, and you can change them later in Settings. If you're happy as it is, just press Next.",
+    qualification: "Tell me a bit about your background — just tap what fits.",
+    goal: "What brings you here, and what would you like to learn? Tap any that fit.",
+    dob: "One more thing — your date of birth helps me pitch things at the right level. It's kept private.",
     recommend: recommended
       ? `Based on what you told me, I'd start with ${recommended.course.title}.`
       : "You're all set — pick any path from your dashboard whenever you're ready.",
@@ -89,20 +120,28 @@ export function OnboardingGuide({ hasDob, onComplete }: Props) {
   }
 
   function validateStep(): string {
-    if (step === "qualification" && !qualification.trim()) return "Please tell us your qualification.";
-    if (step === "goal" && !learningGoal.trim()) return "Please tell us why you're here.";
+    if (step === "qualification" && !qualification.trim()) return "Pick what describes you best, or choose Other.";
+    if (step === "goal" && !learningGoal.trim()) return "Pick at least one reason or topic.";
     if (step === "dob") {
-      if (!dob) return "Please enter your date of birth.";
-      const d = new Date(dob);
-      if (isNaN(d.getTime()) || d >= new Date()) return "Enter a valid past date of birth.";
+      if (!dobYear || !dobMonth || !dobDay) return "Please choose your day, month and year of birth.";
+      if (!dob) return "That date doesn't exist — please check the day.";
+      if (new Date(dob) >= new Date()) return "Enter a valid past date of birth.";
     }
     return "";
+  }
+
+  function changeA11y(next: AccessibilityPrefs) {
+    setA11y(next);
+    setA11yTouched(true);
+    accessibility.preview(next);
   }
 
   function goNext() {
     const msg = validateStep();
     if (msg) { setError(msg); return; }
     setError("");
+    // Saved as soon as they move on, so the choice sticks even if they stop here.
+    if (step === "access") { savedA11yRef.current = a11y; accessibility.save(a11y).catch(() => {}); }
     setDirection(1);
     if (stepIndex === steps.length - 1) {
       void submit();
@@ -117,9 +156,6 @@ export function OnboardingGuide({ hasDob, onComplete }: Props) {
     setStepIndex((i) => Math.max(0, i - 1));
   }
 
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter") { e.preventDefault(); goNext(); }
-  }
 
   async function submit() {
     setSaving(true);
@@ -133,8 +169,6 @@ export function OnboardingGuide({ hasDob, onComplete }: Props) {
           learningGoal: learningGoal.trim(),
           dateOfBirth: !hasDob ? dob : undefined,
           onboardingDone: true,
-          assistantPersona: personaId,
-          preferredLanguage: language || undefined,
         }),
       });
       if (!res.ok) {
@@ -143,17 +177,12 @@ export function OnboardingGuide({ hasDob, onComplete }: Props) {
         setSaving(false);
         return;
       }
-      window.dispatchEvent(new CustomEvent(AI_GUIDE_PREFERENCES_UPDATED, {
-        detail: {
-          assistantPersona: personaId,
-          preferredLanguage: language || "",
-        },
-      }));
+      // Again, in case the first save didn't go through.
+      await accessibility.save(a11y).catch(() => {});
       trackEvent("onboarding_completed", {
         role: "learner",
-        persona: personaId,
-        language: language || "en",
         had_existing_dob: hasDob,
+        accessibility_options: Object.values(a11y).filter(Boolean).length,
       });
       voice.stopSpeaking();
       onComplete();
@@ -166,8 +195,7 @@ export function OnboardingGuide({ hasDob, onComplete }: Props) {
   const avatarState = voice.isSpeaking ? "speaking" : "idle";
   const stepTitles: Record<StepKey, string> = {
     welcome: "Welcome",
-    tour: "What's here",
-    persona: "Make it yours",
+    access: "Make it easier to use",
     qualification: "Your background",
     goal: "Your goal",
     dob: "Date of birth",
@@ -175,8 +203,12 @@ export function OnboardingGuide({ hasDob, onComplete }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm">
       <motion.div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="onboarding-step-title"
+        aria-describedby="onboarding-narration"
         initial={{ opacity: 0, scale: 0.96, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.25 }}
@@ -190,9 +222,10 @@ export function OnboardingGuide({ hasDob, onComplete }: Props) {
               <button
                 type="button"
                 onClick={toggleMute}
+                aria-pressed={!muted}
                 className="focus-ring flex items-center gap-1 rounded-full border border-zinc-200 px-2.5 py-1 text-[11px] text-zinc-500 transition hover:border-primary/40 hover:text-primary"
               >
-                {muted ? <VolumeX className="h-3 w-3" /> : <Volume2 className="h-3 w-3" />}
+                {muted ? <VolumeX className="h-3 w-3" aria-hidden="true" /> : <Volume2 className="h-3 w-3" aria-hidden="true" />}
                 {muted ? "Voice off" : "Voice on"}
               </button>
             )}
@@ -200,10 +233,23 @@ export function OnboardingGuide({ hasDob, onComplete }: Props) {
 
           <div className="min-w-0 flex-1">
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-zinc-900">{stepTitles[step]}</h2>
-              <span className="text-xs font-medium text-zinc-400">{stepIndex + 1} / {steps.length}</span>
+              <h2 id="onboarding-step-title" className="text-lg font-bold text-zinc-900">{stepTitles[step]}</h2>
+              <span className="flex items-center gap-2 text-xs font-medium text-zinc-400">
+                <span><span className="sr-only">Step </span>{stepIndex + 1}<span aria-hidden="true"> / </span><span className="sr-only"> of </span>{steps.length}</span>
+                {onCancel && (
+                  <button
+                    type="button"
+                    onClick={() => { voice.stopSpeaking(); accessibility.preview(savedA11yRef.current); onCancel(); }}
+                    aria-label="Exit without saving"
+                    title="Exit without saving"
+                    className="focus-ring rounded-full p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
+                  >
+                    <X className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                )}
+              </span>
             </div>
-            <div className="mb-5 flex items-center gap-1.5">
+            <div className="mb-5 flex items-center gap-1.5" aria-hidden="true">
               {steps.map((s, i) => (
                 <div key={s} className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-100">
                   <motion.div
@@ -217,7 +263,7 @@ export function OnboardingGuide({ hasDob, onComplete }: Props) {
             </div>
 
             {/* Speech bubble */}
-            <div className="mb-4 rounded-2xl rounded-tl-sm border border-primary/15 bg-primary/[0.05] px-4 py-3 text-sm leading-relaxed text-zinc-800">
+            <div id="onboarding-narration" aria-live="polite" className="mb-4 rounded-2xl rounded-tl-sm border border-primary/15 bg-primary/[0.05] px-4 py-3 text-sm leading-relaxed text-zinc-800">
               {narration[step]}
             </div>
 
@@ -229,18 +275,15 @@ export function OnboardingGuide({ hasDob, onComplete }: Props) {
                   initial={{ x: direction > 0 ? 60 : -60, opacity: 0 }}
                   animate={{ x: 0, opacity: 1 }}
                   exit={{ x: direction > 0 ? -60 : 60, opacity: 0 }}
-                  transition={{ type: "spring", stiffness: 320, damping: 30 }}
+                  transition={stepTransition}
                   className="w-full"
                 >
                   {step === "welcome" && (
-                    <p className="text-sm text-zinc-600">Let&apos;s get you set up — it only takes a minute.</p>
-                  )}
-
-                  {step === "tour" && (
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2" role="list" aria-label="Learning paths">
                       {state.courses.map((c) => (
                         <span
                           key={c.slug}
+                          role="listitem"
                           className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700"
                         >
                           <span className={cn("h-2 w-2 rounded-full bg-gradient-to-br", c.cover)} />
@@ -250,91 +293,63 @@ export function OnboardingGuide({ hasDob, onComplete }: Props) {
                     </div>
                   )}
 
-                  {step === "persona" && (
-                    <div className="space-y-4">
-                      <div>
-                        <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">Appearance</p>
-                        <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
-                          {PERSONAS.map((p) => (
-                            <button
-                              key={p.id}
-                              type="button"
-                              onClick={() => setPersonaId(p.id)}
-                             aria-pressed={personaId === p.id}
-                              className={cn(
-                                "flex flex-col items-center gap-1 rounded-xl border-2 p-2 transition-colors",
-                                personaId === p.id ? "border-primary bg-primary/5" : "border-transparent bg-zinc-50 hover:border-zinc-200"
-                              )}
-                            >
-                              <PersonaAvatar personaId={p.id} size="sm" />
-                              <span className="text-[10px] font-medium text-zinc-600">{p.name}</span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <label className="block text-xs font-medium uppercase tracking-wide text-zinc-500">
-                        Language
-                        <select
-                          value={language}
-                          onChange={(e) => setLanguage(e.target.value)}
-                          className="focus-ring mt-1 block h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
-                        >
-                          <option value="">English (default)</option>
-                          {LANGUAGES.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
-                        </select>
-                      </label>
-                    </div>
+                  {step === "access" && (
+                    <AccessibilityChoices prefs={a11y} onChange={changeA11y} />
                   )}
 
                   {step === "qualification" && (
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-                        Your qualification / background <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        autoFocus
-                        type="text"
-                        value={qualification}
-                        onChange={(e) => setQualification(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        placeholder="e.g. Software Engineer, Doctor, MBA, Teacher…"
-                        className="focus-ring rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-sm text-zinc-900 placeholder:text-zinc-400 transition-colors hover:border-zinc-300 focus:border-primary/50"
-                      />
-                    </div>
+                    <ChoiceChips
+                      label="What describes you best?"
+                      multiple={false}
+                      options={LEARNER_BACKGROUNDS}
+                      picked={background}
+                      onPickedChange={setBackground}
+                      other={backgroundOther}
+                      onOtherChange={setBackgroundOther}
+                      otherPlaceholder="e.g. Nurse, Lawyer, MBA student"
+                    />
                   )}
 
                   {step === "goal" && (
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-                        Why are you here? <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        autoFocus
-                        type="text"
-                        value={learningGoal}
-                        onChange={(e) => setLearningGoal(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        placeholder="e.g. Upskill for promotion, understand AI tools, grow my team…"
-                        className="focus-ring rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-sm text-zinc-900 placeholder:text-zinc-400 transition-colors hover:border-zinc-300 focus:border-primary/50"
+                    <div className="space-y-4">
+                      <ChoiceChips
+                        label="Why are you here?"
+                        options={LEARNER_REASONS}
+                        picked={reasons}
+                        onPickedChange={setReasons}
+                        other={reasonOther}
+                        onOtherChange={setReasonOther}
+                        otherPlaceholder="In a few words"
                       />
+                      {state.courses.length > 0 && (
+                        <ChoiceChips
+                          label="Topics you'd like to learn (optional)"
+                          options={state.courses.map((c) => c.title)}
+                          picked={topics}
+                          onPickedChange={setTopics}
+                        />
+                      )}
                     </div>
                   )}
 
                   {step === "dob" && (
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-                        Date of birth <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        autoFocus
-                        type="date"
-                        value={dob}
-                        onChange={(e) => setDob(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        max={new Date().toISOString().slice(0, 10)}
-                        className="focus-ring rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-sm text-zinc-900 transition-colors hover:border-zinc-300 focus:border-primary/50"
-                      />
-                    </div>
+                    <fieldset>
+                      <legend className="mb-1.5 text-xs font-medium uppercase tracking-wide text-zinc-500">Date of birth</legend>
+                      <div className="grid grid-cols-[1fr_2fr_1.4fr] gap-2">
+                        <select aria-label="Day" value={dobDay} onChange={(e) => setDobDay(e.target.value)} className="focus-ring h-10 rounded-xl border border-zinc-200 bg-white px-2.5 text-sm text-zinc-900 hover:border-zinc-300">
+                          <option value="">Day</option>
+                          {Array.from({ length: 31 }, (_, i) => <option key={i + 1} value={i + 1}>{i + 1}</option>)}
+                        </select>
+                        <select aria-label="Month" value={dobMonth} onChange={(e) => setDobMonth(e.target.value)} className="focus-ring h-10 rounded-xl border border-zinc-200 bg-white px-2.5 text-sm text-zinc-900 hover:border-zinc-300">
+                          <option value="">Month</option>
+                          {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+                        </select>
+                        <select aria-label="Year" value={dobYear} onChange={(e) => setDobYear(e.target.value)} className="focus-ring h-10 rounded-xl border border-zinc-200 bg-white px-2.5 text-sm text-zinc-900 hover:border-zinc-300">
+                          <option value="">Year</option>
+                          {Array.from({ length: 90 }, (_, i) => thisYear - 10 - i).map((y) => <option key={y} value={y}>{y}</option>)}
+                        </select>
+                      </div>
+                    </fieldset>
                   )}
 
                   {step === "recommend" && (
@@ -350,7 +365,7 @@ export function OnboardingGuide({ hasDob, onComplete }: Props) {
                         </span>
                       </a>
                     ) : (
-                      <p className="text-sm text-zinc-600">Head to your dashboard to explore all four paths.</p>
+                      <p className="text-sm text-zinc-600">Head to your dashboard to explore every path.</p>
                     )
                   )}
                 </motion.div>
@@ -363,6 +378,7 @@ export function OnboardingGuide({ hasDob, onComplete }: Props) {
                   initial={{ opacity: 0, y: -6, height: 0 }}
                   animate={{ opacity: 1, y: 0, height: "auto" }}
                   exit={{ opacity: 0, height: 0 }}
+                  role="alert"
                   className="mt-3 overflow-hidden rounded-xl bg-red-50 px-3.5 py-2 text-sm text-red-600"
                 >
                   {error}

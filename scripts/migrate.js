@@ -64,7 +64,9 @@ p.query(`
     ADD COLUMN IF NOT EXISTS notification_settings JSONB DEFAULT '{"courses":true,"assignments":true,"badges":true,"announcements":true}',
     ADD COLUMN IF NOT EXISTS assistant_persona VARCHAR(20),
     ADD COLUMN IF NOT EXISTS preferred_language VARCHAR(10),
-    ADD COLUMN IF NOT EXISTS preferred_country VARCHAR(60);
+    ADD COLUMN IF NOT EXISTS preferred_country VARCHAR(60),
+    -- Accessibility switches chosen during onboarding (src/lib/accessibility/preferences.ts).
+    ADD COLUMN IF NOT EXISTS accessibility JSONB NOT NULL DEFAULT '{}';
 
   -- employment_type started as VARCHAR(20) for the employee flow's short
   -- enum values ("job"/"intern"), but the tutor onboarding survey also
@@ -657,7 +659,8 @@ p.query(`
   -- People whose email matches a university's domain belong to it.
   UPDATE users u SET university_id = un.id, university_status = 'active'
     FROM universities un
-   WHERE u.university_id IS NULL AND split_part(lower(u.email), '@', 2) = ANY(un.email_domains);
+   WHERE u.university_id IS NULL AND u.email_verified = TRUE
+     AND split_part(lower(u.email), '@', 2) = ANY(un.email_domains);
 
   -- Once only: a tutor's existing courses move into the tutor's university.
   UPDATE courses c SET university_id = u.university_id

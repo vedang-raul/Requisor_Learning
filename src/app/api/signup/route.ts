@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { db, roleForEmail } from "@/lib/server/db";
-import { membershipForNewAccount } from "@/lib/server/universities";
+import { membershipForNewAccount, notifyAdminsOfJoinRequest } from "@/lib/server/universities";
 import { sendVerificationEmail, skipEmailVerification } from "@/lib/server/email";
 import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
 import { verifyTurnstile } from "@/lib/auth/turnstile";
@@ -143,11 +143,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Select a valid account type." }, { status: 400 });
     }
 
-    // The university: a matching email domain places the person at once; a
+    // The university: a matching email domain places the person at once (the
+    // email is verified before they can sign in — unless verification is
+    // switched off, when the domain proves nothing and they wait too); a
     // university picked from the list waits for its admin. Asking to teach is
     // only a request: a university admin decides (see /api/admin/people).
     const isAdminAccount = roleForEmail(cleanEmail) === "admin";
-    const membership = isAdminAccount ? { universityId: null, status: null } : await membershipForNewAccount(cleanEmail, universityId);
+    const membership = isAdminAccount
+      ? { universityId: null, status: null }
+      : await membershipForNewAccount(cleanEmail, universityId, { emailProven: !skipEmailVerification() });
     const requestedRole = !isAdminAccount && requestedAccountType === "tutor" ? "tutor" : null;
 
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cleanEmail)) {
@@ -189,8 +193,11 @@ export async function POST(req: Request) {
           [cleanEmail, cleanName, await bcrypt.hash(password, 12), isAdminAccount ? "admin" : "employee", cleanType || null, cleanPosition || null,
             membership.universityId, membership.status, requestedRole]
         );
+        if (membership.status === "pending" && membership.universityId) {
+          await notifyAdminsOfJoinRequest(membership.universityId, { name: cleanName, email: cleanEmail });
+        }
       }
-      return NextResponse.json({ ok: true, verified: true });
+      return NextResponse.json({ ok: true, verified: true, pendingApproval: membership.status === "pending" });
     }
 
     const token = crypto.randomBytes(32).toString("hex");
@@ -233,7 +240,8 @@ export async function POST(req: Request) {
       emailStep = true;
       await sendVerificationEmail(cleanEmail, cleanName, token);
     }
-    return NextResponse.json({ ok: true });
+    // Admins hear about a join request once the email is verified (src/app/api/verify).
+    return NextResponse.json({ ok: true, pendingApproval: membership.status === "pending" });
   } catch (e) {
     if (emailStep) {
       // The account is saved; only the email didn't go. Say so, so the person

@@ -10,9 +10,11 @@
     "lint": "next lint",
     "test": "jest --runInBand",
     "test:e2e": "bash scripts/run-e2e.sh",
-    "prebuild": "rm -rf .next",
+    "prebuild": "rm -rf .next && node scripts/fetch-vosk-model.js",
     "db:migrate": "node scripts/migrate.js",
-    "db:seed-demo": "node scripts/seed-msoe-demo.js"
+    "db:seed-demo": "node scripts/seed-msoe-demo.js",
+    "vosk:model": "node scripts/fetch-vosk-model.js",
+    "demo:onboarding": "node scripts/demo-onboarding-account.js"
   },
   "engines": {
     "node": ">=20.9"
@@ -34,7 +36,8 @@
     "pg": "^8.22.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "tailwind-merge": "^2.5.4"
+    "tailwind-merge": "^2.5.4",
+    "vosk-browser": "^0.0.8"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",

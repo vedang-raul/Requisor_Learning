@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth/auth";
 import { db, type DbUser } from "@/lib/server/db";
+import { dateOnly } from "@/lib/server/date-only";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -23,7 +24,7 @@ export async function GET() {
 
   return NextResponse.json({
     onboardingDone: r.onboarding_done ?? false,
-    dateOfBirth: dob ? dob.toISOString().slice(0, 10) : null,
+    dateOfBirth: dateOnly(r.date_of_birth),
     ageYears,
     qualification: r.qualification ?? null,
     learningGoal: r.learning_goal ?? null,

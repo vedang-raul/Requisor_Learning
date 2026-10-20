@@ -250,9 +250,12 @@ export function LoginScreen() {
           );
         }
         else {
-          setNotice(data?.verified
+          const waiting = data?.pendingApproval
+            ? " Your request to join your university has gone to its university admin — you'll get access once they approve it."
+            : "";
+          setNotice((data?.verified
             ? "Account created! You can log in now with your email and password."
-            : "Account created! Check your inbox — we sent a verification link from support@requisor.io.");
+            : "Account created! Check your inbox — we sent a verification link from support@requisor.io.") + waiting);
           setMode("login");
           setPassword("");
           setConfirmPassword("");
@@ -405,7 +408,7 @@ export function LoginScreen() {
                     {emailUniversity && String(emailUniversity.id) === universityId
                       ? `Your ${emailUniversity.shortName} email adds you to ${emailUniversity.shortName} straight away.`
                       : universityId
-                        ? "You'll see your university's courses as soon as you sign in."
+                        ? "This email isn't on your university's list, so its university admin needs to approve you first. Use your university email to get in straight away."
                         : "You'll see the courses open to everyone."}
                   </p>
                 </div>

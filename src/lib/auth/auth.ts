@@ -11,6 +11,7 @@ import { sendWelcomeEmail } from "../server/email";
 const GOOGLE_SIGNIN_FAILED_ERROR = "/?error=GoogleSignInFailed";
 /** How often a signed-in person's role and university are read again from the database. */
 const ACCESS_RECHECK_SECONDS = 5 * 60;
+const PENDING_RECHECK_SECONDS = 30;
 
 type GoogleProfile = {
   email?: unknown;
@@ -298,10 +299,14 @@ export const authOptions: NextAuthOptions = {
       // Role and university are read again every few minutes, so a promotion,
       // a demotion or an approval takes effect without signing out.
       const nowCheck = Math.floor(Date.now() / 1000);
-      const stale = typeof token.accessCheckedAt !== "number" || nowCheck - token.accessCheckedAt > ACCESS_RECHECK_SECONDS;
+      // Someone waiting for approval is re-checked often, so they get in soon after it.
+      const recheckAfter = token.pending === true ? PENDING_RECHECK_SECONDS : ACCESS_RECHECK_SECONDS;
+      const stale = typeof token.accessCheckedAt !== "number" || nowCheck - token.accessCheckedAt > recheckAfter;
       if (email && (user?.email || !token.uid || stale)) {
-        const { rows } = await db.query<Pick<DbUser, "id" | "name"> & MembershipRow>(
-          "SELECT id, role, name, university_id, university_status FROM users WHERE email = $1",
+        const { rows } = await db.query<Pick<DbUser, "id" | "name"> & MembershipRow & { university_name: string | null }>(
+          `SELECT u.id, u.role, u.name, u.university_id, u.university_status, un.name AS university_name
+             FROM users u LEFT JOIN universities un ON un.id = u.university_id
+            WHERE u.email = $1`,
           [email]
         );
         token.uid = rows[0] ? String(rows[0].id) : undefined;
@@ -310,6 +315,8 @@ export const authOptions: NextAuthOptions = {
         token.role = access.role;
         token.superAdmin = access.superAdmin;
         token.universityId = access.universityId;
+        token.pending = access.pending;
+        token.pendingUniversity = access.pending ? rows[0]?.university_name ?? null : null;
         token.accessCheckedAt = nowCheck;
         if (rows[0]?.name) token.name = rows[0].name;
       }
@@ -338,6 +345,8 @@ export const authOptions: NextAuthOptions = {
         session.user.role = (token.role as "employee" | "tutor" | "admin") ?? "employee";
         session.user.superAdmin = token.superAdmin === true;
         session.user.universityId = typeof token.universityId === "number" ? token.universityId : null;
+        session.user.pending = token.pending === true;
+        session.user.pendingUniversity = typeof token.pendingUniversity === "string" ? token.pendingUniversity : null;
         if (token.name) session.user.name = token.name as string;
       }
       return session;

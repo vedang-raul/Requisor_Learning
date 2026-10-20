@@ -489,3 +489,57 @@ body {
   body.print-program-proposal { background: #fff !important; }
   body.print-program-proposal > .program-print-root { display: block !important; }
 }
+
+/* Accessibility: people who set "reduce motion" on their device get no
+   looping or decorative CSS animation (pulses, pings, spins, smooth scroll).
+   Framer Motion animations follow the same setting (see providers.tsx). */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Accessibility preferences ─────────────────────────────────────────
+   Classes set on <html> by AccessibilityProvider from what the person chose
+   in onboarding or Settings (src/lib/accessibility/preferences.ts). */
+
+/* Larger text: Tailwind sizes are in rem, so scaling the root scales them;
+   the few fixed pixel sizes used for small print get readable sizes too. */
+html.a11y-large-text { font-size: 118.75%; }
+html.a11y-large-text .text-\[9px\],
+html.a11y-large-text .text-\[10px\],
+html.a11y-large-text .text-\[11px\] { font-size: 0.8125rem; }
+html.a11y-large-text .text-\[12px\],
+html.a11y-large-text .text-\[13px\] { font-size: 0.875rem; }
+
+/* Higher contrast: muted greys become dark, faint borders become visible. */
+html.a11y-high-contrast body { color: #000; }
+html.a11y-high-contrast .text-zinc-300,
+html.a11y-high-contrast .text-zinc-400 { color: #3f3f46 !important; }
+html.a11y-high-contrast .text-zinc-500,
+html.a11y-high-contrast .text-zinc-600 { color: #27272a !important; }
+html.a11y-high-contrast .text-zinc-700,
+html.a11y-high-contrast .text-zinc-800 { color: #09090b !important; }
+html.a11y-high-contrast .border-zinc-100,
+html.a11y-high-contrast .border-zinc-200,
+html.a11y-high-contrast .border-transparent { border-color: #71717a !important; }
+html.a11y-high-contrast ::placeholder { color: #52525b !important; opacity: 1; }
+html.a11y-high-contrast .glass-card { background: #fff !important; backdrop-filter: none !important; }
+
+/* Less motion, chosen in the app (the device setting is handled above). */
+html.a11y-reduce-motion *, html.a11y-reduce-motion *::before, html.a11y-reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+html.a11y-reduce-motion { scroll-behavior: auto; }
+
+/* Screen reader / keyboard: a bold outline on whatever has keyboard focus. */
+html.a11y-focus :focus-visible {
+  outline: 3px solid #0f766e !important;
+  outline-offset: 2px !important;
+}
