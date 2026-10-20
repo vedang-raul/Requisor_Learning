@@ -1,7 +1,7 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import { BookPlus, Check, Compass, ListChecks, Loader2, RotateCcw, Send, Sparkles, TrendingUp, Volume2, VolumeX, X, Square, ThumbsDown, ThumbsUp } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { Accessibility, BookPlus, Check, Compass, Ear, Headphones, ListChecks, Loader2, RotateCcw, Send, Sparkles, Square, ThumbsDown, ThumbsUp, TrendingUp, Volume2, VolumeX, X, ChevronDown } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { getNudge, markNudgeSeen, type Nudge } from "@/lib/ai/nudges";
@@ -13,11 +13,15 @@ import { useApprovedSpeech } from "@/hooks/use-approved-speech";
 import { ChatbotVoiceSelect } from "@/components/chatbot-voice-select";
 import { programDraftSummary } from "@/lib/courses/program-builder";
 import { PersonaAvatar } from "@/components/assistant/persona-avatar";
-import { AI_GUIDE_PREFERENCES_UPDATED, getPersona } from "@/lib/assistant/personas";
+import { AI_GUIDE_PREFERENCES_UPDATED, ASSISTANT_NAME } from "@/lib/assistant/personas";
 import { trackEvent } from "@/lib/analytics";
 import type { Course } from "@/lib/types";
 import { splitActionFrames, type AssistantAction } from "@/lib/assistant/assistant-actions";
-import { AssistantActionCard, type ActionOutcome } from "@/components/assistant/assistant-action-card";
+import { AssistantActionCard, cardPrompt, type ActionOutcome } from "@/components/assistant/assistant-action-card";
+import { classifySpokenAnswer, isStopCommand, isStopUtterance } from "@/lib/accessibility/voice-commands";
+import { startWakeWord, wakeWordAvailable, type WakeState, type WakeWordListener } from "@/lib/voice/wake-word";
+import { useAccessibility } from "@/components/layout/accessibility-provider";
+import { ACCESSIBILITY_UPDATED, type AccessibilityPrefs } from "@/lib/accessibility/preferences";
 /** An assistant reply may carry actions the user can confirm (see src/lib/assistant/assistant-actions.ts). */
 type ChatMessage = {
   role: "user" | "assistant"; content: string; actions?: AssistantAction[];
@@ -191,6 +195,76 @@ function extractFirstNavUrl(
   }
   return null;
 }
+const MUTE_KEY = "ai-assistant-muted";
+/**
+ * The voice characters' portraits (public/voices/<key>.svg) are hidden for now:
+ * the picker lists each voice by name, language and accent, and the chat shows
+ * the robot from the corner launcher. Set to true to show them in the picker again.
+ */
+const SHOW_VOICE_PORTRAITS = false;
+
+/** The assistant's robot (styled as .ai-bot in globals.css), as on the corner launcher. */
+function RobotFace({ scale }: { scale?: number }) {
+  return (
+    <span className="ai-bot" aria-hidden="true" style={scale ? { scale: String(scale) } : undefined}>
+      <span className="head">
+        <span className="face">
+          <span className="eyes" />
+          <span className="mouth" />
+        </span>
+      </span>
+    </span>
+  );
+}
+
+/** The robot in a small circle: the assistant's picture in the chat header and beside its replies. */
+function RobotAvatar({ size, speaking, className }: { size: 28 | 36; speaking?: boolean; className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/10 ring-1 ring-primary/20",
+        speaking && "ring-2 ring-primary/50",
+        className
+      )}
+      style={{ width: size, height: size }}
+    >
+      <RobotFace scale={size === 36 ? 0.95 : 0.72} />
+    </span>
+  );
+}
+/** "Hey Requisor" is switched on per device (it uses this device's microphone). */
+const WAKE_WORD_KEY = "requisor-wake-word";
+/** Reply text as it should be read out: no markdown symbols or {{ }} tag syntax. */
+function plainForAnnouncement(text: string): string {
+  return text
+    // {{lesson|Course|Lesson Title}} / {{course|slug|Title}}: read just the title.
+    .replace(/\{\{[^}]*\|([^|}]*)\}\}/g, "$1")
+    .replace(/\{\{([^}]*)\}\}/g, "$1")
+    .replace(/[*_`#>]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+/** A short, soft two-note chime so someone who can't see the screen knows it heard them. */
+function playChime() {
+  try {
+    const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const ctx = new AC();
+    [660, 880].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = freq;
+      const start = ctx.currentTime + i * 0.12;
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.15, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.18);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.2);
+    });
+    setTimeout(() => ctx.close().catch(() => {}), 600);
+  } catch { /* no audio: the screen-reader announcement still happens */ }
+}
 const COURSE_DRAFT_KEY = "requisor-ai-course-draft";
 const COURSE_DRAFT_EVENT = "requisor:open-ai-course-draft";
 export function AiAssistant() {
@@ -260,6 +334,60 @@ export function AiAssistant() {
   const voiceCharacter = speech.voices.find((item) => item.key === speech.selectedVoiceKey && item.enabled);
   const waveBars = useMicWaveform(voice.isListening);
   const avatarState = speech.isSpeaking ? "speaking" : voice.isListening ? "listening" : "idle";
+
+  // ── Accessibility: screen readers, keyboard, hands-free and "Hey Requisor" ──
+  // Device setting "reduce motion": replies appear at once instead of typing out.
+  const { prefs: a11y } = useAccessibility();
+  // Replies appear at once (no typing effect) for less motion and for screen readers.
+  const reduceMotion = useReducedMotion() === true || a11y.reduceMotion || a11y.screenReader;
+  const launcherRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  // A polite live region: screen readers read what's put here, nobody else notices.
+  const [announcement, setAnnouncement] = useState("");
+  const announce = useCallback((text: string) => {
+    setAnnouncement("");
+    // A fresh value each time, so repeating the same words is still read out.
+    setTimeout(() => setAnnouncement(text), 60);
+  }, []);
+  /** Speaks a status line when voice is on, and always tells screen readers. */
+  const voiceOnRef = useRef(false);
+  voiceOnRef.current = speech.canSpeak;
+  const speakRef = useRef(speech.speak);
+  speakRef.current = speech.speak;
+  const sayStatus = useCallback((text: string) => {
+    announce(text);
+    if (voiceOnRef.current) speakRef.current(text);
+  }, [announce]);
+  // Hands-free: after each spoken reply, listen again; "stop" ends it.
+  const [handsFree, setHandsFree] = useState(false);
+  const handsFreeRef = useRef(false);
+  handsFreeRef.current = handsFree;
+  // The confirmation card still waiting for an answer, so a spoken "yes"/"no" can answer it.
+  const pendingAction = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role === "user") return null;
+      if (m.actions?.length) return m.actions.find((a) => !actionOutcomes[a.id]) ?? null;
+    }
+    return null;
+  }, [messages, actionOutcomes]);
+  const pendingActionRef = useRef(pendingAction);
+  pendingActionRef.current = pendingAction;
+  const [voiceAnswer, setVoiceAnswer] = useState<{ actionId: string; nonce: number; answer: "yes" | "no" } | null>(null);
+  // Read out (or announce) a new card once the reply before it has finished speaking.
+  const cardToPromptRef = useRef<string | null>(null);
+  const promptedCardsRef = useRef(new Set<string>());
+  // "Hey Requisor", opt-in on this device.
+  const [wakeEnabled, setWakeEnabled] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try { return localStorage.getItem(WAKE_WORD_KEY) === "on"; } catch { return false; }
+  });
+  const [wakeState, setWakeState] = useState<WakeState | "off" | "unavailable">("off");
+  const [showA11yPanel, setShowA11yPanel] = useState(false);
+  const lastAssistantText = useMemo(
+    () => [...messages].reverse().find((m) => m.role === "assistant" && m.content.trim())?.content ?? "",
+    [messages]
+  );
   // Load persisted preferences and also react immediately when Settings or
   // onboarding changes them while this shared assistant remains mounted.
   useEffect(() => {
@@ -301,8 +429,201 @@ export function AiAssistant() {
     if (!spoken) { sentSpokenRef.current = ""; return; }
     if (spoken === sentSpokenRef.current) return;
     sentSpokenRef.current = spoken;
+    // "Stop" ends hands-free mode rather than being sent.
+    if (handsFreeRef.current && isStopCommand(spoken)) {
+      setInput("");
+      stopHandsFreeRef.current("Hands-free is off.");
+      return;
+    }
+    // A short "yes"/"no" answers the confirmation card that's waiting, instead of being sent.
+    const card = pendingActionRef.current;
+    const answer = card ? classifySpokenAnswer(spoken) : null;
+    if (card && answer) {
+      setInput("");
+      setVoiceAnswer({ actionId: card.id, nonce: Date.now(), answer });
+      return;
+    }
+    // A plain "stop" / "be quiet" isn't a question for the assistant.
+    if (isStopUtterance(spoken)) {
+      setInput("");
+      stopTalkingRef.current();
+      announce("Stopped.");
+      return;
+    }
     sendRef.current(spoken);
   }, [voice.transcript]);
+  // Cuts the assistant off mid-reply (spoken "stop", Alt+Shift+S): the voice
+  // stops and the rest of the reply appears as text at once.
+  const stopTalkingRef = useRef(() => {});
+  stopTalkingRef.current = () => {
+    stopResponse();
+  };
+  // ── Hands-free mode ──────────────────────────────────────────────────────
+  const { startListening } = voice;
+  const stopHandsFreeRef = useRef((message?: string) => {
+    setHandsFree(false);
+    if (message) sayStatus(message);
+  });
+  stopHandsFreeRef.current = (message?: string) => {
+    setHandsFree(false);
+    voice.cancelListening();
+    if (message) sayStatus(message);
+  };
+  function toggleHandsFree() {
+    if (!voice.sttSupported) {
+      announce("Hands-free needs voice input, which isn't set up on this site.");
+      return;
+    }
+    if (handsFreeRef.current) { stopHandsFreeRef.current("Hands-free is off."); return; }
+    setHandsFree(true);
+    if (!open) openPanel();
+    sayStatus("Hands-free is on. I'll listen after each reply. Say stop while I'm talking to cut me off, or say stop when I'm listening to end hands-free.");
+  }
+  // After each reply (and its voice) finishes, listen again — unless a card is being read out.
+  useEffect(() => {
+    if (!handsFree || !open || streaming || speech.isSpeaking || speech.loading || voice.isListening || voice.isTranscribing || cardToPromptRef.current) return;
+    const timer = setTimeout(() => { if (handsFreeRef.current) startListening(); }, 500);
+    return () => clearTimeout(timer);
+  }, [handsFree, open, streaming, speech.isSpeaking, speech.loading, voice.isListening, voice.isTranscribing, startListening, messages]);
+  // Nothing heard (or a mic problem): pause hands-free instead of looping.
+  useEffect(() => {
+    if (handsFree && voice.listenError) stopHandsFreeRef.current(`Hands-free paused. ${voice.listenError}`);
+    else if (voice.listenError) announce(voice.listenError);
+  }, [voice.listenError, handsFree, announce]);
+  // Tell screen readers when voice input starts and is being sent.
+  useEffect(() => { if (voice.isListening) announce("Listening."); }, [voice.isListening, announce]);
+
+  // A new confirmation card: queue its question to be read out once the reply has been spoken.
+  useEffect(() => {
+    if (!pendingAction || streaming || promptedCardsRef.current.has(pendingAction.id)) return;
+    promptedCardsRef.current.add(pendingAction.id);
+    cardToPromptRef.current = cardPrompt(pendingAction);
+  }, [pendingAction, streaming]);
+  useEffect(() => {
+    const prompt = cardToPromptRef.current;
+    if (!prompt || streaming || speech.isSpeaking || speech.loading) return;
+    cardToPromptRef.current = null;
+    sayStatus(prompt);
+  }, [pendingAction, streaming, speech.isSpeaking, speech.loading, sayStatus]);
+
+  // ── Keyboard shortcuts (Alt+Shift, matched by key position so they work on any layout) ──
+  const shortcutRef = useRef<(code: string) => void>(() => {});
+  shortcutRef.current = (code: string) => {
+    if (code === "KeyA") {
+      if (open) closePanel(); else openPanel();
+    } else if (code === "KeyV") {
+      if (!voice.sttSupported) { announce("Voice input isn't set up on this site."); return; }
+      if (!open) openPanel();
+      if (voice.isListening) voice.stopListening(); else { speech.stop(); voice.startListening(); }
+    } else if (code === "KeyH") {
+      toggleHandsFree();
+    } else if (code === "KeyS") {
+      const wasActive = speech.isSpeaking || speech.loading || voice.isListening || streaming || handsFreeRef.current;
+      stopTalkingRef.current();
+      voice.cancelListening();
+      if (handsFreeRef.current) stopHandsFreeRef.current("Stopped. Hands-free is off.");
+      else announce(wasActive ? "Stopped." : "Nothing to stop.");
+    } else if (code === "KeyR") {
+      const text = plainForAnnouncement(lastAssistantText);
+      if (!text) { announce("There's no reply to read yet."); return; }
+      if (speech.canSpeak) void speech.speak(text); else announce(text);
+    }
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.altKey || !e.shiftKey || e.ctrlKey || e.metaKey) return;
+      if (!["KeyA", "KeyV", "KeyH", "KeyS", "KeyR"].includes(e.code)) return;
+      e.preventDefault();
+      shortcutRef.current(e.code);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // ── "Hey Requisor" wake word (on-device, opt-in) ─────────────────────────
+  const wakeRef = useRef<WakeWordListener | null>(null);
+  const wakeEnabledRef = useRef(wakeEnabled);
+  wakeEnabledRef.current = wakeEnabled;
+  const onWakeRef = useRef<() => void>(() => {});
+  onWakeRef.current = () => {
+    playChime();
+    if (!open) openPanel();
+    speech.stop();
+    announce("Yes? I'm listening.");
+    setTimeout(() => voice.startListening(), 350);
+  };
+  function setWakeWord(on: boolean) {
+    setWakeEnabled(on);
+    try { localStorage.setItem(WAKE_WORD_KEY, on ? "on" : "off"); } catch { /* private window */ }
+    announce(on ? "Hey Requisor is on. Starting the on-device listener." : "Hey Requisor is off. The microphone is released.");
+  }
+  // "Use my voice" in onboarding or Settings turns "Hey Requisor" on or off. On
+  // another device it starts on too, unless it was switched off there.
+  const setWakeWordRef = useRef(setWakeWord);
+  setWakeWordRef.current = setWakeWord;
+  useEffect(() => {
+    const onUpdated = (e: Event) => {
+      const prefs = (e as CustomEvent<AccessibilityPrefs>).detail;
+      if (prefs && prefs.voiceControl !== wakeEnabledRef.current) setWakeWordRef.current(prefs.voiceControl);
+    };
+    window.addEventListener(ACCESSIBILITY_UPDATED, onUpdated);
+    return () => window.removeEventListener(ACCESSIBILITY_UPDATED, onUpdated);
+  }, []);
+  useEffect(() => {
+    let choice: string | null = null;
+    try { choice = localStorage.getItem(WAKE_WORD_KEY); } catch { /* private window */ }
+    if (a11y.voiceControl && choice === null) setWakeWordRef.current(true);
+  }, [a11y.voiceControl]);
+  // The same on-device listener also hears "stop" while the assistant talks
+  // (the normal voice input is off then), so it runs for hands-free too.
+  const onStopRef = useRef<() => void>(() => {});
+  onStopRef.current = () => {
+    if (!speech.isSpeaking && !speech.loading && !(streaming && voiceOnRef.current)) return;
+    stopTalkingRef.current();
+    announce("Stopped.");
+  };
+  const listenerWanted = (wakeEnabled || handsFree) && voice.sttSupported;
+  useEffect(() => {
+    if (!listenerWanted) { setWakeState("off"); return; }
+    let cancelled = false;
+    let listener: WakeWordListener | null = null;
+    const begin = async () => {
+      if (!(await wakeWordAvailable())) { if (!cancelled) setWakeState("unavailable"); return; }
+      try {
+        listener = await startWakeWord({
+          onWake: () => onWakeRef.current(),
+          onStop: () => onStopRef.current(),
+          onState: (s, detail) => {
+            if (cancelled) return;
+            setWakeState(s);
+            if (s === "error" && wakeEnabledRef.current) announce(`Hey Requisor couldn't start${detail && /denied|NotAllowed/i.test(detail) ? ": the microphone was blocked" : ""}.`);
+          },
+        });
+        if (cancelled) { listener.stop(); return; }
+        wakeRef.current = listener;
+      } catch { /* state already set to error */ }
+    };
+    void begin();
+    return () => { cancelled = true; listener?.stop(); wakeRef.current = null; };
+  }, [listenerWanted, announce]);
+  // Don't listen for the wake word while recording, speaking or in a hidden tab.
+  const [tabHidden, setTabHidden] = useState(false);
+  useEffect(() => {
+    const onVisibility = () => setTabHidden(document.hidden);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
+  useEffect(() => {
+    const listener = wakeRef.current;
+    if (!listener) return;
+    const talking = speech.isSpeaking || speech.loading || (streaming && speech.canSpeak);
+    const recording = voice.isListening || voice.isTranscribing;
+    listener.setMode({
+      wake: wakeEnabled && !handsFree && !tabHidden && !talking && !recording,
+      stop: !tabHidden && talking && !recording,
+    });
+  }, [tabHidden, voice.isListening, speech.isSpeaking, speech.loading, voice.isTranscribing, speech.canSpeak, streaming, handsFree, wakeEnabled, wakeState]);
+
   const resolveLesson = useMemo(
     () => (courseTitle: string, lessonTitle: string) => {
       const course = state.courses.find((c) => c.title.toLowerCase() === courseTitle.toLowerCase());
@@ -398,9 +719,14 @@ export function AiAssistant() {
     voice.cancelListening();
     speech.stop();
     setOpen(false);
+    setHandsFree(false);
+    setShowA11yPanel(false);
+    // Keyboard and screen-reader users land back on the button that opened it.
+    setTimeout(() => launcherRef.current?.focus(), 0);
   }
   function startRevealLoop() {
-    const BASE_CPS = 60;
+    // "Reduce motion": no typing-out effect, the reply appears as it arrives.
+    const BASE_CPS = reduceMotion ? Number.POSITIVE_INFINITY : 60;
     let last = performance.now();
     const tick = (now: number) => {
       const dt = (now - last) / 1000;
@@ -430,6 +756,8 @@ export function AiAssistant() {
         speech.stop();
         const finalText = fullTextRef.current;
         if (!requestFailedRef.current && finalText.trim()) void speech.speak(finalText);
+        // Screen readers hear the finished reply once (not word by word) — unless it's being spoken aloud.
+        if (!speech.canSpeak && finalText.trim()) announce(plainForAnnouncement(finalText));
         trackEvent("ai_response_completed", {
           mode: isTutorMode ? "tutor" : "learner",
           response_length: finalText.length,
@@ -534,7 +862,7 @@ export function AiAssistant() {
         body: JSON.stringify({
           // On a lesson page, tell the assistant which lesson is open.
           // Sent even while muted: the assistant still goes by this character's name.
-          ...(voiceCharacter ? { voiceIdentity: voiceCharacter.key } : {}),
+          // A browser voice (no ElevenLabs): its language, so a Spanish voice gets a Spanish reply, not English in an accent.
           // What is in the Program Builder, so the assistant can pick up where the tutor left it.
           ...(isTutorMode && programDraftSummary(state.user?.email) ? { programBuilder: programDraftSummary(state.user?.email) } : {}),
           ...(window.location.pathname.startsWith("/app/learn") ? { viewingLessonId: new URLSearchParams(window.location.search).get("lesson") ?? undefined } : {}),
@@ -585,6 +913,8 @@ export function AiAssistant() {
   }
   function openPanel() {
     setOpen(true);
+    // Start typing straight away (and put screen readers inside the dialog).
+    setTimeout(() => textareaRef.current?.focus(), 80);
     if (!isTutorMode && nudge && messages.length === 0) {
       setMessages([{ role: "assistant", content: nudge.message }]);
       markNudgeSeen(nudge.id);
@@ -690,6 +1020,20 @@ export function AiAssistant() {
     closePanel();
     router.push(state.user?.role === "admin" ? "/app/admin/?aiCourseDraft=1" : "/app/tutor/?aiCourseDraft=1");
   }
+  /** Keeps Tab and Shift+Tab inside the open assistant (it's a modal dialog). */
+  function trapFocus(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key !== "Tab" || !dialogRef.current) return;
+    const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )).filter((el) => el.offsetParent !== null && !(el as HTMLButtonElement).disabled);
+    if (!focusable.length) return;
+    // Focus the first element (from one end) that actually takes focus.
+    const focusFrom = (list: HTMLElement[]) => { for (const el of list) { el.focus(); if (document.activeElement === el) return; } };
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); focusFrom([...focusable].reverse()); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); focusFrom(focusable); }
+  }
   function handleMicClick() {
     if (voice.isListening) {
       voice.stopListening();
@@ -700,6 +1044,9 @@ export function AiAssistant() {
   }
   return (
     <>
+      {/* Screen readers read what's put here (replies, card questions, voice status). Always mounted so
+          announcements also work while the panel opens. */}
+      <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">{announcement}</div>
       {/* Floating trigger */}
       <div
         className="fixed bottom-4 right-4 z-40 flex h-16 w-16 items-center justify-center"
@@ -730,8 +1077,11 @@ export function AiAssistant() {
           )}
         </AnimatePresence>
         <motion.button
+          ref={launcherRef}
           onClick={() => (open ? closePanel() : openPanel())}
           aria-label={open ? "Close AI assistant" : "Open AI assistant"}
+          aria-keyshortcuts="Alt+Shift+A"
+          aria-expanded={open}
           whileHover={{ scale: 1.06 }}
           whileTap={{ scale: 0.95 }}
           className="relative z-10 flex h-16 w-16 items-center justify-center"
@@ -751,19 +1101,19 @@ export function AiAssistant() {
                 </span>
               ) : (
                 <span className="flex h-full w-full items-center justify-center">
-                  <span className="ai-bot" aria-hidden="true">
-                    <span className="head">
-                      <span className="face">
-                        <span className="eyes" />
-                        <span className="mouth" />
-                      </span>
-                    </span>
-                  </span>
+                  <RobotFace />
                 </span>
               )}
             </motion.span>
           </AnimatePresence>
         </motion.button>
+        {/* "Hey Requisor" is listening on this device. */}
+        {wakeEnabled && wakeState === "listening" && (
+          <span className="absolute -left-1 top-0 z-20 flex h-5 w-5 items-center justify-center rounded-full bg-white text-primary shadow ring-1 ring-primary/30" title="Listening for “Hey Requisor”">
+            <Ear className="h-3 w-3" aria-hidden="true" />
+            <span className="sr-only">Listening for Hey Requisor</span>
+          </span>
+        )}
         {nudge && !open && (
           <span className="absolute right-1 top-1 z-20 flex h-3.5 w-3.5">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
@@ -778,8 +1128,12 @@ export function AiAssistant() {
             animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
             exit={{ opacity: 0, y: 16, scale: 0.96, filter: "blur(2px)" }}
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            ref={dialogRef}
             role="dialog"
-            aria-label={isTutorMode ? "AI course design assistant" : "AI learning assistant"}
+            aria-modal="true"
+            aria-labelledby="assistant-title"
+            aria-describedby="assistant-shortcuts-hint"
+            onKeyDown={trapFocus}
             className="fixed bottom-20 right-4 z-40 flex h-[34rem] w-[23rem] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-3xl border border-zinc-100 bg-card shadow-[0_25px_60px_-15px_rgba(15,23,42,0.25)]"
           >
             {/* Header */}
@@ -798,9 +1152,9 @@ export function AiAssistant() {
                 </span>
               </div>
               <div className="min-w-0 flex-1">
-                <p className="flex items-center gap-1 truncate text-sm font-semibold text-zinc-900">
-                  {/* The assistant goes by its voice character's name, so the name matches the voice and portrait. */}
-                  {voiceCharacter?.name ?? (isTutorMode ? "Requisor Assistant" : getPersona(assistantPersona).name)}
+                <p id="assistant-title" className="flex items-center gap-1 truncate text-sm font-semibold text-zinc-900">
+                  {/* One name for the assistant, whichever voice it speaks in. */}
+                  {isTutorMode ? "Requisor Assistant" : ASSISTANT_NAME}
                 </p>
                 <p className="truncate text-xs text-zinc-500">
                   {isTutorMode ? "Design courses, add lessons, grade and publish" : "Guidance, practice assignments, quizzes and grades"}
@@ -845,6 +1199,16 @@ export function AiAssistant() {
                 </button>
               )}
               <button
+                onClick={() => setShowA11yPanel((v) => !v)}
+                aria-label="Accessibility and voice options"
+                aria-expanded={showA11yPanel}
+                aria-controls="assistant-a11y-panel"
+                title="Accessibility"
+                className={cn("focus-ring shrink-0 rounded-lg p-1.5 transition hover:bg-zinc-100 hover:text-zinc-700", showA11yPanel || handsFree || wakeEnabled ? "text-primary" : "text-zinc-400")}
+              >
+                <Accessibility className="h-3.5 w-3.5" />
+              </button>
+              <button
                 onClick={closePanel}
                 aria-label="Close"
                 className="focus-ring shrink-0 rounded-lg p-1.5 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
@@ -863,7 +1227,22 @@ export function AiAssistant() {
                 {speech.error}
               </p>
             )}
-            <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+            <p id="assistant-shortcuts-hint" className="sr-only">
+              Shortcuts: Alt Shift A opens or closes the assistant, Alt Shift V talks, Alt Shift H turns hands-free on or off, Alt Shift S stops me talking or listening, Alt Shift R reads the last reply again.
+            </p>
+            {showA11yPanel && (
+              <AccessibilityPanel
+                id="assistant-a11y-panel"
+                voiceInput={voice.sttSupported}
+                handsFree={handsFree}
+                onToggleHandsFree={toggleHandsFree}
+                wakeEnabled={wakeEnabled}
+                wakeState={wakeState}
+                onToggleWake={() => setWakeWord(!wakeEnabled)}
+              />
+            )}
+            {/* Messages: announced through the live region below, so streaming isn't read out word by word. */}
+            <div ref={scrollRef} role="log" aria-label="Conversation" aria-live="off" className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
               {draftError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{draftError}</div>}
               {messages.length === 0 && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }} className="space-y-4">
@@ -907,6 +1286,8 @@ export function AiAssistant() {
                         key={action.id}
                         action={action}
                         onOutcome={(outcome) => setActionOutcomes((prev) => ({ ...prev, [action.id]: outcome }))}
+                        voiceAnswer={voiceAnswer?.actionId === action.id ? voiceAnswer : undefined}
+                        onAnnounce={sayStatus}
                       />
                     ))}
                   </div>
@@ -1126,6 +1507,7 @@ export function AiAssistant() {
                       onClick={handleMicClick}
                       disabled={streaming || voice.isTranscribing}
                       aria-label={voice.isListening ? "Stop and send" : "Start voice input"}
+                      aria-keyshortcuts="Alt+Shift+V"
                       title={voice.isListening ? "Stop and send" : "Start voice input"}
                       className={cn(
                         "orb orb-input focus-ring disabled:opacity-40",
@@ -1209,5 +1591,69 @@ export function AiAssistant() {
       </AnimatePresence>
 
     </>
+  );
+}
+
+/**
+ * Hands-free and "Hey Requisor" switches, plus the keyboard shortcuts — so
+ * someone who can't see or use a mouse can run the assistant on their own.
+ */
+function AccessibilityPanel({
+  id, voiceInput, handsFree, onToggleHandsFree, wakeEnabled, wakeState, onToggleWake,
+}: {
+  id: string;
+  voiceInput: boolean;
+  handsFree: boolean;
+  onToggleHandsFree: () => void;
+  wakeEnabled: boolean;
+  wakeState: WakeState | "off" | "unavailable";
+  onToggleWake: () => void;
+}) {
+  const wakeNote =
+    !voiceInput ? "Needs voice input, which isn't set up on this site."
+      : wakeState === "loading" ? "Getting ready — the first time downloads about 40 MB, once."
+        : wakeState === "listening" ? "Listening on this device. Say “Hey Requisor”."
+          : wakeState === "paused" ? "Paused while I'm talking or listening."
+            : wakeState === "unavailable" ? "Not installed on this server yet."
+              : wakeState === "error" ? "Couldn't start — check the microphone permission."
+                : "Uses this device's microphone while the site is open. Recognised on your device; nothing is sent until you say it.";
+  const row = "flex items-start justify-between gap-3 rounded-xl border border-zinc-100 bg-white p-2.5";
+  return (
+    <div id={id} className="space-y-2 border-b border-zinc-100 bg-zinc-50/80 px-4 py-3 text-xs text-zinc-700">
+      <div className={row}>
+        <div className="min-w-0">
+          <p className="flex items-center gap-1.5 font-semibold text-zinc-900"><Headphones className="h-3.5 w-3.5 text-primary" aria-hidden="true" />Hands-free conversation</p>
+          <p className="mt-0.5 text-zinc-500">{voiceInput ? "After each reply I listen again. Say “stop” to end." : "Needs voice input, which isn't set up on this site."}</p>
+        </div>
+        <button type="button" role="switch" aria-checked={handsFree} aria-keyshortcuts="Alt+Shift+H" disabled={!voiceInput} onClick={onToggleHandsFree}
+          className={cn("focus-ring relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition disabled:opacity-40", handsFree ? "bg-primary" : "bg-zinc-300")}>
+          <span className="sr-only">Hands-free conversation</span>
+          <span className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all", handsFree ? "left-[18px]" : "left-0.5")} />
+        </button>
+      </div>
+      <div className={row}>
+        <div className="min-w-0">
+          <p className="flex items-center gap-1.5 font-semibold text-zinc-900"><Ear className="h-3.5 w-3.5 text-primary" aria-hidden="true" />“Hey Requisor”</p>
+          <p className="mt-0.5 text-zinc-500" aria-live="polite">{wakeNote}</p>
+        </div>
+        <button type="button" role="switch" aria-checked={wakeEnabled} disabled={!voiceInput} onClick={onToggleWake}
+          className={cn("focus-ring relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition disabled:opacity-40", wakeEnabled ? "bg-primary" : "bg-zinc-300")}>
+          <span className="sr-only">Listen for Hey Requisor</span>
+          <span className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all", wakeEnabled ? "left-[18px]" : "left-0.5")} />
+        </button>
+      </div>
+      <div className="rounded-xl border border-zinc-100 bg-white p-2.5">
+        <p className="font-semibold text-zinc-900">Keyboard shortcuts</p>
+        <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-zinc-600">
+          <dt><kbd className="font-mono">Alt+Shift+A</kbd></dt><dd>Open or close the assistant</dd>
+          <dt><kbd className="font-mono">Alt+Shift+V</kbd></dt><dd>Talk (press again to send)</dd>
+          <dt><kbd className="font-mono">Alt+Shift+H</kbd></dt><dd>Hands-free on or off</dd>
+          <dt><kbd className="font-mono">Alt+Shift+S</kbd></dt><dd>Stop talking or listening</dd>
+          <dt><kbd className="font-mono">Alt+Shift+R</kbd></dt><dd>Read the last reply again</dd>
+          <dt><kbd className="font-mono">Esc</kbd></dt><dd>Close</dd>
+        </dl>
+        <p className="mt-1.5 text-zinc-500">When I suggest an action, say “yes” to confirm or “no” to cancel. Say “stop” while I'm talking to cut me off.</p>
+      </div>
+    </div>
   );
 }

@@ -143,6 +143,40 @@ export async function sendWelcomeEmail(to: string, name: string) {
   );
 }
 
+/** Escapes text placed into email HTML (names are user-typed). */
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[c] as string);
+}
+
+/** A university admin approved someone's request to join. */
+export async function sendJoinApprovedEmail(to: string, rawName: string, rawUniversity: string) {
+  const name = escapeHtml(rawName);
+  const universityName = escapeHtml(rawUniversity);
+  await sendEmail(
+    to,
+    `You're in — ${rawUniversity} on Alma 41`,
+    shell(
+      `Welcome to ${universityName}, ${name || "there"}!`,
+      `Your request to join ${universityName} has been approved. Sign in to see your courses.`,
+      { label: "Go to my courses", href: `${getBaseUrl()}/app/dashboard/` }
+    )
+  );
+}
+
+/** A university admin declined someone's request to join. */
+export async function sendJoinDeclinedEmail(to: string, rawName: string, rawUniversity: string) {
+  const name = escapeHtml(rawName);
+  const universityName = escapeHtml(rawUniversity);
+  await sendEmail(
+    to,
+    `Your request to join ${rawUniversity}`,
+    shell(
+      `Hi ${name || "there"}`,
+      `Your request to join ${universityName} on Alma 41 wasn't approved. If you study there, sign up again with your university email address, or contact your university admin.`,
+    )
+  );
+}
+
 export async function sendPasswordResetEmail(to: string, name: string, token: string) {
   const url = `${getBaseUrl()}/reset-password?token=${token}`;
   await sendEmail(

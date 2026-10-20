@@ -155,7 +155,7 @@ export function PeoplePanel({ superAdmin, universities }: { superAdmin: boolean;
                             if (role === "admin" && superAdmin) {
                               // An admin runs one university: it has to be chosen first, never guessed.
                               if (p.universityId) void makeAdminOf(p, p.universityId);
-                              else setNote({ ok: false, text: `Choose ${p.name || p.email}'s university first, then make them its admin.` });
+                              else setNote({ ok: false, text: `Choose ${p.name || p.email}'s university first, then make them its university admin.` });
                             } else void act(p, { action: "set-role", role }, `is now a ${ROLE_LABEL[role].toLowerCase()}`);
                           }}
                         >

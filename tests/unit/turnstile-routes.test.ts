@@ -251,7 +251,7 @@ describe("POST /api/signup — CAPTCHA enforcement", () => {
       const res = await signup();
 
       expect(res.status).toBe(200);
-      expect(await res.json()).toEqual({ ok: true, verified: true });
+      expect(await res.json()).toEqual({ ok: true, verified: true, pendingApproval: false });
       const insert = db.query.mock.calls.find(([sql]) => String(sql).includes("INSERT INTO users"));
       expect(String(insert?.[0])).toContain("email_verified");
       expect(insert?.[1]?.[3]).toBe("employee"); // still never a privileged role

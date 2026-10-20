@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight, BookOpen, BookPlus, Briefcase, CheckCircle2, Pencil, ClipboardCheck, Eye, EyeOff, FileText, GraduationCap, Loader2, Sparkles, X, XCircle,
@@ -141,17 +141,58 @@ function describe(action: AssistantAction): { icon: typeof Sparkles; title: stri
   }
 }
 
-export function AssistantActionCard({ action, onOutcome }: { action: AssistantAction; onOutcome: (outcome: ActionOutcome) => void }) {
+/** What a card asks, as one sentence to read out or announce (screen readers, hands-free). */
+export function cardPrompt(action: AssistantAction): string {
+  const { title, lines, confirm } = describe(action);
+  const detail = lines[0] ? `: ${lines[0]}` : "";
+  return `Confirmation needed. ${title}${detail}. Say yes to ${confirm.toLowerCase()}, or no to cancel.`;
+}
+
+/** A spoken answer to this card (hands-free use); a new nonce means a new answer. */
+export type VoiceAnswer = { nonce: number; answer: "yes" | "no" };
+
+export function AssistantActionCard({ action, onOutcome, voiceAnswer, onAnnounce }: {
+  action: AssistantAction;
+  onOutcome: (outcome: ActionOutcome) => void;
+  voiceAnswer?: VoiceAnswer;
+  /** Says what happened (screen reader / voice), for people who can't see the card. */
+  onAnnounce?: (text: string) => void;
+}) {
   const router = useRouter();
   const [state, setState] = useState<State>({ phase: "idle" });
   const { state: accountState } = useStore();
   const { icon: Icon, title, lines, confirm } = describe(action);
+  // Confirmed by voice: open the result for them instead of waiting for a click.
+  const byVoiceRef = useRef(false);
 
   function finish(message: string, extra: { href?: string; hrefLabel?: string } = {}, changed = false) {
     setState({ phase: "done", message, ...extra });
     onOutcome({ status: "done", message });
     if (changed) window.dispatchEvent(new CustomEvent(DATA_CHANGED_EVENT));
+    if (byVoiceRef.current && extra.href) {
+      onAnnounce?.(`${message} Opening it now.`);
+      router.push(extra.href);
+    } else {
+      onAnnounce?.(message);
+    }
   }
+
+  function cancel() {
+    setState({ phase: "cancelled" });
+    onOutcome({ status: "cancelled" });
+    onAnnounce?.("Cancelled. Nothing was changed.");
+  }
+
+  // A spoken "yes"/"no" presses Confirm/Cancel — only while the card is still waiting.
+  const lastVoiceNonce = useRef(0);
+  useEffect(() => {
+    if (!voiceAnswer || voiceAnswer.nonce === lastVoiceNonce.current || state.phase !== "idle") return;
+    lastVoiceNonce.current = voiceAnswer.nonce;
+    if (voiceAnswer.answer === "yes") { byVoiceRef.current = true; void run(); }
+    else cancel();
+    // run/cancel are recreated each render; the nonce guard makes this fire once per answer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voiceAnswer, state.phase]);
 
   async function run() {
     setState({ phase: "running" });
@@ -243,7 +284,9 @@ export function AssistantActionCard({ action, onOutcome }: { action: AssistantAc
           return;
       }
     } catch (error) {
-      setState({ phase: "error", message: error instanceof Error ? error.message : "Something went wrong." });
+      const message = error instanceof Error ? error.message : "Something went wrong.";
+      setState({ phase: "error", message });
+      onAnnounce?.(`That didn't work: ${message}`);
     }
   }
 
@@ -266,7 +309,7 @@ export function AssistantActionCard({ action, onOutcome }: { action: AssistantAc
           <Button size="sm" onClick={() => void run()} disabled={state.phase === "running"}>
             {state.phase === "running" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}{confirm}
           </Button>
-          <Button size="sm" variant="ghost" disabled={state.phase === "running"} onClick={() => { setState({ phase: "cancelled" }); onOutcome({ status: "cancelled" }); }}>
+          <Button size="sm" variant="ghost" disabled={state.phase === "running"} onClick={cancel}>
             <X className="h-3.5 w-3.5" />Cancel
           </Button>
         </div>

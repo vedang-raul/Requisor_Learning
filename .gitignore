@@ -11,3 +11,6 @@ test-results
 
 # Local tool settings and caches
 .claude/settings.local.json
+
+# Wake-word speech model, downloaded at build time (scripts/fetch-vosk-model.js)
+public/vosk/

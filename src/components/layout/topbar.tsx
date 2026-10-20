@@ -8,16 +8,19 @@ import { useStore } from "@/lib/store";
 import { cn, formatMinutes } from "@/lib/utils";
 import { Tag } from "@/components/ui/badge";
 import { MobileNav } from "@/components/layout/mobile-nav";
+import { useSession } from "next-auth/react";
+import { adminPanelLabel } from "@/lib/auth/roles";
 
 const crumbNames: Record<string, string> = {
   app: "Home", dashboard: "Dashboard", paths: "Learning Paths", course: "Course",
-  learn: "Lesson", "my-learning": "My Learning", badges: "Badges", admin: "Admin", settings: "Settings",
+  learn: "Lesson", "my-learning": "My Learning", badges: "Badges", settings: "Settings",
 };
 
 const springHover = { type: "spring" as const, stiffness: 320, damping: 22 };
 
 export function Topbar() {
   const { state, workspaceMode, markNotificationsRead } = useStore();
+  const superAdmin = useSession().data?.user?.superAdmin === true;
   const pathname = usePathname();
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -82,7 +85,7 @@ export function Topbar() {
             {crumbs.map((c, i) => (
               <span key={i} className="flex items-center gap-1">
                 {i > 0 && <ChevronRight className="h-3.5 w-3.5" />}
-                <span className={cn("truncate", i === crumbs.length - 1 && "font-medium text-zinc-800")}>{crumbNames[c] ?? c}</span>
+                <span className={cn("truncate", i === crumbs.length - 1 && "font-medium text-zinc-800")}>{c === "admin" ? adminPanelLabel(superAdmin, { short: true }) : crumbNames[c] ?? c}</span>
               </span>
             ))}
           </motion.div>

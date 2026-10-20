@@ -4,6 +4,30 @@ import { getToken } from "next-auth/jwt";
 import { isResourceFileUrl } from "./lib/courses/resource-files";
 import { canonicalLoginRedirect } from "./lib/courses/auth-domain";
 
+/** APIs a person waiting for approval may still call: auth itself and public endpoints. */
+const OPEN_WHILE_PENDING = ["/api/auth", "/api/health", "/api/branding", "/api/public", "/api/landing-chat",
+  "/api/signup", "/api/verify", "/api/forgot", "/api/reset"];
+const isUnder = (path: string, prefix: string) => path === prefix || path.startsWith(`${prefix}/`);
+export const isOpenWhilePending = (path: string) => OPEN_WHILE_PENDING.some((open) => isUnder(path, open));
+
+/** The signed-in person's session token, or null. */
+async function readSessionToken(req: NextRequest) {
+  // Must mirror the cookie name used in authOptions exactly.
+  // authOptions derives it from NODE_ENV, not whether the request is HTTPS —
+  // so we do the same here instead of letting getToken auto-detect from the
+  // request URL (which is always HTTPS behind Replit's proxy even in dev,
+  // causing a cookie-name mismatch that makes getToken return null).
+  const isSecure = process.env.NODE_ENV === "production";
+  const cookieName = isSecure
+    ? "__Secure-next-auth.session-token"
+    : "next-auth.session-token";
+  return getToken({
+    req,
+    secret: process.env.NEXTAUTH_SECRET || process.env.SESSION_SECRET,
+    cookieName,
+  });
+}
+
 export async function middleware(req: NextRequest) {
   // Replit's proxy may give nextUrl an internal host; use its forwarded public
   // host for comparison only. The redirect destination is server-owned.
@@ -36,6 +60,24 @@ export async function middleware(req: NextRequest) {
       "default-src 'self'",
       "script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval'",
       "connect-src 'self' https://cdn.jsdelivr.net",
+      "worker-src 'self'",
+      "object-src 'none'",
+      "base-uri 'self'",
+    ].join("; "));
+    return response;
+  }
+
+  // The "Hey Requisor" wake-word recogniser (vosk-browser, generated into
+  // public/vosk/ by scripts/fetch-vosk-model.js) runs Emscripten WebAssembly
+  // that generates code at runtime, so this one worker file — and only it —
+  // allows 'unsafe-eval'/'wasm-unsafe-eval'. data: is its embedded .wasm;
+  // 'self' is the speech model it downloads from this site.
+  if (req.nextUrl.pathname === "/vosk/vosk-worker.js") {
+    const response = NextResponse.next();
+    response.headers.set("Content-Security-Policy", [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'",
+      "connect-src 'self' data:",
       "worker-src 'self'",
       "object-src 'none'",
       "base-uri 'self'",
@@ -115,31 +157,41 @@ export async function middleware(req: NextRequest) {
     // sandboxed iframe served from Cloudflare.
     "frame-src 'self' blob: https://www.youtube.com https://www.youtube-nocookie.com https://challenges.cloudflare.com",
     isEmbeddableFileRoute ? "frame-ancestors 'self'" : "frame-ancestors 'none'",
-    // PDF.js parses submission PDFs in a same-origin, bundled Web Worker.
+    // PDF.js parses submission PDFs in a same-origin, bundled Web Worker. The
+    // "Hey Requisor" recogniser runs in /vosk/vosk-worker.js, which has its own policy (above).
     "worker-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self' https://accounts.google.com",
   ].join("; ");
 
+  const path = req.nextUrl.pathname;
+
+  // ── Waiting for a university's approval: no access to anything ─────────
+  // Someone who asked to join a university sees only the waiting page until
+  // its admin approves them: every app page redirects there, every data API
+  // answers 403. Sign-in/out, sign-up and public endpoints stay reachable.
+  if (isUnder(path, "/app") || (path.startsWith("/api/") && !isOpenWhilePending(path))) {
+    const token = await readSessionToken(req);
+    if (token?.pending === true) {
+      if (path.startsWith("/api/")) {
+        return Response.json(
+          { error: "Your request to join is waiting for approval.", code: "pending_approval" },
+          { status: 403 }
+        );
+      }
+      const waitingUrl = req.nextUrl.clone();
+      waitingUrl.pathname = "/pending/";
+      waitingUrl.search = "";
+      return NextResponse.redirect(waitingUrl);
+    }
+  }
+
   // ── Privileged workspace protection ─────────────────────────────────────
-  const needsAdmin = req.nextUrl.pathname.startsWith("/app/admin");
-  const needsTutorWorkspace = req.nextUrl.pathname.startsWith("/app/tutor");
+  const needsAdmin = path.startsWith("/app/admin");
+  const needsTutorWorkspace = path.startsWith("/app/tutor");
   if (needsAdmin || needsTutorWorkspace) {
-    // Must mirror the cookie name used in authOptions exactly.
-    // authOptions derives it from NODE_ENV, not whether the request is HTTPS —
-    // so we do the same here instead of letting getToken auto-detect from the
-    // request URL (which is always HTTPS behind Replit's proxy even in dev,
-    // causing a cookie-name mismatch that makes getToken return null).
-    const isSecure = process.env.NODE_ENV === "production";
-    const cookieName = isSecure
-      ? "__Secure-next-auth.session-token"
-      : "next-auth.session-token";
-    const token = await getToken({
-      req,
-      secret: process.env.NEXTAUTH_SECRET || process.env.SESSION_SECRET,
-      cookieName,
-    });
+    const token = await readSessionToken(req);
 
     // No session at all — redirect to login.
     if (!token) {
@@ -176,7 +228,6 @@ export async function middleware(req: NextRequest) {
 
   response.headers.set("Content-Security-Policy", csp);
   // Do not expose account screens or API responses as search results.
-  const path = req.nextUrl.pathname;
   if (["/app", "/api", "/login", "/reset-password"].some(
     (prefix) => path === prefix || path.startsWith(`${prefix}/`),
   )) {

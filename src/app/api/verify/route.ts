@@ -4,6 +4,7 @@ import { db, type DbUser } from "@/lib/server/db";
 import { sendWelcomeEmail } from "@/lib/server/email";
 import { getBaseUrl } from "@/lib/server/base-url";
 import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
+import { notifyAdminsOfJoinRequest } from "@/lib/server/universities";
 
 // ── Per-IP rate limiting ──────────────────────────────────────────────────────
 // 10 verification attempts per IP per 15 minutes.  Higher than forgot-password
@@ -50,5 +51,10 @@ export async function GET(req: Request) {
     [user.id]
   );
   sendWelcomeEmail(user.email, user.name ?? "").catch((e) => console.error("Welcome email failed:", e));
+  // A verified address asking to join a university: now its admins should hear about it.
+  const { university_id: universityId, university_status: status } = user as DbUser & { university_id?: number | null; university_status?: string | null };
+  if (status === "pending" && universityId) {
+    await notifyAdminsOfJoinRequest(universityId, { name: user.name ?? "", email: user.email });
+  }
   return NextResponse.redirect(`${base}/?verify=success`);
 }

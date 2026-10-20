@@ -1,6 +1,8 @@
 export const runtime = "nodejs";
 
 import { db } from "@/lib/server/db";
+import { notifyUser } from "@/lib/server/notifications";
+import { sendJoinApprovedEmail, sendJoinDeclinedEmail } from "@/lib/server/email";
 import { requireAccess } from "@/lib/server/access";
 import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
 import { isSuperAdminEmail } from "@/lib/auth/roles";
@@ -20,6 +22,26 @@ type PersonRow = {
 
 const asRole = (role: string) => (role === "admin" || role === "tutor" ? role : "employee") as Person["role"];
 const asStatus = (status: string | null) => (status === "active" || status === "pending" ? status : null);
+
+/**
+ * Someone waiting to join can't see the app, so approve/decline reaches them by
+ * email (plus an in-app note for when they sign in). Best-effort: a mail
+ * failure never undoes the decision.
+ */
+async function tellPersonAboutJoinDecision(row: PersonRow, kind: string): Promise<void> {
+  if (row.university_status !== "pending" || (kind !== "approve" && kind !== "remove")) return;
+  const university = row.university_name ?? "your university";
+  try {
+    if (kind === "approve") {
+      await notifyUser(row.id, { kind: "join-approved", title: `Welcome to ${university}`, body: "Your request to join was approved.", link: "/app/dashboard/" });
+      await sendJoinApprovedEmail(row.email, row.name ?? "", university);
+    } else {
+      await sendJoinDeclinedEmail(row.email, row.name ?? "", university);
+    }
+  } catch {
+    console.error("Join decision notification failed.");
+  }
+}
 
 export async function GET(req: Request) {
   const who = await requireAccess("admin");
@@ -89,7 +111,8 @@ export async function PATCH(req: Request) {
   if (!Number.isSafeInteger(userId) || userId < 1) return Response.json({ error: "Person not found." }, { status: 404 });
 
   const { rows } = await db.query<PersonRow>(
-    "SELECT id, email, role, university_id, university_status, requested_role FROM users WHERE id = $1",
+    `SELECT u.id, u.name, u.email, u.role, u.university_id, u.university_status, u.requested_role, un.name AS university_name
+       FROM users u LEFT JOIN universities un ON un.id = u.university_id WHERE u.id = $1`,
     [userId]
   );
   const row = rows[0];
@@ -118,6 +141,7 @@ export async function PATCH(req: Request) {
   if (plan.status !== undefined) set("university_status", plan.status);
   if (plan.requestedRole !== undefined) set("requested_role", plan.requestedRole);
   if (sets.length) await db.query(`UPDATE users SET ${sets.join(", ")} WHERE id = $1`, values);
+  await tellPersonAboutJoinDecision(row, action.kind);
   // The change reaches the person's session within a few minutes (see ACCESS_RECHECK_SECONDS).
   return Response.json({ ok: true });
 }

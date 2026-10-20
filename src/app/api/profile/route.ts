@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth/auth";
 import { db, type DbUser } from "@/lib/server/db";
+import { dateOnly } from "@/lib/server/date-only";
 import { PERSONAS, LANGUAGES, COUNTRIES } from "@/lib/assistant/personas";
 import { checkJobTitle } from "@/lib/auth/job-title";
 
@@ -22,7 +23,7 @@ export async function GET() {
     role: r.role,
     employmentType: r.employment_type ?? "",
     position: r.position ?? "",
-    dateOfBirth: r.date_of_birth ? new Date(r.date_of_birth).toISOString().slice(0, 10) : "",
+    dateOfBirth: dateOnly(r.date_of_birth) ?? "",
     gender: r.gender ?? "",
     qualification: r.qualification ?? "",
     learningGoal: r.learning_goal ?? "",
@@ -162,7 +163,7 @@ export async function PATCH(req: Request) {
       role: r.role,
       employmentType: r.employment_type ?? "",
       position: r.position ?? "",
-      dateOfBirth: r.date_of_birth ? new Date(r.date_of_birth).toISOString().slice(0, 10) : "",
+      dateOfBirth: dateOnly(r.date_of_birth) ?? "",
       gender: r.gender ?? "",
       qualification: r.qualification ?? "",
       learningGoal: r.learning_goal ?? "",
@@ -214,7 +215,7 @@ export async function PATCH(req: Request) {
     role: r.role,
     employmentType: r.employment_type ?? "",
     position: r.position ?? "",
-    dateOfBirth: r.date_of_birth ? new Date(r.date_of_birth).toISOString().slice(0, 10) : "",
+    dateOfBirth: dateOnly(r.date_of_birth) ?? "",
     gender: r.gender ?? "",
     qualification: r.qualification ?? "",
     learningGoal: r.learning_goal ?? "",

@@ -1,4 +1,4 @@
-import { accessFor, assignableRoles, cleanDomains, isSuperAdminEmail, superAdminEmails, workUniversity } from "@/lib/auth/roles";
+import { accessFor, assignableRoles, cleanDomains, isPublicEmailDomain, isSuperAdminEmail, MAX_UNIVERSITY_DOMAINS, superAdminEmails, workUniversity } from "@/lib/auth/roles";
 import { canManage, planPeopleChange, readPeopleAction, type Manager, type Person } from "@/lib/auth/people-rules";
 import { readLogo, readUniversityInput } from "@/lib/server/university-input";
 
@@ -18,23 +18,32 @@ describe("roles: super admin > university admin > tutor > student", () => {
 
   it("gives super admins admin powers with no university limit", () => {
     expect(accessFor("support@requisor.io", { role: "employee", university_id: 3, university_status: "active" }))
-      .toEqual({ role: "admin", superAdmin: true, universityId: null });
+      .toEqual({ role: "admin", superAdmin: true, universityId: null, pending: false });
   });
 
   it("makes someone a university admin only when they belong to a university", () => {
     expect(accessFor("dean@msoe.edu", { role: "admin", university_id: 1, university_status: "active" }))
-      .toEqual({ role: "admin", superAdmin: false, universityId: 1 });
+      .toEqual({ role: "admin", superAdmin: false, universityId: 1, pending: false });
     // A stray "admin" value without a university grants nothing.
     expect(accessFor("x@gmail.com", { role: "admin", university_id: null, university_status: null }))
-      .toEqual({ role: "employee", superAdmin: false, universityId: null });
+      .toEqual({ role: "employee", superAdmin: false, universityId: null, pending: false });
     // Waiting for approval is not membership yet.
     expect(accessFor("x@gmail.com", { role: "admin", university_id: 1, university_status: "pending" }).role).toBe("employee");
   });
 
   it("keeps tutors and students, with their university once approved", () => {
-    expect(accessFor("t@msoe.edu", { role: "tutor", university_id: 1, university_status: "active" })).toEqual({ role: "tutor", superAdmin: false, universityId: 1 });
-    expect(accessFor("s@gmail.com", { role: "employee", university_id: 2, university_status: "pending" })).toEqual({ role: "employee", superAdmin: false, universityId: null });
-    expect(accessFor("new@gmail.com", undefined)).toEqual({ role: "employee", superAdmin: false, universityId: null });
+    expect(accessFor("t@msoe.edu", { role: "tutor", university_id: 1, university_status: "active" })).toEqual({ role: "tutor", superAdmin: false, universityId: 1, pending: false });
+    expect(accessFor("new@gmail.com", undefined)).toEqual({ role: "employee", superAdmin: false, universityId: null, pending: false });
+  });
+
+  it("marks someone waiting to join as pending, with no university until approved", () => {
+    expect(accessFor("s@gmail.com", { role: "employee", university_id: 2, university_status: "pending" }))
+      .toEqual({ role: "employee", superAdmin: false, universityId: null, pending: true });
+    expect(accessFor("t@gmail.com", { role: "tutor", university_id: 2, university_status: "pending" }).pending).toBe(true);
+    // A pending row can never make a super admin wait, or an admin out of a pending one.
+    expect(accessFor("support@requisor.io", { role: "employee", university_id: 2, university_status: "pending" }).pending).toBe(false);
+    expect(accessFor("x@gmail.com", { role: "admin", university_id: 1, university_status: "pending" }))
+      .toEqual({ role: "employee", superAdmin: false, universityId: null, pending: true });
   });
 
   it("puts a super admin's work platform-wide and everyone else's in their university", () => {
@@ -50,6 +59,18 @@ describe("roles: super admin > university admin > tutor > student", () => {
   it("cleans email domains", () => {
     expect(cleanDomains("@MSOE.edu, msoe.edu  uwm.edu;bad domain;x")).toEqual(["msoe.edu", "uwm.edu"]);
     expect(cleanDomains(["mit.edu", 5, "@cs.mit.edu"])).toEqual(["mit.edu", "cs.mit.edu"]);
+  });
+
+  it("keeps many domains per university, each matched exactly", () => {
+    const many = Array.from({ length: 30 }, (_, i) => `d${i}.msoe.edu`).join(", ");
+    expect(cleanDomains(many)).toHaveLength(MAX_UNIVERSITY_DOMAINS);
+    expect(cleanDomains("msoe.edu, students.msoe.edu, alumni.msoe.edu")).toEqual(["msoe.edu", "students.msoe.edu", "alumni.msoe.edu"]);
+  });
+
+  it("recognises public email providers for the editor warning", () => {
+    expect(isPublicEmailDomain("gmail.com")).toBe(true);
+    expect(isPublicEmailDomain("@Outlook.com")).toBe(true);
+    expect(isPublicEmailDomain("msoe.edu")).toBe(false);
   });
 });
 

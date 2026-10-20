@@ -7,7 +7,9 @@ import {
   LayoutDashboard, Library,
   MonitorPlay, Trophy,FileCheck2 , ShieldCheck, ChevronsLeft, LogOut, ChevronDown, GraduationCap, ClipboardCheck, CircleUserRound,
 } from "lucide-react";
+import { useSession } from "next-auth/react";
 import { useStore } from "@/lib/store";
+import { adminPanelLabel } from "@/lib/auth/roles";
 import { cn } from "@/lib/utils";
 import { RequisorAI } from "@/components/ui/requisor-ai";
 import { useRouter } from "next/navigation";
@@ -23,14 +25,21 @@ export const navItems = [
   { href: "/app/submissions/",label: "Submissions", icon: FileCheck2, learnerOnly: true, notForAdmins: true },
   { href: "/app/tutor/",      label: "Tutor Workspace", icon: GraduationCap, tutorOnly: true },
   { href: "/app/tutor/assignment/", label: "Check Assignments", icon: ClipboardCheck, tutorOnly: true, notForAdmins: true },
+  // Shown as "University Admin Panel" or "Super Admin Panel" (see navLabel).
   { href: "/app/admin/",      label: "Admin Panel", icon: ShieldCheck, adminOnly: true },
   { href: "/app/settings/",   label: "Profile",    icon: CircleUserRound },
 ];
+
+/** A nav item's visible name: the admin panel is named for who's looking. */
+export function navLabel(item: { href: string; label: string }, superAdmin: boolean): string {
+  return item.href === "/app/admin/" ? adminPanelLabel(superAdmin) : item.label;
+}
 
 const springTransition = { type: "spring" as const, stiffness: 500, damping: 35 };
 
 export function Sidebar() {
   const { state, workspaceMode, setWorkspaceMode, toggleSidebar, logout } = useStore();
+  const superAdmin = useSession().data?.user?.superAdmin === true;
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -95,7 +104,7 @@ export function Sidebar() {
       >
         <Link
           href={item.href}
-          title={collapsed ? item.label : undefined}
+          title={collapsed ? navLabel(item, superAdmin) : undefined}
           className={cn(
             "focus-ring group relative flex items-center gap-3 overflow-hidden rounded-xl px-3 py-2.5 text-sm transition-colors duration-150",
             active ? "font-semibold text-white" : "font-medium text-zinc-600",
@@ -121,7 +130,7 @@ export function Sidebar() {
           </span>
           {!collapsed && (
             <span className={cn("relative z-10 truncate transition-colors duration-200", isHovered && !active && "text-zinc-900")}>
-              {item.label}
+              {navLabel(item, superAdmin)}
             </span>
           )}
         </Link>

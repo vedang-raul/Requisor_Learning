@@ -8,11 +8,13 @@ import { useEffect, useState } from "react";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { RequisorAI } from "@/components/ui/requisor-ai";
-import { navItems } from "@/components/layout/sidebar";
+import { navItems, navLabel } from "@/components/layout/sidebar";
+import { useSession } from "next-auth/react";
 import { getCategoryMeta } from "@/components/course/category-icon";
 
 export function MobileNav() {
   const { state, workspaceMode, setWorkspaceMode, logout } = useStore();
+  const superAdmin = useSession().data?.user?.superAdmin === true;
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -113,7 +115,7 @@ export function MobileNav() {
                       )}
                     >
                       <Icon className="h-[18px] w-[18px] shrink-0" />
-                      <span className="truncate">{item.label}</span>
+                      <span className="truncate">{navLabel(item, superAdmin)}</span>
                     </Link>
                   );
                 })}
@@ -193,7 +195,7 @@ export function MobileNav() {
                       )}
                     >
                       <Icon className="h-[18px] w-[18px] shrink-0" />
-                      <span className="truncate">{item.label}</span>
+                      <span className="truncate">{navLabel(item, superAdmin)}</span>
                     </Link>
                   );
                 })}

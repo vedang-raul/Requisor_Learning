@@ -9,6 +9,10 @@ declare module "next-auth" {
       superAdmin: boolean;
       /** The university this person belongs to, once it has accepted them. */
       universityId: number | null;
+      /** Waiting for a university admin to approve them: no access until then. */
+      pending: boolean;
+      /** The university they're waiting on, for the waiting page. */
+      pendingUniversity: string | null;
       name?: string | null;
       email?: string | null;
       image?: string | null;

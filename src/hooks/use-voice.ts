@@ -92,6 +92,10 @@ export interface UseVoiceReturn {
   characters: VoiceCharacter[];
   selectedCharacter: string;
   setSelectedCharacter: (key: string) => void;
+  /** Whether the person picked a voice themselves (vs. the automatic default). */
+  characterChosen: boolean;
+  /** The voice to use while they haven't picked one; not saved. */
+  setDefaultCharacter: (key: string) => void;
   voices: SpeechSynthesisVoice[];
   selectedVoiceName: string;
   setSelectedVoiceName: (name: string) => void;
@@ -144,8 +148,14 @@ export function useVoice(): UseVoiceReturn {
     if (typeof window === "undefined") return "";
     try { return localStorage.getItem(CHARACTER_STORAGE_KEY) ?? ""; } catch { return ""; }
   });
-  // A saved choice that no longer exists falls back to the first character.
-  const selectedCharacter = characters.some((c) => c.key === storedCharacter) ? storedCharacter : characters[0]?.key ?? "";
+  // Used until the person picks a voice themselves (e.g. one that speaks their
+  // chosen language). Not saved, so it can follow a later language change.
+  const [defaultCharacter, setDefaultCharacter] = useState("");
+  const characterChosen = characters.some((c) => c.key === storedCharacter);
+  // A saved choice that no longer exists falls back to the default, then the first character.
+  const selectedCharacter = characterChosen
+    ? storedCharacter
+    : characters.some((c) => c.key === defaultCharacter) ? defaultCharacter : characters[0]?.key ?? "";
   const setSelectedCharacter = useCallback((key: string) => {
     setStoredCharacter(key);
     try { localStorage.setItem(CHARACTER_STORAGE_KEY, key); } catch { /* private window */ }
@@ -512,6 +522,8 @@ export function useVoice(): UseVoiceReturn {
     characters,
     selectedCharacter,
     setSelectedCharacter,
+    characterChosen,
+    setDefaultCharacter,
     voices,
     selectedVoiceName,
     setSelectedVoiceName,

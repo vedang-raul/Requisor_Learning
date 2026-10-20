@@ -48,6 +48,12 @@ export const PERSONAS: Persona[] = [
 ];
 
 export const DEFAULT_PERSONA_ID = PERSONAS[0].id;
+
+/**
+ * What the learner's assistant is called, shown in the chat header and used by
+ * the assistant itself, whichever voice it speaks in.
+ */
+export const ASSISTANT_NAME = "Almi";
 export const AI_GUIDE_PREFERENCES_UPDATED = "ai-guide-preferences-updated";
 
 export function getPersona(id: string | null | undefined): Persona {
@@ -98,6 +104,25 @@ export const LANGUAGES: { code: string; label: string }[] = [
 
 export function getLanguageLabel(code: string | null | undefined): string {
   return LANGUAGES.find((l) => l.code === code)?.label ?? "English";
+}
+
+/** English names of the LANGUAGES codes, for instructions to the model. */
+const LANGUAGE_ENGLISH_NAMES: Record<string, string> = {
+  en: "English", es: "Spanish", fr: "French", de: "German", pt: "Portuguese", hi: "Hindi", ar: "Arabic",
+  zh: "Chinese (Simplified, Mandarin)", ja: "Japanese", ko: "Korean", it: "Italian", nl: "Dutch", ru: "Russian",
+  pl: "Polish", id: "Indonesian",
+};
+
+/**
+ * The language to reply in, for the model: "Spanish (Español)". Null for
+ * English or an unknown code. Also accepts a browser voice tag like "es-ES".
+ */
+export function replyLanguageName(codeOrTag: string | null | undefined): string | null {
+  const code = String(codeOrTag ?? "").trim().toLowerCase().split(/[-_]/)[0];
+  if (!code || code === "en" || !LANGUAGE_ENGLISH_NAMES[code]) return null;
+  const native = getLanguageLabel(code);
+  const english = LANGUAGE_ENGLISH_NAMES[code];
+  return native === english ? english : `${english} (${native})`;
 }
 
 /** Countries drive locale/timezone-flavored small talk only — never appearance. */

@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { emailDomain } from "../auth/roles";
+import { notifyUser } from "./notifications";
 
 /**
  * Universities: the partners whose tutors and students use the platform. Super
@@ -46,16 +47,44 @@ export async function universityIdForEmail(email: string): Promise<number | null
 }
 
 /**
- * Where a new account belongs: the university whose email domain matches, else
- * the one picked at sign-up. Either way the person joins at once; only asking
- * to teach waits for the university's admin (see requested_role).
+ * Where a new account belongs:
+ *  - an email on one of a university's registered domains joins it at once —
+ *    but only when owning that address is proven (`emailProven`: verified by
+ *    link or by Google). With email verification switched off for testing,
+ *    the domain proves nothing, so it waits for approval instead;
+ *  - a university picked from the list (any other email) is a request that
+ *    waits for that university's admin, with no access until approved;
+ *  - otherwise no university.
+ * Asking to teach is separate and also waits for the admin (requested_role).
  */
-export async function membershipForNewAccount(email: string, chosen: unknown): Promise<{ universityId: number | null; status: "active" | "pending" | null }> {
+export async function membershipForNewAccount(
+  email: string,
+  chosen: unknown,
+  { emailProven }: { emailProven: boolean },
+): Promise<{ universityId: number | null; status: "active" | "pending" | null }> {
   const byDomain = await universityIdForEmail(email);
-  if (byDomain) return { universityId: byDomain, status: "active" };
+  if (byDomain) return { universityId: byDomain, status: emailProven ? "active" : "pending" };
   const chosenId = Number(chosen);
-  if (Number.isSafeInteger(chosenId) && chosenId > 0 && (await getUniversity(chosenId))) return { universityId: chosenId, status: "active" };
+  if (Number.isSafeInteger(chosenId) && chosenId > 0 && (await getUniversity(chosenId))) return { universityId: chosenId, status: "pending" };
   return { universityId: null, status: null };
+}
+
+/** Tells a university's admins someone is waiting to join. Best-effort: never fails the caller. */
+export async function notifyAdminsOfJoinRequest(universityId: number, person: { name: string; email: string }): Promise<void> {
+  try {
+    const { rows } = await db.query<{ id: number }>(
+      "SELECT id FROM users WHERE role = 'admin' AND university_id = $1 AND university_status = 'active'",
+      [universityId]
+    );
+    await Promise.all(rows.map((admin) => notifyUser(admin.id, {
+      kind: "join-request",
+      title: "New request to join",
+      body: `${person.name || person.email} (${person.email}) is waiting for your approval.`,
+      link: "/app/admin/",
+    })));
+  } catch {
+    console.error("Join-request notification failed.");
+  }
 }
 
 // ── Site settings ───────────────────────────────────────────────────────────

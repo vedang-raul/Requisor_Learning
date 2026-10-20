@@ -99,6 +99,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           ? <TutorSurvey onSubmit={completeTutorSurvey} />
           : <OnboardingGuide
               hasDob={!!meData?.dateOfBirth}
+              onCancel={replayTour && meData?.onboardingDone ? dismissTour : undefined}
               onComplete={() => {
                 setMeData((data) => data ? { ...data, onboardingDone: true } : data);
                 dismissTour();

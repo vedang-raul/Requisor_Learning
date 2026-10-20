@@ -24,7 +24,7 @@ import { PeoplePanel } from "@/components/admin/people-panel";
 import { UniversitiesPanel } from "@/components/admin/universities-panel";
 import { useUniversities } from "@/lib/branding-client";
 import { useSession } from "next-auth/react";
-import { Building2, UserCog } from "lucide-react";
+import { Building2, UserCog, UserRound } from "lucide-react";
 import { getCategoryCover, DEFAULT_COURSE_ICON } from "@/components/course/category-icon";
 import { CourseIconPicker } from "@/components/course/course-icon-picker";
 
@@ -111,7 +111,9 @@ export default function AdminPage() {
           <ShieldCheck className="h-5 w-5 text-primary" />
         </motion.div>
         <div>
-          <h1 className="text-2xl font-bold md:text-3xl">Admin <span className="text-gradient">Panel</span></h1>
+          <h1 className="text-2xl font-bold md:text-3xl">
+            {superAdmin ? "Super Admin" : "University Admin"} <span className="text-gradient">Panel</span>
+          </h1>
           <p className="mt-1 text-sm text-zinc-600">
             {superAdmin ? "Super admin: every university on Alma 41." : ownUniversity ? `Manage ${ownUniversity.name} on Alma 41.` : "Manage content, users and analytics for Alma 41."}
           </p>
@@ -401,6 +403,14 @@ function ContentManager() {
   const [contentError, setContentError] = useState<string | null>(null);
   const [aiDraft, setAiDraft] = useState<Course | null>(null);
   const course = aiDraft ?? state.courses.find((c) => c.slug === selected);
+  // Which tutor teaches each course, for the list and its filter.
+  const NO_TUTOR = "__none__";
+  const [tutorFilter, setTutorFilter] = useState("");
+  const tutorNames = [...new Set(state.courses.map((c) => c.tutorName).filter((n): n is string => Boolean(n)))].sort((a, b) => a.localeCompare(b));
+  const hasUnowned = state.courses.some((c) => !c.tutorName);
+  const listedCourses = tutorFilter === ""
+    ? state.courses
+    : state.courses.filter((c) => (tutorFilter === NO_TUTOR ? !c.tutorName : c.tutorName === tutorFilter));
   const reportFailure = (error: unknown) => setContentError(error instanceof Error ? error.message : "The catalog change couldn't be saved.");
 
   useEffect(() => {
@@ -443,8 +453,25 @@ function ContentManager() {
             </motion.div>
           </div>
         </div>
+        {(tutorNames.length > 0 || hasUnowned) && (
+          <label className="flex items-center gap-2 text-xs font-medium text-zinc-600">
+            <UserRound className="h-3.5 w-3.5 text-zinc-400" aria-hidden="true" />
+            <span className="sr-only">Filter courses by tutor</span>
+            <select
+              value={tutorFilter}
+              onChange={(e) => setTutorFilter(e.target.value)}
+              className="focus-ring h-8 flex-1 rounded-lg border border-zinc-200 bg-white px-2 text-xs text-zinc-800"
+            >
+              <option value="">All tutors ({state.courses.length} courses)</option>
+              {tutorNames.map((name) => (
+                <option key={name} value={name}>{name} ({state.courses.filter((c) => c.tutorName === name).length})</option>
+              ))}
+              {hasUnowned && <option value={NO_TUTOR}>No tutor ({state.courses.filter((c) => !c.tutorName).length})</option>}
+            </select>
+          </label>
+        )}
         <div className="space-y-2">
-          {state.courses.map((c, i) => {
+          {listedCourses.map((c, i) => {
             const active = selected === c.slug;
             return (
               <motion.button
@@ -462,7 +489,11 @@ function ContentManager() {
                 <motion.div whileHover={{ scale: 1.06 }} transition={springHover} className={cn("h-9 w-9 shrink-0 rounded-lg bg-gradient-to-br", c.cover)} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-zinc-900">{c.title}</p>
-                  <p className="text-[11px] text-zinc-500">{c.lessons.length} lessons</p>
+                  <p className="flex min-w-0 items-center gap-1 text-[11px] text-zinc-500">
+                    <span className="shrink-0">{c.lessons.length} lessons ·</span>
+                    <UserRound className="h-3 w-3 shrink-0" aria-hidden="true" />
+                    <span className={cn("truncate", !c.tutorName && "italic")}>{c.tutorName ?? "No tutor"}</span>
+                  </p>
                 </div>
                 {c.published === false && <Tag className="shrink-0 bg-amber-100 text-amber-700">Draft</Tag>}
               </motion.button>
@@ -484,6 +515,12 @@ function ContentManager() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <CardTitle>{course.title} — Lessons</CardTitle>
+                {!aiDraft && (
+                  <p className="mt-0.5 flex items-center gap-1 text-xs text-zinc-600">
+                    <UserRound className="h-3.5 w-3.5 text-zinc-400" aria-hidden="true" />
+                    {course.tutorName ? <>Tutor: <span className="font-medium text-zinc-800">{course.tutorName}</span></> : <span className="italic">No tutor assigned</span>}
+                  </p>
+                )}
                 <CardDescription className="text-xs">
                   {aiDraft ? "Review the generated lessons, then save the draft when it is ready." : "Paste a YouTube URL on any lesson; thumbnail, player and title wire up automatically."}
                 </CardDescription>
