@@ -22,7 +22,7 @@ type TestProvider = {
   id: string;
   authorize?: (...args: unknown[]) => Promise<{ id: string; email: string }>;
 };
-const keys = ["NODE_ENV", "TEST_LOGINS", "TUTOR_TEST_LOGIN", "VERCEL"];
+const keys = ["NODE_ENV", "TEST_LOGINS", "TUTOR_TEST_LOGIN", "VERCEL", "PUBLIC_TEST_LOGINS"];
 const original = Object.fromEntries(keys.map(key => [key, process.env[key]]));
 
 function providers(): TestProvider[] {
@@ -38,6 +38,7 @@ beforeEach(() => {
   delete process.env.TEST_LOGINS;
   delete process.env.TUTOR_TEST_LOGIN;
   delete process.env.VERCEL;
+  delete process.env.PUBLIC_TEST_LOGINS;
 });
 afterEach(() => {
   for (const key of keys) {

@@ -9,17 +9,17 @@ Public registration must not grant privileged tutor access merely because a user
 
 **How to apply:** Require a separately authenticated and authorized promotion path; re-check server-side permissions for sensitive actions. Imported test-login or verification-bypass features are not evidence that their use is approved for real students.
 
-The user explicitly approved public password-free access to the shared test-tutor account on 2026-10-13, after being warned that anyone can enter it and edit its courses. This approval does not extend to student or admin shortcuts.
+The user explicitly approved public password-free access to the shared test-tutor account on 2026-10-13, after being warned that anyone can enter it and edit its courses.
 
 **Why:** The user wants the tutor testing shortcut on the published website, independently of other test logins.
 
-**How to apply:** Keep that access restricted to the reserved synthetic tutor identity and separately configurable. Do not make arbitrary email addresses, user-selected roles, student accounts or admin accounts eligible for the password-free public shortcut. This exception does not change the approval requirements for ordinary tutor accounts.
+**How to apply:** Keep that access restricted to the reserved synthetic tutor identity and separately configurable. This exception does not change the approval requirements for ordinary tutor accounts.
 
-The user subsequently approved adding password-protected production test logins for student, university admin and super admin, after being told that admin access can change live data. This does not authorize password-free production admin or student access.
+On 2026-10-21 the user explicitly rejected password-protected testing and requested production password-free bypasses for all four roles, the same as development. They were warned that anyone can use the super-admin shortcut and change live data.
 
-**Why:** Testing all roles is needed on the published site without giving anonymous visitors administrative privileges or reusing real users' accounts.
+**Why:** The user deliberately wants public one-click testing of every role, not a password setup flow.
 
-**How to apply:** Keep protected test access independently switchable, require a strong secret, use reserved synthetic identities, and isolate university-level test accounts in a dedicated test university. Super-admin testing still has live platform-wide power; do not describe it as a sandbox.
+**How to apply:** Keep public test access explicitly opt-in and independently switchable. Use reserved synthetic identities, never an arbitrary supplied email or a real administrator account. Isolate university-level test accounts in a dedicated test university. Super-admin testing still has live platform-wide power; do not describe it as a sandbox or silently restore a password requirement.
 
 Do not automatically link Google identities to existing accounts by email alone.
 

@@ -252,10 +252,10 @@ ELEVENLABS_VOICES = """
 NEXTAUTH_URL = "https://learning.requisor.io"
 TEST_LOGINS = "off"
 TUTOR_TEST_LOGIN = "on"
-TEST_ACCOUNT_LOGINS = "on"
+PUBLIC_TEST_LOGINS = "on"
 
 [userenv.development]
-TEST_ACCOUNT_LOGINS = "on"
+PUBLIC_TEST_LOGINS = "on"
 
 [postMerge]
 path = "scripts/post-merge.sh"

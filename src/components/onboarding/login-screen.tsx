@@ -18,7 +18,7 @@ import { PasswordStrength } from "@/components/ui/password-strength";
 import { cn } from "@/lib/utils";
 import { checkJobTitle, JOB_TITLE_HINT, JOB_TITLE_MAX_LENGTH, stripJobTitle } from "@/lib/auth/job-title";
 import { trackEvent } from "@/lib/analytics";
-import { ProtectedTestLogins } from "@/components/auth/protected-test-logins";
+import { TestLogins } from "@/components/auth/test-logins";
 
 type Mode = "login" | "signup" | "forgot";
 
@@ -72,7 +72,7 @@ export function LoginScreen() {
     let cancelled = false;
     fetch("/api/auth/providers")
       .then((r) => (r.ok ? r.json() : null))
-      .then((providers: Record<string, unknown> | null) => { if (!cancelled) setTestLogins(Boolean(providers && providers["dev-student"] && providers["dev-tutor"])); })
+      .then((providers: Record<string, unknown> | null) => { if (!cancelled) setTestLogins(Boolean(providers && providers["dev-student"] && providers["dev-tutor"] && !providers["public-test-accounts"])); })
       .catch(() => undefined);
     return () => { cancelled = true; };
   }, []);
@@ -539,7 +539,7 @@ export function LoginScreen() {
           </>
         )}
 
-        {mode === "login" && <ProtectedTestLogins disabled={loading} />}
+        {mode === "login" && <TestLogins disabled={loading} />}
         {/* Cloudflare Turnstile — invisible bot-protection widget.
             Rendered as a visually hidden element; the widget auto-executes on
             mount and resolves silently for legitimate users.  After each form

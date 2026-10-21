@@ -9,7 +9,7 @@ import { skipEmailVerification } from "../server/email";
 import { sendWelcomeEmail } from "../server/email";
 import {
   TEST_ACCOUNT_PROVIDER, TEST_ACCOUNTS, isTestAccountKind, testAccountsEnabled,
-  testAccountPasswordMatches, testAccountVersion, testAccountAccess,
+  testAccountAccess,
 } from "./test-accounts";
 
 const GOOGLE_SIGNIN_FAILED_ERROR = "/?error=GoogleSignInFailed";
@@ -55,6 +55,7 @@ export function testLoginsEnabled(): boolean {
 
 /** Independent opt-in for the shared test tutor; never enables learner/admin bypasses. */
 export function tutorTestLoginEnabled(): boolean {
+  if (testAccountsEnabled()) return true;
   const setting = (process.env.TUTOR_TEST_LOGIN ?? "").toLowerCase();
   if (setting === "on") return true;
   if (setting === "off") return false;
@@ -90,13 +91,12 @@ export const authOptions: NextAuthOptions = {
     ...(testAccountsEnabled() ? [
       CredentialsProvider({
         id: TEST_ACCOUNT_PROVIDER,
-        name: "Password-protected test accounts",
+        name: "Public test accounts",
         credentials: {
           kind: { label: "Test account", type: "text" },
-          password: { label: "Test password", type: "password" },
         },
         async authorize(credentials) {
-          if (!isTestAccountKind(credentials?.kind) || !testAccountPasswordMatches(credentials?.password)) return null;
+          if (!testAccountsEnabled() || !isTestAccountKind(credentials?.kind)) return null;
           const account = TEST_ACCOUNTS[credentials.kind];
           try {
             // These reserved synthetic identities never reuse a real person's account.
@@ -349,11 +349,10 @@ export const authOptions: NextAuthOptions = {
     },
     async jwt({ token, user, account, trigger, session }) {
       if (user) {
-        token.protectedTestAccount = account?.provider === TEST_ACCOUNT_PROVIDER;
-        token.testAccountVersion = token.protectedTestAccount ? testAccountVersion() : undefined;
+        token.publicTestAccount = account?.provider === TEST_ACCOUNT_PROVIDER;
       }
-      // Fail closed on every session read when test access is disabled or its password changes.
-      if (token.protectedTestAccount && (!testAccountsEnabled() || token.testAccountVersion !== testAccountVersion())) {
+      // Removing the explicit public-test opt-in also revokes these sessions.
+      if (token.publicTestAccount && !testAccountsEnabled()) {
         return { ...token, uid: "", role: "employee", superAdmin: false, universityId: null, pending: false, exp: 0 };
       }
       // Live profile update — client called useSession().update({ name })
@@ -378,7 +377,7 @@ export const authOptions: NextAuthOptions = {
         );
         token.uid = rows[0] ? String(rows[0].id) : undefined;
         // The super admin list decides super admins; a university admin must belong to a university.
-        const access = token.protectedTestAccount
+        const access = token.publicTestAccount
           ? testAccountAccess(email, rows[0])
           : accessFor(email, rows[0]);
         if (!access) return { ...token, uid: "", role: "employee", superAdmin: false, universityId: null, pending: false, exp: 0 };

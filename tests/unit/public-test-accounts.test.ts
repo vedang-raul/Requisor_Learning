@@ -8,22 +8,16 @@ jest.mock("next-auth/providers/credentials", () => ({
   __esModule: true, default: (options: Record<string, unknown>) => ({ id: "credentials", ...options }),
 }));
 import { authOptions } from "@/lib/auth/auth";
-import { TEST_ACCOUNT_PROVIDER, TEST_ACCOUNTS, testAccountsEnabled, testAccountPasswordMatches, testAccountAccess } from "@/lib/auth/test-accounts";
+import { TEST_ACCOUNT_PROVIDER, TEST_ACCOUNTS, testAccountsEnabled, testAccountAccess } from "@/lib/auth/test-accounts";
 
-// Test fixture only: never used to configure a running application.
-const fixturePassword = "unit-test-password-only-748239";
-const originalPassword = process.env.TEST_ACCOUNT_PASSWORD;
-const originalSwitch = process.env.TEST_ACCOUNT_LOGINS;
+const originalSwitch = process.env.PUBLIC_TEST_LOGINS;
 beforeEach(() => {
-  process.env.TEST_ACCOUNT_LOGINS = "on";
-  process.env.TEST_ACCOUNT_PASSWORD = fixturePassword;
+  process.env.PUBLIC_TEST_LOGINS = "on";
   mockQuery.mockReset();
 });
 afterAll(() => {
-  if (originalPassword === undefined) delete process.env.TEST_ACCOUNT_PASSWORD;
-  else process.env.TEST_ACCOUNT_PASSWORD = originalPassword;
-  if (originalSwitch === undefined) delete process.env.TEST_ACCOUNT_LOGINS;
-  else process.env.TEST_ACCOUNT_LOGINS = originalSwitch;
+  if (originalSwitch === undefined) delete process.env.PUBLIC_TEST_LOGINS;
+  else process.env.PUBLIC_TEST_LOGINS = originalSwitch;
 });
 function provider() {
   let found: { authorize: (credentials: Record<string, unknown>) => Promise<unknown> } | undefined;
@@ -36,58 +30,51 @@ async function jwt(args: Record<string, unknown>) {
   return (authOptions.callbacks!.jwt as Function)(args);
 }
 
-it("is off unless explicitly enabled with a sufficiently long password", () => {
-  delete process.env.TEST_ACCOUNT_LOGINS;
-  expect(testAccountsEnabled()).toBe(false);
-  expect(provider()).toBeUndefined();
-  process.env.TEST_ACCOUNT_LOGINS = "on";
-  delete process.env.TEST_ACCOUNT_PASSWORD;
-  expect(testAccountsEnabled()).toBe(false);
-  expect(provider()).toBeUndefined();
-  process.env.TEST_ACCOUNT_PASSWORD = "short";
-  expect(testAccountsEnabled()).toBe(false);
-  expect(provider()).toBeUndefined();
-});
-it("rejects missing, malformed, wrong and oversized passwords", () => {
-  for (const value of [undefined, null, 42, {}, "", "wrong-password-123456", "a".repeat(257)]) {
-    expect(testAccountPasswordMatches(value)).toBe(false);
+it("requires an explicit on switch and no password or secret", () => {
+  expect(testAccountsEnabled()).toBe(true);
+  expect(provider()).toBeDefined();
+  for (const value of [undefined, "off", "true", ""]) {
+    if (value === undefined) delete process.env.PUBLIC_TEST_LOGINS;
+    else process.env.PUBLIC_TEST_LOGINS = value;
+    expect(testAccountsEnabled()).toBe(false);
+    expect(provider()).toBeUndefined();
   }
-  expect(testAccountPasswordMatches(fixturePassword)).toBe(true);
 });
-it("rejects invalid roles and wrong passwords before touching the database", async () => {
+it("rejects malformed account kinds before touching the database", async () => {
   const p = provider()!;
-  for (const kind of ["admin", "__proto__", "constructor", "super-admin"]) {
-    expect(await p.authorize({ kind, password: "wrong-password-123456" })).toBeNull();
+  for (const kind of ["admin", "__proto__", "constructor", undefined, null, {}, 1]) {
+    expect(await p.authorize({ kind })).toBeNull();
   }
-  expect(await p.authorize({ kind: "constructor", password: fixturePassword })).toBeNull();
   expect(mockQuery).not.toHaveBeenCalled();
 });
 it.each(["student", "university-admin", "super-admin"] as const)(
-  "uses only a reserved synthetic identity for %s, ignoring supplied emails or roles", async kind => {
+  "signs in as the reserved %s without a password, ignoring arbitrary identities", async kind => {
     const a = TEST_ACCOUNTS[kind];
     mockQuery.mockResolvedValue({ rows: [{ id: 101, email: a.email, name: a.name }] });
-    expect(await provider()!.authorize({ kind, password: fixturePassword, email: "real-user@example.com", role: "admin" }))
+    expect(await provider()!.authorize({ kind, email: "real-user@example.com", role: "admin" }))
       .toMatchObject({ id: "101", email: a.email });
     expect(mockQuery.mock.calls[0][1]).toEqual([a.email, a.name, a.role, kind !== "super-admin"]);
     expect(mockQuery.mock.calls[0][0]).toContain("Requisor Test University");
+    expect(mockQuery.mock.calls[0][0]).toContain("password_hash = NULL");
   }
 );
 it("returns a generic failed login on database failure", async () => {
   mockQuery.mockRejectedValue(new Error("private database detail"));
   const log = jest.spyOn(console, "error").mockImplementation(() => {});
-  expect(await provider()!.authorize({ kind: "student", password: fixturePassword })).toBeNull();
+  expect(await provider()!.authorize({ kind: "student" })).toBeNull();
   expect(log).toHaveBeenCalledWith(JSON.stringify({ event: "test_account_login", outcome: "unavailable" }));
   log.mockRestore();
 });
-it("limits the test university admin and student to their active university", () => {
+it("scopes university admin and student access to their active university", () => {
   const row = { role: "admin", university_id: 99, university_status: "active" };
   expect(testAccountAccess(TEST_ACCOUNTS["university-admin"].email, row))
     .toEqual({ role: "admin", superAdmin: false, universityId: 99, pending: false });
-  expect(testAccountAccess(TEST_ACCOUNTS.student.email, { ...row, role: "employee" })?.superAdmin).toBe(false);
+  expect(testAccountAccess(TEST_ACCOUNTS.student.email, { ...row, role: "employee" }))
+    .toEqual({ role: "employee", superAdmin: false, universityId: 99, pending: false });
   expect(testAccountAccess(TEST_ACCOUNTS["university-admin"].email, { ...row, university_status: "pending" })).toBeNull();
   expect(testAccountAccess("real-user@example.com", row)).toBeNull();
 });
-it("issues super-admin access only for a session from the password-protected provider", async () => {
+it("grants test super-admin access only to sessions issued by the dedicated test provider", async () => {
   const email = TEST_ACCOUNTS["super-admin"].email;
   mockQuery.mockResolvedValue({ rows: [{ id: 101, email, name: "Test", role: "admin", university_id: null, university_status: null }] });
   const privileged = await jwt({ token: { email }, user: { email }, account: { provider: TEST_ACCOUNT_PROVIDER } });
@@ -96,19 +83,16 @@ it("issues super-admin access only for a session from the password-protected pro
   const ordinary = await jwt({ token: { email }, user: { email }, account: { provider: "credentials" } });
   expect(ordinary.superAdmin).toBe(false);
 });
-it("revokes test sessions after the password changes or the switch is disabled", async () => {
+it("revokes a test session on session refresh after the switch is disabled", async () => {
   const email = TEST_ACCOUNTS["super-admin"].email;
   mockQuery.mockResolvedValue({ rows: [{ id: 101, email, role: "admin", university_id: null, university_status: null }] });
   const issued = await jwt({ token: { email }, user: { email }, account: { provider: TEST_ACCOUNT_PROVIDER } });
-  process.env.TEST_ACCOUNT_PASSWORD = "different-test-fixture-password";
+  process.env.PUBLIC_TEST_LOGINS = "off";
   expect(await jwt({ token: issued })).toMatchObject({ uid: "", role: "employee", superAdmin: false, exp: 0 });
-  process.env.TEST_ACCOUNT_PASSWORD = fixturePassword;
-  process.env.TEST_ACCOUNT_LOGINS = "off";
-  expect(await jwt({ token: issued })).toMatchObject({ uid: "", superAdmin: false });
 });
-it("rejects authorization if the switch is disabled after a provider was registered", async () => {
+it("checks the switch again on every authorization, not just registration", async () => {
   const p = provider()!;
-  process.env.TEST_ACCOUNT_LOGINS = "off";
-  expect(await p.authorize({ kind: "super-admin", password: fixturePassword })).toBeNull();
+  process.env.PUBLIC_TEST_LOGINS = "off";
+  expect(await p.authorize({ kind: "super-admin" })).toBeNull();
   expect(mockQuery).not.toHaveBeenCalled();
 });

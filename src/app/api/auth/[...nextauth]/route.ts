@@ -78,8 +78,8 @@ export async function POST(
     }
   }
 
-  const isProtectedTestLogin = /\/callback\/protected-test-accounts\/?$/.test(url.pathname);
-  if (url.pathname.includes("/callback/credentials") || isProtectedTestLogin) {
+  const isPublicTestLogin = /\/callback\/public-test-accounts\/?$/.test(url.pathname);
+  if (url.pathname.includes("/callback/credentials") || isPublicTestLogin) {
     // ── Rate limit ────────────────────────────────────────────────────────
     const ip = clientIp(req);
     const { limited, retryAfterMs } = loginLimiter.check(ip);
@@ -89,9 +89,8 @@ export async function POST(
     // Clone the request so the body stream is preserved for NextAuth.
     // NextAuth sends credentials as URL-encoded form data; extra fields
     // passed to signIn() (like turnstileToken) are included in that body.
-    // The protected test provider uses the same IP throttle and NextAuth CSRF checks.
-    // It never authenticates without the separately configured test password.
-    if (isProtectedTestLogin) return handler(req, ctx) as Promise<Response>;
+    // The explicitly enabled public demo uses the same throttle and NextAuth CSRF checks.
+    if (isPublicTestLogin) return handler(req, ctx) as Promise<Response>;
     const bodyText = await req.clone().text();
     const params = new URLSearchParams(bodyText);
     const captchaToken = params.get("turnstileToken") ?? null;

@@ -201,11 +201,11 @@ describe("POST /api/auth/callback/credentials — IP rate limiting", () => {
 
 // ── Non-credentials NextAuth paths are not rate-limited ──────────────────────
 
-describe("password-protected test account callbacks", () => {
+describe("public test account callbacks", () => {
   it("blocks test-account brute-force attempts before authentication", async () => {
     mockCheck.mockReturnValue({ limited: true, retryAfterMs: 60_000 });
-    const req = new Request("http://localhost/api/auth/callback/protected-test-accounts/", { method: "POST" });
-    const res = await authPost(req, { params: Promise.resolve({ nextauth: ["callback", "protected-test-accounts"] }) });
+    const req = new Request("http://localhost/api/auth/callback/public-test-accounts/", { method: "POST" });
+    const res = await authPost(req, { params: Promise.resolve({ nextauth: ["callback", "public-test-accounts"] }) });
     expect(res.status).toBe(429);
     expect(res.headers.get("Retry-After")).toBe("900");
     expect(mockNextAuthHandler).not.toHaveBeenCalled();
