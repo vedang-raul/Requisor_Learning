@@ -18,6 +18,7 @@ import { PasswordStrength } from "@/components/ui/password-strength";
 import { cn } from "@/lib/utils";
 import { checkJobTitle, JOB_TITLE_HINT, JOB_TITLE_MAX_LENGTH, stripJobTitle } from "@/lib/auth/job-title";
 import { trackEvent } from "@/lib/analytics";
+import { ProtectedTestLogins } from "@/components/auth/protected-test-logins";
 
 type Mode = "login" | "signup" | "forgot";
 
@@ -538,6 +539,7 @@ export function LoginScreen() {
           </>
         )}
 
+        {mode === "login" && <ProtectedTestLogins disabled={loading} />}
         {/* Cloudflare Turnstile — invisible bot-protection widget.
             Rendered as a visually hidden element; the widget auto-executes on
             mount and resolves silently for legitimate users.  After each form

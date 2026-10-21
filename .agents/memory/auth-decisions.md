@@ -13,7 +13,13 @@ The user explicitly approved public password-free access to the shared test-tuto
 
 **Why:** The user wants the tutor testing shortcut on the published website, independently of other test logins.
 
-**How to apply:** Keep that access restricted to the reserved synthetic tutor identity and separately configurable. Do not make arbitrary email addresses, user-selected roles, student accounts or admin accounts eligible for the public shortcut. This exception does not change the approval requirements for ordinary tutor accounts.
+**How to apply:** Keep that access restricted to the reserved synthetic tutor identity and separately configurable. Do not make arbitrary email addresses, user-selected roles, student accounts or admin accounts eligible for the password-free public shortcut. This exception does not change the approval requirements for ordinary tutor accounts.
+
+The user subsequently approved adding password-protected production test logins for student, university admin and super admin, after being told that admin access can change live data. This does not authorize password-free production admin or student access.
+
+**Why:** Testing all roles is needed on the published site without giving anonymous visitors administrative privileges or reusing real users' accounts.
+
+**How to apply:** Keep protected test access independently switchable, require a strong secret, use reserved synthetic identities, and isolate university-level test accounts in a dedicated test university. Super-admin testing still has live platform-wide power; do not describe it as a sandbox.
 
 Do not automatically link Google identities to existing accounts by email alone.
 

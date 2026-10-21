@@ -7,6 +7,10 @@ import { db, roleForEmail, ADMIN_EMAIL, type DbUser } from "../server/db";
 import { accessFor, type MembershipRow } from "./roles";
 import { skipEmailVerification } from "../server/email";
 import { sendWelcomeEmail } from "../server/email";
+import {
+  TEST_ACCOUNT_PROVIDER, TEST_ACCOUNTS, isTestAccountKind, testAccountsEnabled,
+  testAccountPasswordMatches, testAccountVersion, testAccountAccess,
+} from "./test-accounts";
 
 const GOOGLE_SIGNIN_FAILED_ERROR = "/?error=GoogleSignInFailed";
 /** How often a signed-in person's role and university are read again from the database. */
@@ -83,6 +87,48 @@ export const authOptions: NextAuthOptions = {
   },
   pages: { signIn: "/", error: "/" },
   providers: [
+    ...(testAccountsEnabled() ? [
+      CredentialsProvider({
+        id: TEST_ACCOUNT_PROVIDER,
+        name: "Password-protected test accounts",
+        credentials: {
+          kind: { label: "Test account", type: "text" },
+          password: { label: "Test password", type: "password" },
+        },
+        async authorize(credentials) {
+          if (!isTestAccountKind(credentials?.kind) || !testAccountPasswordMatches(credentials?.password)) return null;
+          const account = TEST_ACCOUNTS[credentials.kind];
+          try {
+            // These reserved synthetic identities never reuse a real person's account.
+            // University-level testing is isolated from real universities by default.
+            const { rows } = await db.query<DbUser>(
+              `WITH test_university AS (
+                 INSERT INTO universities (name, short_name, email_domains)
+                 SELECT 'Requisor Test University', 'TEST', '{}'::text[] WHERE $4::boolean
+                 ON CONFLICT (lower(name)) DO UPDATE SET name = EXCLUDED.name
+                 RETURNING id
+               )
+               INSERT INTO users (email, name, email_verified, role, university_id, university_status, onboarding_done)
+               VALUES ($1, $2, TRUE, $3, (SELECT id FROM test_university),
+                 CASE WHEN $4::boolean THEN 'active' END, TRUE)
+               ON CONFLICT (email) DO UPDATE SET
+                 name = EXCLUDED.name, email_verified = TRUE, role = EXCLUDED.role,
+                 university_id = EXCLUDED.university_id, university_status = EXCLUDED.university_status,
+                 onboarding_done = TRUE, password_hash = NULL
+               RETURNING *`,
+              [account.email, account.name, account.role, credentials.kind !== "super-admin"]
+            );
+            const user = rows[0];
+            if (!user) return null;
+            console.info(JSON.stringify({ event: "test_account_login", kind: credentials.kind, outcome: "success" }));
+            return { id: String(user.id), email: user.email, name: user.name };
+          } catch {
+            console.error(JSON.stringify({ event: "test_account_login", outcome: "unavailable" }));
+            return null;
+          }
+        },
+      }),
+    ] : []),
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
@@ -301,7 +347,15 @@ export const authOptions: NextAuthOptions = {
       sendWelcomeEmail(profileEmail, name).catch(() => console.error("Welcome email failed."));
       return true;
     },
-    async jwt({ token, user, trigger, session }) {
+    async jwt({ token, user, account, trigger, session }) {
+      if (user) {
+        token.protectedTestAccount = account?.provider === TEST_ACCOUNT_PROVIDER;
+        token.testAccountVersion = token.protectedTestAccount ? testAccountVersion() : undefined;
+      }
+      // Fail closed on every session read when test access is disabled or its password changes.
+      if (token.protectedTestAccount && (!testAccountsEnabled() || token.testAccountVersion !== testAccountVersion())) {
+        return { ...token, uid: "", role: "employee", superAdmin: false, universityId: null, pending: false, exp: 0 };
+      }
       // Live profile update — client called useSession().update({ name })
       if (trigger === "update" && (session as { name?: string })?.name) {
         token.name = (session as { name: string }).name;
@@ -324,7 +378,10 @@ export const authOptions: NextAuthOptions = {
         );
         token.uid = rows[0] ? String(rows[0].id) : undefined;
         // The super admin list decides super admins; a university admin must belong to a university.
-        const access = accessFor(email, rows[0]);
+        const access = token.protectedTestAccount
+          ? testAccountAccess(email, rows[0])
+          : accessFor(email, rows[0]);
+        if (!access) return { ...token, uid: "", role: "employee", superAdmin: false, universityId: null, pending: false, exp: 0 };
         token.role = access.role;
         token.superAdmin = access.superAdmin;
         token.universityId = access.universityId;
