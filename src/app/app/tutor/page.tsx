@@ -202,6 +202,18 @@ export default function TutorPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Course | null>(null);
+  // Picking a course from the list brings its editor into view (and focus, for keyboard and screen-reader users).
+  const editorRef = useRef<HTMLDivElement>(null);
+  const scrollToEditorRef = useRef(false);
+  useEffect(() => {
+    if (!selected || !scrollToEditorRef.current) return;
+    scrollToEditorRef.current = false;
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.classList.contains("a11y-reduce-motion");
+    requestAnimationFrame(() => {
+      editorRef.current?.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "start" });
+      editorRef.current?.focus({ preventScroll: true });
+    });
+  }, [selected]);
   const [creating, setCreating] = useState(false);
   const [aiDraft, setAiDraft] = useState(false);
   const [aiDraftVersion, setAiDraftVersion] = useState(0);
@@ -391,8 +403,8 @@ export default function TutorPage() {
               {creating && <CourseForm saving={saving} onCancel={() => setCreating(false)} onSave={saveCourse} />}
               {loading ? <Card className="flex items-center gap-2 py-10 text-sm text-zinc-600"><Loader2 className="h-5 w-5 animate-spin" /> Loading your courses…</Card> :
                 items.length === 0 ? <EmptyCoursesState /> :
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{items.map((item) => <button key={item.course.slug} onClick={() => { setCreating(false); setAiDraft(false); setSelected(item.course); }} className="focus-ring group min-h-32 rounded-2xl text-left"><Card className="relative h-full transition hover:border-primary/40"><span className="absolute right-3 top-3 flex items-center gap-1 rounded-full border border-transparent px-2 py-1 text-[11px] font-medium text-zinc-400 opacity-0 transition group-hover:border-primary/30 group-hover:bg-primary/10 group-hover:text-primary group-hover:opacity-100"><Pencil className="h-3 w-3" aria-hidden="true" />Edit</span><TutorCourseHeading course={item.course} /><p className="mt-3 text-xs text-zinc-600">{item.course.lessons.length} lesson{item.course.lessons.length === 1 ? "" : "s"} · <span className="inline-flex items-center gap-1"><Star className="h-3 w-3 fill-amber-400 text-amber-400" aria-hidden="true" />{item.averageRating.toFixed(1)} ({item.ratingCount})</span></p><div className="mt-3 flex gap-1" aria-hidden="true">{[5,4,3,2,1].map((rating) => <span key={rating} title={`${rating} stars: ${distributionCount(item.ratingDistribution, rating)}`} className="h-1 flex-1 rounded bg-primary/20" style={{ opacity: item.ratingCount ? Math.max(.2, distributionCount(item.ratingDistribution, rating) / item.ratingCount) : .2 }} />)}</div><span className="sr-only">{[5,4,3,2,1].map((rating) => `${rating} stars: ${distributionCount(item.ratingDistribution, rating)}`).join(", ")}</span></Card></button>)}</div>}
-              {selected && <>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{items.map((item) => <button key={item.course.slug} onClick={() => { setCreating(false); setAiDraft(false); setSelected(item.course); scrollToEditorRef.current = true; }} aria-label={`Edit ${item.course.title}`} className="focus-ring group min-h-32 rounded-2xl text-left"><Card className="relative h-full transition hover:border-primary/40"><span className="absolute right-3 top-3 flex items-center gap-1 rounded-full border border-transparent px-2 py-1 text-[11px] font-medium text-zinc-400 opacity-0 transition group-hover:border-primary/30 group-hover:bg-primary/10 group-hover:text-primary group-hover:opacity-100"><Pencil className="h-3 w-3" aria-hidden="true" />Edit</span><TutorCourseHeading course={item.course} /><p className="mt-3 text-xs text-zinc-600">{item.course.lessons.length} lesson{item.course.lessons.length === 1 ? "" : "s"} · <span className="inline-flex items-center gap-1"><Star className="h-3 w-3 fill-amber-400 text-amber-400" aria-hidden="true" />{item.averageRating.toFixed(1)} ({item.ratingCount})</span></p><div className="mt-3 flex gap-1" aria-hidden="true">{[5,4,3,2,1].map((rating) => <span key={rating} title={`${rating} stars: ${distributionCount(item.ratingDistribution, rating)}`} className="h-1 flex-1 rounded bg-primary/20" style={{ opacity: item.ratingCount ? Math.max(.2, distributionCount(item.ratingDistribution, rating) / item.ratingCount) : .2 }} />)}</div><span className="sr-only">{[5,4,3,2,1].map((rating) => `${rating} stars: ${distributionCount(item.ratingDistribution, rating)}`).join(", ")}</span></Card></button>)}</div>}
+              {selected && <div ref={editorRef} tabIndex={-1} aria-label={`Editing ${selected.title}`} className="scroll-mt-24 space-y-4 outline-none">
                 {aiDraft && <div role="status" className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-sm text-violet-900"><strong>AI-generated draft:</strong> Review every field and lesson below. It is unpublished and has not been saved yet.</div>}
                 {!aiDraft && (
                   <CourseVisibilityBanner
@@ -423,7 +435,7 @@ export default function TutorPage() {
                   onDeleteLesson={aiDraft ? async (lesson) => { setSelected((current) => current ? { ...current, lessons: current.lessons.filter((item) => item.id !== lesson.id) } : current); return true; } : (lesson) => updateLessons(lesson, true)}
                   onDeleteCourse={aiDraft ? undefined : async () => { if (!confirm(`Delete "${selected.title}"?`)) return; setSaving(true); try { await deleteCourse(selected.slug); setSelected(null); await load(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Couldn't delete the course."); } finally { setSaving(false); } }}
                 />
-              </>}
+              </div>}
             </div>
           )}
           {tab === "learners" && <LearnersPanel />}
