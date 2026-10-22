@@ -14,7 +14,7 @@ const MAX_PAGE_SIZE = 100;
 
 // ── Per-user rate limiter ─────────────────────────────────────────────────────
 // 20 comment POSTs per user per minute; each triggers an AI moderation call.
-const commentLimiter = createRateLimiter(20, 60_000);
+const commentLimiter = createRateLimiter(20, 60_000, "ai:comments");
 
 // ── AI moderation ─────────────────────────────────────────────────────────────
 
@@ -54,8 +54,8 @@ async function moderateComment(
     // comment submissions cannot bypass the global xAI concurrency limit.
     // SemaphoreFullError is caught below and treated as a pass (fail-open) so
     // legitimate comments are never blocked because the system is busy.
-    const res = await withAiConcurrency(() =>
-      fetch("https://api.x.ai/v1/chat/completions", {
+    const data = await withAiConcurrency(async (slotSignal) => {
+      const res = await fetch("https://api.x.ai/v1/chat/completions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -84,13 +84,16 @@ async function moderateComment(
             },
           ],
         }),
-        signal: controller.signal,
-      }).finally(() => clearTimeout(timeout))
-    );
-
-    if (!res.ok) return { relevant: true, reason: "" };
-
-    const data = await res.json() as { choices?: { message?: { content?: string } }[] };
+        signal: slotSignal ? AbortSignal.any([controller.signal, slotSignal]) : controller.signal,
+      });
+      if (!res.ok) {
+        await res.body?.cancel().catch(() => undefined);
+        return null;
+      }
+      // Keep both the slot and deadline until the response body is consumed.
+      return await res.json() as { choices?: { message?: { content?: string } }[] };
+    }).finally(() => clearTimeout(timeout));
+    if (!data) return { relevant: true, reason: "" };
     const raw = data.choices?.[0]?.message?.content?.trim() ?? "{}";
 
     // Strip markdown code fences if model wraps the JSON
@@ -159,7 +162,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Per-user rate limit — each comment POST triggers an AI moderation call
-  const { limited, retryAfterMs } = commentLimiter.check(session.user.email);
+  const { limited, retryAfterMs } = await commentLimiter.check(session.user.email);
   if (limited) {
     return rateLimitResponse(retryAfterMs, { json: true }) as NextResponse;
   }

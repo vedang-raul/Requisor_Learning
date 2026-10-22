@@ -18,7 +18,7 @@ import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/
 const BASE_URL = "https://api.x.ai/v1";
 const MODEL = process.env.XAI_MODEL || "grok-3-mini";
 const MAX_REQUEST_BYTES = 48 * 1024;
-const lessonAiLimiter = createRateLimiter(15, 60_000);
+const lessonAiLimiter = createRateLimiter(15, 60_000, "ai:tutor:lesson");
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
@@ -43,7 +43,7 @@ export async function POST(req: Request) {
 
   const apiKey = process.env.XAI_API_KEY;
   if (!apiKey) return Response.json({ error: "AI writing isn't set up on this server." }, { status: 503 });
-  const { limited, retryAfterMs } = lessonAiLimiter.check(String(session.user.id));
+  const { limited, retryAfterMs } = await lessonAiLimiter.check(String(session.user.id));
   if (limited) return rateLimitResponse(retryAfterMs, { json: true });
 
   try {

@@ -65,4 +65,40 @@ describe("profile onboarding preferences", () => {
       preferredLanguage: "hi",
     });
   });
+
+  it.each([
+    { onboardingDone: true, qualification: "q".repeat(301) },
+    { onboardingDone: true, learningGoal: "g".repeat(1001) },
+    { name: "Learner", qualification: "q".repeat(301) },
+    { name: "Learner", learningGoal: "g".repeat(1001) },
+    { onboardingDone: true, learningGoal: 42 },
+    { onboardingDone: true, qualification: { text: "invalid" } },
+    { onboardingDone: true, learningGoal: " ".repeat(1001) },
+    null, [], "not an object",
+  ])("rejects invalid or oversized profile fields before any write: %j", async (body) => {
+    const response = await PATCH(profileRequest(body));
+    expect(response.status).toBe(400);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("accepts both fields at their exact character limits", async () => {
+    mockQuery.mockResolvedValue({ rows: [{ email: "learner@example.com" }] });
+    const response = await PATCH(profileRequest({
+      onboardingDone: true, qualification: "q".repeat(300), learningGoal: "g".repeat(1000),
+    }));
+    expect(response.status).toBe(200);
+    expect(mockQuery.mock.calls[0][1].slice(0, 2)).toEqual(["q".repeat(300), "g".repeat(1000)]);
+  });
+
+  it("rejects excessive bytes in ignored fields even without Content-Length", async () => {
+    const response = await PATCH(profileRequest({ onboardingDone: true, ignored: "x".repeat(17 * 1024) }));
+    expect(response.status).toBe(413);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed JSON", async () => {
+    const response = await PATCH(new Request("http://localhost/api/profile", { method: "PATCH", body: "{" }));
+    expect(response.status).toBe(400);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
 });

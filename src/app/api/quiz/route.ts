@@ -27,7 +27,7 @@ const MAX_QUIZ_REQUEST_BYTES = 1024;
 const QUIZ_QUESTION_COUNT = 3;
 
 // Quiz generation is more expensive than chat — 10 new quizzes per minute.
-const quizLimiter = createRateLimiter(10, 60_000);
+const quizLimiter = createRateLimiter(10, 60_000, "ai:quiz");
 
 type LearnerRow = Pick<DbUser, "id" | "date_of_birth" | "qualification" | "learning_goal">;
 
@@ -127,7 +127,7 @@ export async function POST(req: Request) {
   const user = userRows[0];
   if (!user) return Response.json({ error: "Profile not found." }, { status: 404 });
 
-  const { limited, retryAfterMs } = quizLimiter.check(String(user.id));
+  const { limited, retryAfterMs } = await quizLimiter.check(String(user.id));
   if (limited) return rateLimitResponse(retryAfterMs, { json: true });
 
   const apiKey = process.env.XAI_API_KEY;

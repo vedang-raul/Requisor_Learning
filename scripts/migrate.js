@@ -78,6 +78,17 @@ p.query(`
   -- safe to re-run.
   ALTER TABLE users ALTER COLUMN employment_type TYPE TEXT;
 
+  -- Shared AI request quotas survive worker restarts and autoscaling.
+  CREATE TABLE IF NOT EXISTS ai_rate_limits (
+    scope TEXT NOT NULL,
+    account_key TEXT NOT NULL,
+    count INTEGER NOT NULL CHECK (count > 0),
+    reset_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (scope, account_key)
+  );
+  CREATE INDEX IF NOT EXISTS ai_rate_limits_reset_at_idx ON ai_rate_limits (reset_at);
+
+
   DO $$
   BEGIN
     IF EXISTS (

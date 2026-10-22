@@ -1,5 +1,4 @@
 export const runtime = "nodejs";
-
 import { getServerSession } from "next-auth/next";
 import { xaiFetch } from "@/lib/ai/usage";
 import { authOptions } from "@/lib/auth/auth";
@@ -12,7 +11,8 @@ import { ensureCourseCatalog } from "@/lib/courses/course-catalog";
 
 // ── Per-user rate limiter ─────────────────────────────────────────────────────
 // Capstone assessment is the most expensive AI call — 5 per user per minute.
-const assessmentLimiter = createRateLimiter(5, 60_000);
+import { buildLearnerPersonaLine } from "@/lib/ai/personalized-learning";
+const assessmentLimiter = createRateLimiter(5, 60_000, "ai:course-assessment");
 const completionLimiter = createRateLimiter(30, 60_000);
 const MAX_BODY_BYTES = 2048;
 // Includes tutor-authored courses without permitting unbounded per-user rows.
@@ -120,16 +120,6 @@ export async function PATCH(req: Request) {
     client.release();
   }
 }
-
-function buildPersonaLine(qualification: string | null, learningGoal: string | null, ageYears: number | null): string {
-  const parts: string[] = [];
-  if (qualification) parts.push(`background: ${qualification}`);
-  if (ageYears) parts.push(`age: ${ageYears} years old`);
-  if (learningGoal) parts.push(`learning goal: ${learningGoal}`);
-  if (!parts.length) return "";
-  return `The learner has the following profile — ${parts.join(", ")}.`;
-}
-
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
@@ -137,7 +127,7 @@ export async function POST(req: Request) {
   }
 
   // Per-user rate limit — capstone assessment is the most expensive AI call
-  const { limited, retryAfterMs } = assessmentLimiter.check(session.user.email);
+  const { limited, retryAfterMs } = await assessmentLimiter.check(session.user.email);
   if (limited) {
     return rateLimitResponse(retryAfterMs, { json: true });
   }
@@ -169,13 +159,16 @@ export async function POST(req: Request) {
 
   // Load profile from DB — never trust caller-supplied profile values
   const { rows } = await db.query<DbUser>(
-    "SELECT date_of_birth, qualification, learning_goal FROM users WHERE email = $1",
+    "SELECT date_of_birth, LEFT(qualification, 300) AS qualification, LEFT(learning_goal, 1000) AS learning_goal FROM users WHERE email = $1",
     [session.user.email.toLowerCase()]
   );
   const user = rows[0];
-  const dob = user?.date_of_birth ? new Date(user.date_of_birth) : null;
-  const ageYears = dob ? Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 3600 * 1000)) : null;
-  const personaLine = buildPersonaLine(user?.qualification ?? null, user?.learning_goal ?? null, ageYears);
+  const personaLine = buildLearnerPersonaLine({
+    qualification: user?.qualification ?? null,
+    learningGoal: user?.learning_goal ?? null,
+    dateOfBirth: user?.date_of_birth ?? null,
+    weakConcepts: [],
+  });
 
   const prompt = [
     `You are generating a personalised capstone assessment for a learner who has completed a full course.`,

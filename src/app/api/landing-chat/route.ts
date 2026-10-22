@@ -24,7 +24,7 @@ const MAX_OUTPUT_CHARS = 1200;
 // 15 messages per IP per 5 minutes — enough for a real back-and-forth demo,
 // low enough to keep an anonymous, unauthenticated endpoint from being used
 // to burn xAI quota.
-const landingChatLimiter = createRateLimiter(15, 5 * 60_000);
+const landingChatLimiter = createRateLimiter(15, 5 * 60_000, "ai:landing-chat");
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -72,7 +72,7 @@ export async function POST(req: Request) {
   const requestId = crypto.randomUUID();
 
   // 1. Per-IP rate limit — checked before any other work.
-  const { limited, retryAfterMs } = landingChatLimiter.check(clientIp(req));
+  const { limited, retryAfterMs } = await landingChatLimiter.check(clientIp(req));
   if (limited) {
     return rateLimitResponse(retryAfterMs, { json: true });
   }
@@ -136,10 +136,10 @@ export async function POST(req: Request) {
   });
 
   try {
-    const reply = await withAiConcurrency(async () => {
+    const reply = await withAiConcurrency(async (slotSignal) => {
       const xaiRes = await fetch(`${BASE_URL}/chat/completions`, {
         method: "POST",
-        signal: timeoutController.signal,
+        signal: slotSignal ? AbortSignal.any([timeoutController.signal, slotSignal]) : timeoutController.signal,
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${apiKey}`,

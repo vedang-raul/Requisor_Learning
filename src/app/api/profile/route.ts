@@ -5,6 +5,8 @@ import { db, type DbUser } from "@/lib/server/db";
 import { dateOnly } from "@/lib/server/date-only";
 import { PERSONAS, LANGUAGES, COUNTRIES } from "@/lib/assistant/personas";
 import { checkJobTitle } from "@/lib/auth/job-title";
+import { readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
+import { MAX_PROFILE_REQUEST_BYTES, MAX_QUALIFICATION_LENGTH, MAX_LEARNING_GOAL_LENGTH } from "@/lib/server/profile-input";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -38,7 +40,19 @@ export async function PATCH(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = (await req.json()) as {
+  let rawBody: unknown;
+  try {
+    rawBody = await readJsonBody(req, MAX_PROFILE_REQUEST_BYTES);
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof RequestBodyTooLargeError ? "Profile request is too large." : "Invalid request body." },
+      { status: error instanceof RequestBodyTooLargeError ? 413 : 400 }
+    );
+  }
+  if (!rawBody || typeof rawBody !== "object" || Array.isArray(rawBody)) {
+    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+  }
+  const body = rawBody as {
     name?: string;
     employmentType?: string;
     position?: string;
@@ -57,6 +71,23 @@ export async function PATCH(req: Request) {
     preferredLanguage?: string;
     preferredCountry?: string;
   };
+
+  // Check raw length before trimming, including onboarding-only/fast paths.
+  const stringLimits = {
+    name: 200, employmentType: 1000, position: 100, dateOfBirth: 10,
+    gender: 20, qualification: MAX_QUALIFICATION_LENGTH,
+    learningGoal: MAX_LEARNING_GOAL_LENGTH, assistantPersona: 20,
+    preferredLanguage: 10, preferredCountry: 60,
+  } as const;
+  for (const [field, limit] of Object.entries(stringLimits)) {
+    const value = (rawBody as Record<string, unknown>)[field];
+    if (value !== undefined && (typeof value !== "string" || value.length > limit)) {
+      return NextResponse.json({ error: `${field} must be a string of at most ${limit} characters.` }, { status: 400 });
+    }
+  }
+  if (body.onboardingDone !== undefined && typeof body.onboardingDone !== "boolean") {
+    return NextResponse.json({ error: "Invalid onboardingDone." }, { status: 400 });
+  }
 
   const isAssistantOnly =
     (body.assistantPersona !== undefined || body.preferredLanguage !== undefined || body.preferredCountry !== undefined) &&

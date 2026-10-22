@@ -17,7 +17,7 @@ const BASE_URL = "https://api.x.ai/v1";
 const MODEL = process.env.XAI_MODEL || "grok-3-mini";
 const MAX_REQUEST_BYTES = 8 * 1024;
 const UPSTREAM_TIMEOUT_MS = 45_000;
-const scriptLimiter = createRateLimiter(6, 60_000);
+const scriptLimiter = createRateLimiter(6, 60_000, "ai:tutor:teleprompter-script");
 const canManage = (role: unknown) => role === "admin" || role === "tutor";
 
 export async function POST(req: Request) {
@@ -39,7 +39,7 @@ export async function POST(req: Request) {
   const apiKey = process.env.XAI_API_KEY;
   if (!apiKey) return Response.json({ error: "Script writing isn't set up on this server." }, { status: 503 });
 
-  const { limited, retryAfterMs } = scriptLimiter.check(String(session.user.id));
+  const { limited, retryAfterMs } = await scriptLimiter.check(String(session.user.id));
   if (limited) return rateLimitResponse(retryAfterMs, { json: true });
 
   const words = brief.minutes * SCRIPT_WORDS_PER_MINUTE;
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
   const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
   req.signal.addEventListener("abort", () => controller.abort(), { once: true });
   try {
-    release = await acquireAiSlot();
+    release = await acquireAiSlot(controller);
     const response = await xaiFetch({ userId: session.user.id, feature: "teleprompter" }, `${BASE_URL}/chat/completions`, {
       method: "POST",
       signal: controller.signal,

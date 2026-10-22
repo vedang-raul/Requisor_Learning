@@ -8,7 +8,7 @@ import { createRateLimiter } from "@/lib/server/rate-limit";
 import { SpeechTranslationError, translateSpeech } from "@/lib/courses/speech-translation";
 import { SPEECH_LANGUAGES } from "@/lib/courses/speech-languages";
 
-const limiter = createRateLimiter(12, 60_000);
+const limiter = createRateLimiter(12, 60_000, "ai:speech");
 const active = new Set<string>();
 const MAX_AUDIO_BYTES = 1024 * 1024;
 const TIMEOUT_MS = 15_000;
@@ -51,7 +51,7 @@ export async function POST(req: Request) {
     return error("Speech requests must come from this application.", 403);
   }
   if (req.headers.get("content-type")?.split(";")[0].trim() !== "application/json") return error("Expected a JSON request.", 415);
-  const limit = limiter.check(uid);
+  const limit = await limiter.check(uid);
   if (limit.limited) return error("Too many speech requests. Try again shortly.", 429, { "Retry-After": String(Math.ceil(limit.retryAfterMs / 1000)) });
   let body: unknown;
   try {

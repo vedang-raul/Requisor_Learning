@@ -1,7 +1,8 @@
 /**
  * src/lib/server/rate-limit.ts
  *
- * In-process fixed-window rate limiter shared by all AI-backed routes.
+ * Fixed-window rate limiters. Paid AI routes MUST supply a stable scope,
+ * which selects the shared PostgreSQL counter, and await check().
  *
  * The window is anchored on each user's first request: the counter resets
  * when the next request arrives after the window has elapsed.  This is a
@@ -9,13 +10,9 @@
  * can briefly exceed the per-minute limit by up to 2× max, which is
  * acceptable for an internal LMS.
  *
- * Each route creates its own limiter via createRateLimiter() so limits are
- * tracked independently per route.  All state is process-local and resets on
- * restart — intentional for a single-instance deployment.
- *
- * Redis upgrade path: replace the Map store with a Lua EVALSHA script against
- * ioredis (INCR + EXPIRE pattern) without touching call-site code.
+ * The two-argument variant remains process-local for non-AI callers.
  */
+import { checkSharedRateLimit } from "./shared-ai-controls";
 
 interface RateLimitEntry {
   count: number;
@@ -37,7 +34,14 @@ export interface RateLimiter {
  * @param max       Maximum requests allowed per window.
  * @param windowMs  Window duration in milliseconds.
  */
-export function createRateLimiter(max: number, windowMs: number): RateLimiter {
+export function createRateLimiter(max: number, windowMs: number): RateLimiter;
+export function createRateLimiter(max: number, windowMs: number, scope: string): {
+  check(key: string): Promise<{ limited: boolean; retryAfterMs: number }>;
+};
+export function createRateLimiter(max: number, windowMs: number, scope?: string) {
+  if (scope) {
+    return { check: (key: string) => checkSharedRateLimit(scope, key, max, windowMs) };
+  }
   const store = new Map<string, RateLimitEntry>();
 
   return {

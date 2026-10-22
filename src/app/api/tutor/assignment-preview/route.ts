@@ -15,7 +15,7 @@ import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/
  * in the form. Nothing is stored, and no real learner's data is used.
  */
 const MAX_REQUEST_BYTES = 24 * 1024;
-const previewLimiter = createRateLimiter(6, 60_000);
+const previewLimiter = createRateLimiter(6, 60_000, "ai:tutor:assignment-preview");
 
 /** Two invented learners, so a second preview shows how much the assignment changes between people. */
 const SAMPLE_LEARNERS = [
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
 
   const apiKey = process.env.XAI_API_KEY;
   if (!apiKey) return Response.json({ error: "Assignment generation isn't set up on this server." }, { status: 503 });
-  const { limited, retryAfterMs } = previewLimiter.check(String(session.user.id));
+  const { limited, retryAfterMs } = await previewLimiter.check(String(session.user.id));
   if (limited) return rateLimitResponse(retryAfterMs, { json: true });
 
   const sample = SAMPLE_LEARNERS[body.sample === 1 ? 1 : 0];

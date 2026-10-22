@@ -15,7 +15,7 @@ import { readBodyBytes, RequestBodyTooLargeError } from "@/lib/server/request-bo
  * The recording is passed to ElevenLabs and not stored.
  */
 const UPSTREAM_TIMEOUT_MS = 25_000;
-const listenLimiter = createRateLimiter(20, 60_000);
+const listenLimiter = createRateLimiter(20, 60_000, "ai:stt");
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
@@ -27,7 +27,7 @@ export async function POST(req: Request) {
   const declared = Number(req.headers.get("content-length"));
   if (Number.isFinite(declared) && declared > STT_MAX_BYTES) return Response.json({ error: "That recording is too long. Keep it under a minute." }, { status: 413 });
 
-  const { limited, retryAfterMs } = listenLimiter.check(String(session.user.id));
+  const { limited, retryAfterMs } = await listenLimiter.check(String(session.user.id));
   if (limited) return rateLimitResponse(retryAfterMs, { json: true });
 
   let audio: ArrayBuffer;

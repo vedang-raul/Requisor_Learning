@@ -25,7 +25,7 @@ const MAX_ASSIGNMENT_REQUEST_BYTES = 1024;
 
 // ── Per-user rate limiter ─────────────────────────────────────────────────────
 // Assignment generation: 10 per user per minute.
-const assignmentLimiter = createRateLimiter(10, 60_000);
+const assignmentLimiter = createRateLimiter(10, 60_000, "ai:assignment");
 
 type LearnerRow = Pick<DbUser, "id" | "date_of_birth" | "qualification" | "learning_goal"> & { position: string | null };
 
@@ -122,7 +122,7 @@ export async function POST(req: Request) {
     return Response.json({ assignment: cachedRows[0].content, cached: true });
   }
 
-  const { limited, retryAfterMs } = assignmentLimiter.check(String(user.id));
+  const { limited, retryAfterMs } = await assignmentLimiter.check(String(user.id));
   if (limited) return rateLimitResponse(retryAfterMs, { json: true });
 
   const apiKey = process.env.XAI_API_KEY;

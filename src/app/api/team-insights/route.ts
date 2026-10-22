@@ -11,7 +11,7 @@ const XAI_API_BASE = "https://api.x.ai/v1";
 
 // ── Per-user rate limiter ─────────────────────────────────────────────────────
 // Team insights is admin-only; still rate-limited to prevent runaway queries.
-const insightsLimiter = createRateLimiter(10, 60_000);
+const insightsLimiter = createRateLimiter(10, 60_000, "ai:team-insights");
 
 function buildSystemPrompt(): string {
   return [
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
   }
 
   // Per-user rate limit (admin email as key)
-  const { limited, retryAfterMs } = insightsLimiter.check(session.user.email);
+  const { limited, retryAfterMs } = await insightsLimiter.check(session.user.email);
   if (limited) {
     return rateLimitResponse(retryAfterMs, { json: true });
   }

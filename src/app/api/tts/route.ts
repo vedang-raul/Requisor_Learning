@@ -17,7 +17,7 @@ import { speechText, ttsCharacters, ttsConfigured, ttsModel, ttsVoiceId } from "
 const MAX_REQUEST_BYTES = 16 * 1024;
 const UPSTREAM_TIMEOUT_MS = 20_000;
 // A reply is spoken in a few passages, each its own request.
-const speakLimiter = createRateLimiter(60, 60_000);
+const speakLimiter = createRateLimiter(60, 60_000, "ai:tts");
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -43,7 +43,7 @@ export async function POST(req: Request) {
   if (!text) return Response.json({ error: "Nothing to say." }, { status: 400 });
   const voice = (body as { voice?: unknown } | null)?.voice;
 
-  const { limited, retryAfterMs } = speakLimiter.check(String(session.user.id));
+  const { limited, retryAfterMs } = await speakLimiter.check(String(session.user.id));
   if (limited) return rateLimitResponse(retryAfterMs, { json: true });
 
   let upstream: Response;

@@ -53,7 +53,7 @@ const UPSTREAM_TIMEOUT_MS = 45_000;
 // ── Per-user rate limiter ─────────────────────────────────────────────────────
 // 20 chat messages per user per minute.  Process-local; see docs/LOAD_TEST.md for
 // the Redis upgrade path for multi-instance deployments.
-const chatLimiter = createRateLimiter(20, 60_000);
+const chatLimiter = createRateLimiter(20, 60_000, "ai:chat");
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type ChatMessage = { role: "user" | "assistant"; content: string };
@@ -508,7 +508,7 @@ export async function POST(req: Request) {
   }
 
   // 2. Per-user rate limit
-  const { limited, retryAfterMs } = chatLimiter.check(session.user.email);
+  const { limited, retryAfterMs } = await chatLimiter.check(session.user.email);
   if (limited) {
     return rateLimitResponse(retryAfterMs);
   }
@@ -680,8 +680,9 @@ ${SIMPLE_LANGUAGE_NOTE}` : "";
   //    This bounds the total number of active concurrent xAI streams to
   //    AI_CONCURRENCY_LIMIT, not just the number being initiated.
   let releaseAiSlot: (() => void) | null = null;
+  const aiSlotController = new AbortController();
   try {
-    releaseAiSlot = await acquireAiSlot();
+    releaseAiSlot = await acquireAiSlot(aiSlotController);
   } catch (err) {
     if (err instanceof SemaphoreFullError) {
       return new Response(
@@ -722,7 +723,7 @@ ${SIMPLE_LANGUAGE_NOTE}` : "";
 
             const xaiRes = await xaiFetch({ userId: session.user.id, feature: "assistant" }, `${BASE_URL}/chat/completions`, {
               method: "POST",
-              signal: roundAbort.signal,
+              signal: AbortSignal.any([roundAbort.signal, aiSlotController.signal]),
               headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
               body: JSON.stringify({
                 model: MODEL,
