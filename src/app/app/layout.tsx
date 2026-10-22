@@ -11,6 +11,7 @@ import { OnboardingGuide } from "@/components/onboarding/onboarding-guide";
 import TutorSurvey from "@/components/onboarding/onboarding-survey-tutor";
 import { InactivityGuard } from "@/components/layout/inactivity-guard";
 import { ActivityTracker } from "@/components/layout/activity-tracker";
+import { ViewingAsBanner } from "@/components/admin/view-as";
 import { REPLAY_TOUR_KEY } from "@/lib/utils";
 import { trackEvent } from "@/lib/analytics";
 
@@ -90,6 +91,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       <GradientBlobs />
       <Sidebar />
       <div className="relative flex min-w-0 flex-1 flex-col">
+        <ViewingAsBanner />
         <Topbar />
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 has-[[data-wide-page]]:max-w-none md:px-8 has-[[data-wide-page]]:md:px-5">{children}</main>
       </div>

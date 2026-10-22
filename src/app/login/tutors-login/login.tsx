@@ -14,7 +14,6 @@ import { signIn } from "next-auth/react";
 import { RequisorAI } from "@/components/ui/requisor-ai";
 import { Turnstile } from "@marsidev/react-turnstile";
 import type { TurnstileInstance } from "@marsidev/react-turnstile";
-import { TestLogins } from "@/components/auth/test-logins";
 
 type View = "login" | "signup" | "success";
 type PasswordField = "loginPassword" | "signupPassword" | "signupConfirm";
@@ -46,23 +45,7 @@ export default function TutorAuth() {
   const [view, setView] = useState<View>("login");
   const [direction, setDirection] = useState<Direction>("forward");
   const [entering, setEntering] = useState<View | null>(null);
-  const [submitting, setSubmitting] = useState<false | "login" | "signup" | "google" | "dev-tutor" | "dev-admin" | "dev-uni-admin">(false);
-  // Test-login buttons appear only where the server offers them (see testLoginsEnabled in src/lib/auth/auth.ts).
-  const [testLogins, setTestLogins] = useState(false);
-  // The test super admin exists only on a local development copy (the dev-admin provider is never offered in production).
-  const [testSuperAdmin, setTestSuperAdmin] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/auth/providers")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((providers: Record<string, unknown> | null) => {
-        if (cancelled) return;
-        setTestLogins(Boolean(providers && providers["dev-tutor"] && !providers["public-test-accounts"]));
-        setTestSuperAdmin(Boolean(providers && providers["dev-admin"]));
-      })
-      .catch(() => undefined);
-    return () => { cancelled = true; };
-  }, []);
+  const [submitting, setSubmitting] = useState<false | "login" | "signup" | "google">(false);
   const [googleError, setGoogleError] = useState("");
   const [formError, setFormError] = useState("");
   // The university picked at sign-up; an email on a university's domain picks it automatically.
@@ -210,44 +193,6 @@ export default function TutorAuth() {
       window.location.assign("/app/tutor/");
     } catch {
       setFormError("Network error. Please try again.");
-      setSubmitting(false);
-    }
-  }
-
-  /** Local development only: the support mailbox (always a super admin), or the test admin of the first university. */
-  async function handleDevSuperAdmin(provider: "dev-admin" | "dev-uni-admin" = "dev-admin") {
-    setFormError("");
-    setSubmitting(provider);
-    try {
-      const result = await signIn(provider, { callbackUrl: "/app/admin/", redirect: false });
-      if (result?.error) {
-        setFormError("Test super admin access is unavailable.");
-        setSubmitting(false);
-        return;
-      }
-      window.location.assign("/app/admin/");
-    } catch {
-      setFormError("Test super admin access is unavailable.");
-      setSubmitting(false);
-    }
-  }
-
-  async function handleDevTutor() {
-    setFormError("");
-    setSubmitting("dev-tutor");
-    try {
-      const result = await signIn("dev-tutor", {
-        callbackUrl: "/app/tutor/",
-        redirect: false,
-      });
-      if (result?.error) {
-        setFormError("Development tutor access is unavailable.");
-        setSubmitting(false);
-        return;
-      }
-      window.location.assign("/app/tutor/");
-    } catch {
-      setFormError("Development tutor access is unavailable.");
       setSubmitting(false);
     }
   }
@@ -437,40 +382,6 @@ export default function TutorAuth() {
               <Divider />
               <GoogleButton loading={submitting === "google"} onClick={handleGoogle} />
               {googleError && <p className="text-xs text-red-600" role="alert">{googleError}</p>}
-              <TestLogins disabled={Boolean(submitting)} />
-              {testLogins && (
-                <div className="mt-1 rounded-xl border border-dashed border-amber-300 bg-amber-50 p-3">
-                  <p className="text-center text-[11px] leading-4 text-amber-800">Testing shortcut — no password needed</p>
-                  <button
-                    type="button"
-                    onClick={() => void handleDevTutor()}
-                    disabled={Boolean(submitting)}
-                    className="focus-ring mt-2 w-full rounded-lg border border-amber-400 bg-white px-3 py-2 text-xs font-semibold text-amber-900 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {submitting === "dev-tutor" ? "Opening tutor workspace…" : "Log in as test tutor"}
-                  </button>
-                  {testSuperAdmin && (
-                    <button
-                      type="button"
-                      onClick={() => void handleDevSuperAdmin()}
-                      disabled={Boolean(submitting)}
-                      className="focus-ring mt-2 w-full rounded-lg border border-amber-400 bg-white px-3 py-2 text-xs font-semibold text-amber-900 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {submitting === "dev-admin" ? "Opening the admin panel…" : "Log in as test super admin"}
-                    </button>
-                  )}
-                  {testSuperAdmin && (
-                    <button
-                      type="button"
-                      onClick={() => void handleDevSuperAdmin("dev-uni-admin")}
-                      disabled={Boolean(submitting)}
-                      className="focus-ring mt-2 w-full rounded-lg border border-amber-400 bg-white px-3 py-2 text-xs font-semibold text-amber-900 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {submitting === "dev-uni-admin" ? "Opening the admin panel…" : "Log in as test university admin"}
-                    </button>
-                  )}
-                </div>
-              )}
 
             </form>
 

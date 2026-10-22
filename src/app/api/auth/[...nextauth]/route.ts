@@ -80,8 +80,9 @@ export async function POST(
     }
   }
 
-  const isPublicTestLogin = /\/callback\/public-test-accounts\/?$/.test(url.pathname);
-  if (url.pathname.includes("/callback/credentials") || isPublicTestLogin) {
+  // "View as" needs a signed-in super admin's session, so it skips the bot check.
+  const isViewAs = /\/callback\/view-as\/?$/.test(url.pathname);
+  if (url.pathname.includes("/callback/credentials") || isViewAs) {
     // ── Rate limit ────────────────────────────────────────────────────────
     const ip = clientIp(req);
     const { limited, retryAfterMs } = loginLimiter.check(ip);
@@ -92,7 +93,7 @@ export async function POST(
     // only the bounded bytes. Cloning first would retain an unread tee branch.
     // NextAuth sends credentials as URL-encoded form data; extra fields
     // passed to signIn() (like turnstileToken) are included in that body.
-    // The explicitly enabled public demo uses the same throttle and NextAuth CSRF checks.
+    // "View as" uses the same throttle and NextAuth CSRF checks.
     let bytes: ArrayBuffer;
     try {
       bytes = await readBodyBytes(req, 16 * 1024);
@@ -108,7 +109,7 @@ export async function POST(
     headers.delete("content-length");
     headers.delete("transfer-encoding");
     const boundedRequest = new NextRequest(req.url, { method: req.method, headers, body: bytes });
-    if (isPublicTestLogin) return handler(boundedRequest, ctx) as Promise<Response>;
+    if (isViewAs) return handler(boundedRequest, ctx) as Promise<Response>;
     const captchaToken = params.get("turnstileToken") ?? null;
     const { success: captchaOk } = await verifyTurnstile(captchaToken);
     if (!captchaOk) {

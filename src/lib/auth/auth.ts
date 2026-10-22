@@ -8,10 +8,8 @@ import { db, roleForEmail, ADMIN_EMAIL, type DbUser } from "../server/db";
 import { accessFor, type MembershipRow } from "./roles";
 import { skipEmailVerification } from "../server/email";
 import { sendWelcomeEmail } from "../server/email";
-import {
-  TEST_ACCOUNT_PROVIDER, TEST_ACCOUNTS, isTestAccountKind, testAccountsEnabled,
-  testAccountAccess,
-} from "./test-accounts";
+import { getToken } from "next-auth/jwt";
+import { isViewAsKind, superAdminById, testAccount, VIEW_AS_PROVIDER } from "./view-as";
 
 const GOOGLE_SIGNIN_FAILED_ERROR = "/?error=GoogleSignInFailed";
 /** How often a signed-in person's role and university are read again from the database. */
@@ -40,27 +38,12 @@ const cookieName = isSecure
   : "next-auth.session-token";
 
 /**
- * One-click test logins (a test student and a test tutor, no password).
- * On in local development, and on a Vercel deployment until TEST_LOGINS=off is
- * set, so a test site can be tried without email or SQL. They let ANYONE in
- * as those two accounts, so set TEST_LOGINS=off before real users arrive.
- * (TEST_LOGINS=on turns them on elsewhere.) The admin shortcut stays
- * development-only.
+ * Password-free shortcuts into the reserved test accounts, for a local
+ * development copy only — never offered by a production build. On the live
+ * site, a super admin reaches those accounts with "view as" instead.
  */
 export function testLoginsEnabled(): boolean {
-  const setting = (process.env.TEST_LOGINS ?? "").toLowerCase();
-  if (setting === "off") return false;
-  if (setting === "on") return true;
-  return process.env.NODE_ENV !== "production" || Boolean(process.env.VERCEL);
-}
-
-/** Independent opt-in for the shared test tutor; never enables learner/admin bypasses. */
-export function tutorTestLoginEnabled(): boolean {
-  if (testAccountsEnabled()) return true;
-  const setting = (process.env.TUTOR_TEST_LOGIN ?? "").toLowerCase();
-  if (setting === "on") return true;
-  if (setting === "off") return false;
-  return testLoginsEnabled();
+  return process.env.NODE_ENV !== "production";
 }
 
 export const authOptions: NextAuthOptions = {
@@ -88,47 +71,6 @@ export const authOptions: NextAuthOptions = {
   },
   pages: { signIn: "/", error: "/" },
   providers: [
-    ...(testAccountsEnabled() ? [
-      CredentialsProvider({
-        id: TEST_ACCOUNT_PROVIDER,
-        name: "Public test accounts",
-        credentials: {
-          kind: { label: "Test account", type: "text" },
-        },
-        async authorize(credentials) {
-          if (!testAccountsEnabled() || !isTestAccountKind(credentials?.kind)) return null;
-          const account = TEST_ACCOUNTS[credentials.kind];
-          try {
-            // These reserved synthetic identities never reuse a real person's account.
-            // University-level testing is isolated from real universities by default.
-            const { rows } = await db.query<DbUser>(
-              `WITH test_university AS (
-                 INSERT INTO universities (name, short_name, email_domains)
-                 SELECT 'Requisor Test University', 'TEST', '{}'::text[] WHERE $4::boolean
-                 ON CONFLICT (lower(name)) DO UPDATE SET name = EXCLUDED.name
-                 RETURNING id
-               )
-               INSERT INTO users (email, name, email_verified, role, university_id, university_status, onboarding_done)
-               VALUES ($1, $2, TRUE, $3, (SELECT id FROM test_university),
-                 CASE WHEN $4::boolean THEN 'active' END, TRUE)
-               ON CONFLICT (email) DO UPDATE SET
-                 name = EXCLUDED.name, email_verified = TRUE, role = EXCLUDED.role,
-                 university_id = EXCLUDED.university_id, university_status = EXCLUDED.university_status,
-                 onboarding_done = TRUE, password_hash = NULL
-               RETURNING *`,
-              [account.email, account.name, account.role, credentials.kind !== "super-admin"]
-            );
-            const user = rows[0];
-            if (!user) return null;
-            console.info(JSON.stringify({ event: "test_account_login", kind: credentials.kind, outcome: "success" }));
-            return { id: String(user.id), email: user.email, name: user.name };
-          } catch {
-            console.error(JSON.stringify({ event: "test_account_login", outcome: "unavailable" }));
-            return null;
-          }
-        },
-      }),
-    ] : []),
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
@@ -140,8 +82,8 @@ export const authOptions: NextAuthOptions = {
         },
       },
     }),
-    // ─── DEV-ONLY bypass — never active in production ───────────────────
-    ...(process.env.NODE_ENV !== "production"
+    // ─── Local development only: one-click test accounts ────────────────
+    ...(testLoginsEnabled()
       ? [
           CredentialsProvider({
             id: "dev-admin",
@@ -161,81 +103,50 @@ export const authOptions: NextAuthOptions = {
               return { id: String(rows[0].id), email: rows[0].email, name: rows[0].name ?? "Admin" };
             },
           }),
-          CredentialsProvider({
-            id: "dev-uni-admin",
-            name: "Dev University Admin",
-            credentials: {},
-            async authorize() {
-              // A reserved synthetic account: the admin of the first university (MSOE on a fresh
-              // database). Re-placed there on every sign-in, so it can always be used for testing.
-              const { rows } = await db.query<DbUser>(
-                `INSERT INTO users (email, name, email_verified, role, university_id, university_status)
-                 SELECT 'dev-uni-admin@requisor.local', 'Development University Admin', TRUE, 'admin', id, 'active'
-                   FROM universities ORDER BY id LIMIT 1
-                 ON CONFLICT (email) DO UPDATE
-                   SET email_verified = TRUE, role = 'admin', university_id = EXCLUDED.university_id, university_status = 'active'
-                 RETURNING *`
-              );
-              // No university on this database yet: there is nothing for it to administer.
-              if (!rows[0]) return null;
-              db.query("UPDATE users SET last_login_at = NOW() WHERE id = $1", [rows[0].id]).catch(() => {});
-              return { id: String(rows[0].id), email: rows[0].email, name: rows[0].name ?? "Development University Admin" };
-            },
-          }),
+          ...([["dev-student", "student"], ["dev-tutor", "tutor"], ["dev-uni-admin", "university-admin"]] as const).map(([id, kind]) =>
+            CredentialsProvider({
+              id,
+              name: `Dev ${kind}`,
+              credentials: {},
+              async authorize() {
+                return testAccount(kind);
+              },
+            })
+          ),
         ]
       : []),
-    // ─── Shared test tutor (independently configurable) ────────────────
-    ...(tutorTestLoginEnabled()
-      ? [
-          CredentialsProvider({
-            id: "dev-tutor",
-            name: "Dev Tutor",
-            credentials: {},
-            async authorize() {
-              // Reserved synthetic account for trying the tutor side.
-              const { rows } = await db.query<DbUser>(
-                `INSERT INTO users (email, name, email_verified, role)
-                 VALUES ('dev-tutor@requisor.local', 'Development Tutor', TRUE, 'tutor')
-                 ON CONFLICT (email) DO UPDATE
-                   SET name = 'Development Tutor', email_verified = TRUE, role = 'tutor'
-                 RETURNING *`,
-              );
-              db.query("UPDATE users SET last_login_at = NOW() WHERE id = $1", [rows[0].id]).catch(() => {});
-              return { id: String(rows[0].id), email: rows[0].email, name: rows[0].name ?? "Development Tutor" };
-            },
-          }),
-        ]
-      : []),
-    // The legacy TEST_LOGINS setting still controls the student shortcut.
-    ...(testLoginsEnabled()
-      ? [
-          CredentialsProvider({
-            id: "dev-student",
-            name: "Dev Student",
-            credentials: {},
-            async authorize() {
-              // Signs in as the test learner (DEV_STUDENT_EMAIL if set, else a
-              // reserved synthetic address), creating it as a verified learner
-              // on a fresh database.
-              const email = process.env.DEV_STUDENT_EMAIL?.trim().toLowerCase() || "dev-student@requisor.local";
-              if (email === ADMIN_EMAIL) return null;
-              const password = process.env.DEV_STUDENT_PASSWORD;
-              const hash = password ? await bcrypt.hash(password, 10) : null;
-              const { rows } = await db.query<DbUser>(
-                `INSERT INTO users (email, name, email_verified, role, password_hash)
-                 VALUES ($1, 'Development Student', TRUE, 'employee', $2)
-                 ON CONFLICT (email) DO UPDATE SET email_verified = TRUE
-                 RETURNING *`,
-                [email, hash]
-              );
-              // Only ever a learner: this shortcut must not open a tutor or admin account.
-              if (rows[0].role !== "employee") return null;
-              db.query("UPDATE users SET last_login_at = NOW() WHERE id = $1", [rows[0].id]).catch(() => {});
-              return { id: String(rows[0].id), email: rows[0].email, name: rows[0].name ?? "Development Student" };
-            },
-          }),
-        ]
-      : []),
+    // ─── View as: a signed-in super admin switches into a test account ───
+    CredentialsProvider({
+      id: VIEW_AS_PROVIDER,
+      name: "View as",
+      credentials: { kind: { label: "Account", type: "text" } },
+      async authorize(credentials, req) {
+        // Who is asking comes only from their current session cookie, never the request body.
+        // NextAuth passes this request's headers but not its parsed cookies, which getToken reads.
+        const headers = (req.headers ?? {}) as Record<string, string | undefined>;
+        const cookies = Object.fromEntries(
+          (headers.cookie ?? "").split(";").map((part) => part.trim().split("=")).filter(([name]) => name)
+            .map(([name, ...value]) => [name, decodeURIComponent(value.join("="))])
+        );
+        const current = await getToken({
+          req: { headers, cookies } as unknown as Parameters<typeof getToken>[0]["req"],
+          secret: process.env.NEXTAUTH_SECRET || process.env.SESSION_SECRET,
+          cookieName,
+        });
+        // Already viewing as someone: the real super admin is the one recorded then.
+        const adminId = current?.viewAsBy ?? (current?.superAdmin === true ? current.uid : null);
+        // Re-checked against the database: a removed super admin can't switch.
+        const admin = await superAdminById(adminId);
+        if (!admin) return null;
+        const kind = credentials?.kind;
+        if (kind === "back") return { ...admin, viewAsBy: undefined };
+        if (!isViewAsKind(kind)) return null;
+        const target = await testAccount(kind);
+        if (!target) return null;
+        console.info(JSON.stringify({ event: "view_as", kind, admin: admin.id }));
+        return { ...target, viewAsBy: admin.id };
+      },
+    }),
     CredentialsProvider({
       name: "Email & password",
       credentials: { email: { label: "Email", type: "email" }, password: { label: "Password", type: "password" } },
@@ -355,11 +266,8 @@ export const authOptions: NextAuthOptions = {
     },
     async jwt({ token, user, account, trigger, session }) {
       if (user) {
-        token.publicTestAccount = account?.provider === TEST_ACCOUNT_PROVIDER;
-      }
-      // Removing the explicit public-test opt-in also revokes these sessions.
-      if (token.publicTestAccount && !testAccountsEnabled()) {
-        return { ...token, uid: "", role: "employee", superAdmin: false, universityId: null, pending: false, exp: 0 };
+        // Set only by "view as"; switching back (or any other sign-in) clears it.
+        token.viewAsBy = account?.provider === VIEW_AS_PROVIDER ? user.viewAsBy : undefined;
       }
       // Live profile update — client called useSession().update({ name })
       if (trigger === "update" && (session as { name?: string })?.name) {
@@ -399,9 +307,7 @@ export const authOptions: NextAuthOptions = {
       if (user?.email || !token.uid || stale) {
         token.uid = rows[0] ? String(rows[0].id) : undefined;
         // The super admin list decides super admins; a university admin must belong to a university.
-        const access = token.publicTestAccount
-          ? testAccountAccess(email, rows[0])
-          : accessFor(email, rows[0]);
+        const access = accessFor(email, rows[0]);
         if (!access) return { ...token, uid: "", role: "employee", superAdmin: false, universityId: null, pending: false, exp: 0 };
         token.role = access.role;
         token.superAdmin = access.superAdmin;
@@ -435,6 +341,8 @@ export const authOptions: NextAuthOptions = {
         session.user.id = (token.uid as string) ?? "";
         session.user.role = (token.role as "employee" | "tutor" | "admin") ?? "employee";
         session.user.superAdmin = token.superAdmin === true;
+        // A super admin viewing the app as a test account (see src/lib/auth/view-as.ts).
+        session.user.viewingAs = typeof token.viewAsBy === "string";
         session.user.universityId = typeof token.universityId === "number" ? token.universityId : null;
         session.user.pending = token.pending === true;
         session.user.pendingUniversity = typeof token.pendingUniversity === "string" ? token.pendingUniversity : null;

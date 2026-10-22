@@ -16,6 +16,7 @@ import { PageTransition } from "@/components/ui/motion";
 import { cn, REPLAY_TOUR_KEY } from "@/lib/utils";
 import { checkJobTitle, JOB_TITLE_HINT, stripJobTitle } from "@/lib/auth/job-title";
 import { AiUsageCard } from "@/components/tutor/ai-usage-card";
+import { ViewAsCard } from "@/components/admin/view-as";
 import { AccessibilityChoices } from "@/components/accessibility/accessibility-choices";
 import { useAccessibility } from "@/components/layout/accessibility-provider";
 import type { AccessibilityPrefs } from "@/lib/accessibility/preferences";
@@ -972,6 +973,8 @@ export default function SettingsPage() {
       </motion.div>
 
       <ProfileCard />
+      {/* Super admins only: switch into a test student, tutor or university admin. */}
+      {session?.user?.superAdmin && !session.user.viewingAs && <ViewAsCard />}
       {session?.user?.role === "employee" && <RetakeOnboardingCard />}
       <AccessibilityCard />
       {showsAiUsage && <AiUsageCard />}

@@ -4,6 +4,8 @@ declare module "next-auth" {
   interface User {
     /** Server-only snapshot taken when the password was verified. */
     sessionVersion?: number;
+    /** Set by "view as": the super admin (user id) who switched into this test account. */
+    viewAsBy?: string;
   }
 
   interface Session {
@@ -18,6 +20,8 @@ declare module "next-auth" {
       pending: boolean;
       /** The university they're waiting on, for the waiting page. */
       pendingUniversity: string | null;
+      /** A super admin is viewing the app as a test account; they can switch back. */
+      viewingAs?: boolean;
       name?: string | null;
       email?: string | null;
       image?: string | null;

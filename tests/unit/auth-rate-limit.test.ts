@@ -170,7 +170,7 @@ describe("POST /api/signup — IP rate limiting", () => {
 // ── Login rate limiting ───────────────────────────────────────────────────────
 
 describe("POST /api/auth/callback/credentials — IP rate limiting", () => {
-  it.each(["credentials", "public-test-accounts"])("bounds chunked %s bodies before NextAuth", async (provider) => {
+  it.each(["credentials", "view-as"])("bounds chunked %s bodies before NextAuth", async (provider) => {
     const cancel = jest.fn();
     const req = new Request(`http://localhost/api/auth/callback/${provider}`, {
       method: "POST",
@@ -249,11 +249,11 @@ describe("POST /api/auth/callback/credentials — IP rate limiting", () => {
 
 // ── Non-credentials NextAuth paths are not rate-limited ──────────────────────
 
-describe("public test account callbacks", () => {
-  it("blocks test-account brute-force attempts before authentication", async () => {
+describe("view-as callbacks", () => {
+  it("are rate-limited like sign-ins", async () => {
     mockCheck.mockReturnValue({ limited: true, retryAfterMs: 60_000 });
-    const req = new Request("http://localhost/api/auth/callback/public-test-accounts/", { method: "POST" });
-    const res = await authPost(req, { params: Promise.resolve({ nextauth: ["callback", "public-test-accounts"] }) });
+    const req = new Request("http://localhost/api/auth/callback/view-as/", { method: "POST" });
+    const res = await authPost(req, { params: Promise.resolve({ nextauth: ["callback", "view-as"] }) });
     expect(res.status).toBe(429);
     expect(res.headers.get("Retry-After")).toBe("900");
     expect(mockNextAuthHandler).not.toHaveBeenCalled();

@@ -18,7 +18,6 @@ import { PasswordStrength } from "@/components/ui/password-strength";
 import { cn } from "@/lib/utils";
 import { checkJobTitle, JOB_TITLE_HINT, JOB_TITLE_MAX_LENGTH, stripJobTitle } from "@/lib/auth/job-title";
 import { trackEvent } from "@/lib/analytics";
-import { TestLogins } from "@/components/auth/test-logins";
 
 type Mode = "login" | "signup" | "forgot";
 
@@ -66,17 +65,6 @@ export function LoginScreen() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
-  // Test-login buttons appear only where the server offers them (see testLoginsEnabled in src/lib/auth/auth.ts).
-  const [testLogins, setTestLogins] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/auth/providers")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((providers: Record<string, unknown> | null) => { if (!cancelled) setTestLogins(Boolean(providers && providers["dev-student"] && providers["dev-tutor"] && !providers["public-test-accounts"])); })
-      .catch(() => undefined);
-    return () => { cancelled = true; };
-  }, []);
-
   // Cloudflare Turnstile — invisible bot-protection challenge.
   // The widget auto-executes when the component mounts and stores the token
   // in state.  Each token is single-use: after a submission the widget resets
@@ -511,35 +499,9 @@ export function LoginScreen() {
               <GoogleIcon />
               Continue with Google
             </button>
-            {testLogins && (
-              <div className="mt-3 rounded-xl border border-dashed border-amber-300 bg-amber-50 p-3">
-                <p className="text-center text-[11px] leading-4 text-amber-800">Testing shortcut — no password needed</p>
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={async () => {
-                    setError("");
-                    setLoading(true);
-                    try {
-                      const res = await signIn("dev-student", { redirect: false });
-                      if (res?.error) { setError("The test student login is unavailable right now."); return; }
-                      window.location.assign("/app/dashboard/");
-                    } catch {
-                      setError("Development student access is unavailable.");
-                    } finally {
-                      setLoading(false);
-                    }
-                  }}
-                  className="focus-ring mt-2 w-full rounded-lg border border-amber-400 bg-white px-3 py-2 text-xs font-semibold text-amber-900 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Log in as test student
-                </button>
-              </div>
-            )}
           </>
         )}
 
-        {mode === "login" && <TestLogins disabled={loading} />}
         {/* Cloudflare Turnstile — invisible bot-protection widget.
             Rendered as a visually hidden element; the widget auto-executes on
             mount and resolves silently for legitimate users.  After each form
