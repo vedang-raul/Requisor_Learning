@@ -20,7 +20,7 @@ import {
 const BASE_URL = "https://api.x.ai/v1";
 const MODEL = process.env.XAI_MODEL || "grok-3-mini";
 const MAX_REQUEST_BYTES = 48 * 1024;
-const builderLimiter = createRateLimiter(8, 60_000);
+const builderLimiter = createRateLimiter(8, 60_000, "ai:tutor:program-builder");
 
 // eslint-disable-next-line no-control-regex
 const clean = (value: unknown, max: number) => (typeof value === "string" ? value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, " ").trim().slice(0, max) : "");
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
 
   const apiKey = process.env.XAI_API_KEY;
   if (!apiKey) return engine("AI isn't set up on this server");
-  const { limited, retryAfterMs } = builderLimiter.check(String(session.user.id));
+  const { limited, retryAfterMs } = await builderLimiter.check(String(session.user.id));
   if (limited) return rateLimitResponse(retryAfterMs, { json: true });
 
   const prompt = [

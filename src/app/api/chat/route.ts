@@ -20,6 +20,7 @@ import {
 } from "@/lib/server/request-body";
 import { runAssistantTool, toolsForRole, type ToolContext } from "@/lib/assistant/assistant-tools";
 import { ttsCharacterName, ttsCharacterStyle, ttsConfigured } from "@/lib/ai/tts";
+import { getSpeechCatalog } from "@/lib/courses/speech-catalog";
 import { ACTION_FRAME, encodeActionFrame } from "@/lib/assistant/assistant-actions";
 import { feedbackNote, FEEDBACK_PER_RATING, type RatedReply } from "@/lib/assistant/feedback";
 
@@ -52,7 +53,7 @@ const UPSTREAM_TIMEOUT_MS = 45_000;
 // ── Per-user rate limiter ─────────────────────────────────────────────────────
 // 20 chat messages per user per minute.  Process-local; see docs/LOAD_TEST.md for
 // the Redis upgrade path for multi-instance deployments.
-const chatLimiter = createRateLimiter(20, 60_000);
+const chatLimiter = createRateLimiter(20, 60_000, "ai:chat");
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type ChatMessage = { role: "user" | "assistant"; content: string };
@@ -507,7 +508,7 @@ export async function POST(req: Request) {
   }
 
   // 2. Per-user rate limit
-  const { limited, retryAfterMs } = chatLimiter.check(session.user.email);
+  const { limited, retryAfterMs } = await chatLimiter.check(session.user.email);
   if (limited) {
     return rateLimitResponse(retryAfterMs);
   }
@@ -614,7 +615,10 @@ export async function POST(req: Request) {
   // The voice character the replies will be spoken in. Only the manner of speaking changes, never the rules.
   const voiceStyle = ttsConfigured() && typeof body.voiceCharacter === "string" ? ttsCharacterStyle(body.voiceCharacter) : null;
   // The name the assistant shows in its header, when it speaks as a voice character.
-  const shownName = ttsConfigured() && typeof body.voiceIdentity === "string" ? ttsCharacterName(body.voiceIdentity) : null;
+  const shownName = ttsConfigured() && typeof body.voiceIdentity === "string"
+    ? getSpeechCatalog().voices.find((voice) => voice.enabled && voice.key === body.voiceIdentity)?.name
+      ?? ttsCharacterName(body.voiceIdentity)
+    : null;
   const nameNote = shownName
     ? `
 
@@ -676,8 +680,9 @@ ${SIMPLE_LANGUAGE_NOTE}` : "";
   //    This bounds the total number of active concurrent xAI streams to
   //    AI_CONCURRENCY_LIMIT, not just the number being initiated.
   let releaseAiSlot: (() => void) | null = null;
+  const aiSlotController = new AbortController();
   try {
-    releaseAiSlot = await acquireAiSlot();
+    releaseAiSlot = await acquireAiSlot(aiSlotController);
   } catch (err) {
     if (err instanceof SemaphoreFullError) {
       return new Response(
@@ -718,7 +723,7 @@ ${SIMPLE_LANGUAGE_NOTE}` : "";
 
             const xaiRes = await xaiFetch({ userId: session.user.id, feature: "assistant" }, `${BASE_URL}/chat/completions`, {
               method: "POST",
-              signal: roundAbort.signal,
+              signal: AbortSignal.any([roundAbort.signal, aiSlotController.signal]),
               headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
               body: JSON.stringify({
                 model: MODEL,

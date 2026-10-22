@@ -60,10 +60,20 @@ export async function POST(req: Request) {
     }
 
     const hash = await bcrypt.hash(password, 12);
-    await db.query(
-      "UPDATE users SET password_hash = $1, reset_token = NULL, reset_expires = NULL, email_verified = TRUE WHERE id = $2",
-      [hash, user.id]
+    // Consume the link and revoke every previously issued session atomically.
+    // Recheck the token/expiry here too, after the asynchronous password hash.
+    const reset = await db.query(
+      `UPDATE users
+       SET password_hash = $1, reset_token = NULL, reset_expires = NULL,
+           email_verified = TRUE, session_version = session_version + 1
+       WHERE id = $2 AND reset_token = $3
+         AND (reset_expires IS NULL OR reset_expires > NOW())
+       RETURNING id`,
+      [hash, user.id, tokenHash]
     );
+    if (!reset.rows[0]) {
+      return NextResponse.json({ error: "Invalid, expired or already-used reset link." }, { status: 400 });
+    }
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("Reset failed:", e);

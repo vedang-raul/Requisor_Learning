@@ -19,7 +19,7 @@ const MODEL = process.env.XAI_MODEL || "grok-3-mini";
 const MAX_REQUEST_BYTES = 48 * 1024;
 const MAX_MESSAGE_LENGTH = 2000;
 const UPSTREAM_TIMEOUT_MS = 30_000;
-const draftLimiter = createRateLimiter(5, 60_000);
+const draftLimiter = createRateLimiter(5, 60_000, "ai:tutor:course-draft");
 
 type UnknownRecord = Record<string, unknown>;
 type CourseBrief = {
@@ -112,7 +112,7 @@ export async function POST(req: Request) {
     return Response.json({ error: "Only tutors and admins can generate course drafts." }, { status: 403 });
   }
 
-  const rate = draftLimiter.check(session.user.email);
+  const rate = await draftLimiter.check(session.user.email);
   if (rate.limited) return rateLimitResponse(rate.retryAfterMs);
 
   let body: { courseBrief?: unknown };
@@ -162,7 +162,7 @@ export async function POST(req: Request) {
   const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
   req.signal.addEventListener("abort", () => controller.abort(), { once: true });
   try {
-    release = await acquireAiSlot();
+    release = await acquireAiSlot(controller);
     const transcript = [
       `Topic: ${brief.topic}`,
       `Audience: ${brief.audience}`,

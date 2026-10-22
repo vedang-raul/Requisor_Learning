@@ -6,6 +6,7 @@ import { recordUnits } from "@/lib/ai/usage";
 import { authOptions } from "@/lib/auth/auth";
 import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
 import { audioUpload, cleanTranscript, STT_MAX_BYTES, sttConfigured, sttModel } from "@/lib/ai/stt";
+import { readBodyBytes, RequestBodyTooLargeError } from "@/lib/server/request-body";
 
 /**
  * Turns a voice recording into text for the assistant's voice input.
@@ -14,7 +15,7 @@ import { audioUpload, cleanTranscript, STT_MAX_BYTES, sttConfigured, sttModel } 
  * The recording is passed to ElevenLabs and not stored.
  */
 const UPSTREAM_TIMEOUT_MS = 25_000;
-const listenLimiter = createRateLimiter(20, 60_000);
+const listenLimiter = createRateLimiter(20, 60_000, "ai:stt");
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
@@ -26,13 +27,14 @@ export async function POST(req: Request) {
   const declared = Number(req.headers.get("content-length"));
   if (Number.isFinite(declared) && declared > STT_MAX_BYTES) return Response.json({ error: "That recording is too long. Keep it under a minute." }, { status: 413 });
 
-  const { limited, retryAfterMs } = listenLimiter.check(String(session.user.id));
+  const { limited, retryAfterMs } = await listenLimiter.check(String(session.user.id));
   if (limited) return rateLimitResponse(retryAfterMs, { json: true });
 
   let audio: ArrayBuffer;
   try {
-    audio = await req.arrayBuffer();
-  } catch {
+    audio = await readBodyBytes(req, STT_MAX_BYTES);
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) return Response.json({ error: "That recording is too long. Keep it under a minute." }, { status: 413 });
     return Response.json({ error: "The recording didn't arrive. Try again." }, { status: 400 });
   }
   if (audio.byteLength > STT_MAX_BYTES) return Response.json({ error: "That recording is too long. Keep it under a minute." }, { status: 413 });

@@ -72,6 +72,7 @@ jest.mock("next/server", () => {
 });
 
 jest.mock("@/lib/server/request-body", () => ({
+  ...jest.requireActual("@/lib/server/request-body"),
   readJsonBody: (...args: [Request, number]) => mockReadJsonBody(...args),
   RequestBodyTooLargeError: MockRequestBodyTooLargeError,
   InvalidJsonBodyError: MockInvalidJsonBodyError,

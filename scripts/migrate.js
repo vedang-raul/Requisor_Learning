@@ -53,6 +53,7 @@ p.query(`
     ADD COLUMN IF NOT EXISTS position VARCHAR(100),
     ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP,
     ADD COLUMN IF NOT EXISTS reset_requested_at TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS xp INT DEFAULT 0,
     ADD COLUMN IF NOT EXISTS streak_count INT DEFAULT 0,
     ADD COLUMN IF NOT EXISTS streak_last_day DATE,
@@ -76,6 +77,17 @@ p.query(`
   -- always safe (no data loss, existing short values are untouched) and
   -- safe to re-run.
   ALTER TABLE users ALTER COLUMN employment_type TYPE TEXT;
+
+  -- Shared AI request quotas survive worker restarts and autoscaling.
+  CREATE TABLE IF NOT EXISTS ai_rate_limits (
+    scope TEXT NOT NULL,
+    account_key TEXT NOT NULL,
+    count INTEGER NOT NULL CHECK (count > 0),
+    reset_at TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (scope, account_key)
+  );
+  CREATE INDEX IF NOT EXISTS ai_rate_limits_reset_at_idx ON ai_rate_limits (reset_at);
+
 
   DO $$
   BEGIN
@@ -218,7 +230,7 @@ p.query(`
     key_takeaways JSONB NOT NULL DEFAULT '[]',
     assignment TEXT,
     section VARCHAR(200),
-    format VARCHAR(10) NOT NULL DEFAULT 'video' CHECK (format IN ('video','reading')),
+    format VARCHAR(20) NOT NULL DEFAULT 'video' CHECK (format IN ('video','reading','code-tutorial')),
     position INT NOT NULL DEFAULT 0,
     requires_submission BOOLEAN NOT NULL DEFAULT FALSE,
     assignment_marks INT CHECK (assignment_marks BETWEEN 1 AND 10000),
@@ -412,6 +424,41 @@ p.query(`
     admin_note TEXT,
     created_at TIMESTAMP DEFAULT NOW()
   );
+  CREATE INDEX IF NOT EXISTS bug_reports_user_created_idx ON bug_reports (user_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS bug_reports_email_created_idx ON bug_reports (user_email, created_at DESC, id DESC);
+
+  DO $$ BEGIN
+    -- Databases created before code tutorials have format VARCHAR(10) limited
+    -- to 'video'/'reading'; 'code-tutorial' (the Python/JS/Java seed lessons)
+    -- would fail every catalog load. Widen and extend them once, keeping data.
+    IF (SELECT character_maximum_length FROM information_schema.columns
+         WHERE table_schema = current_schema() AND table_name = 'course_lessons' AND column_name = 'format') < 20 THEN
+      ALTER TABLE course_lessons ALTER COLUMN format TYPE VARCHAR(20);
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'course_lessons_format_check'
+                 AND conrelid = 'course_lessons'::regclass
+                 AND pg_get_constraintdef(oid) NOT LIKE '%code-tutorial%') THEN
+      ALTER TABLE course_lessons DROP CONSTRAINT course_lessons_format_check;
+      ALTER TABLE course_lessons ADD CONSTRAINT course_lessons_format_check
+        CHECK (format IN ('video','reading','code-tutorial'));
+    END IF;
+  END $$;
+
+  -- Keep these checks validated: Publish introspects the development schema.
+  -- Existing unvalidated checks are validated without changing or deleting rows.
+  DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bug_reports_payload_bounds' AND conrelid = 'bug_reports'::regclass) THEN
+      ALTER TABLE bug_reports ADD CONSTRAINT bug_reports_payload_bounds
+        CHECK (char_length(title) <= 200 AND char_length(description) <= 5000
+          AND (media_data IS NULL OR octet_length(media_data) <= 5592472));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'capstone_slug_bounds' AND conrelid = 'capstone_completions'::regclass) THEN
+      ALTER TABLE capstone_completions ADD CONSTRAINT capstone_slug_bounds
+        CHECK (char_length(course_slug) BETWEEN 1 AND 200);
+    END IF;
+  END $$;
+  ALTER TABLE bug_reports VALIDATE CONSTRAINT bug_reports_payload_bounds;
+  ALTER TABLE capstone_completions VALIDATE CONSTRAINT capstone_slug_bounds;
 
   CREATE TABLE IF NOT EXISTS lesson_notes (
     id SERIAL PRIMARY KEY,

@@ -14,6 +14,7 @@ import { signIn } from "next-auth/react";
 import { RequisorAI } from "@/components/ui/requisor-ai";
 import { Turnstile } from "@marsidev/react-turnstile";
 import type { TurnstileInstance } from "@marsidev/react-turnstile";
+import { TestLogins } from "@/components/auth/test-logins";
 
 type View = "login" | "signup" | "success";
 type PasswordField = "loginPassword" | "signupPassword" | "signupConfirm";
@@ -56,7 +57,7 @@ export default function TutorAuth() {
       .then((r) => (r.ok ? r.json() : null))
       .then((providers: Record<string, unknown> | null) => {
         if (cancelled) return;
-        setTestLogins(Boolean(providers && providers["dev-student"] && providers["dev-tutor"]));
+        setTestLogins(Boolean(providers && providers["dev-tutor"] && !providers["public-test-accounts"]));
         setTestSuperAdmin(Boolean(providers && providers["dev-admin"]));
       })
       .catch(() => undefined);
@@ -92,7 +93,13 @@ export default function TutorAuth() {
     const el =
       view === "login" ? loginRef.current : view === "signup" ? signupRef.current : successRef.current;
     const vp = viewportRef.current;
-    if (el && vp) vp.style.height = `${el.offsetHeight}px`;
+    if (!el || !vp) return;
+    const resize = () => { vp.style.height = `${el.offsetHeight}px`; };
+    resize();
+    // Providers load after the initial render; keep their buttons and errors visible.
+    const observer = new ResizeObserver(resize);
+    observer.observe(el);
+    return () => observer.disconnect();
   }, [view]);
 
   function go(next: View) {
@@ -430,6 +437,7 @@ export default function TutorAuth() {
               <Divider />
               <GoogleButton loading={submitting === "google"} onClick={handleGoogle} />
               {googleError && <p className="text-xs text-red-600" role="alert">{googleError}</p>}
+              <TestLogins disabled={Boolean(submitting)} />
               {testLogins && (
                 <div className="mt-1 rounded-xl border border-dashed border-amber-300 bg-amber-50 p-3">
                   <p className="text-center text-[11px] leading-4 text-amber-800">Testing shortcut — no password needed</p>

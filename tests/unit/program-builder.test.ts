@@ -1,8 +1,46 @@
 import {
   analyzeTranscript, buildProposal, cleanDiscoveryFields, composeCurriculum, EMPTY_DISCOVERY, mergeAiCurriculum, readProgramCommand, SAMPLE_TRANSCRIPT, sampleDiscovery,
+  programStorageKey, programDraftSummary, sendProgramCommand, takeProgramCommand, hasProgramCommand, PROGRAM_DRAFT_KEY,
 } from "@/lib/courses/program-builder";
 
 describe("Program Builder", () => {
+  it("separates browser drafts and queued commands by account", () => {
+    const records = new Map<string, string>();
+    const originalStorage = Object.getOwnPropertyDescriptor(globalThis, "sessionStorage");
+    const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+    const originalEvent = Object.getOwnPropertyDescriptor(globalThis, "CustomEvent");
+    Object.defineProperty(globalThis, "sessionStorage", { configurable: true, value: {
+      getItem: (key: string) => records.get(key) ?? null,
+      setItem: (key: string, value: string) => records.set(key, value),
+      removeItem: (key: string) => records.delete(key),
+    } });
+    Object.defineProperty(globalThis, "window", { configurable: true, value: { dispatchEvent: jest.fn() } });
+    Object.defineProperty(globalThis, "CustomEvent", { configurable: true, value: class {} });
+    try {
+      const a = "tutor-a@example.test", b = "tutor-b@example.test";
+      expect(programStorageKey(PROGRAM_DRAFT_KEY)).toBeNull();
+      expect(programStorageKey(PROGRAM_DRAFT_KEY, a)).not.toBe(programStorageKey(PROGRAM_DRAFT_KEY, b));
+      records.set(PROGRAM_DRAFT_KEY, JSON.stringify({ form: { topic: "Legacy draft" } }));
+      records.set(programStorageKey(PROGRAM_DRAFT_KEY, a)!, JSON.stringify({ form: { topic: "Private draft" } }));
+      expect(programDraftSummary(a)?.topic).toBe("Private draft");
+      expect(programDraftSummary(b)).toBeNull();
+      expect(programDraftSummary()).toBeNull();
+      sendProgramCommand({ run: "fill", form: { topic: "Private command" } }, a);
+      expect(hasProgramCommand(a)).toBe(true);
+      expect(hasProgramCommand(b)).toBe(false);
+      expect(takeProgramCommand(b)).toBeNull();
+      expect(takeProgramCommand(a)?.form.topic).toBe("Private command");
+      expect(takeProgramCommand(a)).toBeNull();
+    } finally {
+      for (const [key, descriptor] of [
+        ["sessionStorage", originalStorage], ["window", originalWindow], ["CustomEvent", originalEvent],
+      ] as const) {
+        if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+        else Reflect.deleteProperty(globalThis, key);
+      }
+    }
+  });
+
   it("reads industry, audience, topic, level and pains out of a transcript", () => {
     const found = analyzeTranscript(SAMPLE_TRANSCRIPT);
     expect(found.industry).toBe("construction");

@@ -28,10 +28,10 @@ import { getConnection, refreshAccessToken, uploadVideo, videoDelivery, YouTubeE
 const BASE_URL = "https://api.x.ai/v1";
 const MODEL = process.env.XAI_MODEL || "grok-3-mini";
 const MAX_REQUEST_BYTES = 32 * 1024;
-const scriptLimiter = createRateLimiter(10, 60_000);
+const scriptLimiter = createRateLimiter(10, 60_000, "ai:tutor:video-script");
 // Rendering costs video-service credits: a handful an hour is plenty for writing lessons.
-const renderLimiter = createRateLimiter(6, 60 * 60_000);
-const publishLimiter = createRateLimiter(10, 24 * 60 * 60_000);
+const renderLimiter = createRateLimiter(6, 60 * 60_000, "ai:tutor:video-render");
+const publishLimiter = createRateLimiter(10, 24 * 60 * 60_000, "ai:tutor:video-publish");
 
 type JobRow = {
   id: number; owner_user_id: number; provider_video_id: string; title: string; script: string; status: string;
@@ -208,7 +208,7 @@ export async function POST(req: Request) {
     if (!aiVideoBriefReady(brief)) return Response.json({ error: "Say what the video should teach first." }, { status: 400 });
     const apiKey = process.env.XAI_API_KEY;
     if (!apiKey) return Response.json({ error: "AI writing isn't set up on this server." }, { status: 503 });
-    const { limited, retryAfterMs } = scriptLimiter.check(String(who.userId));
+    const { limited, retryAfterMs } = await scriptLimiter.check(String(who.userId));
     if (limited) return rateLimitResponse(retryAfterMs, { json: true });
     const refused = await checkVideoContent("brief", briefForReview(brief), who.userId, false);
     if (refused) return refused;
@@ -249,7 +249,7 @@ export async function POST(req: Request) {
     const voiceId = isProviderId(body.voiceId) ? body.voiceId : null;
     const background = VIDEO_BACKGROUNDS.find((b) => b.key === body.background)?.value ?? VIDEO_BACKGROUNDS[0].value;
     const title = (typeof body.title === "string" ? body.title.replace(/\s+/g, " ").trim().slice(0, 100) : "") || "Lesson video";
-    const { limited, retryAfterMs } = renderLimiter.check(String(who.userId));
+    const { limited, retryAfterMs } = await renderLimiter.check(String(who.userId));
     if (limited) return rateLimitResponse(retryAfterMs, { json: true });
     // The final words are checked, whoever wrote them, before anything is paid for or published.
     const refused = await checkVideoContent("script", `Title: ${title}\n\n${script}`, who.userId, true);
@@ -280,7 +280,7 @@ export async function POST(req: Request) {
     if (job.status !== "ready" || !job.video_url) return Response.json({ error: "This video isn't finished yet." }, { status: 409 });
     const connection = await getConnection(who.userId);
     if (!connection) return Response.json({ error: "Connect your YouTube channel first.", code: "not_connected" }, { status: 409 });
-    const { limited, retryAfterMs } = publishLimiter.check(String(who.userId));
+    const { limited, retryAfterMs } = await publishLimiter.check(String(who.userId));
     if (limited) return rateLimitResponse(retryAfterMs, { json: true });
     try {
       const accessToken = await refreshAccessToken(connection.refreshToken);

@@ -4,7 +4,7 @@
  * drafts a script, the tutor edits it and picks a presenter and voice, and
  * HeyGen renders the video.
  *
- *   HEYGEN_API_KEY   turns it on. Without it the editor explains how to set it up.
+ *   HEYGEN_API_KEY (or HeyGen_v3) turns it on. Without it the editor explains how to set it up.
  *
  * This file holds everything that isn't a route: the brief the tutor fills in,
  * the script prompt and clean-up, and the HeyGen calls (their v3 API).
@@ -24,8 +24,12 @@ export const VIDEO_BACKGROUNDS = [
   { key: "navy", label: "Navy", value: "#0F172A" },
 ] as const;
 
+function heygenApiKey(): string | undefined {
+  return process.env.HEYGEN_API_KEY?.trim() || process.env.HeyGen_v3?.trim();
+}
+
 export function heygenConfigured(): boolean {
-  return Boolean(process.env.HEYGEN_API_KEY);
+  return Boolean(heygenApiKey());
 }
 
 // ── The brief ───────────────────────────────────────────────────────────────
@@ -209,7 +213,7 @@ const items = (value: unknown): Record<string, unknown>[] => (Array.isArray(valu
 const httpsUrl = (value: unknown): value is string => typeof value === "string" && /^https:\/\//.test(value);
 
 async function heygen(path: string, init?: RequestInit): Promise<Record<string, unknown>> {
-  const key = process.env.HEYGEN_API_KEY;
+  const key = heygenApiKey();
   if (!key) throw new AiVideoError("AI video isn't set up on this server.", 503);
   let res: Response;
   try {

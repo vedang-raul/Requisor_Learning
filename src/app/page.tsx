@@ -1,11 +1,20 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import LandingApp from "@/components/landing/App.jsx";
+import { HOME_METADATA, SITE_STRUCTURED_DATA, serializeStructuredData } from "@/lib/courses/seo";
 
-export const metadata: Metadata = {
-  title: "Alma 41 by Requisor.AI — The AI-Native University",
-  description: "A university built around one student: you. An AI tutor that knows your industry, your background and how you learn, with mastery you can prove.",
-};
+export const metadata: Metadata = HOME_METADATA;
 
-export default function Home() {
-  return <LandingApp />;
+export default async function Home() {
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        nonce={nonce}
+        dangerouslySetInnerHTML={{ __html: serializeStructuredData(SITE_STRUCTURED_DATA) }}
+      />
+      <LandingApp />
+    </>
+  );
 }

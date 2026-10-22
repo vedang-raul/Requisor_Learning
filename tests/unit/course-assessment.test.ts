@@ -218,6 +218,22 @@ describe.each([
     expect(prompt).toContain(FULL_PROFILE_ROW.qualification);
     expect(prompt).toContain(FULL_PROFILE_ROW.learning_goal);
   });
+
+  it("bounds legacy oversized stored profile fields before sending them to xAI", async () => {
+    mockedDbQuery.mockResolvedValue({ rows: [{
+      qualification: "Q".repeat(100_000),
+      learning_goal: "G".repeat(100_000),
+      date_of_birth: null,
+    }] });
+    const response = await POST(makeRequest({ courseSlug: "product-management" }));
+    expect(response.status).toBe(200);
+    const prompt = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body).messages[0].content;
+    expect(prompt).toContain("Q".repeat(160));
+    expect(prompt).toContain("G".repeat(160));
+    expect(prompt).not.toContain("Q".repeat(161));
+    expect(prompt).not.toContain("G".repeat(161));
+    expect(prompt.length).toBeLessThan(4000);
+  });
 });
 
 // ── missing user profile (null qualification + learning_goal) ──────────────

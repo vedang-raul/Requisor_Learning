@@ -1,16 +1,52 @@
 ---
-name: Auth decisions
-description: Non-obvious decisions in the real auth system to stay consistent with
+name: Authentication trust boundaries
+description: Privilege approval, provider linking, and shared-browser isolation rules.
 ---
 
-- Admin role is **derived from the email at session time** (`roleForEmail`, support@requisor.io), never trusted from the DB row — prevents privilege escalation via DB edits and keeps Google/credentials paths consistent.
-- Verification & password-reset tokens are stored **SHA-256 hashed**; the raw token exists only in the emailed link. **Why:** DB exposure must not allow account takeover.
-- Unverified accounts may re-sign-up (token rotates); only `email_verified = TRUE` blocks signup.
-- Client learning state stays in localStorage but is **namespaced per user email**. **Why:** shared browsers must not leak one user's progress/notes to another.
-- `NEXTAUTH_URL` is derived at runtime in `lib/base-url.ts` from REPLIT_DEV_DOMAIN / REPLIT_DOMAINS — don't hardcode domains.
-- Emails send via the Replit Gmail connector proxy (`POST /gmail/v1/users/me/messages/send` with base64url MIME); the connected account must remain support@requisor.io.
-- Google OAuth accepts any account with an explicitly verified Google email, but binds it permanently to the provider subject; never auto-link by email. **Why:** prevent takeover and account enumeration. **How to apply:** add linking only through an authenticated, explicit consent flow.
+Password recovery must invalidate sessions on their next server session check, independently of permission-refresh caching. Treat JWTs without a revocation version as the original version, never as the account's current version.
 
-- Public registration must assign every non-canonical-admin account the employee role, regardless of client-selected account type or signed cookies.
-  **Why:** CAPTCHA, email verification, and an application-issued intent cookie prove identity or user presence, not organizational approval for privileged tutor access.
-  **How to apply:** preserve established tutor roles from the database at sign-in, but require any future tutor promotion path to be separately authenticated and authorized as an administrative action.
+**Why:** Adopting the current version would restore stolen legacy cookies after recovery. NextAuth v4 also projects the session and renews JWT expiry after its JWT callback, so returning `exp: 0` alone does not deny the current request.
+
+**How to apply:** Reject revoked tokens before session projection; preserve fail-closed behavior on lookup errors. Password sign-in must carry the version observed during password verification so a concurrent reset cannot bless an old-password login.
+
+Public registration must not grant privileged tutor access merely because a user selects a tutor account type, passes CAPTCHA, verifies an email, or presents an application-issued intent cookie. Preserve legitimately approved tutor roles when signing in.
+
+**Why:** Identity verification is not organizational approval for privileged access.
+
+**How to apply:** Require a separately authenticated and authorized promotion path; re-check server-side permissions for sensitive actions. Imported test-login or verification-bypass features are not evidence that their use is approved for real students.
+
+The user explicitly approved public password-free access to the shared test-tutor account on 2026-10-13, after being warned that anyone can enter it and edit its courses.
+
+**Why:** The user wants the tutor testing shortcut on the published website, independently of other test logins.
+
+**How to apply:** Keep that access restricted to the reserved synthetic tutor identity and separately configurable. This exception does not change the approval requirements for ordinary tutor accounts.
+
+On 2026-10-21 the user explicitly rejected password-protected testing and requested production password-free bypasses for all four roles, the same as development. They were warned that anyone can use the super-admin shortcut and change live data.
+
+**Why:** The user deliberately wants public one-click testing of every role, not a password setup flow.
+
+**How to apply:** Keep public test access explicitly opt-in and independently switchable. Use reserved synthetic identities, never an arbitrary supplied email or a real administrator account. Isolate university-level test accounts in a dedicated test university. Super-admin testing still has live platform-wide power; do not describe it as a sandbox or silently restore a password requirement.
+
+Do not automatically link Google identities to existing accounts by email alone.
+
+**Why:** Implicit linking can permit account takeover and expose account existence.
+
+**How to apply:** Any future linking flow must require an authenticated user and explicit consent.
+
+Keep any browser-held learning state isolated between users, and never treat it as authoritative for protected operations.
+
+**Why:** Shared browsers must not reveal one learner's notes or progress to another, and browser state can be forged.
+
+**How to apply:** Review account switching, logout, and server authorization together when changing persistence.
+
+Do not attribute legacy unscoped browser drafts to whichever account signs in next.
+
+**Why:** Their ownership is unknown; retaining them under the current account can expose another person's work on a shared browser.
+
+**How to apply:** Use account-scoped drafts and queued actions. Ignore unscoped legacy records unless ownership can be independently established.
+
+When an additional public domain breaks Google login, prefer starting login on the already-configured authentication origin rather than changing the OAuth callback blindly.
+
+**Why:** Browser OAuth cookies are host-bound. Multiple public aliases can serve the same app while Google still returns to only one configured origin. Changing that origin without confirming Google's authorized redirect URI can also break users whose login already works.
+
+**How to apply:** Keep the public marketing/SEO domain independent from the established authentication domain. Navigate to the authentication origin before creating OAuth state/PKCE cookies; do not forward credential POSTs or callback requests between domains, broaden cookie scope, or disable OAuth checks. Moving authentication to a new origin requires confirming its callback URI is authorized in Google first.

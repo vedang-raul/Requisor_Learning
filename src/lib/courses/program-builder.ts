@@ -360,6 +360,10 @@ export type ProgramRun = (typeof PROGRAM_RUNS)[number];
 export type ProgramCommand = { form: Partial<Discovery>; run: ProgramRun };
 
 export const PROGRAM_DRAFT_KEY = "requisor-program-builder";
+export function programStorageKey(base: string, owner?: string): string | null {
+  const account = owner?.trim().toLowerCase();
+  return account ? `${base}:${encodeURIComponent(account)}` : null;
+}
 export const PROGRAM_COMMAND_KEY = "requisor-program-builder-command";
 export const PROGRAM_COMMAND_EVENT = "requisor:program-builder-command";
 
@@ -395,22 +399,28 @@ export function readProgramCommand(raw: unknown): ProgramCommand | null {
 }
 
 /** Leaves a command for the builder and announces it (browser only). */
-export function sendProgramCommand(command: ProgramCommand): void {
-  try { sessionStorage.setItem(PROGRAM_COMMAND_KEY, JSON.stringify(command)); } catch { /* storage is unavailable */ }
+export function sendProgramCommand(command: ProgramCommand, owner?: string): void {
+  const key = programStorageKey(PROGRAM_COMMAND_KEY, owner);
+  if (!key) return;
+  try { sessionStorage.setItem(key, JSON.stringify(command)); } catch { /* storage is unavailable */ }
   window.dispatchEvent(new CustomEvent(PROGRAM_COMMAND_EVENT));
 }
 
 /** Whether a command is waiting, without taking it. */
-export function hasProgramCommand(): boolean {
-  try { return sessionStorage.getItem(PROGRAM_COMMAND_KEY) !== null; } catch { return false; }
+export function hasProgramCommand(owner?: string): boolean {
+  const key = programStorageKey(PROGRAM_COMMAND_KEY, owner);
+  if (!key) return false;
+  try { return sessionStorage.getItem(key) !== null; } catch { return false; }
 }
 
 /** Takes the waiting command, if any, so it runs once. */
-export function takeProgramCommand(): ProgramCommand | null {
+export function takeProgramCommand(owner?: string): ProgramCommand | null {
+  const key = programStorageKey(PROGRAM_COMMAND_KEY, owner);
+  if (!key) return null;
   try {
-    const stored = sessionStorage.getItem(PROGRAM_COMMAND_KEY);
+    const stored = sessionStorage.getItem(key);
     if (stored === null) return null;
-    sessionStorage.removeItem(PROGRAM_COMMAND_KEY);
+    sessionStorage.removeItem(key);
     return readProgramCommand(JSON.parse(stored));
   } catch {
     return null;
@@ -418,9 +428,11 @@ export function takeProgramCommand(): ProgramCommand | null {
 }
 
 /** A one-line account of the builder's saved state, for the assistant's context (browser only). */
-export function programDraftSummary(): { topic: string; audience: string; employer: string; level: string; industry: string; modules: number; hasCurriculum: boolean; curriculumTitle: string; hasProposal: boolean } | null {
+export function programDraftSummary(owner?: string): { topic: string; audience: string; employer: string; level: string; industry: string; modules: number; hasCurriculum: boolean; curriculumTitle: string; hasProposal: boolean } | null {
+  const key = programStorageKey(PROGRAM_DRAFT_KEY, owner);
+  if (!key) return null;
   try {
-    const saved = JSON.parse(sessionStorage.getItem(PROGRAM_DRAFT_KEY) ?? "null") as { form?: Partial<Discovery>; curriculum?: Partial<Curriculum> | null; proposal?: unknown } | null;
+    const saved = JSON.parse(sessionStorage.getItem(key) ?? "null") as { form?: Partial<Discovery>; curriculum?: Partial<Curriculum> | null; proposal?: unknown } | null;
     if (!saved?.form) return null;
     const form = { ...EMPTY_DISCOVERY, ...cleanDiscoveryFields(saved.form) };
     return {

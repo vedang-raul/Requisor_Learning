@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { isResourceFileUrl } from "./lib/courses/resource-files";
+import { canonicalLoginRedirect } from "./lib/courses/auth-domain";
 
 /** APIs a person waiting for approval may still call: auth itself and public endpoints. */
 const OPEN_WHILE_PENDING = ["/api/auth", "/api/health", "/api/branding", "/api/public", "/api/landing-chat",
@@ -28,6 +29,26 @@ async function readSessionToken(req: NextRequest) {
 }
 
 export async function middleware(req: NextRequest) {
+  // Replit's proxy may give nextUrl an internal host; use its forwarded public
+  // host for comparison only. The redirect destination is server-owned.
+  const loginRedirect = canonicalLoginRedirect(
+    {
+      pathname: req.nextUrl.pathname,
+      search: req.nextUrl.search,
+      host: (req.headers.get("x-forwarded-host") || req.headers.get("host") || req.nextUrl.host)
+        .split(",")[0].trim(),
+      method: req.method,
+    },
+    process.env.NEXTAUTH_URL,
+    process.env.NODE_ENV === "production",
+  );
+  if (loginRedirect) {
+    const response = NextResponse.redirect(loginRedirect);
+    response.headers.set("Cache-Control", "private, no-store");
+    response.headers.set("X-Robots-Tag", "noindex, nofollow");
+    return response;
+  }
+
   // The Pyodide (in-browser Python) worker is fetched as its own resource,
   // so per spec it enforces whatever CSP header THAT response carries —
   // not the strict-dynamic policy below meant for HTML documents. Scope the
@@ -206,6 +227,12 @@ export async function middleware(req: NextRequest) {
   });
 
   response.headers.set("Content-Security-Policy", csp);
+  // Do not expose account screens or API responses as search results.
+  if (["/app", "/api", "/login", "/reset-password"].some(
+    (prefix) => path === prefix || path.startsWith(`${prefix}/`),
+  )) {
+    response.headers.set("X-Robots-Tag", "noindex, nofollow");
+  }
 
   return response;
 }

@@ -8,6 +8,10 @@ import { db, roleForEmail, ADMIN_EMAIL, type DbUser } from "../server/db";
 import { accessFor, type MembershipRow } from "./roles";
 import { skipEmailVerification } from "../server/email";
 import { sendWelcomeEmail } from "../server/email";
+import {
+  TEST_ACCOUNT_PROVIDER, TEST_ACCOUNTS, isTestAccountKind, testAccountsEnabled,
+  testAccountAccess,
+} from "./test-accounts";
 
 const GOOGLE_SIGNIN_FAILED_ERROR = "/?error=GoogleSignInFailed";
 /** How often a signed-in person's role and university are read again from the database. */
@@ -50,14 +54,22 @@ export function testLoginsEnabled(): boolean {
   return process.env.NODE_ENV !== "production" || Boolean(process.env.VERCEL);
 }
 
+/** Independent opt-in for the shared test tutor; never enables learner/admin bypasses. */
+export function tutorTestLoginEnabled(): boolean {
+  if (testAccountsEnabled()) return true;
+  const setting = (process.env.TUTOR_TEST_LOGIN ?? "").toLowerCase();
+  if (setting === "on") return true;
+  if (setting === "off") return false;
+  return testLoginsEnabled();
+}
+
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET || process.env.SESSION_SECRET,
   session: {
     strategy: "jwt",
     maxAge: SESSION_MAX_AGE,
-    // Refresh the token at most once every 5 minutes — not on every request.
-    // The client-side InactivityGuard handles idle logout; the JWT maxAge is
-    // the server-side hard limit. updateAge: 0 would hit the DB on every call.
+    // NextAuth's updateAge applies to database sessions, not JWT callbacks.
+    // JWT session validation below checks revocation on every request.
     updateAge: 300,
   },
   // Override the session-token cookie so it has NO maxAge → becomes a true
@@ -76,6 +88,47 @@ export const authOptions: NextAuthOptions = {
   },
   pages: { signIn: "/", error: "/" },
   providers: [
+    ...(testAccountsEnabled() ? [
+      CredentialsProvider({
+        id: TEST_ACCOUNT_PROVIDER,
+        name: "Public test accounts",
+        credentials: {
+          kind: { label: "Test account", type: "text" },
+        },
+        async authorize(credentials) {
+          if (!testAccountsEnabled() || !isTestAccountKind(credentials?.kind)) return null;
+          const account = TEST_ACCOUNTS[credentials.kind];
+          try {
+            // These reserved synthetic identities never reuse a real person's account.
+            // University-level testing is isolated from real universities by default.
+            const { rows } = await db.query<DbUser>(
+              `WITH test_university AS (
+                 INSERT INTO universities (name, short_name, email_domains)
+                 SELECT 'Requisor Test University', 'TEST', '{}'::text[] WHERE $4::boolean
+                 ON CONFLICT (lower(name)) DO UPDATE SET name = EXCLUDED.name
+                 RETURNING id
+               )
+               INSERT INTO users (email, name, email_verified, role, university_id, university_status, onboarding_done)
+               VALUES ($1, $2, TRUE, $3, (SELECT id FROM test_university),
+                 CASE WHEN $4::boolean THEN 'active' END, TRUE)
+               ON CONFLICT (email) DO UPDATE SET
+                 name = EXCLUDED.name, email_verified = TRUE, role = EXCLUDED.role,
+                 university_id = EXCLUDED.university_id, university_status = EXCLUDED.university_status,
+                 onboarding_done = TRUE, password_hash = NULL
+               RETURNING *`,
+              [account.email, account.name, account.role, credentials.kind !== "super-admin"]
+            );
+            const user = rows[0];
+            if (!user) return null;
+            console.info(JSON.stringify({ event: "test_account_login", kind: credentials.kind, outcome: "success" }));
+            return { id: String(user.id), email: user.email, name: user.name };
+          } catch {
+            console.error(JSON.stringify({ event: "test_account_login", outcome: "unavailable" }));
+            return null;
+          }
+        },
+      }),
+    ] : []),
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
@@ -131,8 +184,8 @@ export const authOptions: NextAuthOptions = {
           }),
         ]
       : []),
-    // ─── Test logins (see testLoginsEnabled above) ──────────────────────
-    ...(testLoginsEnabled()
+    // ─── Shared test tutor (independently configurable) ────────────────
+    ...(tutorTestLoginEnabled()
       ? [
           CredentialsProvider({
             id: "dev-tutor",
@@ -151,6 +204,11 @@ export const authOptions: NextAuthOptions = {
               return { id: String(rows[0].id), email: rows[0].email, name: rows[0].name ?? "Development Tutor" };
             },
           }),
+        ]
+      : []),
+    // The legacy TEST_LOGINS setting still controls the student shortcut.
+    ...(testLoginsEnabled()
+      ? [
           CredentialsProvider({
             id: "dev-student",
             name: "Dev Student",
@@ -197,7 +255,7 @@ export const authOptions: NextAuthOptions = {
         }
         // Record login time
         db.query("UPDATE users SET last_login_at = NOW() WHERE id = $1", [user.id]).catch(() => {});
-        return { id: String(user.id), email: user.email, name: user.name ?? undefined };
+        return { id: String(user.id), email: user.email, name: user.name ?? undefined, sessionVersion: user.session_version };
       },
     }),
   ],
@@ -295,7 +353,14 @@ export const authOptions: NextAuthOptions = {
       sendWelcomeEmail(profileEmail, name).catch(() => console.error("Welcome email failed."));
       return true;
     },
-    async jwt({ token, user, trigger, session }) {
+    async jwt({ token, user, account, trigger, session }) {
+      if (user) {
+        token.publicTestAccount = account?.provider === TEST_ACCOUNT_PROVIDER;
+      }
+      // Removing the explicit public-test opt-in also revokes these sessions.
+      if (token.publicTestAccount && !testAccountsEnabled()) {
+        return { ...token, uid: "", role: "employee", superAdmin: false, universityId: null, pending: false, exp: 0 };
+      }
       // Live profile update — client called useSession().update({ name })
       if (trigger === "update" && (session as { name?: string })?.name) {
         token.name = (session as { name: string }).name;
@@ -309,16 +374,35 @@ export const authOptions: NextAuthOptions = {
       // Someone waiting for approval is re-checked often, so they get in soon after it.
       const recheckAfter = token.pending === true ? PENDING_RECHECK_SECONDS : ACCESS_RECHECK_SECONDS;
       const stale = typeof token.accessCheckedAt !== "number" || nowCheck - token.accessCheckedAt > recheckAfter;
-      if (email && (user?.email || !token.uid || stale)) {
-        const { rows } = await db.query<Pick<DbUser, "id" | "name"> & MembershipRow & { university_name: string | null }>(
-          `SELECT u.id, u.role, u.name, u.university_id, u.university_status, un.name AS university_name
+      if (!email) throw new Error("Session account is unavailable.");
+      // Never cache this check with the slower permission refresh. Recovery must
+      // invalidate stolen cookies on their very next session request.
+      const { rows } = await db.query<Pick<DbUser, "id" | "name" | "session_version"> & MembershipRow & { university_name: string | null }>(
+          `SELECT u.id, u.role, u.name, u.session_version, u.university_id, u.university_status, un.name AS university_name
              FROM users u LEFT JOIN universities un ON un.id = u.university_id
             WHERE u.email = $1`,
           [email]
         );
+      const current = rows[0];
+      if (!current) throw new Error("Session account is unavailable.");
+      // Pre-upgrade JWTs have version zero. Never adopt the current version for
+      // an existing JWT: doing so would restore a revoked stolen session.
+      const issuedVersion = user
+        ? (user.sessionVersion ?? current.session_version)
+        : (token.sessionVersion ?? 0);
+      if (issuedVersion !== current.session_version) {
+        // Merely setting exp=0 is insufficient: NextAuth can still project the
+        // user this request and re-encode the token with a renewed expiry.
+        throw new Error("Session has been revoked.");
+      }
+      token.sessionVersion = issuedVersion;
+      if (user?.email || !token.uid || stale) {
         token.uid = rows[0] ? String(rows[0].id) : undefined;
         // The super admin list decides super admins; a university admin must belong to a university.
-        const access = accessFor(email, rows[0]);
+        const access = token.publicTestAccount
+          ? testAccountAccess(email, rows[0])
+          : accessFor(email, rows[0]);
+        if (!access) return { ...token, uid: "", role: "employee", superAdmin: false, universityId: null, pending: false, exp: 0 };
         token.role = access.role;
         token.superAdmin = access.superAdmin;
         token.universityId = access.universityId;

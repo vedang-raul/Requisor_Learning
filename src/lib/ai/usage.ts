@@ -1,5 +1,6 @@
 import { after } from "next/server";
 import { db } from "@/lib/server/db";
+import { aiSlotSignal } from "./slot-signal";
 
 /**
  * Records how much of the paid AI services each person uses, for the usage
@@ -110,7 +111,11 @@ export async function xaiFetch(context: UsageContext, url: string, init: Request
       if (parsed.stream === true && !parsed.stream_options) body = JSON.stringify({ ...parsed, stream_options: { include_usage: true } });
     } catch { /* leave the request as it is */ }
   }
-  const res = await fetch(url, { ...init, body });
+  const slotSignal = aiSlotSignal.getStore();
+  const signal = slotSignal
+    ? AbortSignal.any([slotSignal, ...(init.signal ? [init.signal] : [])])
+    : init.signal;
+  const res = await fetch(url, { ...init, body, signal });
   const userId = asUserId(context.userId);
   if (!res.ok || !userId || !(res.body instanceof ReadableStream)) return res;
   // The answer is watched as the caller reads it: nothing is buffered twice, and

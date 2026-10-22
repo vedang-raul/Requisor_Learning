@@ -27,13 +27,13 @@ function connectionString(): string | undefined {
   return url.replace(/([?&])sslmode=[^&]*&?/i, "$1").replace(/[?&]$/, "");
 }
 
-function makePool(): Pool {
+export function makePool(max = Number(process.env.PG_POOL_MAX) || 20): Pool {
   const pool = new Pool({
     connectionString: connectionString(),
     ...sslConfig(),
     // Evict idle connections after 30 s to avoid exhausting the server-side
     // limit when traffic temporarily subsides.
-    max: Number(process.env.PG_POOL_MAX) || 20,
+    max,
     // limit when traffic temporarily subsides.
     idleTimeoutMillis: 30_000,
     // Fail fast if every slot is busy rather than queuing indefinitely —
@@ -69,6 +69,7 @@ export interface DbUser {
   reset_token: string | null;
   reset_expires: Date | null;
   reset_requested_at: Date | null;
+  session_version: number;
   created_at: Date;
   employment_type: string | null;
   position: string | null;

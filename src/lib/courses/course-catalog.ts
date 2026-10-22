@@ -68,16 +68,44 @@ export async function initializeCourseCatalog(client: CatalogClient): Promise<vo
         ADD COLUMN IF NOT EXISTS language TEXT
     `);
     await client.query("ALTER TABLE courses ADD COLUMN IF NOT EXISTS syllabus JSONB");
-    const marker = await client.query("SELECT 1 FROM course_catalog_metadata WHERE key=$1", ["seed-v1"]);
-    if (!marker.rows[0]) {
-      for (const course of seedCourses) {
-        await client.query(
+    await client.query(`
+      DO $$ BEGIN
+        -- Databases created before code tutorials have format VARCHAR(10) limited
+        -- to 'video'/'reading'; 'code-tutorial' (the Python/JS/Java seed lessons)
+        -- would fail every catalog load. Widen and extend them once, keeping data.
+        IF (SELECT character_maximum_length FROM information_schema.columns
+             WHERE table_schema = current_schema() AND table_name = 'course_lessons' AND column_name = 'format') < 20 THEN
+          ALTER TABLE course_lessons ALTER COLUMN format TYPE VARCHAR(20);
+        END IF;
+        IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'course_lessons_format_check'
+                     AND conrelid = 'course_lessons'::regclass
+                     AND pg_get_constraintdef(oid) NOT LIKE '%code-tutorial%') THEN
+          ALTER TABLE course_lessons DROP CONSTRAINT course_lessons_format_check;
+          ALTER TABLE course_lessons ADD CONSTRAINT course_lessons_format_check
+            CHECK (format IN ('video','reading','code-tutorial'));
+        END IF;
+      END $$
+    `);
+    // New seed content needs its own one-time marker on existing catalogs.
+    // Never reset seed-v1: that would bring back deliberately deleted courses.
+    const batches = [
+      { key: "seed-v1", courses: seedCourses },
+      { key: "seed-python", courses: seedCourses.filter((course) => course.slug === "python") },
+      { key: "seed-programming", courses: seedCourses.filter((course) => course.slug === "javascript" || course.slug === "java") },
+    ];
+    for (const batch of batches) {
+      const marker = await client.query("SELECT 1 FROM course_catalog_metadata WHERE key=$1", [batch.key]);
+      if (marker.rows[0]) continue;
+      for (const course of batch.courses) {
+        const inserted = await client.query(
           `INSERT INTO courses (slug, title, tagline, category, level, tags, cover, added_at, base_assessment)
            VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9)
-           ON CONFLICT (slug) DO NOTHING`,
+           ON CONFLICT (slug) DO NOTHING RETURNING slug`,
           [course.slug, course.title, course.tagline, course.category, course.level,
             JSON.stringify(course.tags), course.cover, course.addedAt, course.baseAssessment ?? null]
         );
+        // Preserve a previously imported or tutor-authored course unchanged.
+        if (batch.key !== "seed-v1" && !inserted.rows[0]) continue;
         for (const lesson of course.lessons) {
           await client.query(
             `INSERT INTO course_lessons
@@ -92,7 +120,7 @@ export async function initializeCourseCatalog(client: CatalogClient): Promise<vo
       }
       await client.query(
         "INSERT INTO course_catalog_metadata (key) VALUES ($1) ON CONFLICT (key) DO NOTHING",
-        ["seed-v1"]
+        [batch.key]
       );
     }
     // Legacy databases used an unbounded TEXT review key. Remove values that

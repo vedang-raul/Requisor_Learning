@@ -9,7 +9,7 @@ import { Input, Textarea } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import {
   analyzeTranscript, buildProposal, composeCurriculum, EMPTY_DISCOVERY, FORMATS, INDUSTRIES, LEVELS, MODULE_COUNTS,
-  PROGRAM_COMMAND_EVENT, PROGRAM_DRAFT_KEY, sampleDiscovery, takeProgramCommand,
+  PROGRAM_COMMAND_EVENT, PROGRAM_DRAFT_KEY, programStorageKey, sampleDiscovery, takeProgramCommand,
   type Curriculum, type Discovery, type Industry, type Level, type Proposal,
 } from "@/lib/courses/program-builder";
 
@@ -25,7 +25,6 @@ type Step = 1 | 2 | 3;
 type Notice = { kind: "ok" | "warn"; text: string } | null;
 
 const selectClass = "focus-ring h-10 w-full rounded-xl border border-border bg-white px-3 text-sm text-zinc-900 transition-colors hover:border-zinc-300";
-const DRAFT_KEY = PROGRAM_DRAFT_KEY;
 
 /** Text that can be edited in place. The change is kept when the field loses focus. */
 function Editable({ value, onChange, as = "span", className, label, multiline = false }: {
@@ -166,7 +165,8 @@ function ProposalDocument({ proposal, onChange, printing = false }: { proposal: 
   );
 }
 
-export function ProgramBuilder() {
+export function ProgramBuilder({ owner }: { owner: string }) {
+  const draftKey = programStorageKey(PROGRAM_DRAFT_KEY, owner);
   const [step, setStep] = useState<Step>(1);
   const [form, setForm] = useState<Discovery>(EMPTY_DISCOVERY);
   const [curriculum, setCurriculum] = useState<Curriculum | null>(null);
@@ -243,8 +243,9 @@ export function ProgramBuilder() {
   // Saving waits until the saved draft has been read back in, so an empty first render can't overwrite it.
   const [restored, setRestored] = useState(false);
   useEffect(() => {
+    if (!draftKey) return;
     try {
-      const saved = JSON.parse(sessionStorage.getItem(DRAFT_KEY) ?? "null") as { form?: Discovery; curriculum?: Curriculum | null; proposal?: Proposal | null; step?: Step } | null;
+      const saved = JSON.parse(sessionStorage.getItem(draftKey) ?? "null") as { form?: Discovery; curriculum?: Curriculum | null; proposal?: Proposal | null; step?: Step } | null;
       if (saved?.form && typeof saved.form === "object") {
         setForm({ ...EMPTY_DISCOVERY, ...saved.form });
         if (saved.curriculum?.modules) setCurriculum(saved.curriculum);
@@ -254,11 +255,11 @@ export function ProgramBuilder() {
       }
     } catch { /* nothing saved, or storage is unavailable */ }
     setRestored(true);
-  }, []);
+  }, [draftKey]);
   useEffect(() => {
-    if (!restored) return;
-    try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ form, curriculum, proposal, step })); } catch { /* storage is unavailable */ }
-  }, [restored, form, curriculum, proposal, step]);
+    if (!restored || !draftKey) return;
+    try { sessionStorage.setItem(draftKey, JSON.stringify({ form, curriculum, proposal, step })); } catch { /* storage is unavailable */ }
+  }, [restored, form, curriculum, proposal, step, draftKey]);
   function startOver() {
     setForm(EMPTY_DISCOVERY); setCurriculum(null); setProposal(null); setStep(1); setAnalyzeNote(null); setGenNote(null);
   }
@@ -268,7 +269,7 @@ export function ProgramBuilder() {
   // here, whether the builder was already open or has just been opened for it.
   const [assistantNote, setAssistantNote] = useState<string | null>(null);
   const runCommand = useCallback(async () => {
-    const command = takeProgramCommand();
+    const command = takeProgramCommand(owner);
     if (!command) return;
     const before = formRef.current;
     const filled: Discovery = { ...before, ...command.form };
@@ -288,7 +289,7 @@ export function ProgramBuilder() {
     const built = command.run === "generate" || !curriculumState.current || changed > 0 ? await generate(filled) : curriculumState.current;
     if (command.run === "proposal") createProposal(built);
     setAssistantNote(command.run === "proposal" ? "The assistant assembled this proposal. Fill in the investment amounts before exporting." : "The assistant built this curriculum. Every line is click-to-edit.");
-  }, [generate, createProposal]);
+  }, [generate, createProposal, owner]);
   useEffect(() => {
     if (!restored) return;
     void runCommand();

@@ -28,7 +28,7 @@ describeWithDatabase("legacy course catalog migration", () => {
           title VARCHAR(200) NOT NULL, description VARCHAR(2000) NOT NULL,
           youtube_id VARCHAR(120) NOT NULL, duration_min INT NOT NULL,
           resources JSONB NOT NULL DEFAULT '[]', key_takeaways JSONB NOT NULL DEFAULT '[]',
-          assignment TEXT, section VARCHAR(200), format VARCHAR(10) NOT NULL DEFAULT 'video',
+          assignment TEXT, section VARCHAR(200), format VARCHAR(20) NOT NULL DEFAULT 'video',
           position INT NOT NULL DEFAULT 0
         );
         CREATE TABLE course_catalog_metadata (

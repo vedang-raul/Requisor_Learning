@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import type { AssistantAction } from "@/lib/assistant/assistant-actions";
 import { INSUFFICIENT_CONTENT_CODE, parseAssignment } from "@/lib/ai/assignment-format";
 import type { Course } from "@/lib/types";
+import { useStore } from "@/lib/store";
 import { sendProgramCommand } from "@/lib/courses/program-builder";
 
 /**
@@ -159,6 +160,7 @@ export function AssistantActionCard({ action, onOutcome, voiceAnswer, onAnnounce
 }) {
   const router = useRouter();
   const [state, setState] = useState<State>({ phase: "idle" });
+  const { state: accountState } = useStore();
   const { icon: Icon, title, lines, confirm } = describe(action);
   // Confirmed by voice: open the result for them instead of waiting for a click.
   const byVoiceRef = useRef(false);
@@ -262,7 +264,7 @@ export function AssistantActionCard({ action, onOutcome, voiceAnswer, onAnnounce
         }
         case "program_builder":
           // The builder picks the command up, whether it is open now or opened by this.
-          sendProgramCommand({ run: action.run, form: action.form });
+          sendProgramCommand({ run: action.run, form: action.form }, accountState.user?.email);
           finish(action.run === "fill" ? "Filled in the discovery fields." : action.run === "generate" ? "Building the curriculum in the Program Builder." : action.run === "proposal" ? "Assembling the proposal in the Program Builder." : "Opened the curriculum.");
           if (!["/app/tutor", "/app/tutor/"].includes(window.location.pathname)) router.push("/app/tutor/");
           return;

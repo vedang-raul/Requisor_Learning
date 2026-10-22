@@ -11,6 +11,12 @@ Tutor rating views are aggregate-only. Detailed learner reviews must not be expo
 
 Initial catalog import is a one-time reconciliation. Once recorded, ordinary reads must not reinsert deleted seed courses; later schema-integrity migrations must use their own lifecycle and must not be skipped merely because seeding already completed.
 
+New seed-course releases need a separate one-time reconciliation, never a reset of the original import. Preserve an existing course with the same slug, including its lessons.
+
+**Why:** A completed initial import otherwise hides newly shipped course content; repeating the whole import restores deleted courses or adds seed lessons to authored courses.
+
+**How to apply:** Give each new seed-content release an independent completion marker and record the reconciliation even when its slug is already occupied.
+
 **Why:** Separate authorization and update queries created a time-of-check/time-of-use risk, detailed review endpoints bypassed aggregate-only privacy, continuous seed insertion made successful deletions reappear, and assigning unowned seed courses exposed data unrelated to courses a tutor created.
 
 **How to apply:** Apply the authenticated tutor's owner ID to every tutor-facing read and write, use atomic ownership predicates and row locks for mutations, preserve revision checks, return only rating distributions/counts, and leave seeded courses unowned unless explicitly created or assigned through an authorized workflow.
