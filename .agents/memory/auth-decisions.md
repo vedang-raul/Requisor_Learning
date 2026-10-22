@@ -3,6 +3,12 @@ name: Authentication trust boundaries
 description: Privilege approval, provider linking, and shared-browser isolation rules.
 ---
 
+Password recovery must invalidate sessions on their next server session check, independently of permission-refresh caching. Treat JWTs without a revocation version as the original version, never as the account's current version.
+
+**Why:** Adopting the current version would restore stolen legacy cookies after recovery. NextAuth v4 also projects the session and renews JWT expiry after its JWT callback, so returning `exp: 0` alone does not deny the current request.
+
+**How to apply:** Reject revoked tokens before session projection; preserve fail-closed behavior on lookup errors. Password sign-in must carry the version observed during password verification so a concurrent reset cannot bless an old-password login.
+
 Public registration must not grant privileged tutor access merely because a user selects a tutor account type, passes CAPTCHA, verifies an email, or presents an application-issued intent cookie. Preserve legitimately approved tutor roles when signing in.
 
 **Why:** Identity verification is not organizational approval for privileged access.

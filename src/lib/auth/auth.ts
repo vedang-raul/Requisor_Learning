@@ -67,9 +67,8 @@ export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
     maxAge: SESSION_MAX_AGE,
-    // Refresh the token at most once every 5 minutes — not on every request.
-    // The client-side InactivityGuard handles idle logout; the JWT maxAge is
-    // the server-side hard limit. updateAge: 0 would hit the DB on every call.
+    // NextAuth's updateAge applies to database sessions, not JWT callbacks.
+    // JWT session validation below checks revocation on every request.
     updateAge: 300,
   },
   // Override the session-token cookie so it has NO maxAge → becomes a true
@@ -255,7 +254,7 @@ export const authOptions: NextAuthOptions = {
         }
         // Record login time
         db.query("UPDATE users SET last_login_at = NOW() WHERE id = $1", [user.id]).catch(() => {});
-        return { id: String(user.id), email: user.email, name: user.name ?? undefined };
+        return { id: String(user.id), email: user.email, name: user.name ?? undefined, sessionVersion: user.session_version };
       },
     }),
   ],
@@ -368,13 +367,29 @@ export const authOptions: NextAuthOptions = {
       // Someone waiting for approval is re-checked often, so they get in soon after it.
       const recheckAfter = token.pending === true ? PENDING_RECHECK_SECONDS : ACCESS_RECHECK_SECONDS;
       const stale = typeof token.accessCheckedAt !== "number" || nowCheck - token.accessCheckedAt > recheckAfter;
-      if (email && (user?.email || !token.uid || stale)) {
-        const { rows } = await db.query<Pick<DbUser, "id" | "name"> & MembershipRow & { university_name: string | null }>(
-          `SELECT u.id, u.role, u.name, u.university_id, u.university_status, un.name AS university_name
+      if (!email) throw new Error("Session account is unavailable.");
+      // Never cache this check with the slower permission refresh. Recovery must
+      // invalidate stolen cookies on their very next session request.
+      const { rows } = await db.query<Pick<DbUser, "id" | "name" | "session_version"> & MembershipRow & { university_name: string | null }>(
+          `SELECT u.id, u.role, u.name, u.session_version, u.university_id, u.university_status, un.name AS university_name
              FROM users u LEFT JOIN universities un ON un.id = u.university_id
             WHERE u.email = $1`,
           [email]
         );
+      const current = rows[0];
+      if (!current) throw new Error("Session account is unavailable.");
+      // Pre-upgrade JWTs have version zero. Never adopt the current version for
+      // an existing JWT: doing so would restore a revoked stolen session.
+      const issuedVersion = user
+        ? (user.sessionVersion ?? current.session_version)
+        : (token.sessionVersion ?? 0);
+      if (issuedVersion !== current.session_version) {
+        // Merely setting exp=0 is insufficient: NextAuth can still project the
+        // user this request and re-encode the token with a renewed expiry.
+        throw new Error("Session has been revoked.");
+      }
+      token.sessionVersion = issuedVersion;
+      if (user?.email || !token.uid || stale) {
         token.uid = rows[0] ? String(rows[0].id) : undefined;
         // The super admin list decides super admins; a university admin must belong to a university.
         const access = token.publicTestAccount

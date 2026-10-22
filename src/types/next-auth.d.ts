@@ -1,6 +1,11 @@
 import "next-auth";
 
 declare module "next-auth" {
+  interface User {
+    /** Server-only snapshot taken when the password was verified. */
+    sessionVersion?: number;
+  }
+
   interface Session {
     user: {
       id: string;

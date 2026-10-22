@@ -69,6 +69,7 @@ export interface DbUser {
   reset_token: string | null;
   reset_expires: Date | null;
   reset_requested_at: Date | null;
+  session_version: number;
   created_at: Date;
   employment_type: string | null;
   position: string | null;
