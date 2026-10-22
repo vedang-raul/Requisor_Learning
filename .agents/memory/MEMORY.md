@@ -16,3 +16,4 @@
 - [Protected file previews](protected-file-previews.md) — same-origin PDF iframe routes need aligned CSP/X-Frame exceptions, including Next.js trailing-slash paths.
 - [Deployment boundaries](deployment-boundaries.md) — imported external-hosting configs are not evidence of live hosting or permission to change database providers.
 - [Custom analytics privacy](analytics-privacy.md) — approved categories and counts only; private course slugs are grouped, not sent as authored identifiers.
+- [Dependency backports](dependency-backports.md) — prefer verified, pinned security backports over unrelated framework migrations when upstream has no fix.
