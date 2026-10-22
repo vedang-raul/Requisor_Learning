@@ -8,6 +8,7 @@ next-env.d.ts
 .env*.local
 playwright-report
 test-results
+/generated-artifacts/
 
 # Local tool settings and caches
 .claude/settings.local.json
