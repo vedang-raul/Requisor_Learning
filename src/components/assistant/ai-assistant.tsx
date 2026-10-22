@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Accessibility, BookPlus, Check, Compass, Ear, Headphones, ListChecks, Loader2, RotateCcw, Send, Sparkles, Square, ThumbsDown, ThumbsUp, TrendingUp, Volume2, VolumeX, X, ChevronDown } from "lucide-react";
+import { BookPlus, Check, Compass, Ear, Headphones, ListChecks, Loader2, RotateCcw, Send, Sparkles, Square, ThumbsDown, ThumbsUp, TrendingUp, Volume2, VolumeX, X, ChevronDown } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { getNudge, markNudgeSeen, type Nudge } from "@/lib/ai/nudges";
@@ -296,6 +296,21 @@ function RobotFace({ scale }: { scale?: number }) {
         </span>
       </span>
     </span>
+  );
+}
+
+/** A person in a wheelchair (after the International Symbol of Access), bold enough to read at small sizes. */
+function WheelchairIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true" fill="none" stroke="currentColor" strokeWidth={2.3} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="10.5" cy="3.6" r="2.1" fill="currentColor" stroke="none" />
+      {/* back and seat, then the leg down to the footrest */}
+      <path d="M10.5 7.4v6.1h5.2l2.4 5.6" />
+      {/* arm reaching forward */}
+      <path d="M10.5 10.2h4.4" />
+      {/* the wheel, open where the seat meets it */}
+      <path d="M7.1 11.3a5.4 5.4 0 1 0 7.6 7.2" />
+    </svg>
   );
 }
 
@@ -1416,9 +1431,14 @@ export function AiAssistant() {
                 aria-expanded={showA11yPanel}
                 aria-controls="assistant-a11y-panel"
                 title="Accessibility"
-                className={cn("focus-ring shrink-0 rounded-lg p-1.5 transition hover:bg-zinc-100 hover:text-zinc-700", showA11yPanel || handsFree || wakeEnabled ? "text-primary" : "text-zinc-400")}
+                className={cn(
+                  "focus-ring shrink-0 rounded-lg p-1 transition",
+                  showA11yPanel || handsFree || wakeEnabled
+                    ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/25 hover:bg-primary/15"
+                    : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+                )}
               >
-                <Accessibility className="h-3.5 w-3.5" />
+                <WheelchairIcon className="h-[18px] w-[18px]" />
               </button>
               <button
                 onClick={closePanel}
