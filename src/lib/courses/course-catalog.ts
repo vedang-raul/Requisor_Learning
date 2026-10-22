@@ -478,3 +478,66 @@ export async function findLessonLocation(lessonId: unknown): Promise<LessonLocat
     visibleToLearners: Boolean(row.visible),
   };
 }
+export type TutorAssignment =
+  | { ok: true; changed: boolean; course: { slug: string; title: string }; tutor: { id: number; name: string | null; email: string } | null }
+  | { ok: false; status: 400 | 404; error: string };
+
+/**
+ * Super admin: make `tutorId` the course's tutor (its owner), or leave it with
+ * no tutor (null). The tutor must be a tutor and, for a university's course,
+ * belong to that university. Lesson files uploaded by the previous tutor move
+ * with the course, so the new tutor can keep editing it.
+ */
+export async function assignCourseTutor(slug: string, tutorId: number | null): Promise<TutorAssignment> {
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows: courses } = await client.query<{ title: string; owner_user_id: number | null; university_id: number | null }>(
+      "SELECT title, owner_user_id, university_id FROM courses WHERE slug = $1 FOR UPDATE",
+      [slug]
+    );
+    const current = courses[0];
+    if (!current) { await client.query("ROLLBACK"); return { ok: false, status: 404, error: "Course not found." }; }
+
+    let tutor: { id: number; name: string | null; email: string } | null = null;
+    if (tutorId !== null) {
+      const { rows } = await client.query<{ id: number; name: string | null; email: string; role: string; university_id: number | null; university_status: string | null }>(
+        "SELECT id, name, email, role, university_id, university_status FROM users WHERE id = $1",
+        [tutorId]
+      );
+      const found = rows[0];
+      if (!found || found.role !== "tutor") { await client.query("ROLLBACK"); return { ok: false, status: 400, error: "Pick a tutor account." }; }
+      if (current.university_id !== null && (found.university_id !== current.university_id || found.university_status !== "active")) {
+        await client.query("ROLLBACK");
+        return { ok: false, status: 400, error: "That tutor isn't at this course's university." };
+      }
+      tutor = { id: found.id, name: found.name, email: found.email };
+    }
+
+    const changed = current.owner_user_id !== tutorId;
+    if (changed) {
+      await client.query("UPDATE courses SET owner_user_id = $2, updated_at = NOW() WHERE slug = $1", [slug, tutorId]);
+      if (tutorId !== null && current.owner_user_id !== null) {
+        const { rows: lessons } = await client.query<{ body_file_url: string | null; resources: { url?: string }[] | null }>(
+          "SELECT body_file_url, resources FROM course_lessons WHERE course_slug = $1",
+          [slug]
+        );
+        const ids = [...new Set(lessons.flatMap((l) => [l.body_file_url ?? "", ...(l.resources ?? []).map((r) => r?.url ?? "")])
+          .filter(isResourceFileUrl).map((url) => url.slice("/api/resources/".length)))];
+        if (ids.length) {
+          await client.query(
+            "UPDATE resource_files SET owner_user_id = $1 WHERE owner_user_id = $2 AND id = ANY($3::text[])",
+            [tutorId, current.owner_user_id, ids]
+          );
+        }
+      }
+    }
+    await client.query("COMMIT");
+    return { ok: true, changed, course: { slug, title: current.title }, tutor };
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}

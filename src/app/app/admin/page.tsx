@@ -23,6 +23,7 @@ import { TeamInsights } from "@/components/admin/team-insights";
 import { PeoplePanel } from "@/components/admin/people-panel";
 import { UniversitiesPanel } from "@/components/admin/universities-panel";
 import { ActivityPanel } from "@/components/admin/activity-panel";
+import { CourseTutorPicker } from "@/components/admin/course-tutor-picker";
 import { useUniversities } from "@/lib/branding-client";
 import { useSession } from "next-auth/react";
 import { Building2, UserCog, UserRound } from "lucide-react";
@@ -352,54 +353,11 @@ function Analytics({ analytics, loading, onRefresh }: { analytics: AnalyticsData
   );
 }
 
-/* ---------------- Notify learners about a new video ---------------- */
-function NotifyButton({ course, lesson }: { course: Course; lesson: Lesson }) {
-  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
-
-  const notify = async () => {
-    if (status === "sending") return;
-    if (!confirm(`Email all learners about "${lesson.title}"? Sent from support@requisor.io.`)) return;
-    setStatus("sending");
-    try {
-      const res = await fetch("/api/admin/notify-video", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ courseSlug: course.slug, courseTitle: course.title, lessonId: lesson.id, lessonTitle: lesson.title }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setStatus("sent");
-      setTimeout(() => setStatus("idle"), 4000);
-    } catch (e) {
-      console.error(e);
-      setStatus("error");
-      setTimeout(() => setStatus("idle"), 4000);
-    }
-  };
-
-  return (
-    <motion.div whileHover={{ scale: status === "sending" ? 1 : 1.08 }} whileTap={{ scale: status === "sending" ? 1 : 0.92 }}>
-      <Button size="icon" variant="ghost" aria-label={`Email learners about ${lesson.title}`} title="Email all learners about this video" onClick={notify} disabled={status === "sending"}>
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.span
-            key={status}
-            initial={{ opacity: 0, scale: 0.6, rotate: -20 }}
-            animate={{ opacity: 1, scale: 1, rotate: 0 }}
-            exit={{ opacity: 0, scale: 0.6, rotate: 20 }}
-            transition={{ duration: 0.15 }}
-            className="flex"
-          >
-            {status === "sent" ? <Check className="h-4 w-4 text-emerald-600" /> : status === "error" ? <X className="h-4 w-4 text-red-600" /> : <Send className={cn("h-4 w-4", status === "sending" && "animate-pulse")} />}
-          </motion.span>
-        </AnimatePresence>
-      </Button>
-    </motion.div>
-  );
-}
-
 /* ---------------- Content manager ---------------- */
 function ContentManager() {
   const { state, upsertCourse, deleteCourse, upsertLesson, deleteLesson } = useStore();
+  const { data: session } = useSession();
+  const superAdmin = session?.user?.superAdmin === true;
   const [selected, setSelected] = useState<string | null>(state.courses[0]?.slug ?? null);
   const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
   const [creatingLesson, setCreatingLesson] = useState(false);
@@ -519,7 +477,9 @@ function ContentManager() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <CardTitle>{course.title} — Lessons</CardTitle>
-                {!aiDraft && (
+                {/* Super admins choose the tutor (and the tutor is emailed); others just see who it is. */}
+                {!aiDraft && superAdmin && <CourseTutorPicker key={course.slug} slug={course.slug} courseTitle={course.title} />}
+                {!aiDraft && !superAdmin && (
                   <p className="mt-0.5 flex items-center gap-1 text-xs text-zinc-600">
                     <UserRound className="h-3.5 w-3.5 text-zinc-400" aria-hidden="true" />
                     {course.tutorName ? <>Tutor: <span className="font-medium text-zinc-800">{course.tutorName}</span></> : <span className="italic">No tutor assigned</span>}
@@ -604,7 +564,6 @@ function ContentManager() {
                       </p>
                     </div>
                     {l.format === "code-tutorial" ? <Tag tone="accent">Code</Tag> : l.format === "reading" ? <Tag tone="accent">Reading</Tag> : isPlaceholder(l.youtubeId) && <Tag tone="warning">Needs video</Tag>}
-                    {!aiDraft && l.format !== "reading" && l.format !== "code-tutorial" && !isPlaceholder(l.youtubeId) && <NotifyButton course={course} lesson={l} />}
                     {!aiDraft && <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
                       <Button size="icon" variant="ghost" aria-label={`Edit ${l.title}`} onClick={() => { setEditingLesson(l); setCreatingLesson(false); }}><Pencil className="h-4 w-4" /></Button>
                     </motion.div>}

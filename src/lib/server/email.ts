@@ -149,6 +149,21 @@ function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[c] as string);
 }
 
+/** A super admin made this tutor the tutor of a course. */
+export async function sendCourseAssignedEmail(to: string, rawName: string, rawCourseTitle: string) {
+  const name = escapeHtml(rawName);
+  const courseTitle = escapeHtml(rawCourseTitle);
+  await sendEmail(
+    to,
+    `You have been assigned to course ${rawCourseTitle.replace(/[\r\n]+/g, " ")}`,
+    shell(
+      `Hi ${name || "there"}`,
+      `You have been assigned to course <b>${courseTitle}</b> on Alma 41. You can now edit its lessons, grade its assignments and see how its learners are doing.`,
+      { label: "Open the tutor workspace", href: `${getBaseUrl()}/app/tutor/` }
+    )
+  );
+}
+
 /** A university admin approved someone's request to join. */
 export async function sendJoinApprovedEmail(to: string, rawName: string, rawUniversity: string) {
   const name = escapeHtml(rawName);
@@ -187,18 +202,6 @@ export async function sendPasswordResetEmail(to: string, name: string, token: st
       `Hi ${name || "there"}, reset your password`,
       "We received a request to reset your Alma 41 password. If this wasn't you, you can safely ignore this email. The link expires in 1 hour.",
       { label: "Reset password", href: url }
-    )
-  );
-}
-
-export async function sendNewVideoEmail(to: string, name: string, opts: { courseTitle: string; lessonTitle: string; message?: string; link: string }) {
-  await sendEmail(
-    to,
-    `New learning video: ${opts.lessonTitle}`,
-    shell(
-      "A new learning video is live 🎬",
-      `Hi ${name || "there"},<br/><br/>A new video has been added to <b>${opts.courseTitle}</b>:<br/><b>${opts.lessonTitle}</b>${opts.message ? `<br/><br/>${opts.message}` : ""}`,
-      { label: "Watch now", href: opts.link }
     )
   );
 }

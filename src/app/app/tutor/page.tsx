@@ -730,50 +730,6 @@ function CourseForm({ saving, onCancel, onSave }: { saving: boolean; onCancel: (
   );
 }
 
-/* Emails learners with recorded activity on this course about a lesson —
-   tutor-scoped equivalent of the admin panel's NotifyButton. See
-   /api/tutor/notify-lesson for the ownership + recipient-scoping rules. */
-function TutorNotifyButton({ courseSlug, courseTitle, lesson }: { courseSlug: string; courseTitle: string; lesson: Lesson }) {
-  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  const notify = async () => {
-    if (status === "sending") return;
-    if (!confirm(`Email learners enrolled in "${courseTitle}" about "${lesson.title}"? Sent from support@requisor.io.`)) return;
-    setStatus("sending");
-    setErrorMsg(null);
-    try {
-      const res = await fetch("/api/tutor/notify-lesson", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ courseSlug, lessonId: lesson.id }),
-      });
-      const data = await res.json().catch(() => ({})) as { sent?: number; total?: number; error?: string };
-      if (!res.ok) throw new Error(data.error ?? "Couldn't send notifications.");
-      setStatus("sent");
-      setErrorMsg(data.total === 0 ? "No enrolled learners to notify yet." : null);
-      setTimeout(() => setStatus("idle"), 4000);
-    } catch (e) {
-      setErrorMsg(e instanceof Error ? e.message : "Couldn't send notifications.");
-      setStatus("error");
-      setTimeout(() => setStatus("idle"), 4000);
-    }
-  };
-
-  return (
-    <Button
-      size="sm"
-      variant="ghost"
-      disabled={status === "sending"}
-      onClick={notify}
-      aria-label={`Email learners about ${lesson.title}`}
-      title={errorMsg ?? "Email enrolled learners about this lesson"}
-    >
-      {status === "sent" ? <Check className="h-4 w-4 text-emerald-600" /> : status === "error" ? <X className="h-4 w-4 text-red-600" /> : <Send className={cn("h-4 w-4", status === "sending" && "animate-pulse")} />}
-    </Button>
-  );
-}
-
 /** Makes a course's visibility unmissable. New courses start as private
  *  drafts, and the only other publish control is a checkbox deep in the
  *  course form, so tutors could believe a course was live when it wasn't. */
@@ -1025,7 +981,6 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, allowUplo
                     </p>
                   </div>
                   <span className="flex shrink-0 gap-0.5 opacity-70 transition-opacity group-hover:opacity-100">
-                    {isVideo && !missingVideo && lesson.published !== false && !isLessonScheduled(lesson) && <TutorNotifyButton courseSlug={course.slug} courseTitle={course.title} lesson={lesson} />}
                     {lesson.requiresSubmission && <TutorSubmissionsButton lesson={lesson} />}
                     <Button size="sm" variant="ghost" disabled={saving} onClick={() => openEdit(lesson)} aria-label={`Edit ${lesson.title}`}><Pencil className="h-4 w-4" /></Button>
                     <Button size="sm" variant="ghost" disabled={saving} onClick={() => void onDeleteLesson?.(lesson)} aria-label={`Delete ${lesson.title}`}><Trash2 className="h-4 w-4 text-red-600" /></Button>
