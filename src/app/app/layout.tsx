@@ -10,6 +10,7 @@ import { AiAssistant } from "@/components/assistant/ai-assistant";
 import { OnboardingGuide } from "@/components/onboarding/onboarding-guide";
 import TutorSurvey from "@/components/onboarding/onboarding-survey-tutor";
 import { InactivityGuard } from "@/components/layout/inactivity-guard";
+import { ActivityTracker } from "@/components/layout/activity-tracker";
 import { REPLAY_TOUR_KEY } from "@/lib/utils";
 import { trackEvent } from "@/lib/analytics";
 
@@ -93,6 +94,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 has-[[data-wide-page]]:max-w-none md:px-8 has-[[data-wide-page]]:md:px-5">{children}</main>
       </div>
       <InactivityGuard />
+      <ActivityTracker />
       <AiAssistant />
       {showSurvey && (
         isTutor

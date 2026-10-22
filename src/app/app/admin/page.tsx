@@ -22,13 +22,14 @@ import { ProgressBar } from "@/components/ui/progress";
 import { TeamInsights } from "@/components/admin/team-insights";
 import { PeoplePanel } from "@/components/admin/people-panel";
 import { UniversitiesPanel } from "@/components/admin/universities-panel";
+import { ActivityPanel } from "@/components/admin/activity-panel";
 import { useUniversities } from "@/lib/branding-client";
 import { useSession } from "next-auth/react";
 import { Building2, UserCog, UserRound } from "lucide-react";
 import { getCategoryCover, DEFAULT_COURSE_ICON } from "@/components/course/category-icon";
 import { CourseIconPicker } from "@/components/course/course-icon-picker";
 
-type TabKey = "analytics" | "content" | "people" | "universities" | "reviews" | "bugs";
+type TabKey = "analytics" | "activity" | "content" | "people" | "universities" | "reviews" | "bugs";
 const AI_COURSE_DRAFT_KEY = "requisor-ai-course-draft";
 const AI_COURSE_DRAFT_EVENT = "requisor:open-ai-course-draft";
 
@@ -127,6 +128,8 @@ export default function AdminPage() {
       >
         {([
           ["analytics", "Analytics", BarChart3],
+          // Per-person sign-ins and page time: only the Requisor team sees it.
+          ...(superAdmin ? [["activity", "Activity", Gauge]] : []),
           ["content", "Courses & Lessons", LayoutGrid],
           ["people", "People & roles", UserCog],
           ...(superAdmin ? [["universities", "Universities", Building2]] : []),
@@ -158,6 +161,7 @@ export default function AdminPage() {
       <AnimatePresence mode="wait">
         <motion.div key={tab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.22 }}>
           {tab === "analytics" && <Analytics analytics={analytics} loading={analyticsLoading} onRefresh={loadAnalytics} />}
+          {tab === "activity" && superAdmin && <ActivityPanel universities={universities} />}
           {tab === "content" && <ContentManager />}
           {tab === "reviews" && <ReviewsPanel />}
           {tab === "people" && <PeoplePanel superAdmin={superAdmin} universities={universities} />}

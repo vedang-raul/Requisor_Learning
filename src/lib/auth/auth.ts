@@ -2,6 +2,7 @@ import "../server/base-url";
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GoogleProvider from "next-auth/providers/google";
+import { recordLogin } from "@/lib/server/activity";
 import bcrypt from "bcryptjs";
 import { db, roleForEmail, ADMIN_EMAIL, type DbUser } from "../server/db";
 import { accessFor, type MembershipRow } from "./roles";
@@ -200,6 +201,12 @@ export const authOptions: NextAuthOptions = {
       },
     }),
   ],
+  events: {
+    // Each successful sign-in, for the super admin's Activity tab.
+    async signIn({ user, account }) {
+      await recordLogin(user.email, account?.provider ?? "unknown");
+    },
+  },
   callbacks: {
     async signIn({ user, account, profile }) {
       if (account?.provider !== "google") return true;

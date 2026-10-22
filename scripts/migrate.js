@@ -672,4 +672,40 @@ p.query(`
   -- Students join the university they pick straight away; only tutor requests wait for an admin.
   UPDATE users SET university_status = 'active' WHERE university_status = 'pending';
 
+  -- Activity analytics for super admins (src/lib/server/activity.ts).
+  -- Every successful sign-in: how (password, Google…), from which browser and
+  -- device, and the IP / location the host reports.
+  CREATE TABLE IF NOT EXISTS login_events (
+    id BIGSERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    method VARCHAR(30) NOT NULL,
+    ip VARCHAR(64),
+    user_agent TEXT,
+    browser VARCHAR(40),
+    os VARCHAR(40),
+    device VARCHAR(20),
+    country VARCHAR(80),
+    region VARCHAR(80),
+    city VARCHAR(80),
+    -- With a time zone, so times read back right wherever the app runs.
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS login_events_user_idx ON login_events (user_id, created_at DESC);
+
+  -- One row per page visit in the app; active_seconds only counts time the
+  -- tab was visible and the person was using it (or watching a video).
+  CREATE TABLE IF NOT EXISTS page_views (
+    id UUID PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    path VARCHAR(200) NOT NULL,
+    area VARCHAR(40) NOT NULL,
+    course_slug VARCHAR(80),
+    lesson_id VARCHAR(120),
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    active_seconds INT NOT NULL DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS page_views_user_idx ON page_views (user_id, started_at DESC);
+  CREATE INDEX IF NOT EXISTS page_views_lesson_idx ON page_views (lesson_id) WHERE lesson_id IS NOT NULL;
+
 `).then(()=>{console.log('DB schema up to date');process.exit(0)}).catch(e=>{console.error(e.message);process.exit(1)});
