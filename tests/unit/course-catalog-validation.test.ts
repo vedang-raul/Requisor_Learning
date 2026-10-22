@@ -12,6 +12,19 @@ describe("course catalog validation", () => {
     expect(validateCourse(courseFixture()).ok).toBe(true);
   });
 
+  it("saves a course exactly as it was loaded, ignoring its server-set university", () => {
+    // Courses come back from the API with tutorName and universityId; editing a
+    // lesson sends the whole course back. That must not be rejected.
+    const loaded = { ...courseFixture(), tutorName: "Ada", universityId: 3 };
+    loaded.lessons[0].youtubeId = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+    const result = validateCourse(loaded);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.course).not.toHaveProperty("universityId");
+      expect(result.course.lessons[0].youtubeId).toBe("dQw4w9WgXcQ");
+    }
+  });
+
   it("accepts a bounded custom category and draft status", () => {
     const course = courseFixture();
     course.category = "System Design";

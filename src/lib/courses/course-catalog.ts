@@ -253,8 +253,9 @@ export function validateCourse(value: unknown, expectedSlug?: string, requireRev
   // syllabus also round-trips but is saved by its own endpoint, so it is ignored here.
   // tutorName is server-derived (from owner_user_id) and round-trips through
   // the editor UI, but it's never read below — only owner_user_id, set from
-  // the session, controls actual ownership.
-  const allowed = new Set(["slug", "title", "tagline", "category", "level", "tags", "cover", "addedAt", "lessons", "baseAssessment", "revision", "tutorName", "published", "syllabus"]);
+  // the session, controls actual ownership. universityId round-trips the same
+  // way (courses are loaded with it) and is dropped: the server decides it.
+  const allowed = new Set(["slug", "title", "tagline", "category", "level", "tags", "cover", "addedAt", "lessons", "baseAssessment", "revision", "tutorName", "published", "syllabus", "universityId"]);
   if (Object.keys(c).some((key) => !allowed.has(key))) return { ok: false, error: "Course contains unsupported fields." };
   if (!string(c.slug, 80) || !slugPattern.test(c.slug as string) || (expectedSlug && c.slug !== expectedSlug)) return { ok: false, error: "Invalid course slug." };
   if (!string(c.title, 160) || !string(c.tagline, 400) || !string(c.cover, 200) ||
@@ -317,7 +318,9 @@ export function validateCourse(value: unknown, expectedSlug?: string, requireRev
     }
     normalizedLessons.push({ ...l, youtubeId, format } as unknown as Lesson);
   }
-  return { ok: true, course: { ...c, lessons: normalizedLessons } as unknown as Course };
+  const { universityId: _ignored, ...rest } = c;
+  void _ignored;
+  return { ok: true, course: { ...rest, lessons: normalizedLessons } as unknown as Course };
 }
 
 export async function replaceCourse(
