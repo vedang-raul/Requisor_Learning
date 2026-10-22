@@ -9,6 +9,7 @@ import { accessFor, type MembershipRow } from "./roles";
 import { skipEmailVerification } from "../server/email";
 import { sendWelcomeEmail } from "../server/email";
 import { getToken } from "next-auth/jwt";
+import { checkEnvSuperAdmin } from "./env-super-admin";
 import { isViewAsKind, superAdminById, testAccount, VIEW_AS_PROVIDER } from "./view-as";
 
 const GOOGLE_SIGNIN_FAILED_ERROR = "/?error=GoogleSignInFailed";
@@ -154,6 +155,24 @@ export const authOptions: NextAuthOptions = {
         const email = credentials?.email?.trim().toLowerCase();
         const password = credentials?.password;
         if (!email || !password) throw new Error("Enter your email and password.");
+        // The super admin's password lives in the server environment (src/lib/auth/env-super-admin.ts).
+        const envLogin = await checkEnvSuperAdmin(email, password);
+        if (envLogin === "wrong") throw new Error("Invalid email or password.");
+        if (envLogin === "ok") {
+          // Cross-check with the database: the account row exists (created on first sign-in)
+          // and the jwt callback grants super admin only because the email is on the list.
+          const { rows: admins } = await db.query<DbUser>(
+            `INSERT INTO users (email, name, email_verified, role)
+             VALUES ($1, 'Super Admin', TRUE, 'admin')
+             ON CONFLICT (email) DO UPDATE SET email_verified = TRUE, role = 'admin'
+             RETURNING *`,
+            [email]
+          );
+          const admin = admins[0];
+          if (!admin) throw new Error("Invalid email or password.");
+          db.query("UPDATE users SET last_login_at = NOW() WHERE id = $1", [admin.id]).catch(() => {});
+          return { id: String(admin.id), email: admin.email, name: admin.name ?? undefined, sessionVersion: admin.session_version };
+        }
         const { rows } = await db.query<DbUser>("SELECT * FROM users WHERE email = $1", [email]);
         const user = rows[0];
         if (!user || !user.password_hash) throw new Error("Invalid email or password.");

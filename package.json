@@ -15,7 +15,7 @@
     "db:seed-demo": "node scripts/seed-msoe-demo.js",
     "vosk:model": "node scripts/fetch-vosk-model.js",
     "demo:onboarding": "node scripts/demo-onboarding-account.js",
-    "set-password": "node scripts/set-password.js"
+    "hash-password": "node scripts/hash-password.js"
   },
   "engines": {
     "node": ">=20.9"

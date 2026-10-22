@@ -17,13 +17,17 @@ export const FOUNDING_SUPER_ADMIN = "support@requisor.io";
 
 export type SessionRole = "employee" | "tutor" | "admin";
 
-/** The super admin emails: SUPER_ADMIN_EMAILS (comma or space separated) plus the support mailbox. */
+/**
+ * The super admin emails: SUPER_ADMIN_EMAILS (comma or space separated), the
+ * support mailbox, and SUPER_ADMIN_LOGIN_EMAIL (the environment sign-in).
+ */
 export function superAdminEmails(): Set<string> {
   const listed = (process.env.SUPER_ADMIN_EMAILS ?? "")
     .split(/[\s,;]+/)
     .map((email) => email.trim().toLowerCase())
     .filter((email) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email));
-  return new Set([FOUNDING_SUPER_ADMIN, ...listed]);
+  const login = (process.env.SUPER_ADMIN_LOGIN_EMAIL ?? "").trim().toLowerCase();
+  return new Set([FOUNDING_SUPER_ADMIN, ...listed, ...(/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(login) ? [login] : [])]);
 }
 
 export function isSuperAdminEmail(email: string | null | undefined): boolean {
