@@ -53,6 +53,9 @@ describe("email transport", () => {
   it("only logs the links in local development, and sends nothing", async () => {
     delete process.env.RESEND_API_KEY;
     delete process.env.BREVO_API_KEY;
+    // Inside a Replit workspace these are set, and email goes through its Gmail connector instead.
+    delete process.env.REPL_IDENTITY;
+    delete process.env.WEB_REPL_RENEWAL;
     global.fetch = jest.fn() as jest.Mock;
     const log = jest.spyOn(console, "info").mockImplementation(() => undefined);
     await sendEmail("a@example.com", "Verify", '<a href="http://localhost:3000/api/verify?token=t">go</a>');

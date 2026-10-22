@@ -16,7 +16,8 @@ function base64Url(input: string): string {
 }
 
 /** The Gmail connector only works inside a Repl, which provides one of these tokens. */
-const hasReplitIdentity = Boolean(process.env.REPL_IDENTITY || process.env.WEB_REPL_RENEWAL);
+// Read when sending, not at import, so the environment in effect at that moment decides.
+const hasReplitIdentity = () => Boolean(process.env.REPL_IDENTITY || process.env.WEB_REPL_RENEWAL);
 
 /**
  * Testing switch: with SKIP_EMAIL_VERIFICATION=on, new accounts can log in
@@ -64,13 +65,13 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
 
   // Local development outside Replit: there is no mail transport, so print the
   // email (and its links, e.g. verification/reset) to the server console instead.
-  if (process.env.NODE_ENV !== "production" && !hasReplitIdentity) {
+  if (process.env.NODE_ENV !== "production" && !hasReplitIdentity()) {
     const links = Array.from(html.matchAll(/href="([^"]+)"/g), (m) => m[1]);
     console.info(`[email:dev] To: ${to} | Subject: ${subject}${links.length ? `\n  ${links.join("\n  ")}` : ""}`);
     return;
   }
 
-  if (!hasReplitIdentity) {
+  if (!hasReplitIdentity()) {
     throw new Error("No email transport is configured: set BREVO_API_KEY or RESEND_API_KEY (and EMAIL_FROM).");
   }
   // Loaded on demand so hosts other than Replit never touch the connector SDK.
