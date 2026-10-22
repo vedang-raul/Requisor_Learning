@@ -97,8 +97,12 @@ export default function AdminPage() {
   }, [hydrated, state.user]);
 
   useEffect(() => {
-    if (searchParams.get("aiCourseDraft") === "1") setTab("content");
-  }, [searchParams]);
+    if (searchParams.get("aiCourseDraft") === "1") { setTab("content"); return; }
+    // ?tab=… opens a tab directly (the assistant links here); super-admin tabs only for super admins.
+    const wanted = searchParams.get("tab") as TabKey | null;
+    const tabs: TabKey[] = ["analytics", "content", "people", "reviews", ...(superAdmin ? (["activity", "universities", "bugs"] as TabKey[]) : [])];
+    if (wanted && tabs.includes(wanted)) setTab(wanted);
+  }, [searchParams, superAdmin]);
 
   if (!hydrated || !state.user || state.user.role !== "admin") return null;
 

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ArrowRight, BookOpen, BookPlus, Briefcase, CheckCircle2, Pencil, ClipboardCheck, Eye, EyeOff, FileText, GraduationCap, Loader2, Sparkles, X, XCircle,
+  ArrowRight, BookOpen, BookPlus, Briefcase, CheckCircle2, Pencil, ClipboardCheck, Eye, EyeOff, FileText, GraduationCap, Loader2, Sparkles, UserCheck, UserX, X, XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -63,6 +63,16 @@ function describe(action: AssistantAction): { icon: typeof Sparkles; title: stri
       return { icon: GraduationCap, title: "Take the quiz", lines: [action.lessonTitle], confirm: "Open quiz" };
     case "open_page":
       return { icon: ArrowRight, title: `Go to ${action.label}`, lines: [], confirm: "Go" };
+    case "review_person":
+      return action.decision === "approve"
+        ? { icon: UserCheck, title: "Approve to join", lines: [`${action.personName} · ${action.personEmail}`, action.universityName ? `They get access to ${action.universityName}.` : "They get access."], confirm: "Approve" }
+        : action.decision === "approve-tutor"
+          ? { icon: UserCheck, title: "Make a tutor", lines: [`${action.personName} · ${action.personEmail}`, "They get the tutor workspace."], confirm: "Make tutor" }
+          : { icon: UserX, title: "Decline tutor request", lines: [`${action.personName} · ${action.personEmail}`, "They stay a student."], confirm: "Decline" };
+    case "assign_tutor":
+      return action.tutorId === null
+        ? { icon: UserX, title: "Remove the course's tutor", lines: [action.courseTitle, "The course will have no tutor."], confirm: "Remove tutor" }
+        : { icon: UserCheck, title: "Assign tutor", lines: [`${action.tutorName} → ${action.courseTitle}`, "They'll get an email that they've been assigned."], confirm: "Assign" };
     case "grade_submission":
       return {
         icon: ClipboardCheck, title: "Save this grade",
@@ -202,6 +212,32 @@ export function AssistantActionCard({ action, onOutcome, voiceAnswer, onAnnounce
           finish(`Opened ${action.label}.`);
           router.push(action.href);
           return;
+        case "review_person": {
+          const res = await fetch("/api/admin/people", {
+            method: "PATCH", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userId: action.userId, action: action.decision }),
+          });
+          const data = await readJson(res);
+          if (!res.ok) throw new Error(String(data.error ?? "Couldn't update their account."));
+          finish(action.decision === "approve" ? `${action.personName} can now sign in to ${action.universityName || "the university"}.`
+            : action.decision === "approve-tutor" ? `${action.personName} is now a tutor.` : `Declined ${action.personName}'s tutor request.`,
+            { href: "/app/admin/?tab=people", hrefLabel: "Open People & roles" });
+          return;
+        }
+        case "assign_tutor": {
+          const res = await fetch(`/api/admin/courses/${encodeURIComponent(action.courseSlug)}/tutor/`, {
+            method: "PUT", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tutorId: action.tutorId }),
+          });
+          const data = await readJson(res);
+          if (!res.ok) throw new Error(String(data.error ?? "Couldn't change the tutor."));
+          window.dispatchEvent(new Event("requisor:data-changed"));
+          finish(action.tutorId === null ? `"${action.courseTitle}" has no tutor now.`
+            : data.emailed ? `${action.tutorName} now teaches "${action.courseTitle}" and has been emailed.`
+              : `${action.tutorName} now teaches "${action.courseTitle}", but the email couldn't be sent.`,
+            { href: "/app/admin/?tab=content", hrefLabel: "Open Courses & Lessons" });
+          return;
+        }
         case "open_quiz":
           finish(`Opened the quiz for "${action.lessonTitle}".`);
           router.push(`${lessonHref(action.courseSlug, action.lessonId)}&quiz=1`);
