@@ -720,15 +720,19 @@ export function AiAssistant() {
     try { choice = localStorage.getItem(WAKE_WORD_KEY); } catch { /* private window */ }
     if (a11y.voiceControl && choice === null) setWakeWordRef.current(true);
   }, [a11y.voiceControl]);
-  // The same on-device listener also hears "stop" while the assistant talks
-  // (the normal voice input is off then), so it runs for hands-free too.
+  // The same on-device listener also hears "stop" from the moment a reply is
+  // requested — while it loads, writes and is spoken — and then does exactly
+  // what the red stop button does. It runs once the person has used voice in
+  // this visit (and for hands-free / "Hey Requisor"), so it's ready in time.
   const onStopRef = useRef<() => void>(() => {});
   onStopRef.current = () => {
-    if (!voice.isSpeaking && !(streaming && voiceOnRef.current)) return;
-    stopTalkingRef.current();
+    if (!streaming && !voice.isSpeaking) return;
+    stopResponseRef.current();
     announce("Stopped.");
   };
-  const listenerWanted = (wakeEnabled || handsFree) && voice.sttSupported;
+  const [usedVoice, setUsedVoice] = useState(false);
+  useEffect(() => { if (voice.isListening) setUsedVoice(true); }, [voice.isListening]);
+  const listenerWanted = (wakeEnabled || handsFree || usedVoice) && voice.sttSupported;
   useEffect(() => {
     if (!listenerWanted) { setWakeState("off"); return; }
     let cancelled = false;
@@ -762,13 +766,14 @@ export function AiAssistant() {
   useEffect(() => {
     const listener = wakeRef.current;
     if (!listener) return;
-    const talking = voice.isSpeaking || (streaming && !voiceMuted && voice.ttsSupported);
+    // A reply in progress: loading, being written or being spoken (the red stop button is showing).
+    const replying = voice.isSpeaking || streaming;
     const recording = voice.isListening || voice.isTranscribing;
     listener.setMode({
-      wake: wakeEnabled && !handsFree && !tabHidden && !talking && !recording,
-      stop: !tabHidden && talking && !recording,
+      wake: wakeEnabled && !handsFree && !tabHidden && !replying && !recording,
+      stop: !tabHidden && replying && !recording,
     });
-  }, [tabHidden, voice.isListening, voice.isSpeaking, voice.isTranscribing, voice.ttsSupported, voiceMuted, streaming, handsFree, wakeEnabled, wakeState]);
+  }, [tabHidden, voice.isListening, voice.isSpeaking, voice.isTranscribing, streaming, handsFree, wakeEnabled, wakeState]);
 
   const resolveLesson = useMemo(
     () => (courseTitle: string, lessonTitle: string) => {
@@ -867,6 +872,8 @@ export function AiAssistant() {
     setStreaming(false);
   }
   /** Cuts the reply short: stops the writing and the voice, and keeps what is on screen. */
+  const stopResponseRef = useRef<() => void>(() => {});
+  stopResponseRef.current = () => stopResponse();
   function stopResponse() {
     const wasWriting = streaming;
     cancelActiveRequest();
