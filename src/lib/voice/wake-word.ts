@@ -8,11 +8,15 @@ import { isStopUtterance, isWakeUtterance, STOP_GRAMMAR, WAKE_GRAMMAR } from "@/
  * what the person says *after* the wake phrase is recorded and transcribed,
  * by the normal voice input. Opt-in, per device, and only while the tab is open.
  *
- * The model (public/vosk/…, ~40 MB, fetched at build time by
- * scripts/fetch-vosk-model.js) downloads once and is then kept in the
- * browser's storage. vosk-browser itself (~6 MB) loads only when this starts.
+ * The model (~40 MB, fetched at build time by scripts/fetch-vosk-model.js)
+ * downloads once and is then kept in the browser's storage. It is published
+ * in parts (some hosts refuse responses over 32 MB); the worker joins them, so
+ * WAKE_MODEL_URL is still requested as one file. vosk-browser itself (~6 MB)
+ * loads only when this starts.
  */
 export const WAKE_MODEL_URL = "/vosk/vosk-model-small-en-us-0.15.tar.gz";
+/** The list of the model's parts; its presence means the model is installed. */
+const WAKE_MODEL_PARTS_URL = `${WAKE_MODEL_URL}.parts.json`;
 /**
  * vosk-browser's worker, written out as a real file by the fetch script and
  * served with its own security policy by src/middleware.ts (it needs eval-style
@@ -41,7 +45,7 @@ export type WakeWordListener = {
 export async function wakeWordAvailable(): Promise<boolean> {
   try {
     const [model, worker] = await Promise.all([
-      fetch(WAKE_MODEL_URL, { method: "HEAD" }),
+      fetch(WAKE_MODEL_PARTS_URL, { method: "HEAD" }),
       fetch(WAKE_WORKER_URL, { method: "HEAD" }),
     ]);
     return model.ok && worker.ok;
