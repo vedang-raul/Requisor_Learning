@@ -14,23 +14,21 @@ the October 2026 dependency advisories.
 | postcss-selector-parser | 7.1.7+ | Tailwind 3 and postcss-nested otherwise request vulnerable 6.x; the selector API is covered by regression tests and the app build. |
 | js-yaml under load-nyc-config | 4.3.2+ | Retains the parent's `load()` API, fixes merge-budget exhaustion, and removes argparse 1 / unpatched sprintf-js entirely. |
 | uuid under vosk-browser | 11.1.1+ within 11.x | Latest Vosk still pins vulnerable uuid 9; 11 retains CommonJS and v4 compatibility and fixes buffer bounds. |
-| braces | Exact npm alias `@dieub/braces-depth-guard@3.0.3-pn.3` | Upstream 3.0.3 has no fix for GHSA-vfj7-8cjw-p6xm. |
+| braces | Official `braces` 3.0.3 from npm | The unofficial `@dieub/braces-depth-guard` alias was removed on 2026-10-22 (see below). |
 
-## Braces backport
+## Braces
 
-The brace parser replacement is a depth-guard backport, not an advisory
-suppression or a package rename of unchanged vulnerable code. Its published
-source was compared with upstream 3.0.3: changes bound parser nesting and the
-compile/expand/stringify AST walkers, validate limit options, and detect parent
-cycles. The maximum depth is capped at 100, including when options try to
-disable it. Normal source-file globs remain supported.
+An earlier change aliased `braces` to `@dieub/braces-depth-guard`, a fork by a
+single unknown publisher, to backport a depth limit for GHSA-vfj7-8cjw-p6xm.
+On 2026-10-22 the team chose the official package instead: a build-time
+dependency from an unvetted publisher is a larger supply-chain risk than the
+advisory, which concerns denial of service from deeply nested brace patterns
+in globs. Here, globs come from our own build configuration, never from users.
+Switch to an official fixed release when upstream publishes one.
 
-Source: https://github.com/dieub/braces-depth-guard
-
-Both chokidar and micromatch resolve the replacement. It is pinned exactly,
-with integrity in the lockfile. This avoids an unrelated migration to Tailwind
-4 and its styling changes. Revisit this alias when upstream ships a corrected
-release; do not remove it merely because the replacement has no advisory.
+The lockfile is also generated against the public npm registry
+(https://registry.npmjs.org), so `npm ci` works on any host, not only behind
+Replit's package firewall.
 
 ## Verification
 

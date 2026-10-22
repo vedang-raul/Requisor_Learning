@@ -1,6 +1,6 @@
 /**
  * These intentionally exercise transitive dependencies: an audit alone cannot
- * establish compatibility of major-version overrides or a security backport.
+ * establish compatibility of major-version overrides.
  */
 import { createRequire } from "node:module";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -15,12 +15,11 @@ describe("dependency security replacements", () => {
   const fromChokidar = fromPackage(fromTailwind.resolve("chokidar"));
   const braces = fromMicromatch("braces");
 
-  it("uses the guarded parser in both glob consumers", () => {
+  // The team chose the official package over an unofficial depth-guard fork
+  // (see docs/dependency-security.md), so both consumers must resolve it.
+  it("uses the official braces package in both glob consumers", () => {
     for (const consumer of [fromMicromatch, fromChokidar]) {
-      expect(consumer("braces/package.json")).toMatchObject({
-        name: "@dieub/braces-depth-guard",
-        version: "3.0.3-pn.3",
-      });
+      expect(consumer("braces/package.json")).toMatchObject({ name: "braces" });
     }
   });
 
@@ -32,31 +31,6 @@ describe("dependency security replacements", () => {
     expect(micromatch(["src/a.ts", "src/b.tsx", "src/c.css"], "src/*.{ts,tsx}"))
       .toEqual(["src/a.ts", "src/b.tsx"]);
     expect(braces.expand("file-{1..3}")).toEqual(["file-1", "file-2", "file-3"]);
-  });
-
-  it.each(["parse", "compile", "expand", "stringify"])(
-    "rejects excessive brace and parenthesis depth in %s before stack exhaustion",
-    (method) => {
-      for (const [open, close] of [["{", "}"], ["(", ")"]]) {
-        const pattern = open.repeat(3200) + "a,b" + close.repeat(3200);
-        expect(() => braces[method](pattern)).toThrow(/exceeds max depth/);
-      }
-    },
-  );
-
-  it.each(["compile", "expand", "stringify"])(
-    "also guards pre-parsed ASTs in %s",
-    (method) => {
-      const ast = braces.parse("{".repeat(30) + "a,b" + "}".repeat(30));
-      expect(() => braces[method](ast, { maxDepth: 10 })).toThrow(/exceeds max depth/);
-    },
-  );
-
-  it("does not allow non-finite options to disable depth protection", () => {
-    const pattern = "{".repeat(3200) + "a,b" + "}".repeat(3200);
-    for (const maxDepth of [NaN, Infinity]) {
-      expect(() => braces.expand(pattern, { maxDepth })).toThrow(/exceeds max depth/);
-    }
   });
 
   it("supports the selector APIs used by Tailwind and postcss-nested", () => {
