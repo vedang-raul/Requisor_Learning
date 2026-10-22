@@ -427,18 +427,21 @@ p.query(`
   CREATE INDEX IF NOT EXISTS bug_reports_user_created_idx ON bug_reports (user_id, created_at DESC);
   CREATE INDEX IF NOT EXISTS bug_reports_email_created_idx ON bug_reports (user_email, created_at DESC, id DESC);
 
-  -- NOT VALID preserves legacy records but bounds every future write.
+  -- Keep these checks validated: Publish introspects the development schema.
+  -- Existing unvalidated checks are validated without changing or deleting rows.
   DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'bug_reports_payload_bounds' AND conrelid = 'bug_reports'::regclass) THEN
       ALTER TABLE bug_reports ADD CONSTRAINT bug_reports_payload_bounds
         CHECK (char_length(title) <= 200 AND char_length(description) <= 5000
-          AND (media_data IS NULL OR octet_length(media_data) <= 5592472)) NOT VALID;
+          AND (media_data IS NULL OR octet_length(media_data) <= 5592472));
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'capstone_slug_bounds' AND conrelid = 'capstone_completions'::regclass) THEN
       ALTER TABLE capstone_completions ADD CONSTRAINT capstone_slug_bounds
-        CHECK (char_length(course_slug) BETWEEN 1 AND 200) NOT VALID;
+        CHECK (char_length(course_slug) BETWEEN 1 AND 200);
     END IF;
   END $$;
+  ALTER TABLE bug_reports VALIDATE CONSTRAINT bug_reports_payload_bounds;
+  ALTER TABLE capstone_completions VALIDATE CONSTRAINT capstone_slug_bounds;
 
   CREATE TABLE IF NOT EXISTS lesson_notes (
     id SERIAL PRIMARY KEY,

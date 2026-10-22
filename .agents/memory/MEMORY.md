@@ -9,6 +9,7 @@
 - [Bounded JSON request bodies](bounded-json-request-bodies.md) — resource limits must be enforced while streaming request bytes, before JSON parsing.
 - [Persistent abuse quotas](persistent-abuse-quotas.md) — report quotas require cross-worker atomicity; assessment completions must use an authoritative bounded catalog.
 - [Database index verification](db-indexes.md) — fresh writes can cause heap fetches despite index-only scans; interpret plans with vacuum activity in mind.
+- [Publish constraint validation](publish-constraint-validation.md) — unvalidated CHECK definitions can yield malformed Publish SQL; inspect catalogs and verify the recomputed diff.
 - [Turnstile activation](turnstile-activation.md) — CAPTCHA is paused by user choice; only enable after matching real keys and approved production domain.
 - [Turnstile hostname authorization](turnstile-hostname-authorization.md) — Cloudflare must authorize every production and development hostname before widget tokens can be issued.
 - [Tutor-owned catalogs](tutor-owned-catalogs.md) — ownership checks are transactional, edits are revisioned, tutor ratings are aggregate-only, and seed import must never resurrect deletions.
