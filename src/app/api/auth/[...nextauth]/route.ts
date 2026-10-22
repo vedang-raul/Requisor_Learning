@@ -3,6 +3,8 @@ import { authOptions } from "@/lib/auth/auth";
 import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
 import { isTurnstileEnabled, verifyTurnstile } from "@/lib/auth/turnstile";
 import { verifyGrant, GRANT_COOKIE_NAME } from "@/lib/auth/captcha-grant";
+import { readBodyBytes, RequestBodyTooLargeError } from "@/lib/server/request-body";
+import { NextRequest } from "next/server";
 
 const handler = NextAuth(authOptions);
 
@@ -86,13 +88,27 @@ export async function POST(
     if (limited) return rateLimitResponse(retryAfterMs);
 
     // ── Turnstile CAPTCHA ─────────────────────────────────────────────────
-    // Clone the request so the body stream is preserved for NextAuth.
+    // Consume the original stream under a byte ceiling, then give NextAuth
+    // only the bounded bytes. Cloning first would retain an unread tee branch.
     // NextAuth sends credentials as URL-encoded form data; extra fields
     // passed to signIn() (like turnstileToken) are included in that body.
     // The explicitly enabled public demo uses the same throttle and NextAuth CSRF checks.
-    if (isPublicTestLogin) return handler(req, ctx) as Promise<Response>;
-    const bodyText = await req.clone().text();
+    let bytes: ArrayBuffer;
+    try {
+      bytes = await readBodyBytes(req, 16 * 1024);
+    } catch (err) {
+      return Response.json({ error: "Invalid login request." }, { status: err instanceof RequestBodyTooLargeError ? 413 : 400 });
+    }
+    const bodyText = new TextDecoder().decode(bytes);
     const params = new URLSearchParams(bodyText);
+    if ([...params].length > 20 || [...params].some(([key, value]) => key.length > 100 || value.length > 8192)) {
+      return Response.json({ error: "Invalid login fields." }, { status: 400 });
+    }
+    const headers = new Headers(req.headers);
+    headers.delete("content-length");
+    headers.delete("transfer-encoding");
+    const boundedRequest = new NextRequest(req.url, { method: req.method, headers, body: bytes });
+    if (isPublicTestLogin) return handler(boundedRequest, ctx) as Promise<Response>;
     const captchaToken = params.get("turnstileToken") ?? null;
     const { success: captchaOk } = await verifyTurnstile(captchaToken);
     if (!captchaOk) {
@@ -101,6 +117,7 @@ export async function POST(
         { status: 403 }
       );
     }
+    return handler(boundedRequest, ctx) as Promise<Response>;
   }
 
   return handler(req, ctx) as Promise<Response>;

@@ -7,6 +7,7 @@
 - [Chatbot speech](chatbot-speech.md) — full assistant replies should be read through the selected ElevenLabs voice, not browser voices.
 - [Onboarding & personalization](onboarding-personalization.md) — optional profile answers do not determine completion.
 - [Bounded JSON request bodies](bounded-json-request-bodies.md) — resource limits must be enforced while streaming request bytes, before JSON parsing.
+- [Persistent abuse quotas](persistent-abuse-quotas.md) — report quotas require cross-worker atomicity; assessment completions must use an authoritative bounded catalog.
 - [Database index verification](db-indexes.md) — fresh writes can cause heap fetches despite index-only scans; interpret plans with vacuum activity in mind.
 - [Turnstile activation](turnstile-activation.md) — CAPTCHA is paused by user choice; only enable after matching real keys and approved production domain.
 - [Turnstile hostname authorization](turnstile-hostname-authorization.md) — Cloudflare must authorize every production and development hostname before widget tokens can be issued.

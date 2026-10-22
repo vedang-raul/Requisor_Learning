@@ -7,10 +7,16 @@ import { db, type DbUser } from "@/lib/server/db";
 import { seedCourses } from "@/lib/courses/data";
 import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
 import { withAiConcurrency, SemaphoreFullError, AI_UPSTREAM_TIMEOUT_MS } from "@/lib/ai/ai-semaphore";
+import { readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
+import { ensureCourseCatalog } from "@/lib/courses/course-catalog";
 
 // ── Per-user rate limiter ─────────────────────────────────────────────────────
 // Capstone assessment is the most expensive AI call — 5 per user per minute.
 const assessmentLimiter = createRateLimiter(5, 60_000);
+const completionLimiter = createRateLimiter(30, 60_000);
+const MAX_BODY_BYTES = 2048;
+// Includes tutor-authored courses without permitting unbounded per-user rows.
+const MAX_COMPLETIONS = 1000;
 
 const BASE_URL = "https://api.x.ai/v1";
 const MODEL = process.env.XAI_MODEL || "grok-3-mini";
@@ -21,12 +27,16 @@ export async function GET(_req: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  await ensureCourseCatalog();
   const { rows } = await db.query<{ course_slug: string }>(
     `SELECT cc.course_slug
      FROM capstone_completions cc
      JOIN users u ON u.id = cc.user_id
-     WHERE u.email = $1`,
-    [session.user.email.toLowerCase()]
+     JOIN courses c ON c.slug = cc.course_slug
+     WHERE u.email = $1 AND octet_length(cc.course_slug) <= 80
+     ORDER BY cc.completed_at DESC, cc.id DESC
+     LIMIT $2`,
+    [session.user.email.toLowerCase(), MAX_COMPLETIONS]
   );
 
   return Response.json({ completions: rows.map((r) => r.course_slug) });
@@ -38,42 +48,77 @@ export async function PATCH(req: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: { courseSlug?: string; completed?: boolean };
+  const { limited, retryAfterMs } = completionLimiter.check(session.user.email.toLowerCase());
+  if (limited) return rateLimitResponse(retryAfterMs, { json: true });
+
+  let body: unknown;
   try {
-    body = await req.json();
-  } catch {
-    return Response.json({ error: "Invalid request body." }, { status: 400 });
+    body = await readJsonBody(req, MAX_BODY_BYTES);
+  } catch (err) {
+    return Response.json({ error: "Invalid request body." }, { status: err instanceof RequestBodyTooLargeError ? 413 : 400 });
   }
 
-  const { courseSlug, completed } = body;
-  if (!courseSlug || typeof courseSlug !== "string") {
+  const { courseSlug, completed } = (body ?? {}) as { courseSlug?: unknown; completed?: unknown };
+  if (typeof courseSlug !== "string" || courseSlug.length > 80 ||
+      !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(courseSlug) || typeof completed !== "boolean") {
     return Response.json({ error: "Missing courseSlug." }, { status: 400 });
   }
 
-  const { rows: userRows } = await db.query<{ id: number }>(
-    "SELECT id FROM users WHERE email = $1",
-    [session.user.email.toLowerCase()]
-  );
-  const userId = userRows[0]?.id;
-  if (!userId) {
-    return Response.json({ error: "User not found." }, { status: 404 });
-  }
-
-  if (completed) {
-    await db.query(
-      `INSERT INTO capstone_completions (user_id, course_slug)
-       VALUES ($1, $2)
-       ON CONFLICT (user_id, course_slug) DO NOTHING`,
-      [userId, courseSlug]
+  await ensureCourseCatalog();
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    // Same user lock as report quotas: serializes additions across workers.
+    const { rows: userRows } = await client.query<{ id: number }>(
+      "SELECT id FROM users WHERE email = $1 FOR UPDATE",
+      [session.user.email.toLowerCase()]
     );
-  } else {
-    await db.query(
-      "DELETE FROM capstone_completions WHERE user_id = $1 AND course_slug = $2",
-      [userId, courseSlug]
-    );
+    const userId = userRows[0]?.id;
+    if (!userId) {
+      await client.query("ROLLBACK");
+      return Response.json({ error: "User not found." }, { status: 404 });
+    }
+    if (completed) {
+      // Use the authoritative catalog, not seed data: tutors also author capstones.
+      // Keep the course alive through insertion even on legacy schemas without an FK.
+      const course = await client.query("SELECT slug FROM courses WHERE slug = $1 FOR KEY SHARE", [courseSlug]);
+      if (!course.rows.length) {
+        await client.query("ROLLBACK");
+        return Response.json({ error: "Course not found." }, { status: 404 });
+      }
+      const existing = await client.query(
+        "SELECT course_slug FROM capstone_completions WHERE user_id = $1 AND course_slug = $2", [userId, courseSlug]
+      );
+      if (!existing.rows.length) {
+        const { rows: usage } = await client.query<{ count: string }>(
+          "SELECT COUNT(*) AS count FROM capstone_completions WHERE user_id = $1", [userId]
+        );
+        if (Number(usage[0].count) >= MAX_COMPLETIONS) {
+          await client.query("ROLLBACK");
+          return Response.json({ error: "Course completion limit reached." }, { status: 429 });
+        }
+        await client.query(
+          `INSERT INTO capstone_completions (user_id, course_slug)
+           VALUES ($1, $2)
+           ON CONFLICT (user_id, course_slug) DO NOTHING`,
+          [userId, courseSlug]
+        );
+      }
+    } else {
+      // Allow users to remove their own legacy records, even if a course was deleted.
+      await client.query(
+        "DELETE FROM capstone_completions WHERE user_id = $1 AND course_slug = $2",
+        [userId, courseSlug]
+      );
+    }
+    await client.query("COMMIT");
+    return Response.json({ ok: true });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
   }
-
-  return Response.json({ ok: true });
 }
 
 function buildPersonaLine(qualification: string | null, learningGoal: string | null, ageYears: number | null): string {
@@ -102,15 +147,15 @@ export async function POST(req: Request) {
     return Response.json({ error: "Assessment generation not configured." }, { status: 503 });
   }
 
-  let body: { courseSlug?: string };
+  let body: unknown;
   try {
-    body = await req.json();
-  } catch {
-    return Response.json({ error: "Invalid request body." }, { status: 400 });
+    body = await readJsonBody(req, MAX_BODY_BYTES);
+  } catch (err) {
+    return Response.json({ error: "Invalid request body." }, { status: err instanceof RequestBodyTooLargeError ? 413 : 400 });
   }
 
-  const { courseSlug } = body;
-  if (!courseSlug || typeof courseSlug !== "string") {
+  const { courseSlug } = (body ?? {}) as { courseSlug?: unknown };
+  if (!courseSlug || typeof courseSlug !== "string" || courseSlug.length > 200) {
     return Response.json({ error: "Missing courseSlug." }, { status: 400 });
   }
 

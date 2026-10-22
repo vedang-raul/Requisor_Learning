@@ -170,6 +170,54 @@ describe("POST /api/signup — IP rate limiting", () => {
 // ── Login rate limiting ───────────────────────────────────────────────────────
 
 describe("POST /api/auth/callback/credentials — IP rate limiting", () => {
+  it.each(["credentials", "public-test-accounts"])("bounds chunked %s bodies before NextAuth", async (provider) => {
+    const cancel = jest.fn();
+    const req = new Request(`http://localhost/api/auth/callback/${provider}`, {
+      method: "POST",
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new Uint8Array(16 * 1024));
+          controller.enqueue(new Uint8Array(1));
+        },
+        cancel,
+      }),
+      duplex: "half",
+    } as RequestInit);
+    const res = await authPost(req, { params: Promise.resolve({ nextauth: ["callback", provider] }) });
+    expect(res.status).toBe(413);
+    expect(cancel).toHaveBeenCalled();
+    expect(mockNextAuthHandler).not.toHaveBeenCalled();
+  });
+
+  it("rejects a declared oversized login before reading", async () => {
+    const req = new Request("http://localhost/api/auth/callback/credentials", {
+      method: "POST", headers: { "content-length": "1000000" }, body: "",
+    });
+    expect((await authPost(req, { params: Promise.resolve({ nextauth: ["callback", "credentials"] }) })).status).toBe(413);
+    expect(mockNextAuthHandler).not.toHaveBeenCalled();
+  });
+
+  it("passes the original bounded form bytes, cookies and URL to NextAuth", async () => {
+    const text = "csrfToken=csrf&email=a%40b.com&password=p%26ss&turnstileToken=tok";
+    const req = new Request("http://localhost/api/auth/callback/credentials?json=true", {
+      method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", cookie: "csrf=foo" }, body: text,
+    });
+    await authPost(req, { params: Promise.resolve({ nextauth: ["callback", "credentials"] }) });
+    const forwarded = mockNextAuthHandler.mock.calls[0][0] as Request;
+    expect(forwarded).not.toBe(req);
+    expect(forwarded.url).toBe(req.url);
+    expect(forwarded.headers.get("cookie")).toBe("csrf=foo");
+    expect(await forwarded.text()).toBe(text);
+  });
+
+  it("rejects excessive login fields", async () => {
+    const req = new Request("http://localhost/api/auth/callback/credentials", {
+      method: "POST", body: new URLSearchParams(Array.from({ length: 21 }, (_, i) => [`f${i}`, "x"])),
+    });
+    expect((await authPost(req, { params: Promise.resolve({ nextauth: ["callback", "credentials"] }) })).status).toBe(400);
+    expect(mockNextAuthHandler).not.toHaveBeenCalled();
+  });
+
   it("returns 429 when the per-IP limit is exceeded", async () => {
     mockCheck.mockReturnValueOnce({ limited: true, retryAfterMs: 900_000 });
 

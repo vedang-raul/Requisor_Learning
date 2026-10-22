@@ -2,6 +2,10 @@ import { getServerSession } from "next-auth/next";
 import { NextResponse } from "next/server";
 import { authOptions } from "@/lib/auth/auth";
 import { db } from "@/lib/server/db";
+import { readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
+import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
+
+const xpLimiter = createRateLimiter(60, 60_000);
 
 // XP reads are user-specific and change after lesson completions.
 // A short private cache avoids redundant DB hits on rapid page navigations
@@ -29,7 +33,18 @@ export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { xp } = (await req.json()) as { xp: number };
+  const { limited, retryAfterMs } = xpLimiter.check(session.user.email.toLowerCase());
+  if (limited) return rateLimitResponse(retryAfterMs, { json: true });
+  let body: unknown;
+  try {
+    body = await readJsonBody(req, 1024);
+  } catch (err) {
+    return NextResponse.json({ error: "Invalid request body." }, { status: err instanceof RequestBodyTooLargeError ? 413 : 400 });
+  }
+  const { xp } = (body ?? {}) as { xp?: unknown };
+  if (typeof xp !== "number" || !Number.isInteger(xp) || xp < 0 || xp > 2147483647) {
+    return NextResponse.json({ error: "Invalid XP." }, { status: 400 });
+  }
 
   await db.query(
     "UPDATE users SET xp = $1 WHERE email = $2",

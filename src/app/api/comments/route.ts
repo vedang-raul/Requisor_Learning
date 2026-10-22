@@ -6,6 +6,7 @@ import { db } from "@/lib/server/db";
 import { seedCourses } from "@/lib/courses/data";
 import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
 import { withAiConcurrency, SemaphoreFullError } from "@/lib/ai/ai-semaphore";
+import { readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
 
 const MAX_BODY_LENGTH = 2000;
 const DEFAULT_PAGE_SIZE = 20;
@@ -166,12 +167,13 @@ export async function POST(req: NextRequest) {
   let lessonId: string | undefined;
   let body: string | undefined;
   try {
-    ({ lessonId, body } = await req.json());
-  } catch {
-    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+    const input = await readJsonBody(req, 16 * 1024);
+    ({ lessonId, body } = (input ?? {}) as { lessonId?: string; body?: string });
+  } catch (err) {
+    return NextResponse.json({ error: "Invalid request body." }, { status: err instanceof RequestBodyTooLargeError ? 413 : 400 });
   }
 
-  if (!lessonId || !body?.trim()) {
+  if (typeof lessonId !== "string" || !lessonId || lessonId.length > 200 || typeof body !== "string" || !body.trim()) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
   }
 
