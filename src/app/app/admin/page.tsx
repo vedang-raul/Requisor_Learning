@@ -467,7 +467,7 @@ function ContentManager() {
           })}
         </div>
         <AnimatePresence>
-          {creatingCourse && <CourseForm onClose={() => setCreatingCourse(false)} onSave={async (c) => { try { const saved = await upsertCourse(c); setSelected(saved.slug); setCreatingCourse(false); } catch (error) { reportFailure(error); } }} />}
+          {creatingCourse && <CourseForm onClose={() => setCreatingCourse(false)} onSave={async (c) => { try { const saved = await upsertCourse(c, { createNew: true }); setSelected(saved.slug); setCreatingCourse(false); } catch (error) { reportFailure(error); } }} />}
         </AnimatePresence>
       </div>
       <div className="space-y-3">

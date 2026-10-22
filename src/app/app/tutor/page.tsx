@@ -283,7 +283,8 @@ export default function TutorPage() {
   const saveCourse = async (course: Course) => {
     setSaving(true); setError(null);
     try {
-      const saved = await upsertCourse(course);
+      // A course from the "Create course" form is always new, even if its name matches one that exists.
+      const saved = await upsertCourse(course, { createNew: creating && course.revision == null });
       trackEvent("course_saved", { action: creating ? "create" : "update", published: saved.published !== false, lesson_count: saved.lessons.length });
       const refreshed = await load(saved.slug);
       setCreating(false);

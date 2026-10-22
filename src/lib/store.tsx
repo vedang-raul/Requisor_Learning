@@ -52,7 +52,8 @@ interface StoreApi {
   markNotificationsRead: () => void;
   toggleAssessmentComplete: (courseSlug: string) => void;
   // Admin
-  upsertCourse: (course: Course) => Promise<Course>;
+  /** Saves a course. With { createNew: true } it is always created, under a free address ("demo-2") if its own is taken. */
+  upsertCourse: (course: Course, options?: { createNew?: boolean }) => Promise<Course>;
   deleteCourse: (slug: string) => Promise<void>;
   upsertLesson: (courseSlug: string, lesson: Lesson, base?: Course) => Promise<Course>;
   deleteLesson: (courseSlug: string, lessonId: string, base?: Course) => Promise<Course>;
@@ -471,7 +472,27 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       : [...courses, entry];
   }, [sessionUser?.role]);
 
-  const upsertCourse = useCallback(async (course: Course) => {
+  const upsertCourse = useCallback(async (course: Course, options?: { createNew?: boolean }) => {
+    if (options?.createNew) {
+      // A brand-new course whose name matches an existing one ("Demo" next to
+      // "demo") must not be sent as an edit of it: create it under the next free address.
+      const base = course.slug;
+      for (let attempt = 1; attempt <= 20; attempt++) {
+        const slug = attempt === 1 ? base : `${base.slice(0, 74)}-${attempt}`;
+        const candidate: Course = {
+          ...course, slug,
+          lessons: course.lessons.map((lesson) => ({ ...lesson, id: lesson.id.startsWith(`${base}-`) ? `${slug}-${lesson.id.slice(base.length + 1)}` : lesson.id })),
+        };
+        const response = await fetch("/api/courses", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(candidate) });
+        const data = await response.json().catch(() => ({})) as { course?: Course; error?: string };
+        if (response.status === 409) continue;
+        if (!response.ok || !data.course) throw new Error(data.error ?? "Couldn't create the course. Please try again.");
+        const created = data.course;
+        setState((s) => ({ ...s, courses: syncCatalog(s.courses, created) }));
+        return created;
+      }
+      throw new Error("Couldn't find a free name for this course. Try a different title.");
+    }
     // A server revision means the course already exists. Don't infer that
     // from the catalog: it omits drafts for tutors, which turned every save of
     // a draft (including publishing it) into a rejected "create".
