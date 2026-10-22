@@ -282,6 +282,8 @@ const MUTE_KEY = "ai-assistant-muted";
  * the robot from the corner launcher. Set to true to show them in the picker again.
  */
 const SHOW_VOICE_PORTRAITS = false;
+/** Hands-free pauses itself after this many quiet listens in a row (each ends after ~8s of silence): about 10 minutes. */
+const HANDS_FREE_QUIET_ROUNDS = 75;
 
 /** The assistant's robot (styled as .ai-bot in globals.css), as on the corner launcher. */
 function RobotFace({ scale }: { scale?: number }) {
@@ -602,6 +604,9 @@ export function AiAssistant() {
       return;
     }
     if (handsFreeRef.current) { stopHandsFreeRef.current("Hands-free is off."); return; }
+    // A problem left over from an earlier try mustn't switch it straight back off.
+    voice.cancelListening();
+    quietRoundsRef.current = 0;
     setHandsFree(true);
     if (!open) openPanel();
     sayStatus("Hands-free is on. I'll listen after each reply. Say stop while I'm talking to cut me off, or say stop when I'm listening to end hands-free.");
@@ -612,13 +617,27 @@ export function AiAssistant() {
     const timer = setTimeout(() => { if (handsFreeRef.current) startListening(); }, 500);
     return () => clearTimeout(timer);
   }, [handsFree, open, streaming, voice.isSpeaking, voice.isListening, voice.isTranscribing, startListening, messages]);
-  // Nothing heard (or a mic problem): pause hands-free instead of looping.
+  // Quiet or unclear speech: hands-free keeps listening, as people pause to think
+  // or step away. Only a microphone or transcription problem pauses it, and so
+  // does a long quiet spell, so the microphone isn't left on for ever.
+  const quietRoundsRef = useRef(0);
   useEffect(() => {
-    if (handsFree && voice.listenError) stopHandsFreeRef.current(`Hands-free paused. ${voice.listenError}`);
-    else if (voice.listenError) announce(voice.listenError);
-  }, [voice.listenError, handsFree, announce]);
-  // Tell screen readers when voice input starts and is being sent.
-  useEffect(() => { if (voice.isListening) announce("Listening."); }, [voice.isListening, announce]);
+    if (!voice.listenError) return;
+    const quiet = voice.listenErrorKind === "silence" || voice.listenErrorKind === "unclear";
+    if (handsFree && quiet) {
+      quietRoundsRef.current += 1;
+      if (quietRoundsRef.current >= HANDS_FREE_QUIET_ROUNDS) stopHandsFreeRef.current("Hands-free paused after a long quiet spell. Turn it on again whenever you like.");
+      return;
+    }
+    if (handsFree) stopHandsFreeRef.current(`Hands-free paused. ${voice.listenError}`);
+    else announce(voice.listenError);
+  }, [voice.listenError, voice.listenErrorKind, handsFree, announce]);
+  // Something was said: the quiet spell is over.
+  useEffect(() => { if (voice.transcript) quietRoundsRef.current = 0; }, [voice.transcript]);
+  // Tell screen readers when voice input starts, but not again for each quiet re-listen in hands-free.
+  useEffect(() => {
+    if (voice.isListening && !(handsFreeRef.current && quietRoundsRef.current > 0)) announce("Listening.");
+  }, [voice.isListening, announce]);
 
   // A new confirmation card: queue its question to be read out once the reply has been spoken.
   useEffect(() => {
@@ -1587,7 +1606,7 @@ export function AiAssistant() {
               className="border-t border-zinc-100 p-3"
             >
               {/* Why voice input gave nothing, when it has a reason. */}
-              {voice.listenError && !voice.isListening && !voice.isTranscribing && (
+              {voice.listenError && !voice.isListening && !voice.isTranscribing && !(handsFree && (voice.listenErrorKind === "silence" || voice.listenErrorKind === "unclear")) && (
                 <p role="alert" className="mb-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900">{voice.listenError}</p>
               )}
               <div

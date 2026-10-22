@@ -84,6 +84,12 @@ export interface UseVoiceReturn {
   isTranscribing: boolean;
   /** Why voice input gave nothing, in plain words; "" otherwise. */
   listenError: string;
+  /**
+   * What kind of problem listenError is: "silence" (nothing was said),
+   * "unclear" (speech, but no words came out), "mic" (no microphone or no
+   * permission) or "failed" (transcription failed); "" when there's none.
+   */
+  listenErrorKind: ListenErrorKind;
   sttSupported: boolean;
   ttsSupported: boolean;
   /** True when replies are spoken by the server's ElevenLabs voice rather than the browser's. */
@@ -118,13 +124,20 @@ export interface UseVoiceReturn {
   speechStartedRef: MutableRefObject<boolean>;
 }
 
+export type ListenErrorKind = "" | "silence" | "unclear" | "mic" | "failed";
+
 export function useVoice(): UseVoiceReturn {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [liveTranscript, setLiveTranscript] = useState("");
   const [isTranscribing, setIsTranscribing] = useState(false);
-  const [listenError, setListenError] = useState("");
+  const [listenError, setListenErrorText] = useState("");
+  const [listenErrorKind, setListenErrorKind] = useState<ListenErrorKind>("");
+  const setListenError = useCallback((message: string, kind: ListenErrorKind = message ? "failed" : "") => {
+    setListenErrorText(message);
+    setListenErrorKind(message ? kind : "");
+  }, []);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoiceName, setSelectedVoiceNameState] = useState<string>(() => {
     if (typeof window === "undefined") return "";
@@ -238,11 +251,11 @@ export function useVoice(): UseVoiceReturn {
       .then((text) => {
         if (turn !== listenTurnRef.current) return;
         if (text) setTranscript(text);
-        else setListenError("I couldn't make out any words. Try again, a little closer to the microphone.");
+        else setListenError("I couldn't make out any words. Try again, a little closer to the microphone.", "unclear");
       })
       .catch((error: Error) => {
         if (turn !== listenTurnRef.current) return;
-        setListenError(error.message || "Voice input couldn't be transcribed. Check your connection and try again.");
+        setListenError(error.message || "Voice input couldn't be transcribed. Check your connection and try again.", "failed");
       })
       .finally(() => { if (turn === listenTurnRef.current) setIsTranscribing(false); });
   }, []);
@@ -285,7 +298,7 @@ export function useVoice(): UseVoiceReturn {
         recorder.onstop = () => {
           releaseSession(session);
           if (session.discard) return;
-          if (session.silent) { setListenError("I didn't hear anything. Tap the microphone and try again."); return; }
+          if (session.silent) { setListenError("I didn't hear anything. Tap the microphone and try again.", "silence"); return; }
           const recording = new Blob(session.chunks, { type: recorder.mimeType || type || "audio/webm" });
           if (recording.size) transcribe(recording);
         };
@@ -345,7 +358,7 @@ export function useVoice(): UseVoiceReturn {
         session.ended = true;
         releaseSession(session);
         setIsListening(false);
-        setListenError(micErrorMessage(error?.name));
+        setListenError(micErrorMessage(error?.name), "mic");
       });
   }, [canRecord, endListening, transcribe]);
 
@@ -516,6 +529,7 @@ export function useVoice(): UseVoiceReturn {
     liveTranscript,
     isTranscribing,
     listenError,
+    listenErrorKind,
     sttSupported,
     ttsSupported,
     premiumVoice,
