@@ -289,21 +289,46 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "list_my_courses",
-    description: "List the courses this tutor manages (admins: every course of their university), with each lesson's id, format, whether it has a video, and draft/published state.",
-    parameters: { type: "object", properties: {} },
+    description: "The courses this tutor manages (admins: every course they manage). With search (part of a course's name), returns the matching courses with every lesson: id, format, video, draft/published, schedule. Without search: with up to 8 courses, all lessons; with more, a compact list of every course (name, draft/published, lesson count, tutor) — then search by name for a course's lessons. Use this whenever the user names a course.",
+    parameters: { type: "object", properties: { search: { type: "string", description: "Part of the course's name, as the user said it." } } },
     roles: MANAGERS,
-    async run(_args, ctx) {
-      const courses = await getCourses(`WHERE c.owner_user_id = $1 OR ${manageSql("c", 2, 3)}`, [ctx.userId, ...manage(ctx)]);
+    async run(args, ctx) {
+      const [all, owned] = await Promise.all([
+        getCourses(`WHERE c.owner_user_id = $1 OR ${manageSql("c", 2, 3)}`, [ctx.userId, ...manage(ctx)]),
+        db.query<{ slug: string }>("SELECT slug FROM courses WHERE owner_user_id = $1", [ctx.userId]),
+      ]);
+      // Their own courses first, then the newest.
+      const mine = new Set(owned.rows.map((r) => r.slug));
+      const courses = [...all].reverse().sort((a, b) => Number(mine.has(b.slug)) - Number(mine.has(a.slug)));
+      const detail = (c: Course) => ({
+        course_slug: c.slug, title: c.title, published: c.published !== false, lesson_count: c.lessons.length, tutor: c.tutorName ?? null,
+        lessons: c.lessons.slice(0, 200).map((l) => ({
+          lesson_id: l.id, title: l.title, format: l.format ?? "video", published: l.published !== false, ...(isLessonScheduled(l) ? { scheduled_for: l.publishAt, visible_to_learners: false } : {}),
+          has_video: l.format !== "reading" && extractYouTubeId(l.youtubeId) !== null && l.youtubeId !== PLACEHOLDER_VIDEO,
+          requires_submission: Boolean(l.requiresSubmission),
+        })),
+      });
+      const search = str(args.search, 120).toLowerCase().replace(/\s+/g, " ");
+      if (search) {
+        const words = search.split(" ").filter((w) => w.length > 1);
+        const score = (c: Course) => {
+          const title = `${c.title} ${c.slug}`.toLowerCase();
+          if (title.includes(search)) return 100;
+          return words.filter((w) => title.includes(w)).length;
+        };
+        const matches = courses.map((c) => [c, score(c)] as const).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);
+        if (!matches.length) {
+          return { content: json({ matches: [], total_courses: courses.length, note: `No course you manage is called anything like "${search}". Say so; never answer about a different course. Offer the closest names from all_courses if any fit.`, all_courses: courses.slice(0, 200).map((c) => c.title) }) };
+        }
+        const best = matches[0][1];
+        return { content: json({ matches: matches.filter(([, n]) => n === best).slice(0, 5).map(([c]) => detail(c)) }) };
+      }
+      if (courses.length <= 8) return { content: json({ courses: courses.map(detail) }) };
       return {
         content: json({
-          courses: courses.slice(0, 25).map((c) => ({
-            course_slug: c.slug, title: c.title, published: c.published !== false,
-            lessons: c.lessons.slice(0, 40).map((l) => ({
-              lesson_id: l.id, title: l.title, format: l.format ?? "video", published: l.published !== false, ...(isLessonScheduled(l) ? { scheduled_for: l.publishAt, visible_to_learners: false } : {}),
-              has_video: l.format !== "reading" && extractYouTubeId(l.youtubeId) !== null && l.youtubeId !== PLACEHOLDER_VIDEO,
-              requires_submission: Boolean(l.requiresSubmission),
-            })),
-          })),
+          total_courses: courses.length,
+          courses: courses.slice(0, 200).map((c) => ({ course_slug: c.slug, title: c.title, published: c.published !== false, lesson_count: c.lessons.length, tutor: c.tutorName ?? null })),
+          note: "Compact list: call list_my_courses again with search set to a course's name for its lessons.",
         }),
       };
     },

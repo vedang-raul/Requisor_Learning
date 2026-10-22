@@ -108,3 +108,29 @@ describe("opening pages respects roles", () => {
     expect(await action("propose_open_page", { page: "profile" }, student)).toMatchObject({ href: "/app/settings/" });
   });
 });
+
+describe("finding the course the user names", () => {
+  const course = (slug: string, title: string, lessons = 1) => ({ slug, title, published: false, tutorName: "T", lessons: Array.from({ length: lessons }, (_, i) => ({ id: `${slug}-${i}`, title: `L${i}`, published: true, youtubeId: "" })) });
+  const many = [...Array.from({ length: 30 }, (_, i) => course(`c${i}`, `Course ${i}`)), course("voice-generated-course", "voice generated course", 3), course("product-management", "Product Management", 29)];
+
+  it("finds it by name among many courses, with its lessons", async () => {
+    mockCourses.mockResolvedValue(many);
+    const out = await run("list_my_courses", { search: "voice generated" }, superAdmin);
+    expect(out.matches).toHaveLength(1);
+    expect(out.matches[0]).toMatchObject({ title: "voice generated course", lesson_count: 3 });
+  });
+
+  it("says when nothing matches instead of picking another course", async () => {
+    mockCourses.mockResolvedValue(many);
+    const out = await run("list_my_courses", { search: "underwater basket weaving" }, superAdmin);
+    expect(out.matches).toEqual([]);
+    expect(out.note).toMatch(/never answer about a different course/);
+  });
+
+  it("lists every course compactly when there are many, not just the first 25", async () => {
+    mockCourses.mockResolvedValue(many);
+    const out = await run("list_my_courses", {}, superAdmin);
+    expect(out.total_courses).toBe(32);
+    expect(out.courses.map((c: { title: string }) => c.title)).toContain("voice generated course");
+  });
+});

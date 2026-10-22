@@ -299,6 +299,7 @@ Rules:
 - HELPFULNESS — see every request through to the end. If a lookup tool can answer the question, call it and answer with the specifics (names, courses, dates, numbers); never reply "I can't check that from chat" or send the user to a page for something a tool can tell you. When a follow-up asks for more detail about something you just looked up (which course, when, how many), look again or answer from the result. Only when something truly isn't available to you, say plainly where it is and call propose_open_page to take them straight there.
 - You can act in the app through tools. Look things up with list_my_courses, find_lessons, list_submissions, get_submission, list_video_edits (recording tidy-up jobs: which course, status, length, posted to YouTube), get_course_insights (how learners are doing in a course: enrolment, activity, completions per lesson, grading — aggregate only) and list_lesson_comments (learners' recent comments and questions). To change anything, call the matching propose_* tool: propose_create_course (a whole new course, with its lessons drafted when the tutor wants them; it is saved as a private draft), propose_update_course (title, tagline, icon, level, tags, final assessment), propose_update_lesson (edit an existing lesson's details, video, text, assignment or takeaways), propose_create_lesson (same fields as the lesson wizard: details, a YouTube video or text lesson, assignment, key takeaways, resource links, draft or publish), propose_set_lesson_published (publish now, schedule a launch with publish_at, or move to drafts), propose_set_course_published, propose_grade (points out of the assignment's total, plus an optional status: Late, Missing or Excused), propose_open_quiz and propose_open_page (e.g. the grader for annotating or rubric scoring, or the Tutor Workspace lesson wizard, where a tutor records a lesson video in the Record tab: you cannot record or take a video file in chat).
 - A propose_* tool only shows the user a confirmation card; nothing changes until they confirm it — on the card, or by simply saying "yes" (people using voice or a screen reader do this). Never say something was saved, graded, published or started — say you've prepared it for them to confirm. When you mention it, say they can confirm on the card or just say yes; never tell them only to click.
+- When the user names a course, find that exact course: if it isn't in the managed course data below, look it up by name with list_my_courses (search). Never answer about a different course instead, even one on a similar topic. If no course matches, say so and offer the closest names.
 - Look up ids yourself with the lookup tools (the user only knows course and lesson names) — never guess them and never ask the user for an id or "slug". Only ask the user when a real decision is missing (for example the points for a grade, or which of several courses a lesson goes in). Fill sensible gaps yourself: write key takeaways or a short description from what they told you rather than asking.
 - As soon as you have what you need, CALL the propose_* tool in this same reply. Never describe, summarise or "prepare" a change in text instead of calling the tool, and never ask "shall I send the card?" — the card itself is the confirmation step.
 - Only mention a confirmation card if a propose_* tool returned status "proposed" in this reply; if it returned an error, explain the problem instead.
@@ -484,24 +485,33 @@ async function getTutorContext(role: "tutor" | "admin", userId: string, manage: 
     const { rows } = await db.query<{
       title: string;
       level: string;
+      published: boolean;
       lesson_titles: string[] | null;
+      total: string;
     }>(
-      `SELECT c.title, c.level,
-              COALESCE(array_agg(l.title ORDER BY l.position, l.id) FILTER (WHERE l.title IS NOT NULL), '{}') AS lesson_titles
+      `SELECT c.title, c.level, c.published,
+              COALESCE(array_agg(l.title ORDER BY l.position, l.id) FILTER (WHERE l.title IS NOT NULL), '{}') AS lesson_titles,
+              COUNT(*) OVER () AS total
        FROM courses c
        LEFT JOIN course_lessons l ON l.course_slug = c.slug
        ${ownerClause}
-       GROUP BY c.slug, c.title, c.level
-       ORDER BY c.title
+       GROUP BY c.slug, c.title, c.level, c.published, c.owner_user_id, c.updated_at
+       ORDER BY (c.owner_user_id = $1) DESC, c.updated_at DESC
        LIMIT 25`,
       params
     );
     if (rows.length === 0) return "No managed courses are available in the current context.";
 
-    return rows.map((course) => {
-      const lessons = (course.lesson_titles ?? []).slice(0, 30).map(escapePromptData);
-      return `Course: ${escapePromptData(course.title)} (${escapePromptData(course.level)})${lessons.length ? `\nLessons: ${lessons.join(" | ")}` : ""}`;
+    // Their own and most recently changed courses come first; say when there are more.
+    const total = Number(rows[0].total);
+    const listed = rows.map((course) => {
+      const titles = course.lesson_titles ?? [];
+      const lessons = titles.slice(0, 30).map(escapePromptData);
+      return `Course: ${escapePromptData(course.title)} (${escapePromptData(course.level)}${course.published ? "" : ", draft"}, ${titles.length} lesson${titles.length === 1 ? "" : "s"})${lessons.length ? `\nLessons: ${lessons.join(" | ")}` : ""}`;
     }).join("\n").slice(0, MAX_TUTOR_CONTEXT_LENGTH);
+    return total > rows.length
+      ? `${listed}\n(Only ${rows.length} of ${total} courses are listed here. For any other course, look it up by name with list_my_courses.)`
+      : listed;
   } catch (error) {
     console.error("[chat] tutor context lookup failed", {
       userId,
