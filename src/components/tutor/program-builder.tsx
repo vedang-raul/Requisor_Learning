@@ -299,6 +299,30 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
       setBlueprintBusy(false);
     }
   }, []);
+  /** The tutor's saved course for this blueprint; null when it has been deleted, undefined when the list can't be read. */
+  const findBlueprintCourse = useCallback(async (slug: string): Promise<Course | null | undefined> => {
+    try {
+      const res = await fetch("/api/tutor/courses");
+      const data = await res.json().catch(() => ({})) as { courses?: { course: Course }[] };
+      if (!res.ok || !Array.isArray(data.courses)) return undefined;
+      return data.courses.find((item) => item.course.slug === slug)?.course ?? null;
+    } catch {
+      return undefined;
+    }
+  }, []);
+  const blueprintGone = useCallback(() => {
+    setBlueprint(null);
+    setBlueprintNote({ kind: "warn", text: "The draft course for this curriculum is no longer in My Courses (it was deleted). Use Save as draft course to make it again." });
+  }, []);
+  async function openBlueprint() {
+    if (!blueprint || !onOpenCourse) return;
+    setBlueprintBusy(true);
+    const course = await findBlueprintCourse(blueprint.slug);
+    setBlueprintBusy(false);
+    if (course === null) { blueprintGone(); return; }
+    if (course === undefined) { setBlueprintNote({ kind: "warn", text: "Couldn't load your courses. Please try again." }); return; }
+    onOpenCourse(blueprint.slug);
+  }
   function updateBlueprint() {
     if (!curriculum) return;
     if (blueprint && !confirm(`Update "${blueprint.title}" to match this curriculum? Its lessons are replaced, including any videos or text added to them since.`)) return;
@@ -386,6 +410,14 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
     if (!restored || !draftKey) return;
     try { sessionStorage.setItem(draftKey, JSON.stringify({ form, curriculum, proposal, step, blueprint })); } catch { /* storage is unavailable */ }
   }, [restored, form, curriculum, proposal, step, blueprint, draftKey]);
+  // A remembered draft course may have been deleted since (in My Courses, or elsewhere).
+  const checkedBlueprint = useRef(false);
+  useEffect(() => {
+    if (!restored || checkedBlueprint.current) return;
+    checkedBlueprint.current = true;
+    const slug = blueprintRef.current?.slug;
+    if (slug) void findBlueprintCourse(slug).then((course) => { if (course === null && blueprintRef.current?.slug === slug) blueprintGone(); });
+  }, [restored, findBlueprintCourse, blueprintGone]);
   function startOver() {
     setForm(EMPTY_DISCOVERY); setCurriculum(null); setProposal(null); setStep(1); setAnalyzeNote(null); setGenNote(null);
     // The saved draft course stays in My Courses; the next program gets its own.
@@ -623,7 +655,7 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
                   </p>
                   <div className="mt-2.5 flex flex-wrap gap-2">
                     {blueprint && onOpenCourse && (
-                      <Button type="button" size="sm" variant="outline" onClick={() => onOpenCourse(blueprint.slug)}>Open in My Courses</Button>
+                      <Button type="button" size="sm" variant="outline" onClick={() => void openBlueprint()} disabled={blueprintBusy}>Open in My Courses</Button>
                     )}
                     <Button type="button" size="sm" variant="outline" onClick={updateBlueprint} disabled={blueprintBusy}>
                       {blueprintBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}{blueprint ? "Update draft course" : "Save as draft course"}
