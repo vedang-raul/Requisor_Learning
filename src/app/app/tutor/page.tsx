@@ -376,8 +376,9 @@ export default function TutorPage() {
 
       {error && <div role="alert" className="flex flex-col items-start justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 sm:flex-row sm:items-center">{error}<Button size="sm" variant="outline" onClick={() => void load()}>Try again</Button></div>}
 
-      <AnimatePresence mode="wait">
-        <motion.div key={tab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.22 }}>
+      {/* Keyed so each tab mounts fresh and fades in. (An AnimatePresence "wait" exit here could
+          stall, e.g. when the browser tab goes to the background mid-switch, and leave it blank.) */}
+      <motion.div key={tab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22 }}>
           {tab === "analytics" && (
             loading ? <Card className="flex items-center gap-2 py-10 text-sm text-zinc-600"><Loader2 className="h-5 w-5 animate-spin" /> Loading your courses…</Card> :
             items.length === 0 ? <EmptyCoursesState /> :
@@ -457,8 +458,7 @@ export default function TutorPage() {
             loading ? <Card className="flex items-center gap-2 py-10 text-sm text-zinc-600"><Loader2 className="h-5 w-5 animate-spin" /> Loading ratings…</Card> :
             <RatingsPanel items={items} />
           )}
-        </motion.div>
-      </AnimatePresence>
+      </motion.div>
     </PageTransition>
   );
 }

@@ -2,7 +2,7 @@
 
 import { createElement, useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft, ArrowRight, BookOpenCheck, Download, Loader2, Printer, RotateCcw, Sparkles, Wand2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpenCheck, Download, FileText, Loader2, Printer, RotateCcw, Sparkles, Wand2 } from "lucide-react";
 import { DATA_CHANGED_EVENT } from "@/components/assistant/assistant-action-card";
 import { DEFAULT_COURSE_ICON, getCategoryCover } from "@/components/course/category-icon";
 import { Button } from "@/components/ui/button";
@@ -233,6 +233,27 @@ function printAsPdf(fileName: string) {
   const restore = () => { document.title = previous; window.removeEventListener("afterprint", restore); };
   window.addEventListener("afterprint", restore);
   window.print();
+}
+
+/** Downloads the blueprint or the proposal as a Word file. The builder is loaded only when asked for. */
+async function downloadWord(doc: { curriculum: Curriculum; employer: string } | { proposal: Proposal }, fileName: string) {
+  const { blueprintBlocks, downloadDocx, proposalBlocks } = await import("@/lib/courses/program-docx");
+  const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  await downloadDocx("proposal" in doc ? proposalBlocks(doc.proposal) : blueprintBlocks(doc.curriculum, doc.employer, date), fileName);
+}
+
+function WordButton({ size, onDownload }: { size?: "sm"; onDownload: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  return (
+    <>
+      <Button type="button" size={size} variant="outline" disabled={busy}
+        onClick={() => { setBusy(true); setFailed(false); onDownload().catch(() => setFailed(true)).finally(() => setBusy(false)); }}>
+        {busy ? <Loader2 className={cn(size ? "h-3.5 w-3.5" : "h-4 w-4", "animate-spin")} /> : <FileText className={size ? "h-3.5 w-3.5" : "h-4 w-4"} />}Download Word
+      </Button>
+      {failed && <span role="alert" className="self-center text-xs text-red-700">Couldn&apos;t make the Word file. Try again.</span>}
+    </>
+  );
 }
 
 type Blueprint = { slug: string; title: string };
@@ -639,6 +660,7 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
                   <Button type="button" variant="outline" onClick={() => printAsPdf(`${curriculum.title} — ${BLUEPRINT_LABEL}`)}>
                     <Download className="h-4 w-4" />Download PDF
                   </Button>
+                  <WordButton onDownload={() => downloadWord({ curriculum, employer: form.employer }, `${curriculum.title} — ${BLUEPRINT_LABEL}`)} />
                   <Button type="button" variant="outline" onClick={() => void generate()} disabled={generating}>
                     {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}Regenerate
                   </Button>
@@ -673,8 +695,9 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
         <div>
           <div className="sticky top-0 z-10 mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-200 bg-white/95 px-4 py-2.5 backdrop-blur">
             <p className="text-[13px] text-zinc-600">Click any line to edit it. Fill in the investment amounts before exporting.</p>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button type="button" size="sm" variant="outline" onClick={() => setStep(2)}><ArrowLeft className="h-3.5 w-3.5" />Back to curriculum</Button>
+              <WordButton size="sm" onDownload={() => downloadWord({ proposal }, `${proposal.title} — Proposal`)} />
               <Button type="button" size="sm" onClick={() => printAsPdf(`${proposal.title} — Proposal`)}><Printer className="h-3.5 w-3.5" />Export PDF / Print</Button>
             </div>
           </div>
