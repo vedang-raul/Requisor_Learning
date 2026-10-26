@@ -20,6 +20,7 @@ import { ASSIGNMENT_DATA, GUARDRAILS_MAX_CHARS, GUARDRAILS_MIN_CHARS, type Assig
 import { SyllabusPanel } from "@/components/course/syllabus-editor";
 import { isLessonScheduled } from "@/lib/utils";
 import { DATA_CHANGED_EVENT } from "@/components/assistant/assistant-action-card";
+import { lessonBrief } from "@/lib/courses/lesson-brief";
 import { useStore } from "@/lib/store";
 import { Course, Lesson, Resource } from "@/lib/types";
 import { cn, extractYouTubeId, isPlaceholder, PLACEHOLDER_VIDEO, youTubeThumb } from "@/lib/utils";
@@ -1227,7 +1228,13 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
   const [uploading, setUploading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   // AI help: writes fields of this lesson from what is filled in so far, plus an optional note.
-  const [aiHint, setAiHint] = useState("");
+  // The note starts as a rough brief from step 1 (title, section, description, whether typed or
+  // written by AI) and follows those fields on every step until the tutor writes their own.
+  const [aiHint, setAiHint] = useState(() => lessonBrief(lesson?.title ?? "", lesson?.section ?? "", lesson?.description ?? ""));
+  const [aiHintOwn, setAiHintOwn] = useState(false);
+  useEffect(() => {
+    if (!aiHintOwn) setAiHint(lessonBrief(title, section, description));
+  }, [aiHintOwn, title, section, description]);
   const [aiBusy, setAiBusy] = useState<LessonAiField[] | null>(null);
   // Whether the write in progress was started by the step's own button (as opposed to a field's).
   const [aiBusyStep, setAiBusyStep] = useState(false);
@@ -1484,7 +1491,8 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                   <Input
                     value={aiHint}
-                    onChange={(e) => { setAiHint(e.target.value); setAiNote(null); }}
+                    // Clearing the box hands it back to the automatic brief.
+                    onChange={(e) => { setAiHint(e.target.value); setAiHintOwn(e.target.value.trim() !== ""); setAiNote(null); }}
                     maxLength={600}
                     aria-label="Note for the AI: what this lesson is about"
                     placeholder={title.trim() ? "Optional note for the AI, e.g. focus on real examples from retail" : "What is this lesson about? e.g. how AI agents differ from automation"}
@@ -1496,7 +1504,10 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
                   </Button>
                 </div>
                 <p className="mt-1.5 text-xs text-zinc-500">
-                  The AI writes from your title, this note and whatever else you&apos;ve filled in. Use the small AI button beside a field to write just that one. Nothing is saved until you save the lesson.
+                  {aiHintOwn
+                    ? <>The AI writes from this note and whatever else you&apos;ve filled in. <button type="button" onClick={() => { setAiHintOwn(false); setAiNote(null); }} className="font-semibold text-primary hover:underline">Use the lesson details instead</button>.</>
+                    : aiHint ? "This note is drafted from the lesson's title and description and carries over to every step. Edit it to steer the AI." : "The AI writes from your title, this note and whatever else you've filled in."}
+                  {" "}Use the small AI button beside a field to write just that one. Nothing is saved until you save the lesson.
                 </p>
                 {aiNote && (
                   <p role="status" className={cn("mt-1.5 text-xs", aiNote.ok ? "text-emerald-800" : "text-red-700")}>
