@@ -1587,6 +1587,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
                     lessonSection={section}
                     lessonMinutes={Number(duration) || null}
                     courseTitle={courseTitle}
+                    aiNote={aiHint}
                     courseSlug={courseSlug}
                     jobId={editJobId}
                     onJobChange={setEditJobId}

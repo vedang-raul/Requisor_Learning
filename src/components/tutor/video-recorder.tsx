@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { VideoEditStudio } from "@/components/tutor/video-edit-studio";
 import { VideoEditor, type EditorSource } from "@/components/tutor/video-editor";
 import { defaultScriptMinutes, followSpeech, lessonBriefKey, normalizeWord, parseScript, SCRIPT_MINUTES, type LessonBrief } from "@/lib/video/teleprompter";
+import { lessonBrief } from "@/lib/courses/lesson-brief";
 import { cn } from "@/lib/utils";
 
 /**
@@ -385,6 +386,10 @@ export function VideoRecorder({
     } catch { /* no brief: fall back to the title alone */ }
     setBrief(found);
     setScriptMinutes(defaultScriptMinutes(found?.lessonMinutes));
+    // Start the note from the lesson wizard's AI note, or a rough brief of step 1.
+    const text = (value: unknown) => (typeof value === "string" ? value : "");
+    const draft = found ? (text(found.notes).trim() || lessonBrief(text(found.title), text(found.section), text(found.description))) : "";
+    if (draft) setScriptNotes((current) => current || draft.slice(0, 500));
   }, [sessionId]);
 
   async function writeScript() {
@@ -675,12 +680,12 @@ export function VideoRecorder({
               <p className="flex items-center gap-1.5 text-sm font-semibold text-zinc-900"><Sparkles className="h-4 w-4 text-primary" />Write the script with AI</p>
               <p className="text-xs text-zinc-600">
                 {brief?.description
-                  ? <>Drafted from this lesson&apos;s title and description{brief.section ? ", in " + brief.section : ""}. Read it through and make it yours before recording.</>
+                  ? <>Drafted from this lesson&apos;s title and description{brief.section ? ", in " + brief.section : ""}, plus the note below (carried over from the lesson; edit it to steer the script). Read it through and make it yours before recording.</>
                   : <>Drafted from the lesson title only, so it will be general. Add a description in step 1 of the lesson, or a note below, for a better script.</>}
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <input
-                  value={scriptNotes} onChange={(e) => setScriptNotes(e.target.value)} maxLength={500} disabled={writing}
+                  value={scriptNotes} onChange={(e) => setScriptNotes(e.target.value)} maxLength={500} disabled={writing} title={scriptNotes}
                   aria-label="Anything to include in the script" placeholder="Anything to include? e.g. start with the bakery example"
                   className="focus-ring h-9 min-w-0 flex-1 rounded-lg border border-border bg-white px-3 text-sm font-normal text-zinc-800"
                 />
@@ -804,7 +809,7 @@ export function VideoRecorder({
 
 /** The wizard's Record tab: opens the recorder in its own tab, and offers the optional tidy-up for what comes back. */
 export function RecordStudio({
-  lessonTitle, courseSlug, jobId, onJobChange, onReadyToLink, onVideoPosted, lessonDescription = "", lessonSection = "", lessonMinutes = null, courseTitle = "",
+  lessonTitle, courseSlug, jobId, onJobChange, onReadyToLink, onVideoPosted, lessonDescription = "", lessonSection = "", lessonMinutes = null, courseTitle = "", aiNote = "",
 }: {
   lessonTitle: string;
   courseSlug: string;
@@ -813,6 +818,8 @@ export function RecordStudio({
   lessonSection?: string;
   lessonMinutes?: number | null;
   courseTitle?: string;
+  /** The wizard's note for the AI, which starts the recorder's script note. */
+  aiNote?: string;
   /** A tidy-up job in progress; kept by the wizard so returning to this step resumes it. */
   jobId: number | null;
   onJobChange: (id: number | null) => void;
@@ -852,9 +859,9 @@ export function RecordStudio({
 
   // The recorder opens in another tab; leave it the lesson's details (same browser only, nothing is sent anywhere).
   useEffect(() => {
-    const brief: LessonBrief = { title: lessonTitle.trim(), description: lessonDescription.trim(), courseTitle: courseTitle.trim(), section: lessonSection.trim(), lessonMinutes };
+    const brief: LessonBrief = { title: lessonTitle.trim(), description: lessonDescription.trim(), courseTitle: courseTitle.trim(), section: lessonSection.trim(), lessonMinutes, notes: aiNote.trim() };
     try { window.localStorage.setItem(lessonBriefKey(sessionId), JSON.stringify(brief)); } catch { /* storage unavailable: the recorder falls back to the title */ }
-  }, [sessionId, lessonTitle, lessonDescription, lessonSection, lessonMinutes, courseTitle]);
+  }, [sessionId, lessonTitle, lessonDescription, lessonSection, lessonMinutes, courseTitle, aiNote]);
   useEffect(() => () => { try { window.localStorage.removeItem(lessonBriefKey(sessionId)); } catch { /* nothing to clear */ } }, [sessionId]);
 
   const recorderHref = `/app/tutor/record/?rid=${sessionId}&title=${encodeURIComponent(lessonTitle.trim().slice(0, 120))}`;

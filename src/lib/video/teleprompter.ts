@@ -158,7 +158,11 @@ export const SCRIPT_WORDS_PER_MINUTE = 140;
 export const SCRIPT_MINUTES = [1, 2, 3, 5, 8, 10] as const;
 
 /** What the lesson wizard knows about the lesson when the recorder opens (its step 1). */
-export type LessonBrief = { title: string; description: string; courseTitle: string; section: string; lessonMinutes: number | null };
+export type LessonBrief = {
+  title: string; description: string; courseTitle: string; section: string; lessonMinutes: number | null;
+  /** The wizard's note for the AI (drafted from step 1 unless the tutor wrote their own). */
+  notes?: string;
+};
 export type ScriptBrief = { title: string; description: string; courseTitle: string; section: string; notes: string; minutes: number };
 
 /** Where the wizard leaves the lesson brief for the recorder tab it opens (same browser, keyed by session id). */
