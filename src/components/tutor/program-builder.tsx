@@ -2,13 +2,17 @@
 
 import { createElement, useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft, ArrowRight, Loader2, Printer, RotateCcw, Sparkles, Wand2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpenCheck, Download, Loader2, Printer, RotateCcw, Sparkles, Wand2 } from "lucide-react";
+import { DATA_CHANGED_EVENT } from "@/components/assistant/assistant-action-card";
+import { DEFAULT_COURSE_ICON, getCategoryCover } from "@/components/course/category-icon";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input, Textarea } from "@/components/ui/input";
+import { useStore } from "@/lib/store";
+import type { Course } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import {
-  analyzeTranscript, buildProposal, composeCurriculum, EMPTY_DISCOVERY, FORMATS, INDUSTRIES, LEVELS, MODULE_COUNTS,
+  analyzeTranscript, BLUEPRINT_LABEL, blueprintSlug, buildProposal, composeCurriculum, curriculumToCourse, EMPTY_DISCOVERY, FORMATS, INDUSTRIES, LEVELS, MODULE_COUNTS,
   PROGRAM_COMMAND_EVENT, PROGRAM_DRAFT_KEY, programStorageKey, sampleDiscovery, takeProgramCommand,
   type Curriculum, type Discovery, type Industry, type Level, type Proposal,
 } from "@/lib/courses/program-builder";
@@ -16,7 +20,9 @@ import {
 /**
  * Program Builder: employer need → curriculum → priced proposal.
  *   1. Discovery   paste a discovery-call transcript or fill the fields
- *   2. Curriculum  generated in the standard shape; every line is click-to-edit
+ *   2. Curriculum  generated in the standard shape; every line is click-to-edit. The first one
+ *                  is saved as a draft "Curriculum Blueprint" course in the tutor's courses, and
+ *                  can be downloaded as a PDF
  *   3. Proposal    assembled from the curriculum as edited; fill in pricing and export as PDF
  * The AI assistant can drive all three steps: it sends commands (see src/lib/courses/program-builder.ts)
  * that fill the discovery fields, generate the curriculum and assemble the proposal.
@@ -165,7 +171,75 @@ function ProposalDocument({ proposal, onChange, printing = false }: { proposal: 
   );
 }
 
-export function ProgramBuilder({ owner }: { owner: string }) {
+// ── The curriculum blueprint, as printed (Download PDF) ────────────────────
+function BlueprintDocument({ curriculum, employer }: { curriculum: Curriculum; employer: string }) {
+  const heading = "mb-2 mt-6 text-[15px] font-semibold text-primary";
+  const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  return (
+    <article className="bg-white p-2 text-zinc-900">
+      <header className="mb-5 border-b-[3px] border-primary pb-4">
+        <p className="text-xs font-bold tracking-[0.08em] text-primary">{BLUEPRINT_LABEL.toUpperCase()}</p>
+        <h1 className="mt-1 text-2xl font-bold">{curriculum.title}</h1>
+        <p className="mt-2 text-sm leading-relaxed text-zinc-700">{curriculum.description}</p>
+        {employer.trim() && <p className="mt-2 text-[12.5px] text-zinc-600">Prepared for <b className="text-zinc-900">{employer.trim()}</b></p>}
+      </header>
+      <dl className="grid grid-cols-4 gap-2 text-sm">
+        {([["Audience", curriculum.audience], ["Level", curriculum.level], ["Format", curriculum.format], ["Duration", curriculum.duration]] as const).map(([label, value]) => (
+          <div key={label} className="rounded border border-zinc-200 px-2.5 py-2">
+            <dt className="text-[11px] font-bold uppercase tracking-wide text-zinc-500">{label}</dt>
+            <dd className="font-semibold">{value}</dd>
+          </div>
+        ))}
+      </dl>
+
+      <h2 className={heading}>Learning outcomes</h2>
+      <ul className="ml-5 list-disc space-y-1 text-sm">{curriculum.outcomes.map((outcome, i) => <li key={i}>{outcome}</li>)}</ul>
+
+      <h2 className={heading}>Modules</h2>
+      <div className="space-y-4">
+        {curriculum.modules.map((module, i) => (
+          <section key={i} className="break-inside-avoid rounded border border-zinc-200 px-4 py-3">
+            <h3 className="text-[15px] font-semibold">Module {i + 1}: {module.title}</h3>
+            {module.description && <p className="mt-1 text-[13px] text-zinc-600">{module.description}</p>}
+            <div className="mt-2 grid grid-cols-2 gap-4 text-[13px]">
+              <div>
+                <p className="mb-1 text-xs font-bold text-primary">SUBMODULES</p>
+                <ul className="ml-4 list-disc space-y-0.5">{module.submodules.map((sub, j) => <li key={j}>{sub}</li>)}</ul>
+              </div>
+              <div>
+                <p className="mb-1 text-xs font-bold text-primary">LEARNING ACTIVITIES</p>
+                <ul className="ml-4 list-disc space-y-0.5">{module.activities.map((activity, j) => <li key={j}>{activity}</li>)}</ul>
+              </div>
+            </div>
+          </section>
+        ))}
+      </div>
+
+      <h2 className={heading}>Assessment &amp; evidence</h2>
+      <p className="text-sm leading-relaxed">{curriculum.assessment}</p>
+
+      <footer className="mt-8 flex justify-between border-t border-zinc-200 pt-4 text-xs text-zinc-600">
+        <span>Generated with the Alma 41 Program Builder</span>
+        <span>{date}</span>
+      </footer>
+    </article>
+  );
+}
+
+/** Opens the print dialog with a file name the "Save as PDF" option will use. */
+function printAsPdf(fileName: string) {
+  const previous = document.title;
+  document.title = fileName.replace(/[\\/:*?"<>|]+/g, " ").trim();
+  const restore = () => { document.title = previous; window.removeEventListener("afterprint", restore); };
+  window.addEventListener("afterprint", restore);
+  window.print();
+}
+
+type Blueprint = { slug: string; title: string };
+
+export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenCourse?: (slug: string) => void }) {
+  const { upsertCourse } = useStore();
+  const upsertRef = useRef(upsertCourse); upsertRef.current = upsertCourse;
   const draftKey = programStorageKey(PROGRAM_DRAFT_KEY, owner);
   const [step, setStep] = useState<Step>(1);
   const [form, setForm] = useState<Discovery>(EMPTY_DISCOVERY);
@@ -180,6 +254,56 @@ export function ProgramBuilder({ owner }: { owner: string }) {
   const formRef = useRef(form); formRef.current = form;
   const curriculumState = useRef(curriculum); curriculumState.current = curriculum;
   const useAiRef = useRef(useAi); useAiRef.current = useAi;
+
+  // ── The curriculum blueprint course ───────────────────────────────────────
+  // The first curriculum of a program is saved as a draft course for this tutor. Later
+  // changes reach it only when the tutor asks (Update draft course), so lessons they
+  // have since filled in are never replaced behind their back.
+  const [blueprint, setBlueprint] = useState<Blueprint | null>(null);
+  const blueprintRef = useRef(blueprint); blueprintRef.current = blueprint;
+  const [blueprintBusy, setBlueprintBusy] = useState(false);
+  const [blueprintNote, setBlueprintNote] = useState<Notice>(null);
+
+  const saveBlueprint = useCallback(async (current: Curriculum, mode: "auto" | "update") => {
+    const existing = blueprintRef.current;
+    if (mode === "auto" && existing) {
+      setBlueprintNote({ kind: "warn", text: `"${existing.title}" in My Courses still has the earlier version. Use Update draft course to bring it in line.` });
+      return;
+    }
+    setBlueprintBusy(true);
+    try {
+      // The course as saved now (it may have been edited, or deleted, since).
+      let saved: Course | undefined;
+      if (existing) {
+        const res = await fetch("/api/tutor/courses");
+        const data = await res.json().catch(() => ({})) as { courses?: { course: Course }[] };
+        if (!res.ok || !Array.isArray(data.courses)) throw new Error("Couldn't load your courses. Please try again.");
+        saved = data.courses.find((item) => item.course.slug === existing.slug)?.course;
+      }
+      const draft = curriculumToCourse(current, {
+        slug: saved?.slug ?? blueprintSlug(current.title),
+        category: saved?.category ?? DEFAULT_COURSE_ICON,
+        cover: saved?.cover ?? getCategoryCover(DEFAULT_COURSE_ICON),
+        fallbackLevel: formRef.current.level,
+        today: new Date(),
+      });
+      const course = saved
+        ? await upsertRef.current({ ...draft, revision: saved.revision, published: saved.published, addedAt: saved.addedAt, tags: saved.tags })
+        : await upsertRef.current(draft, { createNew: true });
+      setBlueprint({ slug: course.slug, title: course.title });
+      window.dispatchEvent(new Event(DATA_CHANGED_EVENT));
+      setBlueprintNote({ kind: "ok", text: saved ? `Updated "${course.title}" in My Courses.` : `Saved as a draft course, "${course.title}", in My Courses. Learners can't see it until you publish it.` });
+    } catch (error) {
+      setBlueprintNote({ kind: "warn", text: error instanceof Error ? error.message : "Couldn't save the draft course." });
+    } finally {
+      setBlueprintBusy(false);
+    }
+  }, []);
+  function updateBlueprint() {
+    if (!curriculum) return;
+    if (blueprint && !confirm(`Update "${blueprint.title}" to match this curriculum? Its lessons are replaced, including any videos or text added to them since.`)) return;
+    void saveBlueprint(curriculum, "update");
+  }
 
   const update = <K extends keyof Discovery>(key: K, value: Discovery[K]) => setForm((current) => ({ ...current, [key]: value }));
 
@@ -203,6 +327,7 @@ export function ProgramBuilder({ owner }: { owner: string }) {
       setProposal(null);
       setStep(2);
       requestAnimationFrame(() => curriculumRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+      void saveBlueprint(next, "auto");
     };
     if (!useAiRef.current) { show(base); setGenNote(null); return base; }
     setGenerating(true);
@@ -223,7 +348,7 @@ export function ProgramBuilder({ owner }: { owner: string }) {
     } finally {
       setGenerating(false);
     }
-  }, []);
+  }, [saveBlueprint]);
 
   const editCurriculum = (change: Partial<Curriculum>) => setCurriculum((current) => (current ? { ...current, ...change } : current));
   const editModule = (index: number, change: Partial<Curriculum["modules"][number]>) =>
@@ -245,10 +370,11 @@ export function ProgramBuilder({ owner }: { owner: string }) {
   useEffect(() => {
     if (!draftKey) return;
     try {
-      const saved = JSON.parse(sessionStorage.getItem(draftKey) ?? "null") as { form?: Discovery; curriculum?: Curriculum | null; proposal?: Proposal | null; step?: Step } | null;
+      const saved = JSON.parse(sessionStorage.getItem(draftKey) ?? "null") as { form?: Discovery; curriculum?: Curriculum | null; proposal?: Proposal | null; step?: Step; blueprint?: Blueprint | null } | null;
       if (saved?.form && typeof saved.form === "object") {
         setForm({ ...EMPTY_DISCOVERY, ...saved.form });
         if (saved.curriculum?.modules) setCurriculum(saved.curriculum);
+        if (typeof saved.blueprint?.slug === "string" && typeof saved.blueprint.title === "string") setBlueprint({ slug: saved.blueprint.slug, title: saved.blueprint.title });
         if (saved.proposal?.pricing) setProposal(saved.proposal);
         if (saved.step === 2 && saved.curriculum) setStep(2);
         if (saved.step === 3 && saved.proposal) setStep(3);
@@ -258,10 +384,12 @@ export function ProgramBuilder({ owner }: { owner: string }) {
   }, [draftKey]);
   useEffect(() => {
     if (!restored || !draftKey) return;
-    try { sessionStorage.setItem(draftKey, JSON.stringify({ form, curriculum, proposal, step })); } catch { /* storage is unavailable */ }
-  }, [restored, form, curriculum, proposal, step, draftKey]);
+    try { sessionStorage.setItem(draftKey, JSON.stringify({ form, curriculum, proposal, step, blueprint })); } catch { /* storage is unavailable */ }
+  }, [restored, form, curriculum, proposal, step, blueprint, draftKey]);
   function startOver() {
     setForm(EMPTY_DISCOVERY); setCurriculum(null); setProposal(null); setStep(1); setAnalyzeNote(null); setGenNote(null);
+    // The saved draft course stays in My Courses; the next program gets its own.
+    setBlueprint(null); setBlueprintNote(null);
   }
 
   // ── Commands from the AI assistant ────────────────────────────────────────
@@ -298,18 +426,20 @@ export function ProgramBuilder({ owner }: { owner: string }) {
     return () => window.removeEventListener(PROGRAM_COMMAND_EVENT, onCommand);
   }, [restored, runCommand]);
 
-  // Printing shows only the proposal: it is copied into a print-only layer directly under <body>.
+  // Printing shows only the document on screen (the blueprint on step 2, the proposal on step 3):
+  // it is copied into a print-only layer directly under <body>.
   const [printRoot, setPrintRoot] = useState<HTMLElement | null>(null);
   useEffect(() => {
     const root = document.createElement("div");
     root.className = "program-print-root";
     document.body.appendChild(root);
     setPrintRoot(root);
-    return () => { root.remove(); document.body.classList.remove("print-program-proposal"); };
+    return () => { root.remove(); document.body.classList.remove("print-program-document"); };
   }, []);
+  const printing = step === 3 && proposal ? "proposal" : step === 2 && curriculum ? "blueprint" : null;
   useEffect(() => {
-    document.body.classList.toggle("print-program-proposal", step === 3 && proposal !== null);
-  }, [step, proposal]);
+    document.body.classList.toggle("print-program-document", printing !== null);
+  }, [printing]);
 
   const steps: [Step, string][] = [[1, "Discovery"], [2, "Curriculum"], [3, "Proposal"]];
 
@@ -474,9 +604,32 @@ export function ProgramBuilder({ owner }: { owner: string }) {
 
                 <div className="mt-5 flex flex-wrap gap-2">
                   <Button type="button" onClick={() => createProposal()}>Create employer proposal<ArrowRight className="h-4 w-4" /></Button>
+                  <Button type="button" variant="outline" onClick={() => printAsPdf(`${curriculum.title} — ${BLUEPRINT_LABEL}`)}>
+                    <Download className="h-4 w-4" />Download PDF
+                  </Button>
                   <Button type="button" variant="outline" onClick={() => void generate()} disabled={generating}>
                     {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}Regenerate
                   </Button>
+                </div>
+
+                <div className="mt-5 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
+                  <p className="flex items-center gap-2 text-sm font-semibold text-zinc-900">
+                    <BookOpenCheck className="h-4 w-4 text-primary" aria-hidden="true" />{BLUEPRINT_LABEL} course
+                  </p>
+                  <p className="mt-0.5 text-[13px] text-zinc-600">
+                    {blueprint
+                      ? <>Saved in My Courses as a draft: <b className="font-semibold text-zinc-800">{blueprint.title}</b>. Each module is a section with a draft lesson per submodule, ready for your videos or text.</>
+                      : blueprintBusy ? "Saving it as a draft course in My Courses…" : "Save this curriculum as a draft course in My Courses, with a draft lesson per submodule."}
+                  </p>
+                  <div className="mt-2.5 flex flex-wrap gap-2">
+                    {blueprint && onOpenCourse && (
+                      <Button type="button" size="sm" variant="outline" onClick={() => onOpenCourse(blueprint.slug)}>Open in My Courses</Button>
+                    )}
+                    <Button type="button" size="sm" variant="outline" onClick={updateBlueprint} disabled={blueprintBusy}>
+                      {blueprintBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}{blueprint ? "Update draft course" : "Save as draft course"}
+                    </Button>
+                  </div>
+                  <NoticeBox notice={blueprintNote} />
                 </div>
               </Card>
             )}
@@ -490,13 +643,14 @@ export function ProgramBuilder({ owner }: { owner: string }) {
             <p className="text-[13px] text-zinc-600">Click any line to edit it. Fill in the investment amounts before exporting.</p>
             <div className="flex gap-2">
               <Button type="button" size="sm" variant="outline" onClick={() => setStep(2)}><ArrowLeft className="h-3.5 w-3.5" />Back to curriculum</Button>
-              <Button type="button" size="sm" onClick={() => window.print()}><Printer className="h-3.5 w-3.5" />Export PDF / Print</Button>
+              <Button type="button" size="sm" onClick={() => printAsPdf(`${proposal.title} — Proposal`)}><Printer className="h-3.5 w-3.5" />Export PDF / Print</Button>
             </div>
           </div>
           <ProposalDocument proposal={proposal} onChange={setProposal} />
         </div>
       )}
-      {printRoot && proposal && createPortal(<ProposalDocument proposal={proposal} printing />, printRoot)}
+      {printRoot && printing === "proposal" && proposal && createPortal(<ProposalDocument proposal={proposal} printing />, printRoot)}
+      {printRoot && printing === "blueprint" && curriculum && createPortal(<BlueprintDocument curriculum={curriculum} employer={form.employer} />, printRoot)}
 
     </div>
   );

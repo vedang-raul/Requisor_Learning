@@ -481,13 +481,13 @@ body {
   }
 }
 
-/* Program Builder: printing the proposal prints only the proposal. It is copied
-   into .program-print-root (a direct child of <body>) while the proposal is open. */
+/* Program Builder: printing prints only the open document (blueprint or proposal). It is copied
+   into .program-print-root (a direct child of <body>) while it is open. */
 .program-print-root { display: none; }
 @media print {
-  body.print-program-proposal > *:not(.program-print-root) { display: none !important; }
-  body.print-program-proposal { background: #fff !important; }
-  body.print-program-proposal > .program-print-root { display: block !important; }
+  body.print-program-document > *:not(.program-print-root) { display: none !important; }
+  body.print-program-document { background: #fff !important; }
+  body.print-program-document > .program-print-root { display: block !important; }
 }
 
 /* Accessibility: people who set "reduce motion" on their device get no

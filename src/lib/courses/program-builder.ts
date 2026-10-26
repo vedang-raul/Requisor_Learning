@@ -2,8 +2,11 @@
  * Program Builder: turns an employer's training need into a curriculum and a
  * priced proposal. Everything here is plain logic with no network or DOM, so
  * the builder works without AI: the transcript reader, the curriculum engine,
- * the proposal, and the commands the AI assistant uses to drive the builder.
+ * the proposal, the curriculum blueprint course, and the commands the AI
+ * assistant uses to drive the builder.
  */
+import type { Course, Lesson } from "@/lib/types";
+
 export const INDUSTRIES = [
   { key: "construction", label: "Construction & engineering" },
   { key: "finance", label: "Banking & credit unions" },
@@ -245,7 +248,7 @@ export function composeCurriculum(form: Discovery): Curriculum {
   const modules = library.slice(0, count);
   return {
     title: titleCase(topic),
-    description: `A ${form.level.toLowerCase()}-level applied program for ${audience}, built around the organization's own workflows and documents. Learners don't study AI in the abstract — every session applies it to the ${domain.artifacts[0]} and ${domain.workflows[0]} they already own, and the program ends with each learner delivering a working AI practice for their role.`,
+    description: `${form.level === "Intermediate" || form.level === "Advanced" ? "An" : "A"} ${form.level.toLowerCase()}-level applied program for ${audience}, built around the organization's own workflows and documents. Learners don't study AI in the abstract — every session applies it to the ${domain.artifacts[0]} and ${domain.workflows[0]} they already own, and the program ends with each learner delivering a working AI practice for their role.`,
     audience: titleCase(audience),
     level: form.level,
     format: form.format.split("—")[0].trim(),
@@ -342,6 +345,62 @@ export function buildProposal(curriculum: Curriculum, employer: string, today: D
     ],
     total: "$ —",
     pricingNote: "Pricing finalized by the program team following scope confirmation. Valid 30 days.",
+  };
+}
+
+// ── Curriculum blueprint: the curriculum as a draft course ──────────────────
+export const BLUEPRINT_LABEL = "Curriculum Blueprint";
+
+export function blueprintCourseTitle(curriculumTitle: string): string {
+  const suffix = ` — ${BLUEPRINT_LABEL}`;
+  return `${text(curriculumTitle, 160 - suffix.length) || "Program"}${suffix}`;
+}
+
+export function blueprintSlug(curriculumTitle: string): string {
+  const base = curriculumTitle.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 50).replace(/-$/, "");
+  return `${base || "program"}-blueprint`;
+}
+
+/**
+ * The curriculum as a private draft course for its tutor: each module is a
+ * section, each submodule a draft lesson waiting for its video, and the
+ * module's learning activities are the assignment on its last lesson.
+ */
+export function curriculumToCourse(curriculum: Curriculum, options: { slug: string; category: string; cover: string; fallbackLevel: Level; today: Date }): Course {
+  const { slug } = options;
+  const lessons: Lesson[] = curriculum.modules.flatMap((module, i) => {
+    const section = text(`Module ${i + 1}: ${module.title}`, 200);
+    const subs = module.submodules.length ? module.submodules : [module.title];
+    const activities = module.activities.map((activity) => `• ${activity}`).join("\n").slice(0, 5000);
+    return subs.map((sub, j): Lesson => ({
+      id: `${slug}-m${i + 1}-${j + 1}`,
+      title: text(sub, 200) || `Lesson ${j + 1}`,
+      description: text(j === 0 && module.description ? `${module.description} ${sub}` : sub, 2000) || section,
+      youtubeId: "REPLACE_ME",
+      durationMin: 20,
+      resources: [],
+      keyTakeaways: [],
+      section,
+      format: "video",
+      // Nothing to show yet: the tutor adds the video or text, then publishes.
+      published: false,
+      ...(j === subs.length - 1 && activities ? { assignment: `Learning activities:\n${activities}` } : {}),
+    }));
+  });
+  const level = LEVELS.find((l) => l.toLowerCase() === curriculum.level.trim().toLowerCase()) ?? options.fallbackLevel;
+  const audience = text(curriculum.audience, 50);
+  return {
+    slug,
+    title: blueprintCourseTitle(curriculum.title),
+    tagline: text(curriculum.description, 400) || `${BLUEPRINT_LABEL} for ${curriculum.title}.`,
+    category: options.category,
+    level,
+    tags: [BLUEPRINT_LABEL, ...(audience ? [audience] : [])],
+    cover: options.cover,
+    addedAt: options.today.toISOString().slice(0, 10),
+    lessons,
+    published: false,
+    ...(text(curriculum.assessment, 5000) ? { baseAssessment: text(curriculum.assessment, 5000) } : {}),
   };
 }
 

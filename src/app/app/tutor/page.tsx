@@ -209,10 +209,15 @@ export default function TutorPage() {
     if (!selected || !scrollToEditorRef.current) return;
     scrollToEditorRef.current = false;
     const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.documentElement.classList.contains("a11y-reduce-motion");
-    requestAnimationFrame(() => {
-      editorRef.current?.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "start" });
-      editorRef.current?.focus({ preventScroll: true });
-    });
+    // Coming from another tab, the editor appears only once that tab's exit animation ends.
+    let tries = 0;
+    const scroll = () => {
+      const editor = editorRef.current;
+      if (!editor) { if (++tries < 120) requestAnimationFrame(scroll); return; }
+      editor.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "start" });
+      editor.focus({ preventScroll: true });
+    };
+    requestAnimationFrame(scroll);
   }, [selected]);
   const [creating, setCreating] = useState(false);
   const [aiDraft, setAiDraft] = useState(false);
@@ -440,7 +445,13 @@ export default function TutorPage() {
             </div>
           )}
           {tab === "learners" && <LearnersPanel />}
-          {tab === "programs" && state.user && <ProgramBuilder key={state.user.email} owner={state.user.email} />}
+          {tab === "programs" && state.user && (
+            <ProgramBuilder
+              key={state.user.email}
+              owner={state.user.email}
+              onOpenCourse={(slug) => { setTab("courses"); setCreating(false); setAiDraft(false); scrollToEditorRef.current = true; void load(slug); }}
+            />
+          )}
           {tab === "ratings" && (
             loading ? <Card className="flex items-center gap-2 py-10 text-sm text-zinc-600"><Loader2 className="h-5 w-5 animate-spin" /> Loading ratings…</Card> :
             <RatingsPanel items={items} />

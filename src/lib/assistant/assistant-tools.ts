@@ -777,7 +777,7 @@ const TOOLS: ToolDef[] = [
         : run === "generate" ? "Write the curriculum in the Program Builder"
         : run === "proposal" ? "Assemble the employer proposal in the Program Builder"
         : "Go back to the curriculum in the Program Builder";
-      return proposed({ kind: "program_builder", id: newId(), run, form, summary }, `${what}${summary.length ? `: ${summary[0]}` : ""}. It opens the Program Builder tab. Nothing there is saved to the database or sent to anyone.`);
+      return proposed({ kind: "program_builder", id: newId(), run, form, summary }, `${what}${summary.length ? `: ${summary[0]}` : ""}. It opens the Program Builder tab. ${run === "generate" || run === "proposal" ? "A new program's first curriculum is also saved as a private draft \"Curriculum Blueprint\" course in their courses; nothing is published or sent to anyone." : "Nothing there is saved or sent to anyone."}`);
     },
   },
   {
