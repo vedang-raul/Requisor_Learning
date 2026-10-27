@@ -977,11 +977,12 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, allowUplo
       saving={saving}
       allowUploads={allowUploads}
       onCancel={closeForm}
-      onSave={async (lesson) => {
+      onSave={async (lesson, afterSave) => {
         const isNew = editing === null;
         setCreatedLesson(null);
         const saved = await onAddLesson(lesson);
         if (!saved) return;
+        if (afterSave && !(await afterSave())) return;
         if (isNew) {
           setCreatedLesson({ id: lesson.id, title: lesson.title });
           setLessonFormVersion((version) => version + 1);
@@ -1213,7 +1214,10 @@ function WizardTracker({ current, completed, onJump }: { current: number; comple
 
 function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving, onCancel, onSave, allowUploads }: {
   courseSlug: string; courseTitle: string; coursePublished: boolean; lesson: Lesson | null; saving: boolean;
-  onCancel: () => void; onSave: (lesson: Lesson) => Promise<void>; allowUploads: boolean;
+  onCancel: () => void;
+  /** afterSave runs once the lesson exists (transcript, rubric); false keeps the form open to show what failed. */
+  onSave: (lesson: Lesson, afterSave?: () => Promise<boolean>) => Promise<void>;
+  allowUploads: boolean;
 }) {
   const [stepIndex, setStepIndex] = useState(0);
   const [direction, setDirection] = useState(1);
@@ -1263,7 +1267,50 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
   const [requiresSubmission, setRequiresSubmission] = useState(lesson?.requiresSubmission ?? false);
   const [assignmentMarks, setAssignmentMarks] = useState(lesson?.assignmentMarks ? String(lesson.assignmentMarks) : "");
   const [assignmentDueDate, setAssignmentDueDate] = useState(lesson?.assignmentDueDate ?? "");
-  const [rubricOpen, setRubricOpen] = useState(false);
+  // How submissions are graded: a rubric (criteria with points; their total is the lesson's points) or one score.
+  // The rubric is stored separately from the lesson, so it is saved right after the lesson itself.
+  const [gradeWith, setGradeWith] = useState<"rubric" | "score">("score");
+  const [criteria, setCriteria] = useState<RubricCriterionDraft[]>([]);
+  const [savedCriteria, setSavedCriteria] = useState<string>("[]");
+  const [rubricState, setRubricState] = useState<"idle" | "loading" | "ready" | "error">(lesson ? "loading" : "ready");
+  const rubricTotal = criteria.reduce((sum, c) => sum + (Number(c.maxPoints) || 0), 0);
+  const criteriaSignature = (list: RubricCriterionDraft[]) => JSON.stringify(list.map((c) => [c.id ?? null, c.title.trim(), c.description.trim(), Number(c.maxPoints)]));
+  useEffect(() => {
+    if (!lesson?.id || !allowUploads) { setRubricState("ready"); return; }
+    let cancelled = false;
+    // Never a cached copy: an old rubric shown here would be saved back over the current one.
+    fetch(`/api/tutor/assignment-submissions/rubric/?lessonId=${encodeURIComponent(lesson.id)}`, { cache: "no-store" })
+      .then(async (response) => {
+        const data = (await response.json().catch(() => ({}))) as { criteria?: { id: number; title: string; description: string | null; maxPoints: number }[] };
+        if (!response.ok) throw new Error();
+        if (cancelled) return;
+        const loaded = (data.criteria ?? []).map((c) => ({ id: c.id, title: c.title, description: c.description ?? "", maxPoints: String(c.maxPoints) }));
+        setCriteria(loaded);
+        setSavedCriteria(criteriaSignature(loaded));
+        if (loaded.length) setGradeWith("rubric");
+        setRubricState("ready");
+      })
+      .catch(() => { if (!cancelled) setRubricState("error"); });
+    return () => { cancelled = true; };
+    // criteriaSignature is a pure helper.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lesson?.id, allowUploads]);
+  function pickGradeWith(next: "rubric" | "score") {
+    if (next === gradeWith) return;
+    if (next === "score" && criteria.some((c) => c.id) && !window.confirm("Grade with one score instead? This lesson's rubric is removed when you save. Grades already given keep their totals.")) return;
+    if (next === "rubric" && criteria.length === 0) setCriteria([{ title: "", description: "", maxPoints: "10" }]);
+    setGradeWith(next);
+    setFormError(null);
+  }
+  const updateCriterion = (index: number, patch: Partial<RubricCriterionDraft>) => setCriteria((prev) => prev.map((c, i) => (i === index ? { ...c, ...patch } : c)));
+  const rubricProblem = (): string | null => {
+    if (!requiresSubmission || gradeWith !== "rubric") return null;
+    if (criteria.length === 0) return "Add at least one rubric criterion, or grade with one score (step 3).";
+    if (criteria.some((c) => !c.title.trim())) return "Give every rubric criterion a name (step 3).";
+    if (criteria.some((c) => !Number.isInteger(Number(c.maxPoints)) || Number(c.maxPoints) < 1 || Number(c.maxPoints) > 1000)) return "Each rubric criterion needs whole points from 1 to 1000 (step 3).";
+    if (rubricTotal > 10000) return "A rubric can add up to 10,000 points at most (step 3).";
+    return null;
+  };
   // AI-curated assignment: the tutor's guardrails, and which learner data the AI may use.
   const [aiAssignment, setAiAssignment] = useState(Boolean(lesson?.assignmentAi));
   const [guardrails, setGuardrails] = useState(lesson?.assignmentAi?.guardrails ?? "");
@@ -1302,7 +1349,8 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
   // What each step needs; used for the tracker ticks and the publish checklist.
   const detailsOk = Boolean(title.trim() && description.trim());
   const contentOk = format === "video" ? Boolean(detectedVideoId) : format === "code-tutorial" ? Boolean(body.trim() || starterCode.trim()) : Boolean(body.trim() || bodyFileUrl);
-  const assignmentOk = guardrailsOk && (!requiresSubmission || Boolean((assignment.trim() || aiAssignment) && assignmentMarks && assignmentDueDate));
+  const pointsSet = gradeWith === "rubric" ? rubricTotal > 0 : Boolean(assignmentMarks);
+  const assignmentOk = guardrailsOk && (!requiresSubmission || Boolean((assignment.trim() || aiAssignment) && pointsSet && assignmentDueDate));
   const completed = [
     detailsOk,
     visited[1] && contentOk,
@@ -1333,7 +1381,10 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
     });
     if (!detailsOk) throw new Error("Add a title and description (step 1).");
     if (format === "video" && youtubeId.trim() && !detectedVideoId) throw new Error("Paste a valid YouTube URL or video ID (step 2).");
-    if (requiresSubmission && (!assignmentMarks || !assignmentDueDate)) throw new Error("Set total points and a due date for the submission (step 3).");
+    if (requiresSubmission && !assignmentDueDate) throw new Error("Set a due date for the submission (step 3).");
+    const rubricIssue = rubricProblem();
+    if (rubricIssue) throw new Error(rubricIssue);
+    if (requiresSubmission && gradeWith === "score" && !assignmentMarks) throw new Error("Set the total points for the submission (step 3).");
     if (!guardrailsOk) throw new Error("Write the guardrails for the AI-curated assignment, or switch it off (step 3).");
     if (published && !contentOk) {
       throw new Error("Add a YouTube video, write a text lesson, or write a code tutorial (step 2) before publishing — or save it as a draft.");
@@ -1351,7 +1402,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
       youtubeId: format === "reading" || format === "code-tutorial" ? "" : detectedVideoId ?? PLACEHOLDER_VIDEO,
       durationMin: Math.min(1440, Math.max(1, Math.round(Number(duration) || 20))),
       section: section.trim() || undefined, assignment: assignment.trim() || undefined, requiresSubmission,
-      assignmentMarks: requiresSubmission && assignmentMarks ? Number(assignmentMarks) : undefined,
+      assignmentMarks: !requiresSubmission ? undefined : gradeWith === "rubric" ? rubricTotal : assignmentMarks ? Number(assignmentMarks) : undefined,
       assignmentDueDate: requiresSubmission && assignmentDueDate ? assignmentDueDate : undefined,
       assignmentAi: aiAssignment ? { guardrails: guardrails.trim(), use: ASSIGNMENT_DATA.map((d) => d.key).filter((key) => aiData.includes(key)) } : undefined,
       keyTakeaways: takeawayList,
@@ -1486,13 +1537,37 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
       // The transcript is stored by lesson id, so it goes up once the lesson exists.
       const nextTranscript = built.format === "video" ? transcript.trim() : "";
       const transcriptChanged = nextTranscript !== savedTranscript.trim();
-      void onSave(built).then(() => {
-        if (!transcriptChanged) return;
-        return fetch("/api/tutor/lessons/transcript/", {
-          method: "PUT", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ lessonId: built.id, transcript: nextTranscript, source: transcriptSource }),
-        }).then(() => undefined);
-      }).catch(() => {});
+      // The rubric too: saved when grading by rubric, or cleared when switching a saved rubric to one score.
+      const wantCriteria = requiresSubmission && gradeWith === "rubric" ? criteria : [];
+      const rubricChanged = allowUploads && rubricState === "ready" && requiresSubmission && criteriaSignature(wantCriteria) !== savedCriteria;
+      const afterSave = async (): Promise<boolean> => {
+        if (transcriptChanged) {
+          await fetch("/api/tutor/lessons/transcript/", {
+            method: "PUT", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ lessonId: built.id, transcript: nextTranscript, source: transcriptSource }),
+          }).catch(() => undefined);
+        }
+        if (!rubricChanged) return true;
+        try {
+          const response = await fetch("/api/tutor/assignment-submissions/rubric/", {
+            method: "PUT", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              lessonId: built.id,
+              criteria: wantCriteria.map((c) => ({ id: c.id, title: c.title.trim(), description: c.description.trim() || undefined, maxPoints: Number(c.maxPoints) })),
+            }),
+          });
+          const data = (await response.json().catch(() => ({}))) as { criteria?: { id: number; title: string; description: string | null; maxPoints: number }[]; error?: string };
+          if (!response.ok) throw new Error(data.error ?? "Couldn't save the rubric.");
+          const saved = (data.criteria ?? []).map((c) => ({ id: c.id, title: c.title, description: c.description ?? "", maxPoints: String(c.maxPoints) }));
+          setCriteria(saved);
+          setSavedCriteria(criteriaSignature(saved));
+          return true;
+        } catch (error) {
+          setFormError(`The lesson is saved, but the rubric isn't: ${error instanceof Error ? error.message : "please try again"}. Save again to retry.`);
+          return false;
+        }
+      };
+      void onSave(built, afterSave).catch(() => {});
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "Check the lesson details.");
     }
@@ -1763,10 +1838,16 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
                               : "Tap to include or leave out. Each learner's brief is saved the first time they open it and doesn't change after. You'll see their exact version when you grade."}
                           </p>
                         </fieldset>
-                        <label className="flex items-center gap-2 text-sm font-medium text-zinc-800">
-                          <input type="checkbox" checked={requiresSubmission} onChange={(e) => setRequiresSubmission(e.target.checked)} className="h-4 w-4 rounded border-zinc-300 accent-primary" />
-                          Learners hand in a file for grading
-                        </label>
+                        <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 px-3 py-2.5">
+                          <span>
+                            <span className="block text-sm font-medium text-zinc-800">Learners hand in a file for grading</span>
+                            <span className="block text-xs text-zinc-500">{requiresSubmission ? "Set the due date and how it's graded below." : "Off: each learner gets their own task to practise with, ungraded."}</span>
+                          </span>
+                          <button type="button" role="switch" aria-checked={requiresSubmission} aria-label="Learners hand in a file for grading" onClick={() => setRequiresSubmission((v) => !v)}
+                            className={cn("focus-ring relative h-7 w-12 shrink-0 rounded-full transition", requiresSubmission ? "bg-primary" : "bg-zinc-300")}>
+                            <span className={cn("absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all", requiresSubmission ? "left-[22px]" : "left-0.5")} />
+                          </button>
+                        </div>
                         <div className="space-y-2 rounded-xl border border-primary/20 bg-primary/[0.03] p-3">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <p className="flex items-center gap-1.5 text-sm font-semibold text-zinc-900"><Eye className="h-4 w-4 text-primary" aria-hidden="true" />Preview what a learner gets</p>
@@ -1796,15 +1877,56 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
                       <p className="text-base font-semibold text-zinc-900">Hand-in and grading</p>
                       <div className="grid gap-3 sm:grid-cols-2">
                         <Field label="Due date"><Input type="date" value={assignmentDueDate} onChange={(e) => setAssignmentDueDate(e.target.value)} required /></Field>
-                        <Field label="Total points"><Input type="number" min="1" max="10000" step="1" value={assignmentMarks} onChange={(e) => setAssignmentMarks(e.target.value)} placeholder="e.g. 100" required /></Field>
                       </div>
                       <p className="text-xs text-zinc-500">Learners upload one PDF or Word (.docx) file, up to 10 MB, by the end of the due date.</p>
-                      <div className="flex flex-wrap items-center gap-2 border-t border-zinc-100 pt-3">
-                        <p className="text-sm font-medium text-zinc-800">Grade with</p>
-                        {lesson
-                          ? <Button type="button" size="sm" variant="outline" onClick={() => setRubricOpen(true)}><ListChecks className="h-3.5 w-3.5" />Grading rubric</Button>
-                          : <p className="text-xs text-zinc-500">a single score for now. Save the lesson (a draft is fine) to set up a grading rubric.</p>}
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-zinc-100 pt-3">
+                        <p className="text-sm font-semibold text-zinc-800">Grade with</p>
+                        <div role="radiogroup" aria-label="Grade with" className="flex rounded-xl bg-zinc-100 p-1">
+                          {([["rubric", "Rubric"], ["score", "One score"]] as const).map(([key, label]) => (
+                            <button key={key} type="button" role="radio" aria-checked={gradeWith === key} disabled={key === "rubric" && !allowUploads} onClick={() => pickGradeWith(key)}
+                              className={cn("focus-ring rounded-lg px-3.5 py-1.5 text-sm font-medium transition disabled:opacity-40", gradeWith === key ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600 hover:text-zinc-900")}>
+                              {label}
+                            </button>
+                          ))}
+                        </div>
                       </div>
+                      {!allowUploads && <p className="text-xs text-zinc-500">Save the course first to grade with a rubric.</p>}
+                      {rubricState === "loading" && <p className="flex items-center gap-2 text-sm text-zinc-500"><Loader2 className="h-4 w-4 animate-spin" />Loading the rubric…</p>}
+                      {rubricState === "error" && <p role="alert" className="text-sm text-red-700">Couldn&apos;t load this lesson&apos;s rubric, so it won&apos;t be changed when you save. Reopen the lesson to try again.</p>}
+                      {gradeWith === "score" && (
+                        <Field label="Total points"><Input type="number" min="1" max="10000" step="1" value={assignmentMarks} onChange={(e) => setAssignmentMarks(e.target.value)} placeholder="e.g. 100" required className="sm:max-w-[12rem]" /></Field>
+                      )}
+                      {gradeWith === "rubric" && rubricState === "ready" && (
+                        <div className="overflow-hidden rounded-xl border border-zinc-200">
+                          <div className="grid grid-cols-[minmax(0,1fr)_6rem_2.25rem] gap-2 border-b border-zinc-200 bg-zinc-50 px-3 py-2 text-xs font-semibold text-zinc-500">
+                            <span>Criterion</span><span>Points</span><span className="sr-only">Remove</span>
+                          </div>
+                          <ul className="divide-y divide-zinc-100">
+                            {criteria.map((c, i) => (
+                              <li key={c.id ?? `new-${i}`} className="space-y-1.5 px-3 py-2.5">
+                                <div className="grid grid-cols-[minmax(0,1fr)_6rem_2.25rem] items-center gap-2">
+                                  <Input value={c.title} onChange={(e) => updateCriterion(i, { title: e.target.value })} maxLength={200} placeholder="e.g. Action plan is specific and doable" aria-label={`Criterion ${i + 1}`} />
+                                  <Input type="number" min={1} max={1000} step={1} value={c.maxPoints} onChange={(e) => updateCriterion(i, { maxPoints: e.target.value })} aria-label={`Points for criterion ${i + 1}`} className="tabular-nums" />
+                                  <button type="button" onClick={() => setCriteria((prev) => prev.filter((_, j) => j !== i))} aria-label={`Remove ${c.title || `criterion ${i + 1}`}`} className="focus-ring flex h-9 w-9 items-center justify-center rounded-lg text-zinc-400 hover:bg-red-50 hover:text-red-600">
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                </div>
+                                <input value={c.description} onChange={(e) => updateCriterion(i, { description: e.target.value })} maxLength={1000} placeholder="What earns full points? (optional)" aria-label={`What earns full points for criterion ${i + 1}`}
+                                  className="focus-ring w-full rounded-lg bg-transparent px-1 py-0.5 text-xs text-zinc-600 placeholder:text-zinc-400 hover:bg-zinc-50" />
+                              </li>
+                            ))}
+                          </ul>
+                          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-zinc-200 bg-zinc-50 px-3 py-2.5">
+                            <button type="button" disabled={criteria.length >= 20} onClick={() => setCriteria((prev) => [...prev, { title: "", description: "", maxPoints: "10" }])}
+                              className="focus-ring inline-flex items-center gap-1.5 rounded-lg border border-dashed border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:border-primary/50 hover:text-primary disabled:opacity-40">
+                              <Plus className="h-3.5 w-3.5" />Add criterion
+                            </button>
+                            <span className={cn("flex items-center gap-1.5 text-sm font-semibold", rubricTotal > 0 ? "text-primary" : "text-zinc-500")}>
+                              {rubricTotal > 0 && <Check className="h-4 w-4" />}Total {rubricTotal} points
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1892,7 +2014,6 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
         </div>
       </div>
 
-      {rubricOpen && lesson && <RubricEditorPanel lesson={lesson} onClose={() => setRubricOpen(false)} />}
     </div>
   );
 }
@@ -1980,112 +2101,8 @@ function ResourcesField({ resources, onChange, uploading, setUploading, error, s
   </div>;
 }
 
+/* A lesson's grading rubric — set up in step 3 of the lesson wizard, applied to
+   every submission for that lesson (see grading in src/app/app/tutor/assignment/page.tsx).
+   Stored on its own, outside the course's optimistic-revision save, so the
+   wizard saves it right after the lesson. */
 type RubricCriterionDraft = { id?: number; title: string; description: string; maxPoints: string };
-
-/* A lesson's grading rubric — set up once, applied to every submission for
-   that lesson (see grading in src/app/app/tutor/assignment/page.tsx). Kept as
-   its own save action, independent of the lesson form's own save/revision
-   flow, since a rubric edit shouldn't be entangled with course optimistic
-   concurrency. */
-function RubricEditorPanel({ lesson, onClose }: { lesson: Lesson; onClose: () => void }) {
-  const [state, setState] = useState<{ status: "loading" } | { status: "ready" } | { status: "error"; message: string }>({ status: "loading" });
-  const [criteria, setCriteria] = useState<RubricCriterionDraft[]>([]);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch(`/api/tutor/assignment-submissions/rubric?lessonId=${encodeURIComponent(lesson.id)}`)
-      .then(async (response) => {
-        const data = (await response.json().catch(() => ({}))) as { criteria?: { id: number; title: string; description: string | null; maxPoints: number }[]; error?: string };
-        if (!response.ok) throw new Error(data.error ?? "Couldn't load the rubric.");
-        if (!cancelled) {
-          setCriteria((data.criteria ?? []).map((c) => ({ id: c.id, title: c.title, description: c.description ?? "", maxPoints: String(c.maxPoints) })));
-          setState({ status: "ready" });
-        }
-      })
-      .catch((error) => { if (!cancelled) setState({ status: "error", message: error instanceof Error ? error.message : "Couldn't load the rubric." }); });
-    return () => { cancelled = true; };
-  }, [lesson.id]);
-
-  const totalPoints = criteria.reduce((sum, c) => sum + (Number(c.maxPoints) || 0), 0);
-
-  function updateCriterion(index: number, patch: Partial<RubricCriterionDraft>) {
-    setCriteria((prev) => prev.map((c, i) => (i === index ? { ...c, ...patch } : c)));
-  }
-  function removeCriterion(index: number) {
-    setCriteria((prev) => prev.filter((_, i) => i !== index));
-  }
-  function addCriterion() {
-    setCriteria((prev) => [...prev, { title: "", description: "", maxPoints: "10" }]);
-  }
-
-  async function save() {
-    const cleaned = criteria.map((c) => ({ ...c, title: c.title.trim() }));
-    if (cleaned.some((c) => !c.title || !(Number(c.maxPoints) > 0))) {
-      setSaveError("Every criterion needs a title and a max points value greater than 0.");
-      return;
-    }
-    setSaving(true);
-    setSaveError(null);
-    try {
-      const response = await fetch("/api/tutor/assignment-submissions/rubric", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          lessonId: lesson.id,
-          criteria: cleaned.map((c) => ({ id: c.id, title: c.title, description: c.description.trim() || undefined, maxPoints: Number(c.maxPoints) })),
-        }),
-      });
-      const data = (await response.json().catch(() => ({}))) as { criteria?: { id: number; title: string; description: string | null; maxPoints: number }[]; error?: string };
-      if (!response.ok) throw new Error(data.error ?? "Couldn't save the rubric.");
-      setCriteria((data.criteria ?? []).map((c) => ({ id: c.id, title: c.title, description: c.description ?? "", maxPoints: String(c.maxPoints) })));
-      onClose();
-    } catch (error) {
-      setSaveError(error instanceof Error ? error.message : "Couldn't save the rubric.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <Card className="max-h-[85vh] w-full max-w-xl space-y-3 overflow-y-auto" onClick={(event) => event.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <CardTitle>Grading rubric — {lesson.title}</CardTitle>
-          <Button size="sm" variant="ghost" onClick={onClose} aria-label="Close"><X className="h-4 w-4" /></Button>
-        </div>
-        <p className="text-xs text-zinc-500">
-          Leave this empty to grade the old way, with a single 0-100 mark. Add criteria to score each submission against a rubric instead — the total becomes the mark.
-        </p>
-        {state.status === "loading" && <p className="flex items-center gap-2 text-sm text-zinc-500"><Loader2 className="h-4 w-4 animate-spin" />Loading…</p>}
-        {state.status === "error" && <p role="alert" className="text-sm text-red-700">{state.message}</p>}
-        {state.status === "ready" && (
-          <>
-            <ul className="space-y-2">
-              {criteria.map((c, i) => (
-                <li key={c.id ?? `new-${i}`} className="space-y-2 rounded-xl border p-3">
-                  <div className="flex gap-2">
-                    <Input placeholder="Criterion (e.g. Structure)" value={c.title} onChange={(e) => updateCriterion(i, { title: e.target.value })} maxLength={200} className="flex-1" />
-                    <Input type="number" min={1} max={1000} placeholder="Points" value={c.maxPoints} onChange={(e) => updateCriterion(i, { maxPoints: e.target.value })} className="w-24" aria-label="Max points" />
-                    <Button type="button" size="sm" variant="ghost" onClick={() => removeCriterion(i)} aria-label={`Remove ${c.title || "criterion"}`}><Trash2 className="h-4 w-4 text-red-600" /></Button>
-                  </div>
-                  <Textarea placeholder="What earns full points here? (optional)" value={c.description} onChange={(e) => updateCriterion(i, { description: e.target.value })} className="min-h-[50px] text-sm" maxLength={1000} />
-                </li>
-              ))}
-            </ul>
-            <div className="flex items-center justify-between">
-              <Button type="button" size="sm" variant="outline" onClick={addCriterion}><Plus className="h-3.5 w-3.5" />Add criterion</Button>
-              {criteria.length > 0 && <p className="text-sm text-zinc-600">Total: {totalPoints} points</p>}
-            </div>
-            {saveError && <p role="alert" className="text-sm text-red-700">{saveError}</p>}
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-              <Button type="button" onClick={() => void save()} disabled={saving}>{saving && <Loader2 className="h-4 w-4 animate-spin" />}Save rubric</Button>
-            </div>
-          </>
-        )}
-      </Card>
-    </div>
-  );
-}
