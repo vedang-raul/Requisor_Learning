@@ -21,6 +21,7 @@ import { SyllabusPanel } from "@/components/course/syllabus-editor";
 import { isLessonScheduled } from "@/lib/utils";
 import { DATA_CHANGED_EVENT } from "@/components/assistant/assistant-action-card";
 import { lessonBrief } from "@/lib/courses/lesson-brief";
+import { partitionHidden, readHiddenCourses, writeHiddenCourses } from "@/lib/courses/hidden-courses";
 import { useStore } from "@/lib/store";
 import { Course, Lesson, Resource } from "@/lib/types";
 import { cn, extractYouTubeId, isPlaceholder, PLACEHOLDER_VIDEO, youTubeThumb } from "@/lib/utils";
@@ -200,6 +201,17 @@ export default function TutorPage() {
     return () => window.removeEventListener(PROGRAM_COMMAND_EVENT, open);
   }, [state.user?.email]);
   const [items, setItems] = useState<TutorCourse[]>([]);
+  // Courses the tutor has hidden from My Courses to declutter it (this browser, per account; learners are unaffected).
+  const [hiddenSlugs, setHiddenSlugs] = useState<string[]>([]);
+  const [showHidden, setShowHidden] = useState(false);
+  const ownerEmail = state.user?.email ?? "";
+  useEffect(() => { setHiddenSlugs(ownerEmail ? readHiddenCourses(ownerEmail) : []); setShowHidden(false); }, [ownerEmail]);
+  const toggleHidden = (slug: string) => setHiddenSlugs((current) => {
+    const next = current.includes(slug) ? current.filter((s) => s !== slug) : [...current, slug];
+    writeHiddenCourses(ownerEmail, next);
+    return next;
+  });
+  const courseGroups = partitionHidden(items, hiddenSlugs);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Course | null>(null);
@@ -410,8 +422,45 @@ export default function TutorPage() {
               </div>
               {creating && <CourseForm saving={saving} onCancel={() => setCreating(false)} onSave={saveCourse} />}
               {loading ? <Card className="flex items-center gap-2 py-10 text-sm text-zinc-600"><Loader2 className="h-5 w-5 animate-spin" /> Loading your courses…</Card> :
-                items.length === 0 ? <EmptyCoursesState /> :
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{items.map((item) => <button key={item.course.slug} onClick={() => { setCreating(false); setAiDraft(false); setSelected(item.course); scrollToEditorRef.current = true; }} aria-label={`Edit ${item.course.title}`} className="focus-ring group min-h-32 rounded-2xl text-left"><Card className="relative h-full transition hover:border-primary/40"><span className="absolute right-3 top-3 flex items-center gap-1 rounded-full border border-transparent px-2 py-1 text-[11px] font-medium text-zinc-400 opacity-0 transition group-hover:border-primary/30 group-hover:bg-primary/10 group-hover:text-primary group-hover:opacity-100"><Pencil className="h-3 w-3" aria-hidden="true" />Edit</span><TutorCourseHeading course={item.course} /><p className="mt-3 text-xs text-zinc-600">{item.course.lessons.length} lesson{item.course.lessons.length === 1 ? "" : "s"} · <span className="inline-flex items-center gap-1"><Star className="h-3 w-3 fill-amber-400 text-amber-400" aria-hidden="true" />{item.averageRating.toFixed(1)} ({item.ratingCount})</span></p><div className="mt-3 flex gap-1" aria-hidden="true">{[5,4,3,2,1].map((rating) => <span key={rating} title={`${rating} stars: ${distributionCount(item.ratingDistribution, rating)}`} className="h-1 flex-1 rounded bg-primary/20" style={{ opacity: item.ratingCount ? Math.max(.2, distributionCount(item.ratingDistribution, rating) / item.ratingCount) : .2 }} />)}</div><span className="sr-only">{[5,4,3,2,1].map((rating) => `${rating} stars: ${distributionCount(item.ratingDistribution, rating)}`).join(", ")}</span></Card></button>)}</div>}
+                items.length === 0 ? <EmptyCoursesState /> : (
+                <div className="space-y-3">
+                  {courseGroups.hidden.length > 0 && (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-2 text-sm text-zinc-600">
+                      <span className="flex items-center gap-2"><EyeOff className="h-4 w-4 text-zinc-400" aria-hidden="true" />{courseGroups.hidden.length} course{courseGroups.hidden.length === 1 ? "" : "s"} hidden from this list. Learners still see published courses as usual.</span>
+                      <button type="button" onClick={() => setShowHidden((v) => !v)} aria-expanded={showHidden} className="focus-ring rounded-md font-semibold text-primary hover:underline">
+                        {showHidden ? "Hide them again" : `Show hidden (${courseGroups.hidden.length})`}
+                      </button>
+                    </div>
+                  )}
+                  {courseGroups.visible.length === 0 && !showHidden && <p className="rounded-xl border border-dashed border-zinc-200 px-4 py-6 text-center text-sm text-zinc-500">All your courses are hidden. Use Show hidden to bring one back.</p>}
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    {[...courseGroups.visible, ...(showHidden ? courseGroups.hidden : [])].map((item) => {
+                      const isHidden = hiddenSlugs.includes(item.course.slug);
+                      return (
+                        <div key={item.course.slug} className="group relative">
+                          <button onClick={() => { setCreating(false); setAiDraft(false); setSelected(item.course); scrollToEditorRef.current = true; }} aria-label={`Edit ${item.course.title}`} className={cn("focus-ring h-full min-h-32 w-full rounded-2xl text-left", isHidden && "opacity-60 hover:opacity-100")}>
+                            <Card className="relative h-full pr-12 transition hover:border-primary/40">
+                              <span className="absolute right-12 top-3 flex items-center gap-1 rounded-full border border-transparent px-2 py-1 text-[11px] font-medium text-zinc-400 opacity-0 transition group-hover:border-primary/30 group-hover:bg-primary/10 group-hover:text-primary group-hover:opacity-100"><Pencil className="h-3 w-3" aria-hidden="true" />Edit</span>
+                              {isHidden && <span className="mb-2 inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-semibold text-zinc-600"><EyeOff className="h-3 w-3" aria-hidden="true" />Hidden</span>}
+                              <TutorCourseHeading course={item.course} /><p className="mt-3 text-xs text-zinc-600">{item.course.lessons.length} lesson{item.course.lessons.length === 1 ? "" : "s"} · <span className="inline-flex items-center gap-1"><Star className="h-3 w-3 fill-amber-400 text-amber-400" aria-hidden="true" />{item.averageRating.toFixed(1)} ({item.ratingCount})</span></p><div className="mt-3 flex gap-1" aria-hidden="true">{[5,4,3,2,1].map((rating) => <span key={rating} title={`${rating} stars: ${distributionCount(item.ratingDistribution, rating)}`} className="h-1 flex-1 rounded bg-primary/20" style={{ opacity: item.ratingCount ? Math.max(.2, distributionCount(item.ratingDistribution, rating) / item.ratingCount) : .2 }} />)}</div><span className="sr-only">{[5,4,3,2,1].map((rating) => `${rating} stars: ${distributionCount(item.ratingDistribution, rating)}`).join(", ")}</span>
+                            </Card>
+                          </button>
+                          {/* A sibling of the card button (buttons can't nest). Shown on hover or focus; always on touch screens. */}
+                          <button
+                            type="button"
+                            onClick={() => toggleHidden(item.course.slug)}
+                            aria-label={isHidden ? `Show ${item.course.title} in My Courses` : `Hide ${item.course.title} from My Courses`}
+                            title={isHidden ? "Show in My Courses" : "Hide from My Courses"}
+                            className={cn("focus-ring absolute right-3 top-3 rounded-full border border-zinc-200 bg-white p-1.5 text-zinc-500 shadow-sm transition hover:border-primary/40 hover:text-primary", !isHidden && "[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100")}
+                          >
+                            {isHidden ? <Eye className="h-4 w-4" aria-hidden="true" /> : <EyeOff className="h-4 w-4" aria-hidden="true" />}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               {selected && <div ref={editorRef} tabIndex={-1} aria-label={`Editing ${selected.title}`} className="scroll-mt-24 space-y-4 outline-none">
                 {aiDraft && <div role="status" className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-sm text-violet-900"><strong>AI-generated draft:</strong> Review every field and lesson below. It is unpublished and has not been saved yet.</div>}
                 {!aiDraft && (
