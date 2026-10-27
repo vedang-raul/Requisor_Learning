@@ -144,7 +144,7 @@ describe("GET /api/tutor/courses/export", () => {
           key_takeaways: ["Set clear expectations"],
           assignment: "Write a team charter.",
           assignment_marks: 40,
-          assignment_due_date: new Date("2026-10-15T00:00:00.000Z"),
+          assignment_due_date: "2026-10-15",
           requires_submission: true,
           section: "Foundations",
           format: "reading",

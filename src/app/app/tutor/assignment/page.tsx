@@ -3,7 +3,7 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, Clock, FileText, Loader2, Save, Sparkles } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, FileText, Loader2, Save, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import { AssignmentBrief } from "@/components/lesson/lesson-assignment";
 import { SubmissionSourceBadge } from "@/components/lesson/submission-source-badge";
 import { DATA_CHANGED_EVENT } from "@/components/assistant/assistant-action-card";
 import { parseAssignment } from "@/lib/ai/assignment-format";
+import { daysAgoLabel, isLate } from "@/lib/courses/assignment-dates";
 import type { SubmissionSource } from "@/lib/courses/submission-source";
 
 interface RubricCriterion {
@@ -76,11 +77,15 @@ interface SubmissionSummary {
   id: number;
   studentName: string;
   fileName: string;
+  fileSize: number;
   submittedAt: string;
   marks: number | null;
+  lessonId: string;
   lessonTitle: string;
   courseTitle: string;
   source: SubmissionSource;
+  dueDate: string | null;
+  remark: string | null;
 }
 
 type SourceFilter = "all" | SubmissionSource;
@@ -211,6 +216,37 @@ function useDataVersion(): number {
 }
 
 /* ---------- inbox ---------- */
+type StatusTab = "todo" | "checked" | "all";
+const parseStatus = (value: string | null): StatusTab => (value === "checked" || value === "all" ? value : "todo");
+
+/** The queue order: still to check first, oldest first so nobody waits too long; then checked work, newest first. */
+function queueOrder(list: SubmissionSummary[]): SubmissionSummary[] {
+  const time = (s: SubmissionSummary) => new Date(s.submittedAt).getTime();
+  return [
+    ...list.filter((s) => s.marks === null).sort((a, b) => time(a) - time(b)),
+    ...list.filter((s) => s.marks !== null).sort((a, b) => time(b) - time(a)),
+  ];
+}
+const handedInLate = (s: SubmissionSummary) => s.remark === "Late" || Boolean(s.dueDate && isLate(s.submittedAt, s.dueDate));
+
+function inboxHref(filter: SourceFilter, status: StatusTab, lesson: string) {
+  const params = new URLSearchParams();
+  if (filter !== "all") params.set("filter", filter);
+  if (status !== "todo") params.set("status", status);
+  if (lesson) params.set("lesson", lesson);
+  const query = params.toString();
+  return `/app/tutor/assignment/${query ? `?${query}` : ""}`;
+}
+
+function Stat({ label, value, tone }: { label: string; value: string | number; tone?: "warn" }) {
+  return (
+    <div className="min-w-[7rem]">
+      <p className="text-xs text-zinc-500">{label}</p>
+      <p className={cn("mt-0.5 text-xl font-semibold tabular-nums", tone === "warn" ? "text-amber-700" : "text-zinc-900")}>{value}</p>
+    </div>
+  );
+}
+
 function SubmissionInbox() {
   const [submissions, setSubmissions] = useState<SubmissionSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -221,7 +257,7 @@ function SubmissionInbox() {
       .then(async (response) => {
         const data = await response.json().catch(() => ({})) as { submissions?: SubmissionSummary[]; error?: string };
         if (!response.ok) throw new Error(data.error || "Couldn't load assignment submissions.");
-        setSubmissions(data.submissions ?? []);
+        setSubmissions(queueOrder(data.submissions ?? []));
       })
       .catch((cause) => {
         if (!aborter.signal.aborted) setError(cause instanceof Error ? cause.message : "Couldn't load assignment submissions.");
@@ -229,73 +265,65 @@ function SubmissionInbox() {
     return () => aborter.abort();
   }, [dataVersion]);
 
-  // Seeded from the URL so "back" from the grader returns to the same tab.
-  const initialFilter = parseFilter(useSearchParams().get("filter"));
-  const [filter, setFilterState] = useState<SourceFilter>(initialFilter);
-  const setFilter = (next: SourceFilter) => {
-    setFilterState(next);
-    window.history.replaceState(null, "", next === "all" ? "/app/tutor/assignment/" : `/app/tutor/assignment/?filter=${next}`);
+  // Seeded from the URL so "back" from the grader returns to the same view.
+  const params = useSearchParams();
+  const [filter, setFilterState] = useState<SourceFilter>(parseFilter(params.get("filter")));
+  const [status, setStatusState] = useState<StatusTab>(parseStatus(params.get("status")));
+  const [lesson, setLessonState] = useState(params.get("lesson") ?? "");
+  const update = (next: { filter?: SourceFilter; status?: StatusTab; lesson?: string }) => {
+    const f = next.filter ?? filter, s = next.status ?? status, l = next.lesson ?? lesson;
+    setFilterState(f); setStatusState(s); setLessonState(l);
+    window.history.replaceState(null, "", inboxHref(f, s, l));
   };
-  const pending = submissions?.filter((s) => s.marks === null).length ?? 0;
-  const checked = (submissions?.length ?? 0) - pending;
-  const visible = submissions && filter !== "all" ? submissions.filter((s) => s.source === filter) : submissions;
-  const filters: { key: SourceFilter; label: string; count: number; Icon: typeof Sparkles }[] = [
-    { key: "all", label: "All", count: submissions?.length ?? 0, Icon: FileText },
-    { key: "tutor", label: "Tutor assignments", count: submissions?.filter((s) => s.source === "tutor").length ?? 0, Icon: ClipboardList },
-    { key: "ai", label: "AI practice", count: submissions?.filter((s) => s.source === "ai").length ?? 0, Icon: Sparkles },
+
+  const all = submissions ?? [];
+  const pending = all.filter((s) => s.marks === null);
+  const checked = all.length - pending.length;
+  const late = all.filter(handedInLate).length;
+  const oldest = pending[0];
+  const ofType = filter === "all" ? all : all.filter((s) => s.source === filter);
+  const lessons = [...new Map(ofType.map((s) => [s.lessonId, s.lessonTitle])).entries()];
+  const inLesson = lesson ? ofType.filter((s) => s.lessonId === lesson) : ofType;
+  const visible = inLesson.filter((s) => (status === "todo" ? s.marks === null : status === "checked" ? s.marks !== null : true));
+  const tabs: [StatusTab, string, number][] = [
+    ["todo", "Needs checking", inLesson.filter((s) => s.marks === null).length],
+    ["checked", "Checked", inLesson.filter((s) => s.marks !== null).length],
+    ["all", "All", inLesson.length],
   ];
+  const firstToCheck = inLesson.find((s) => s.marks === null) ?? pending[0];
 
   return (
     <PageTransition>
       <div className="space-y-5">
-        <motion.div variants={fadeUp} initial="hidden" animate="show" className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-white via-white to-primary/5 p-5">
-          <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
-          <BackLink />
-          <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <h1 className="flex items-center gap-2 text-xl font-semibold text-zinc-900">
-                <ClipboardList className="h-5 w-5 text-primary" />
-                Assignment submissions
-              </h1>
-              <p className="mt-1 text-sm text-zinc-500">Open a learner submission to review, annotate, and grade it.</p>
-            </div>
-            {submissions && submissions.length > 0 && (
-              <div
-                className="w-full overflow-hidden rounded-xl border border-primary/15 bg-white/80 shadow-sm ring-1 ring-primary/5 sm:w-auto"
-                aria-label={`Assignment review progress: ${pending} pending, ${checked} of ${submissions.length} checked`}
-              >
-                <div className="flex items-stretch">
-                  <div className="flex min-w-0 items-center gap-2.5 border-l-4 border-amber-400 px-3 py-2.5 sm:px-3.5">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700" aria-hidden>
-                      <Clock className="h-4 w-4" />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">To review</p>
-                      <p className="mt-0.5 whitespace-nowrap text-sm font-semibold tabular-nums text-zinc-900">
-                        {pending} pending
-                      </p>
-                    </div>
-                  </div>
-                  <div className="my-2.5 w-px bg-primary/10" aria-hidden />
-                  <div className="flex min-w-0 items-center gap-2.5 border-l-4 border-primary px-3 py-2.5 sm:px-3.5">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary" aria-hidden>
-                      <CheckCircle2 className="h-4 w-4" />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">Progress</p>
-                      <p className="mt-0.5 whitespace-nowrap text-sm font-semibold tabular-nums text-zinc-900">
-                        {checked} of {submissions.length} checked
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                <div className="h-1 bg-primary/10" role="progressbar" aria-label="Submissions checked" aria-valuemin={0} aria-valuemax={submissions.length} aria-valuenow={checked}>
-                  <div className="h-full bg-primary transition-[width] duration-500 motion-reduce:transition-none" style={{ width: `${(checked / submissions.length) * 100}%` }} />
-                </div>
-              </div>
-            )}
+        <motion.div variants={fadeUp} initial="hidden" animate="show" className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <BackLink />
+            <h1 className="mt-2 text-2xl font-semibold text-zinc-900">Check assignments</h1>
+            <p className="mt-0.5 text-sm text-zinc-500">Oldest first, so nobody waits too long.</p>
           </div>
+          {firstToCheck && (
+            <Link href={submissionHref(firstToCheck.id, filter)}>
+              <Button className="min-h-11 shadow-sm">Start checking · {pending.length} left<ChevronRight className="h-4 w-4" /></Button>
+            </Link>
+          )}
         </motion.div>
+
+        {submissions && submissions.length > 0 && (
+          <Card className="flex flex-wrap items-center gap-x-8 gap-y-4 p-5">
+            <div className="min-w-[14rem] flex-1">
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="text-sm font-semibold text-zinc-700">Submissions checked</p>
+                <p className="tabular-nums text-zinc-600"><span className="text-xl font-semibold text-zinc-900">{checked}</span> of {submissions.length}</p>
+              </div>
+              <div className="mt-2 h-2 overflow-hidden rounded-full bg-zinc-100" role="progressbar" aria-label="Submissions checked" aria-valuemin={0} aria-valuemax={submissions.length} aria-valuenow={checked}>
+                <div className="h-full rounded-full bg-primary transition-[width] duration-500 motion-reduce:transition-none" style={{ width: `${(checked / submissions.length) * 100}%` }} />
+              </div>
+            </div>
+            <Stat label="Need checking" value={pending.length} />
+            <Stat label="Handed in late" value={late} tone={late ? "warn" : undefined} />
+            <Stat label="Oldest waiting" value={oldest ? daysAgoLabel(oldest.submittedAt).replace(/^today$/, "Today").replace(/^yesterday$/, "1 day").replace(/ ago$/, "") : "—"} />
+          </Card>
+        )}
 
         {error && <Card className="p-5"><ErrorNote message={error} /></Card>}
         {!error && submissions === null && <SkeletonRows />}
@@ -303,13 +331,9 @@ function SubmissionInbox() {
         {submissions?.length === 0 && (
           <motion.div variants={fadeUp} initial="hidden" animate="show">
             <Card className="p-10 text-center">
-              <motion.div
-                className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-50 ring-1 ring-zinc-200"
-                animate={{ y: [0, -4, 0] }}
-                transition={{ repeat: Infinity, duration: 2.4, ease: "easeInOut" }}
-              >
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-50 ring-1 ring-zinc-200">
                 <FileText className="h-7 w-7 text-zinc-400" />
-              </motion.div>
+              </div>
               <p className="mt-4 font-medium text-zinc-900">No submissions yet</p>
               <p className="mt-1 text-sm text-zinc-500">Learner uploads will appear here.</p>
             </Card>
@@ -317,68 +341,69 @@ function SubmissionInbox() {
         )}
 
         {submissions && submissions.length > 0 && (
-          <div role="tablist" aria-label="Filter by assignment type" className="flex flex-wrap gap-2">
-            {filters.map(({ key, label, count, Icon }) => {
-              const active = filter === key;
-              return (
-                <button
-                  key={key}
-                  role="tab"
-                  aria-selected={active}
-                  onClick={() => setFilter(key)}
-                  className={cn(
-                    "focus-ring inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors",
-                    active && key === "ai" && "border-violet-300 bg-violet-50 text-violet-700",
-                    active && key !== "ai" && "border-primary/40 bg-primary/10 text-primary",
-                    !active && "border-border bg-white text-zinc-600 hover:border-zinc-300 hover:text-zinc-900"
-                  )}
-                >
-                  <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-                  {label}
-                  <span className={cn("rounded-full px-1.5 text-xs tabular-nums", active ? "bg-white/70" : "bg-zinc-100")}>{count}</span>
-                </button>
-              );
-            })}
-          </div>
-        )}
+          <Card className="overflow-hidden p-0">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 p-3">
+              <div role="tablist" aria-label="Show" className="flex flex-wrap gap-1 rounded-xl bg-zinc-100 p-1">
+                {tabs.map(([key, label, count]) => (
+                  <button key={key} type="button" role="tab" aria-selected={status === key} onClick={() => update({ status: key })}
+                    className={cn("focus-ring rounded-lg px-3 py-1.5 text-sm font-medium transition", status === key ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600 hover:text-zinc-900")}>
+                    {label} · {count}
+                  </button>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-2 text-sm text-zinc-600">
+                  Lesson
+                  <select value={lesson} onChange={(e) => update({ lesson: e.target.value })} className="focus-ring h-9 max-w-[14rem] rounded-lg border border-border bg-white px-2 text-sm text-zinc-800">
+                    <option value="">All lessons</option>
+                    {lessons.map(([id, title]) => <option key={id} value={id}>{title}</option>)}
+                  </select>
+                </label>
+                <label className="flex items-center gap-2 text-sm text-zinc-600">
+                  Type
+                  <select value={filter} onChange={(e) => update({ filter: parseFilter(e.target.value), lesson: "" })} className="focus-ring h-9 rounded-lg border border-border bg-white px-2 text-sm text-zinc-800">
+                    <option value="all">All types</option>
+                    <option value="tutor">Tutor assignments</option>
+                    <option value="ai">AI practice</option>
+                  </select>
+                </label>
+              </div>
+            </div>
 
-        {visible && submissions && submissions.length > 0 && visible.length === 0 && (
-          <Card className="p-6 text-center text-sm text-zinc-500">
-            No {filter === "ai" ? "AI practice" : "tutor assignment"} submissions yet.
-          </Card>
-        )}
-
-        {visible && visible.length > 0 && (
-          <motion.div key={filter} className="space-y-2" variants={listVariants} initial="hidden" animate="show">
-            {visible.map((submission) => (
-              <motion.div key={submission.id} variants={itemVariants} whileHover={{ y: -2 }} transition={{ type: "spring", stiffness: 400, damping: 28 }}>
-                <Link href={submissionHref(submission.id, filter)} className="group block">
-                  <Card className={`flex flex-col gap-3 border-l-4 p-4 transition-all hover:border-primary/40 hover:shadow-md sm:flex-row sm:items-center sm:justify-between ${submission.marks === null ? "border-l-primary/60" : "border-l-emerald-500/60"}`}>
-                    <div className="flex min-w-0 items-center gap-3">
-                      <Avatar name={submission.studentName} />
-                      <div className="min-w-0">
-                        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 font-medium text-zinc-900">
-                          <span className="transition-colors group-hover:text-primary">{submission.studentName}</span>
-                          <SubmissionSourceBadge source={submission.source} />
-                        </p>
-                        <p className="truncate text-sm text-zinc-600">{submission.lessonTitle} · {submission.courseTitle}</p>
-                        <p className="mt-1 flex items-center gap-1 text-xs text-zinc-500">
-                          <FileText className="h-3 w-3" />
-                          <span className="truncate">{submission.fileName}</span>
-                          <span>·</span>
-                          <span>{new Date(submission.submittedAt).toLocaleString()}</span>
-                        </p>
+            {visible.length === 0 ? (
+              <p className="px-4 py-10 text-center text-sm text-zinc-500">
+                {status === "todo" ? "All checked. Nice work." : "Nothing here yet."}
+              </p>
+            ) : (
+              <motion.ul key={`${filter}-${status}-${lesson}`} className="divide-y divide-zinc-100" variants={listVariants} initial="hidden" animate="show">
+                {visible.map((submission) => (
+                  <motion.li key={submission.id} variants={itemVariants}>
+                    <Link href={submissionHref(submission.id, filter)} className="group grid gap-3 px-4 py-3.5 transition-colors hover:bg-zinc-50 focus-visible:bg-zinc-50 focus-visible:outline-none md:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto_auto] md:items-center">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <Avatar name={submission.studentName} />
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold text-zinc-900 group-hover:text-primary">{submission.studentName}</p>
+                          <p className="truncate text-sm text-zinc-500">{submission.lessonTitle} · {submission.courseTitle}</p>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-3 sm:shrink-0">
-                      <StatusPill marks={submission.marks} />
-                      <ArrowLeft className="h-4 w-4 rotate-180 text-zinc-300 transition-all group-hover:translate-x-0.5 group-hover:text-primary" />
-                    </div>
-                  </Card>
-                </Link>
-              </motion.div>
-            ))}
-          </motion.div>
+                      <div className="min-w-0 text-sm">
+                        <p className="text-zinc-700">Submitted {new Date(submission.submittedAt).toLocaleDateString([], { day: "numeric", month: "short" })} · {daysAgoLabel(submission.submittedAt)}</p>
+                        <p className="flex items-center gap-1 truncate text-xs text-zinc-500"><FileText className="h-3 w-3 shrink-0" />{submission.fileName} · {formatBytes(submission.fileSize)}</p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {handedInLate(submission) && <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">Late</span>}
+                        <SubmissionSourceBadge source={submission.source} />
+                      </div>
+                      <span className="flex items-center justify-end gap-1 text-sm font-semibold text-primary">
+                        {submission.marks === null ? "Check" : <span className="flex items-center gap-1 text-emerald-700"><CheckCircle2 className="h-4 w-4" />{submission.marks}%</span>}
+                        <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                      </span>
+                    </Link>
+                  </motion.li>
+                ))}
+              </motion.ul>
+            )}
+          </Card>
         )}
       </div>
     </PageTransition>
@@ -387,30 +412,27 @@ function SubmissionInbox() {
 
 /* ---------- speed-grader navigation ---------- */
 const parseFilter = (value: string | null): SourceFilter => (value === "tutor" || value === "ai" ? value : "all");
-const FILTER_LABEL: Record<Exclude<SourceFilter, "all">, string> = { tutor: "tutor assignments", ai: "AI practice" };
 
 function submissionHref(id: number, filter: SourceFilter) {
   return `/app/tutor/assignment/?submissionId=${id}${filter === "all" ? "" : `&filter=${filter}`}`;
 }
 
-/** Prev / dropdown / next across the same list (and filter) as the inbox, so a
- *  tutor can grade one submission after another without going back. */
-function SubmissionNavigator({
-  currentId, filter, currentMarks, onNavigate,
-}: {
-  currentId: number;
-  filter: SourceFilter;
-  /** The open submission's latest mark, so its entry updates right after saving. */
-  currentMarks: number | null | undefined;
-  onNavigate: (id: number) => void;
-}) {
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** The grading queue (same order and filter as the inbox), kept in step with grades saved here. */
+function useSubmissionQueue(filter: SourceFilter, currentId: number, currentMarks: number | null | undefined) {
   const [list, setList] = useState<SubmissionSummary[] | null>(null);
   const dataVersion = useDataVersion();
   useEffect(() => {
     const aborter = new AbortController();
     fetch("/api/tutor/assignment-submissions", { signal: aborter.signal })
       .then(async (r) => (r.ok ? ((await r.json()) as { submissions?: SubmissionSummary[] }).submissions ?? [] : []))
-      .then((all) => setList(filter === "all" ? all : all.filter((s) => s.source === filter)))
+      // Ordered once per load, so positions don't jump as grades are saved.
+      .then((all) => setList(queueOrder(filter === "all" ? all : all.filter((s) => s.source === filter))))
       .catch(() => { if (!aborter.signal.aborted) setList([]); });
     return () => aborter.abort();
   }, [filter, dataVersion]);
@@ -421,53 +443,80 @@ function SubmissionNavigator({
     if (currentMarks === undefined) return;
     setList((prev) => prev?.map((s) => (s.id === currentId && s.marks !== currentMarks ? { ...s, marks: currentMarks } : s)) ?? prev);
   }, [currentId, currentMarks]);
+  return list;
+}
 
+/** The grader's top bar: back to the queue, whose work this is, how many are left, and previous / next. */
+function GraderTopBar({
+  list, currentId, filter, studentName, lessonTitle, courseTitle, onNavigate,
+}: {
+  list: SubmissionSummary[] | null;
+  currentId: number;
+  filter: SourceFilter;
+  studentName?: string; lessonTitle?: string; courseTitle?: string;
+  onNavigate: (id: number) => void;
+}) {
   const items = list ?? [];
   const index = items.findIndex((s) => s.id === currentId);
   const prev = index > 0 ? items[index - 1] : null;
   const next = index >= 0 && index < items.length - 1 ? items[index + 1] : null;
   const remaining = items.filter((s) => s.marks === null).length;
+  const done = items.length - remaining;
 
   return (
-    <nav
-      aria-label="Move between submissions"
-      className="sticky top-0 z-20 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-white/95 p-2 shadow-sm backdrop-blur"
-    >
-      <Button size="sm" variant="outline" onClick={() => prev && onNavigate(prev.id)} disabled={!prev} aria-label="Previous submission" title={prev ? `Previous: ${prev.studentName}` : "This is the first submission"}>
-        <ChevronLeft className="h-4 w-4" />
-      </Button>
-
+    <nav aria-label="Move between submissions" className="sticky top-0 z-20 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-white/95 px-3 py-2 shadow-sm backdrop-blur">
+      <Link href={filter === "all" ? "/app/tutor/assignment/" : `/app/tutor/assignment/?filter=${filter}`} className="focus-ring inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-sm font-semibold text-zinc-700 hover:text-zinc-900">
+        <ChevronLeft className="h-4 w-4" />Queue
+      </Link>
+      {studentName && (
+        <div className="flex min-w-0 flex-1 items-center gap-2.5">
+          <Avatar name={studentName} />
+          <div className="min-w-0">
+            <p className="truncate font-semibold text-zinc-900">{studentName}</p>
+            <p className="truncate text-xs text-zinc-500">{lessonTitle} · {courseTitle}</p>
+          </div>
+        </div>
+      )}
+      {list && items.length > 0 && (
+        <div className="w-36" aria-label={`${remaining} of ${items.length} still to check`}>
+          <p className="text-xs tabular-nums text-zinc-600">{remaining === 0 ? "All checked" : <><b className="text-zinc-900">{remaining}</b> of {items.length} to check</>}</p>
+          <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-zinc-100"><div className="h-full rounded-full bg-primary transition-[width] duration-500" style={{ width: `${(done / items.length) * 100}%` }} /></div>
+        </div>
+      )}
       <label className="sr-only" htmlFor="submission-picker">Jump to submission</label>
       <select
         id="submission-picker"
         value={index >= 0 ? currentId : ""}
         onChange={(e) => onNavigate(Number(e.target.value))}
         disabled={!list || items.length === 0}
-        className="focus-ring h-9 min-w-0 flex-1 rounded-lg border border-border bg-white px-3 text-sm text-zinc-800"
+        className="focus-ring h-9 w-40 rounded-lg border border-border bg-white px-2 text-sm text-zinc-800"
       >
-        {!list && <option value="">Loading submissions…</option>}
-        {list && index < 0 && <option value="">This submission isn't in the current list</option>}
+        {!list && <option value="">Loading…</option>}
+        {list && index < 0 && <option value="">Not in this list</option>}
         {items.map((s, i) => (
           <option key={s.id} value={s.id}>
-            {i + 1}. {s.studentName} — {s.lessonTitle} · {s.source === "ai" ? "AI practice" : "Tutor"} · {s.marks === null ? "Needs checking" : `✓ ${s.marks}%`}
+            {i + 1}. {s.studentName} · {s.marks === null ? "to check" : `✓ ${s.marks}%`}
           </option>
         ))}
       </select>
-
-      <Button size="sm" variant="outline" onClick={() => next && onNavigate(next.id)} disabled={!next} aria-label="Next submission" title={next ? `Next: ${next.studentName}` : "This is the last submission"}>
-        <ChevronRight className="h-4 w-4" />
-      </Button>
-
-      {list && items.length > 0 && (
-        <span className="px-1 text-xs tabular-nums text-zinc-500">
-          {index >= 0 ? `${index + 1} of ${items.length}` : `${items.length} total`}
-          {" · "}
-          {remaining === 0 ? "all checked" : `${remaining} to check`}
-          {filter !== "all" && ` · ${FILTER_LABEL[filter]} only`}
-        </span>
-      )}
+      <div className="flex gap-1.5">
+        <Button size="sm" variant="outline" onClick={() => prev && onNavigate(prev.id)} disabled={!prev} title={prev ? `Previous: ${prev.studentName}` : "This is the first submission"}>
+          <ChevronLeft className="h-4 w-4" />Previous
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => next && onNavigate(next.id)} disabled={!next} title={next ? `Next: ${next.studentName}` : "This is the last submission"}>
+          Next<ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
     </nav>
   );
+}
+
+/** The next submission still to check after this one (wrapping round), if any. */
+function nextToCheck(list: SubmissionSummary[] | null, currentId: number): SubmissionSummary | null {
+  if (!list) return null;
+  const index = list.findIndex((s) => s.id === currentId);
+  const ordered = [...list.slice(index + 1), ...list.slice(0, Math.max(index, 0))];
+  return ordered.find((s) => s.marks === null && s.id !== currentId) ?? null;
 }
 
 /* ---------- grade view ---------- */
@@ -522,6 +571,7 @@ function GradeView() {
   }, [submissionId, submissionIdParam]);
   // Autosave: a short pause after the last change saves the grade, as long as
   // it is complete and valid. The Save button still saves straight away.
+  const queue = useSubmissionQueue(filter, submissionId, detail?.submission.id === submissionId ? detail.marks : undefined);
   const autosaveAttempt = useRef("");
   useEffect(() => {
     if (!detail || savingGrade || !hasUnsavedGrade()) return;
@@ -543,13 +593,13 @@ function GradeView() {
   }, [detail, marksInput, remark, scoreInputs, savingGrade]);
   if (!submissionIdParam) return <SubmissionInbox />;
 
-  async function saveFlatMarks() {
-    if (!detail) return;
+  async function saveFlatMarks(): Promise<boolean> {
+    if (!detail) return false;
     const points = Number(marksInput);
     const total = pointsTotal(detail);
     if (marksInput.trim() === "" || !Number.isFinite(points) || points < 0 || points > total) {
       setError(`Points must be a number between 0 and ${total}.`);
-      return;
+      return false;
     }
     setSavingGrade(true);
     setError(null);
@@ -566,24 +616,26 @@ function GradeView() {
       setDetail((prev) => prev && { ...applyGradeResult(prev, pct, points, total, data.gradedAt ?? new Date().toISOString()), remark });
       setMarksInput(String(points));
       flashSaved();
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't save the points.");
+      return false;
     } finally {
       setSavingGrade(false);
     }
   }
-  async function saveRubricScores() {
-    if (!detail) return;
+  async function saveRubricScores(): Promise<boolean> {
+    if (!detail) return false;
     const scores = detail.rubric.map((c) => ({ criterionId: c.id, score: Number(scoreInputs[c.id]) }));
     if (scores.some((s) => !Number.isFinite(s.score) || s.score < 0)) {
       setError("Enter a score for every criterion.");
-      return;
+      return false;
     }
     for (const c of detail.rubric) {
       const score = Number(scoreInputs[c.id]);
       if (score > c.maxPoints) {
         setError(`"${c.title}" can't exceed ${c.maxPoints} points.`);
-        return;
+        return false;
       }
     }
     setSavingGrade(true);
@@ -604,8 +656,10 @@ function GradeView() {
       });
       setScoreInputs((inputs) => Object.fromEntries(Object.entries(inputs).map(([k, v]) => [k, String(Number(v))])));
       flashSaved();
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't save the grade.");
+      return false;
     } finally {
       setSavingGrade(false);
     }
@@ -632,13 +686,22 @@ function GradeView() {
   }
 
   const navigator = (
-    <SubmissionNavigator
+    <GraderTopBar
+      list={queue}
       currentId={submissionId}
       filter={filter}
-      currentMarks={detail?.submission.id === submissionId ? detail.marks : undefined}
+      studentName={detail?.submission.studentName}
+      lessonTitle={detail?.submission.lessonTitle}
+      courseTitle={detail?.submission.courseTitle}
       onNavigate={goToSubmission}
     />
   );
+  const upNext = nextToCheck(queue, submissionId);
+  async function saveAndNext() {
+    if (!detail) return;
+    const saved = hasUnsavedGrade() || detail.marks === null ? await (detail.rubric.length === 0 ? saveFlatMarks() : saveRubricScores()) : true;
+    if (saved && upNext) router.push(submissionHref(upNext.id, filter));
+  }
 
   if (error && !detail) {
     return (
@@ -685,29 +748,23 @@ function GradeView() {
       {/* Wide screens: the submitted document on the left, everything for
           grading (switching students, the brief, points, status) in a panel
           on the right that stays in view. Narrow screens stack as before. */}
-      <div data-wide-page className="gap-4 space-y-4 lg:grid lg:grid-cols-[minmax(0,1fr)_23rem] lg:items-start lg:space-y-0 xl:grid-cols-[minmax(0,1fr)_26rem]">
+      <div data-wide-page className="space-y-4">
+      {navigator}
+      <div className="gap-4 space-y-4 lg:grid lg:grid-cols-[minmax(0,1fr)_23rem] lg:items-start lg:space-y-0 xl:grid-cols-[minmax(0,1fr)_26rem]">
       <div className="space-y-4 lg:sticky lg:top-20 lg:col-start-2 lg:row-start-1 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pb-2 lg:pl-1 lg:pr-1">
-        {navigator}
-
-        {/* header: who, what, when — the file itself is on the left, and the total is beside the points box */}
-        <motion.div variants={fadeUp} initial="hidden" animate="show" className="space-y-2">
-          <BackLink
-            href={filter === "all" ? "/app/tutor/assignment/" : `/app/tutor/assignment/?filter=${filter}`}
-            label="Back to all submissions"
-          />
+        {/* What and when: the file itself is on the left. */}
+        <motion.div variants={fadeUp} initial="hidden" animate="show" className="space-y-1">
           <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h1 className="flex flex-wrap items-center gap-2 text-lg font-semibold text-zinc-900">
-                {submission.studentName}
-                <SubmissionSourceBadge source={submission.source} className="text-xs" />
-              </h1>
-              <p className="truncate text-sm text-zinc-500">{submission.lessonTitle} · {submission.courseTitle}</p>
-            </div>
+            <h1 className="flex flex-wrap items-center gap-2 text-lg font-semibold text-zinc-900">
+              Grade
+              <SubmissionSourceBadge source={submission.source} className="text-xs" />
+            </h1>
             <span className="shrink-0"><StatusPill marks={detail.marks} rawScore={detail.rawScore} rawMax={detail.rawMax} /></span>
           </div>
-          <p className="text-xs text-zinc-500" title={`${submission.fileName} · submitted ${submitted.toLocaleString()}`}>
-            Submitted {shortDate(submitted)}
-            {submission.dueDate && <> · Due {shortDate(new Date(`${submission.dueDate}T00:00:00`))}</>}
+          <p className="truncate text-xs text-zinc-500" title={submission.fileName}>{submission.fileName}</p>
+          <p className="text-xs text-zinc-500" title={`Submitted ${submitted.toLocaleString()}`}>
+            Submitted {shortDate(submitted)}, {submitted.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+            {submission.dueDate && <> · due {shortDate(new Date(`${submission.dueDate}T00:00:00`))}</>}
             {late && <span className="font-medium text-amber-700"> · Late</span>}
           </p>
         </motion.div>
@@ -770,13 +827,26 @@ function GradeView() {
         {/* grading card */}
         <motion.div variants={fadeUp} initial="hidden" animate="show" transition={{ delay: 0.08 }}>
           <Card className="space-y-3 p-4">
-            <label className="block text-sm font-medium text-zinc-800">
-              Add status
-              <select value={remark} onChange={(event) => setRemark(event.target.value)} className="focus-ring mt-1 h-10 w-full rounded-xl border border-border bg-white px-3 text-sm sm:max-w-xs">
-                <option value="">None</option>
-                <option>Excused</option><option>Missing</option><option>Late</option>
-              </select>
-            </label>
+            <div>
+              <p className="text-sm font-medium text-zinc-800">Tag</p>
+              <div role="radiogroup" aria-label="Tag" className="mt-1.5 grid grid-cols-4 gap-1.5">
+                {[["", "No tag"], ["Late", "Late"], ["Missing", "Missing"], ["Excused", "Excused"]].map(([value, label]) => (
+                  <button key={label} type="button" role="radio" aria-checked={remark === value} onClick={() => setRemark(value)}
+                    className={cn("focus-ring rounded-lg border px-2 py-2 text-sm font-medium transition",
+                      remark === value
+                        ? value === "Late" ? "border-amber-400 bg-amber-50 text-amber-800" : value === "Missing" ? "border-red-300 bg-red-50 text-red-700" : "border-primary/50 bg-primary/10 text-primary"
+                        : "border-border bg-white text-zinc-600 hover:border-zinc-300 hover:text-zinc-900")}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {late && remark !== "Late" && (
+                <p className="mt-1.5 text-xs text-amber-700">
+                  Suggested: handed in after the due date.{" "}
+                  <button type="button" onClick={() => setRemark("Late")} className="font-semibold underline">Tag as Late</button>
+                </p>
+              )}
+            </div>
             {hasRubric ? (
               <>
                 <div className="flex items-center justify-between">
@@ -825,15 +895,12 @@ function GradeView() {
                     );
                   })}
                 </motion.ul>
-                <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-3">
                   <div className="flex items-center gap-3">
                     <ProgressRing pct={runningPct} />
-                    <p className="text-sm text-zinc-700">
-                      Total: <span className="font-semibold tabular-nums"><AnimatedNumber value={runningTotal ?? 0} /> / {runningMax}</span>
-                      {runningMax ? <span className="tabular-nums text-zinc-500"> ({runningPct}%)</span> : null}
-                    </p>
+                    <p className="text-sm text-zinc-600">{filledCount} of {rubric.length} criteria scored</p>
                   </div>
-                  <SaveButton saving={savingGrade} saved={savedFlash} label="Save grade" onClick={() => void saveRubricScores()} disabled={savingGrade} />
+                  <p className="text-zinc-500"><span className="text-2xl font-semibold tabular-nums text-zinc-900"><AnimatedNumber value={runningTotal ?? 0} /></span> / {runningMax}</p>
                 </div>
               </>
             ) : (
@@ -847,7 +914,6 @@ function GradeView() {
                   />
                   <span className="font-normal tabular-nums text-zinc-600">/ {total}{typedPct !== null && <span className="text-zinc-400"> ({typedPct}%)</span>}</span>
                 </label>
-                <SaveButton saving={savingGrade} saved={savedFlash} label="Save points" onClick={() => void saveFlatMarks()} disabled={savingGrade || !marksInput.trim()} />
                 <span className="text-xs text-zinc-500">No rubric set up for this lesson — set one from the lesson editor to grade by criteria instead.</span>
               </div>
             )}
@@ -859,9 +925,16 @@ function GradeView() {
               )}
             </AnimatePresence>
             <ErrorNote message={error} />
-            <p className="text-xs text-zinc-500">
-              {savingGrade ? "Saving…" : hasUnsavedGrade() ? "Unsaved changes — saves automatically when you pause, or use the button." : "Changes save automatically."}
+            <p className="flex items-center gap-1.5 text-xs text-zinc-500">
+              {!savingGrade && !hasUnsavedGrade() && detail.marks !== null && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />}
+              {savingGrade ? "Saving…" : hasUnsavedGrade() ? "Unsaved changes — saves automatically when you pause." : detail.marks !== null ? "Saved automatically" : "Changes save automatically."}
             </p>
+            <div className="flex flex-wrap gap-2">
+              <SaveButton saving={savingGrade} saved={savedFlash} label="Save grade" onClick={() => void (hasRubric ? saveRubricScores() : saveFlatMarks())} disabled={savingGrade || (!hasRubric && !marksInput.trim())} />
+              <Button size="sm" onClick={() => void saveAndNext()} disabled={savingGrade || !upNext} title={upNext ? `Next to check: ${upNext.studentName}` : "No other submissions to check"} className="min-w-[8rem]">
+                Save and next<ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
             <p className="border-t pt-2 text-xs text-zinc-500">
               This lesson: {stats.checked} of {stats.total} checked{stats.averageMarks !== null && <> · average {stats.averageMarks}%</>}
             </p>
@@ -874,6 +947,7 @@ function GradeView() {
               tool and page — undo must never touch another student's markup. */}
           <DocumentMarkupViewer key={submission.id} submissionId={submission.id} mimeType={submission.mimeType} />
         </motion.div>
+      </div>
       </div>
     </PageTransition>
   );

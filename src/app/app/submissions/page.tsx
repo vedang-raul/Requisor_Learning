@@ -1,12 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { Download, FileCheck2, Loader2 } from "lucide-react";
-import { Card, CardTitle } from "@/components/ui/card";
+import { useEffect, useMemo, useState } from "react";
+import { CalendarDays, FileCheck2, FileText, Loader2 } from "lucide-react";
+import { Card } from "@/components/ui/card";
 import { Tag } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/ui/motion";
+import { useStore } from "@/lib/store";
+import { dueDateLabel, dueInLabel } from "@/lib/courses/assignment-dates";
+import { cn } from "@/lib/utils";
 
 interface Submission {
   id: number;
@@ -20,22 +23,39 @@ interface Submission {
   submittedAt: string;
   checked: boolean;
   marks: number | null;
+  rawScore: number | null;
+  rawMax: number | null;
   gradedAt: string | null;
   remark: string | null;
   dueDate: string | null;
   totalMarks: number | null;
 }
 
+type Filter = "all" | "waiting" | "graded" | "attention";
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+const shortDate = (value: string) => new Date(value).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+const lessonHref = (courseSlug: string, lessonId: string) => `/app/learn/?course=${encodeURIComponent(courseSlug)}&lesson=${encodeURIComponent(lessonId)}`;
+const tag = (s: Submission) => (s.remark && ["Late", "Missing", "Excused"].includes(s.remark) ? s.remark : null);
+/** The grade as points: exact when saved as points, otherwise worked out from the percentage. */
+function score(s: Submission): { got: number; of: number } | null {
+  if (s.marks === null) return null;
+  if (s.rawScore !== null && s.rawMax) return { got: s.rawScore, of: s.rawMax };
+  const of = s.totalMarks ?? 100;
+  return { got: Math.round((s.marks * of) / 10) / 10, of };
+}
 
 export default function SubmissionsPage() {
+  const { state: store } = useStore();
   const [state, setState] = useState<
     { status: "loading" } | { status: "ready"; submissions: Submission[] } | { status: "error"; message: string }
   >({ status: "loading" });
+  const [filter, setFilter] = useState<Filter>("all");
+  const [course, setCourse] = useState("all");
 
   useEffect(() => {
     let cancelled = false;
@@ -51,13 +71,73 @@ export default function SubmissionsPage() {
     return () => { cancelled = true; };
   }, []);
 
+  const submissions = useMemo(() => (state.status === "ready" ? state.submissions : []), [state]);
+
+  // Still to hand in: graded lessons in courses the learner has started, without a file yet.
+  const dueNext = useMemo(() => {
+    if (state.status !== "ready") return [];
+    const handedIn = new Set(submissions.map((s) => s.lessonId));
+    const started = new Set(store.history.map((h) => h.courseSlug));
+    for (const c of store.courses) if (c.lessons.some((l) => store.progress[l.id])) started.add(c.slug);
+    return store.courses
+      .filter((c) => started.has(c.slug))
+      .flatMap((c) => c.lessons
+        .filter((l) => l.requiresSubmission && l.published !== false && !handedIn.has(l.id))
+        .map((l) => ({ course: c, lesson: l })))
+      .sort((a, b) => (a.lesson.assignmentDueDate ?? "9999").localeCompare(b.lesson.assignmentDueDate ?? "9999"))
+      .slice(0, 4);
+  }, [state.status, submissions, store.courses, store.history, store.progress]);
+
+  const courses = useMemo(() => [...new Map(submissions.map((s) => [s.courseSlug, s.courseTitle])).entries()], [submissions]);
+  const inCourse = course === "all" ? submissions : submissions.filter((s) => s.courseSlug === course);
+  const counts = {
+    all: inCourse.length,
+    waiting: inCourse.filter((s) => !s.checked).length,
+    graded: inCourse.filter((s) => s.checked).length,
+    attention: inCourse.filter((s) => tag(s) === "Late" || tag(s) === "Missing").length,
+  };
+  const shown = inCourse.filter((s) =>
+    filter === "waiting" ? !s.checked : filter === "graded" ? s.checked : filter === "attention" ? tag(s) === "Late" || tag(s) === "Missing" : true);
+  const tabs: [Filter, string][] = [["all", "All"], ["waiting", "Not checked yet"], ["graded", "Graded"], ["attention", "Needs attention"]];
+
   return (
     <PageTransition>
-      <div className="space-y-4">
+      <div className="mx-auto max-w-5xl space-y-5">
         <div>
-          <h1 className="text-lg font-semibold text-zinc-900">Submissions</h1>
-          <p className="text-sm text-zinc-500">Every assignment you&apos;ve submitted, and whether your tutor has checked it yet.</p>
+          <h1 className="text-xl font-semibold text-zinc-900">Submissions</h1>
+          <p className="text-sm text-zinc-500">What&apos;s still due, and everything you&apos;ve handed in.</p>
         </div>
+
+        {dueNext.length > 0 && (
+          <section aria-labelledby="due-next">
+            <h2 id="due-next" className="mb-2 text-base font-semibold text-zinc-900">Still to hand in</h2>
+            <div className="grid gap-3 md:grid-cols-2">
+              {dueNext.map(({ course: c, lesson: l }, i) => {
+                const dueIn = l.assignmentDueDate ? dueInLabel(l.assignmentDueDate) : null;
+                return (
+                  <Card key={l.id} className={cn("flex flex-col gap-3 p-4", dueIn?.soon && "border-amber-300")}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold text-zinc-900">{l.title}</p>
+                        <p className="truncate text-xs text-zinc-500">{c.title}{l.assignmentMarks ? ` · ${l.assignmentMarks} points` : ""}</p>
+                      </div>
+                      {dueIn && <Tag tone={dueIn.overdue ? "danger" : dueIn.soon ? "warning" : "default"} className="shrink-0">{dueIn.overdue ? dueIn.text : dueIn.text.replace(/^Due /, "")}</Tag>}
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="flex items-center gap-1.5 text-sm font-medium text-zinc-800">
+                        <CalendarDays className="h-4 w-4 text-zinc-400" aria-hidden="true" />
+                        {l.assignmentDueDate ? dueDateLabel(l.assignmentDueDate) : "No due date"}
+                      </p>
+                      <Link href={lessonHref(c.slug, l.id)}>
+                        <Button size="sm" variant={i === 0 ? "primary" : "outline"}>{i === 0 ? "Hand it in" : "Open lesson"}</Button>
+                      </Link>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         {state.status === "loading" && (
           <div className="flex items-center gap-2 p-6 text-sm text-zinc-500"><Loader2 className="h-4 w-4 animate-spin" />Loading…</div>
@@ -65,58 +145,78 @@ export default function SubmissionsPage() {
         {state.status === "error" && (
           <Card className="p-6"><p role="alert" className="text-sm text-red-700">{state.message}</p></Card>
         )}
-        {state.status === "ready" && state.submissions.length === 0 && (
+        {state.status === "ready" && submissions.length === 0 && (
           <Card className="flex flex-col items-center gap-2 p-10 text-center">
             <FileCheck2 className="h-6 w-6 text-zinc-300" />
-            <p className="text-sm text-zinc-500">You haven&apos;t submitted any assignments yet.</p>
+            <p className="text-sm text-zinc-500">You haven&apos;t handed in any assignments yet.</p>
           </Card>
         )}
-        {state.status === "ready" && state.submissions.length > 0 && (
-          <div className="space-y-2">
-            {state.submissions.map((s) => (
-              <Card key={s.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <CardTitle className="truncate">{s.lessonTitle}</CardTitle>
-                    {s.checked ? (
-                      <Tag tone="success">Checked{s.marks !== null ? ` · ${s.marks}%` : ""}</Tag>
-                    ) : (
-                      <Tag tone="warning">Not checked yet</Tag>
-                    )}
-                  </div>
-                  <p className="mt-1 truncate text-xs text-zinc-500">
-                    {s.courseTitle} · {s.fileName} ({formatBytes(s.fileSize)}) · submitted{" "}
-                    {new Date(s.submittedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
-                  </p>
-                  {(s.dueDate || s.totalMarks) && <p className="mt-1 text-xs text-zinc-600">
-                    {s.dueDate ? `Due ${new Date(`${s.dueDate}T00:00:00`).toLocaleDateString(undefined, { dateStyle: "medium" })}` : ""}
-                    {s.dueDate && s.totalMarks ? " · " : ""}{s.totalMarks ? `${s.totalMarks} points` : ""}
-                  </p>}
-                  {s.remark && ["Late", "Missing", "Excused"].includes(s.remark) && <p className="mt-1 text-sm font-medium text-zinc-700">Status: {s.remark}</p>}
-                  {s.checked && s.gradedAt && (
-                    <p className="mt-0.5 text-xs text-zinc-400">
-                      Graded {new Date(s.gradedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
-                    </p>
-                  )}
+
+        {state.status === "ready" && submissions.length > 0 && (
+          <Card className="overflow-hidden p-0">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-100 px-4 py-3">
+              <h2 className="text-base font-semibold text-zinc-900">Handed in</h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <div role="tablist" aria-label="Show" className="flex flex-wrap gap-1 rounded-xl bg-zinc-100 p-1">
+                  {tabs.map(([key, label]) => (
+                    <button key={key} type="button" role="tab" aria-selected={filter === key} onClick={() => setFilter(key)}
+                      className={cn("focus-ring rounded-lg px-2.5 py-1.5 text-xs font-medium transition", filter === key ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600 hover:text-zinc-900")}>
+                      {label} · {counts[key]}
+                    </button>
+                  ))}
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  {s.lessonExists && (
-                    <Link href={`/app/learn/?course=${encodeURIComponent(s.courseSlug)}&lesson=${encodeURIComponent(s.lessonId)}`}>
-                      <Button size="sm" variant="outline">Open lesson</Button>
-                    </Link>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => window.open(`/api/assignment/submission/file?submissionId=${s.id}`, "_blank")}
-                    aria-label={`Download your submission for ${s.lessonTitle}`}
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </Card>
-            ))}
-          </div>
+                {courses.length > 1 && (
+                  <select aria-label="Course" value={course} onChange={(e) => setCourse(e.target.value)} className="focus-ring h-9 rounded-lg border border-border bg-white px-2 text-sm">
+                    <option value="all">All courses</option>
+                    {courses.map(([slug, title]) => <option key={slug} value={slug}>{title}</option>)}
+                  </select>
+                )}
+              </div>
+            </div>
+
+            {shown.length === 0 && <p className="px-4 py-8 text-center text-sm text-zinc-500">Nothing here.</p>}
+            <ul className="divide-y divide-zinc-100">
+              {shown.map((s) => {
+                const t = tag(s);
+                const pts = score(s);
+                return (
+                  <li key={s.id} className={cn("grid grid-cols-2 gap-3 px-4 py-3.5 md:grid-cols-[minmax(0,1.6fr)_6.5rem_6.5rem_minmax(0,1fr)_auto] md:items-center", t === "Missing" && "bg-red-50/50")}>
+                    <div className="col-span-2 min-w-0 md:col-span-1">
+                      <p className="truncate font-semibold text-zinc-900">{s.lessonTitle}</p>
+                      <p className="truncate text-xs text-zinc-500">{s.courseTitle}</p>
+                      <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-zinc-500"><FileText className="h-3 w-3 shrink-0" aria-hidden="true" />{s.fileName} · {formatBytes(s.fileSize)}</p>
+                    </div>
+                    <div className="text-xs"><p className="text-zinc-500">Submitted</p><p className="font-medium text-zinc-800">{shortDate(s.submittedAt)}</p></div>
+                    <div className="text-xs"><p className="text-zinc-500">Due</p><p className="font-medium text-zinc-800">{s.dueDate ? dueDateLabel(s.dueDate).replace(/^\w+,?\s/, "") : "—"}</p></div>
+                    <div className="col-span-2 space-y-1 md:col-span-1">
+                      {t === "Excused" ? (
+                        <><Tag>Excused</Tag><p className="text-xs text-zinc-500">Doesn&apos;t count</p></>
+                      ) : pts ? (
+                        <>
+                          <p className="text-zinc-900"><span className="text-lg font-semibold tabular-nums">{pts.got}</span><span className="text-sm text-zinc-500"> / {pts.of}</span></p>
+                          <p className="text-xs font-medium text-emerald-700">Graded {s.gradedAt ? new Date(s.gradedAt).toLocaleDateString(undefined, { day: "numeric", month: "short" }) : ""}</p>
+                          {t && <Tag tone={t === "Missing" ? "danger" : "warning"}>{t}</Tag>}
+                        </>
+                      ) : (
+                        <>
+                          <div className="flex flex-wrap gap-1"><Tag tone="primary">Not checked yet</Tag>{t && <Tag tone={t === "Missing" ? "danger" : "warning"}>{t}</Tag>}</div>
+                          {s.totalMarks && <p className="text-xs text-zinc-500">Out of {s.totalMarks} points</p>}
+                        </>
+                      )}
+                    </div>
+                    <div className="col-span-2 flex shrink-0 flex-wrap gap-2 md:col-span-1 md:justify-end">
+                      {s.lessonExists && (
+                        <Link href={lessonHref(s.courseSlug, s.lessonId)}><Button size="sm" variant="outline">Open lesson</Button></Link>
+                      )}
+                      <Button size="sm" variant="outline" onClick={() => window.open(`/api/assignment/submission/file?submissionId=${s.id}`, "_blank")} aria-label={`View your file for ${s.lessonTitle}`}>
+                        View file
+                      </Button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
         )}
       </div>
     </PageTransition>

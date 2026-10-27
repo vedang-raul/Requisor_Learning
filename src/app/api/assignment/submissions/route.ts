@@ -23,12 +23,12 @@ export async function GET() {
     id: number; lesson_id: string; lesson_title: string | null; lesson_exists: boolean;
     course_slug: string; course_title: string;
     file_name: string; file_size: number; submitted_at: string;
-    marks: number | null; graded_at: string | null; remark: string | null;
+    marks: number | null; raw_score: number | null; raw_max: number | null; graded_at: string | null; remark: string | null;
     assignment_due_date: string | null; assignment_marks: number | null;
   }>(
     `SELECT s.id, s.lesson_id, l.title AS lesson_title, (l.id IS NOT NULL) AS lesson_exists,
             s.course_slug, c.title AS course_title,
-            s.file_name, s.file_size, s.submitted_at, g.marks, g.graded_at, g.remark,
+            s.file_name, s.file_size, s.submitted_at, g.marks, g.raw_score, g.raw_max, g.graded_at, g.remark,
             to_char(l.assignment_due_date, 'YYYY-MM-DD') AS assignment_due_date, l.assignment_marks
      FROM assignment_submissions s
      JOIN courses c ON c.slug = s.course_slug
@@ -52,6 +52,8 @@ export async function GET() {
       submittedAt: r.submitted_at,
       checked: r.marks !== null,
       marks: r.marks,
+      rawScore: r.raw_score,
+      rawMax: r.raw_max,
       gradedAt: r.graded_at,
       remark: r.remark,
       dueDate: r.assignment_due_date,

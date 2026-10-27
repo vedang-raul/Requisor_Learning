@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Activity, BarChart3, BookPlus, Briefcase, Check, CheckCircle2, Download, Eye, EyeOff, FileText, GraduationCap, Inbox, LayoutGrid, Paperclip, Upload,
-  ListChecks, Loader2, Pencil, Plus, Send, Star, Terminal, Trash2, TrendingUp, Users, X,BookOpen, ChevronDown, ChevronLeft, ChevronRight, Clock, Layers, Sparkles, Video, Youtube
+  ListChecks, Loader2, Pencil, Plus, RotateCcw, Send, Star, Terminal, Trash2, TrendingUp, Users, X,BookOpen, ChevronDown, ChevronLeft, ChevronRight, Clock, Layers, Sparkles, Video, Youtube
 } from "lucide-react";
 import { RecordStudio } from "@/components/tutor/video-recorder";
 import { ProgramBuilder } from "@/components/tutor/program-builder";
@@ -1672,94 +1672,144 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
               </div>
             )}
 
-            {step === "assignment" && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="sm:col-span-2"><Field label="Assignment" action={aiButton("assignment", Boolean(assignment.trim()))}><Textarea value={assignment} onChange={(e) => setAssignment(e.target.value)} maxLength={5000} placeholder={aiAssignment ? "Optional: a starting brief for the AI to personalise" : "What should learners do after this lesson? (optional)"} /></Field></div>
-                <div className="space-y-2 sm:col-span-2">
-                  <label className="flex items-center gap-2 text-sm font-medium text-zinc-800">
-                    <input type="checkbox" checked={requiresSubmission} onChange={(e) => setRequiresSubmission(e.target.checked)} className="h-4 w-4 rounded border-zinc-300 accent-primary" />
-                    Require learners to submit a file for grading
-                  </label>
-                  <p className="text-xs text-zinc-500">
-                    {requiresSubmission ? "Learners see the text above as their assignment brief and upload a PDF or Word file." : "Without this, learners can still generate a personalised AI practice assignment from the lesson."}
+            {step === "assignment" && (() => {
+              // The three ways a lesson can be assessed, over the same fields as before.
+              const mode: "none" | "one" | "each" = aiAssignment ? "each" : requiresSubmission ? "one" : "none";
+              const pickMode = (next: "none" | "one" | "each") => {
+                setAiAssignment(next === "each");
+                setRequiresSubmission(next !== "none" ? (next === "one" || mode !== "each" ? true : requiresSubmission) : false);
+                setAiPreview({ status: "idle" });
+                setFormError(null);
+              };
+              const modes: { key: "none" | "one" | "each"; title: string; text: string }[] = [
+                { key: "none", title: "None", text: "Practice only. Nothing to hand in." },
+                { key: "one", title: "One brief for all", text: "Everyone gets the same brief you write." },
+                { key: "each", title: "A brief per learner", text: "AI writes each learner their own, inside your rules." },
+              ];
+              const section = "space-y-3 rounded-2xl border border-border bg-white p-4";
+              return (
+                <div className="space-y-4">
+                  <p className="flex items-start gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-xs text-zinc-600">
+                    <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
+                    Every learner can also ask the AI for an ungraded practice task, written from their role, goals and level.
                   </p>
-                </div>
-                <div className="space-y-3 rounded-xl border border-primary/20 bg-primary/[0.03] p-3 sm:col-span-2">
-                  <label className="flex items-center gap-2 text-sm font-medium text-zinc-800">
-                    <input type="checkbox" checked={aiAssignment} onChange={(e) => { setAiAssignment(e.target.checked); setAiPreview({ status: "idle" }); }} className="h-4 w-4 rounded border-zinc-300 accent-primary" />
-                    <Sparkles className="h-3.5 w-3.5 text-primary" aria-hidden="true" />Give each learner their own AI-written assignment
-                  </label>
-                  <p className="text-xs text-zinc-500">
-                    {aiAssignment
-                      ? "Instead of one brief for everyone, the AI writes each learner a different assignment from their own data, inside the guardrails you set below. Each learner's version is saved the first time they open it and stays the same after that."
-                      : "Optional. Leave this off to give everyone the same assignment text above."}
-                  </p>
-                  {aiAssignment && (
-                    <>
-                      <Field label="Assignment guardrails" action={aiButton("guardrails", Boolean(guardrails.trim()))}>
-                        <span className="mb-1.5 block text-xs font-normal text-zinc-500">
-                          The rules every learner&apos;s version must follow: what skill it tests, what must be included or avoided, the difficulty, the length, and what they hand in.
-                        </span>
-                        <Textarea
-                          value={guardrails}
-                          onChange={(e) => { setGuardrails(e.target.value); setFormError(null); }}
-                          maxLength={GUARDRAILS_MAX_CHARS}
-                          rows={5}
-                          aria-invalid={!guardrailsOk}
-                          placeholder={"e.g. Test whether they can tell an agent-shaped problem from a rule-based one.\nMust use a process from their own kind of workplace.\nNo coding. One page at most. They hand in a short written recommendation.\nKeep it doable in 45 minutes."}
-                        />
-                        <span className={cn("mt-1 block text-xs font-normal", guardrailsOk ? "text-zinc-500" : "text-red-700")}>
-                          {guardrailsOk ? `${guardrails.trim().length} / ${GUARDRAILS_MAX_CHARS}` : "Write at least a sentence of guardrails."}
-                        </span>
+
+                  <div className={section}>
+                    <p className="text-base font-semibold text-zinc-900">Graded assignment</p>
+                    <div role="radiogroup" aria-label="Graded assignment" className="grid gap-2 sm:grid-cols-3">
+                      {modes.map((m) => (
+                        <button key={m.key} type="button" role="radio" aria-checked={mode === m.key} onClick={() => pickMode(m.key)}
+                          className={cn("focus-ring flex items-start gap-2.5 rounded-xl border p-3 text-left transition",
+                            mode === m.key ? "border-primary bg-primary/[0.05] ring-1 ring-primary/30" : "border-border hover:border-zinc-300")}>
+                          <span aria-hidden="true" className={cn("mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2", mode === m.key ? "border-primary" : "border-zinc-300")}>
+                            {mode === m.key && <span className="h-2 w-2 rounded-full bg-primary" />}
+                          </span>
+                          <span><span className="block text-sm font-semibold text-zinc-900">{m.title}</span><span className="mt-0.5 block text-xs text-zinc-500">{m.text}</span></span>
+                        </button>
+                      ))}
+                    </div>
+
+                    {mode !== "each" && (
+                      <Field label={mode === "one" ? "The brief" : "Assignment (optional)"} action={aiButton("assignment", Boolean(assignment.trim()))}>
+                        <Textarea value={assignment} onChange={(e) => setAssignment(e.target.value)} maxLength={5000}
+                          placeholder={mode === "one" ? "What should every learner do and hand in?" : "What should learners do after this lesson? (optional)"} />
+                        {mode === "one" && <span className="mt-1 block text-xs font-normal text-zinc-500">Learners see this as their brief and upload a PDF or Word file.</span>}
                       </Field>
-                      <fieldset>
-                        <legend className="text-sm font-medium text-zinc-800">Learner data the AI may use</legend>
-                        <div className="mt-1.5 grid gap-1.5 sm:grid-cols-3">
-                          {ASSIGNMENT_DATA.map((item) => (
-                            <label key={item.key} className="flex items-start gap-2 rounded-lg border border-zinc-200 bg-white p-2 text-xs text-zinc-700">
-                              <input
-                                type="checkbox"
-                                checked={aiData.includes(item.key)}
-                                onChange={(e) => setAiData((current) => (e.target.checked ? [...current, item.key] : current.filter((key) => key !== item.key)))}
-                                className="mt-0.5 h-3.5 w-3.5 rounded border-zinc-300 accent-primary"
-                              />
-                              <span><span className="block font-medium text-zinc-800">{item.label}</span>{item.hint}</span>
-                            </label>
-                          ))}
+                    )}
+
+                    {mode === "each" && (
+                      <div className="space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-zinc-900">Rules every learner&apos;s brief must follow</p>
+                          {aiButton("guardrails", Boolean(guardrails.trim()))}
                         </div>
-                        {aiData.length === 0 && <p className="mt-1.5 text-xs text-zinc-500">With nothing ticked, assignments still differ between learners, but aren&apos;t based on who they are.</p>}
-                      </fieldset>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Button type="button" size="sm" variant="outline" disabled={!guardrailsOk || aiPreview.status === "loading"} onClick={() => void previewAiAssignment(aiPreview.status === "ready" ? 1 - aiPreview.sample : 0)}>
-                          {aiPreview.status === "loading" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />}
-                          {aiPreview.status === "ready" ? "Preview for a different learner" : "Preview a sample assignment"}
-                        </Button>
-                        <span className="text-xs text-zinc-500">Uses a made-up learner. Nothing is saved.</span>
-                      </div>
-                      {aiPreview.status === "error" && <p role="alert" className="text-xs text-red-700">{aiPreview.message}</p>}
-                      {aiPreview.status === "ready" && (() => {
-                        const sample = parseAssignment(aiPreview.assignment);
-                        return (
-                          <div className="space-y-2 rounded-xl border border-zinc-200 bg-white p-3">
-                            <p className="text-xs font-medium text-zinc-600">Sample for {aiPreview.learner}</p>
-                            {sample ? <AssignmentBrief assignment={sample} /> : <p className="text-sm text-zinc-700">{aiPreview.assignment}</p>}
+                        <Field label="Guardrails">
+                          <span className="mb-1.5 block text-xs font-normal text-zinc-500">
+                            What skill it tests, what must be included or avoided, the difficulty, the length, and what they hand in.
+                          </span>
+                          <Textarea
+                            value={guardrails}
+                            onChange={(e) => { setGuardrails(e.target.value); setFormError(null); }}
+                            maxLength={GUARDRAILS_MAX_CHARS}
+                            rows={5}
+                            aria-invalid={!guardrailsOk}
+                            placeholder={"e.g. Test whether they can tell an agent-shaped problem from a rule-based one.\nMust use a process from their own kind of workplace.\nNo coding. One page at most. They hand in a short written recommendation.\nKeep it doable in 45 minutes."}
+                          />
+                          <span className={cn("mt-1 block text-xs font-normal", guardrailsOk ? "text-zinc-500" : "text-red-700")}>
+                            {guardrailsOk ? `${guardrails.trim().length} / ${GUARDRAILS_MAX_CHARS}` : "Write at least a sentence of guardrails."}
+                          </span>
+                        </Field>
+                        <Field label="Starting brief (optional)" action={aiButton("assignment", Boolean(assignment.trim()))}>
+                          <Textarea value={assignment} onChange={(e) => setAssignment(e.target.value)} maxLength={5000} rows={3} placeholder="Optional: a starting brief for the AI to personalise" />
+                        </Field>
+                        <fieldset>
+                          <legend className="text-sm font-medium text-zinc-800">Tailor each brief using</legend>
+                          <div className="mt-1.5 flex flex-wrap gap-2">
+                            {ASSIGNMENT_DATA.map((item) => {
+                              const on = aiData.includes(item.key);
+                              return (
+                                <button key={item.key} type="button" role="checkbox" aria-checked={on} title={item.hint}
+                                  onClick={() => setAiData((current) => (on ? current.filter((key) => key !== item.key) : [...current, item.key]))}
+                                  className={cn("focus-ring inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition",
+                                    on ? "border-primary/40 bg-primary/10 text-primary" : "border-border bg-white text-zinc-600 hover:border-zinc-300")}>
+                                  {on && <Check className="h-3.5 w-3.5" aria-hidden="true" />}{item.label}
+                                </button>
+                              );
+                            })}
                           </div>
-                        );
-                      })()}
-                    </>
+                          <p className="mt-1.5 text-xs text-zinc-500">
+                            {aiData.length === 0
+                              ? "With nothing chosen, briefs still differ between learners, but aren't based on who they are."
+                              : "Tap to include or leave out. Each learner's brief is saved the first time they open it and doesn't change after. You'll see their exact version when you grade."}
+                          </p>
+                        </fieldset>
+                        <label className="flex items-center gap-2 text-sm font-medium text-zinc-800">
+                          <input type="checkbox" checked={requiresSubmission} onChange={(e) => setRequiresSubmission(e.target.checked)} className="h-4 w-4 rounded border-zinc-300 accent-primary" />
+                          Learners hand in a file for grading
+                        </label>
+                        <div className="space-y-2 rounded-xl border border-primary/20 bg-primary/[0.03] p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="flex items-center gap-1.5 text-sm font-semibold text-zinc-900"><Eye className="h-4 w-4 text-primary" aria-hidden="true" />Preview what a learner gets</p>
+                            <Button type="button" size="sm" variant="outline" disabled={!guardrailsOk || aiPreview.status === "loading"} onClick={() => void previewAiAssignment(aiPreview.status === "ready" ? 1 - aiPreview.sample : 0)}>
+                              {aiPreview.status === "loading" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                              {aiPreview.status === "ready" ? "Write another sample" : "Write a sample"}
+                            </Button>
+                          </div>
+                          <p className="text-xs text-zinc-500">Samples use made-up learners. Nothing is saved.</p>
+                          {aiPreview.status === "error" && <p role="alert" className="text-xs text-red-700">{aiPreview.message}</p>}
+                          {aiPreview.status === "ready" && (() => {
+                            const sample = parseAssignment(aiPreview.assignment);
+                            return (
+                              <div className="space-y-2">
+                                <p className="text-xs font-medium text-zinc-600">Sample for {aiPreview.learner}</p>
+                                {sample ? <AssignmentBrief assignment={sample} /> : <p className="rounded-lg bg-white p-3 text-sm text-zinc-700">{aiPreview.assignment}</p>}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {requiresSubmission && (
+                    <div className={section}>
+                      <p className="text-base font-semibold text-zinc-900">Hand-in and grading</p>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Field label="Due date"><Input type="date" value={assignmentDueDate} onChange={(e) => setAssignmentDueDate(e.target.value)} required /></Field>
+                        <Field label="Total points"><Input type="number" min="1" max="10000" step="1" value={assignmentMarks} onChange={(e) => setAssignmentMarks(e.target.value)} placeholder="e.g. 100" required /></Field>
+                      </div>
+                      <p className="text-xs text-zinc-500">Learners upload one PDF or Word (.docx) file, up to 10 MB, by the end of the due date.</p>
+                      <div className="flex flex-wrap items-center gap-2 border-t border-zinc-100 pt-3">
+                        <p className="text-sm font-medium text-zinc-800">Grade with</p>
+                        {lesson
+                          ? <Button type="button" size="sm" variant="outline" onClick={() => setRubricOpen(true)}><ListChecks className="h-3.5 w-3.5" />Grading rubric</Button>
+                          : <p className="text-xs text-zinc-500">a single score for now. Save the lesson (a draft is fine) to set up a grading rubric.</p>}
+                      </div>
+                    </div>
                   )}
                 </div>
-                {requiresSubmission && <Field label="Total points"><Input type="number" min="1" max="10000" step="1" value={assignmentMarks} onChange={(e) => setAssignmentMarks(e.target.value)} placeholder="e.g. 100" required /></Field>}
-                {requiresSubmission && <Field label="Due date"><Input type="date" value={assignmentDueDate} onChange={(e) => setAssignmentDueDate(e.target.value)} required /></Field>}
-                {requiresSubmission && (
-                  <div className="sm:col-span-2">
-                    {lesson
-                      ? <Button type="button" size="sm" variant="outline" onClick={() => setRubricOpen(true)}><ListChecks className="h-3.5 w-3.5" />Grading rubric</Button>
-                      : <p className="text-xs text-zinc-500">Save the lesson (as a draft is fine) to set up a grading rubric.</p>}
-                  </div>
-                )}
-              </div>
-            )}
+              );
+            })()}
 
             {step === "takeaways" && (
               <div className="space-y-4">

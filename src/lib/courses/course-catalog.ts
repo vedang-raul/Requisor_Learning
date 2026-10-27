@@ -185,7 +185,7 @@ export async function getCourses(where = "", params: unknown[] = []): Promise<Co
              c.base_assessment, c.owner_user_id, c.revision, c.published, c.syllabus, c.university_id, u.name AS tutor_name,
             l.id, l.course_slug, l.title AS lesson_title, l.description AS lesson_description,
              l.youtube_id, l.duration_min, l.resources, l.key_takeaways, l.assignment,
-             l.assignment_marks, l.assignment_due_date, l.assignment_ai,
+             l.assignment_marks, to_char(l.assignment_due_date, 'YYYY-MM-DD') AS assignment_due_date, l.assignment_ai,
              l.section, l.format, l.body, l.body_file_url, l.starter_code, l.language, l.requires_submission, l.published AS lesson_published, l.publish_at
      FROM courses c
      LEFT JOIN course_lessons l ON l.course_slug = c.slug
@@ -209,7 +209,7 @@ export async function getCourses(where = "", params: unknown[] = []): Promise<Co
       durationMin: row.duration_min!, resources: row.resources!, keyTakeaways: row.key_takeaways!,
       ...(row.assignment ? { assignment: row.assignment } : {}), ...(row.section ? { section: row.section } : {}),
        ...(row.assignment_marks ? { assignmentMarks: row.assignment_marks } : {}),
-       ...(row.assignment_due_date ? { assignmentDueDate: new Date(row.assignment_due_date).toISOString().slice(0, 10) } : {}),
+       ...(row.assignment_due_date ? { assignmentDueDate: row.assignment_due_date } : {}),
       ...(readAssignmentAi(row.assignment_ai) ? { assignmentAi: readAssignmentAi(row.assignment_ai)! } : {}),
       ...(row.body ? { body: row.body } : {}),
       ...(row.body_file_url ? { bodyFileUrl: row.body_file_url } : {}),
