@@ -328,42 +328,42 @@ export function AssistantActionCard({ action, onOutcome, voiceAnswer, onAnnounce
 
   return (
     <div className={cn(
-      "rounded-2xl border bg-white p-3 text-sm shadow-soft",
+      "rounded-2xl border bg-white p-3.5 text-[15px] shadow-soft",
       state.phase === "done" ? "border-emerald-200" : state.phase === "error" ? "border-red-200" : state.phase === "cancelled" ? "border-zinc-200 opacity-70" : "border-primary/30"
     )}>
       <p className="flex items-center gap-2 font-semibold text-zinc-900">
-        <Icon className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />{title}
+        <Icon className="h-5 w-5 shrink-0 text-primary" aria-hidden="true" />{title}
       </p>
       {lines.length > 0 && (
-        <ul className="mt-1.5 space-y-0.5 pl-6 text-xs text-zinc-600">
+        <ul className="mt-1.5 space-y-1 pl-7 text-sm text-zinc-600">
           {lines.map((line, i) => <li key={i} className={i === 0 ? "font-medium text-zinc-800" : undefined}>{line}</li>)}
         </ul>
       )}
 
       {(state.phase === "idle" || state.phase === "running") && (
-        <div className="mt-2.5 flex gap-2 pl-6">
-          <Button size="sm" onClick={() => void run()} disabled={state.phase === "running"}>
-            {state.phase === "running" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}{confirm}
+        <div className="mt-3 flex gap-2 pl-7">
+          <Button onClick={() => void run()} disabled={state.phase === "running"}>
+            {state.phase === "running" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}{confirm}
           </Button>
-          <Button size="sm" variant="ghost" disabled={state.phase === "running"} onClick={cancel}>
-            <X className="h-3.5 w-3.5" />Cancel
+          <Button variant="ghost" disabled={state.phase === "running"} onClick={cancel}>
+            <X className="h-4 w-4" />Cancel
           </Button>
         </div>
       )}
       {state.phase === "done" && (
-        <div className="mt-2 flex flex-wrap items-center gap-2 pl-6 text-xs text-emerald-800">
-          <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />{state.message}
+        <div className="mt-2 flex flex-wrap items-center gap-2 pl-7 text-sm text-emerald-800">
+          <CheckCircle2 className="h-4 w-4" aria-hidden="true" />{state.message}
           {state.href && (
             <button type="button" onClick={() => router.push(state.href!)} className="inline-flex items-center gap-1 font-semibold text-primary hover:underline">
-              <FileText className="h-3 w-3" />{state.hrefLabel}
+              <FileText className="h-4 w-4" />{state.hrefLabel}
             </button>
           )}
         </div>
       )}
-      {state.phase === "cancelled" && <p className="mt-2 pl-6 text-xs text-zinc-500">Cancelled — nothing was changed.</p>}
+      {state.phase === "cancelled" && <p className="mt-2 pl-7 text-sm text-zinc-500">Cancelled — nothing was changed.</p>}
       {state.phase === "error" && (
-        <div className="mt-2 flex flex-wrap items-center gap-2 pl-6 text-xs text-red-700">
-          <XCircle className="h-3.5 w-3.5" aria-hidden="true" />{state.message}
+        <div className="mt-2 flex flex-wrap items-center gap-2 pl-7 text-sm text-red-700">
+          <XCircle className="h-4 w-4" aria-hidden="true" />{state.message}
           <button type="button" onClick={() => void run()} className="font-semibold text-primary hover:underline">Try again</button>
         </div>
       )}

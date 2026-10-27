@@ -274,8 +274,8 @@ body {
 .container-vao-input {
   position: relative;
   flex-shrink: 0;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -283,24 +283,24 @@ body {
 }
 
 .orb-input {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
 }
 
 .orb-input .ball {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   filter: url(#gooey-mic);
 }
 
 .orb-input .container-lines {
-  width: 56px;
-  height: 56px;
+  width: 68px;
+  height: 68px;
 }
 
 .orb-input .icons .svg {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
 }
 @layer properties {
   @property --elh {

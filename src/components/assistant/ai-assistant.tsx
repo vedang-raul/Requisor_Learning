@@ -315,7 +315,7 @@ function WheelchairIcon({ className }: { className?: string }) {
 }
 
 /** The robot in a small circle: the assistant's picture in the chat header and beside its replies. */
-function RobotAvatar({ size, speaking, className }: { size: 28 | 36; speaking?: boolean; className?: string }) {
+function RobotAvatar({ size, speaking, className }: { size: number; speaking?: boolean; className?: string }) {
   return (
     <span
       aria-hidden="true"
@@ -326,7 +326,7 @@ function RobotAvatar({ size, speaking, className }: { size: 28 | 36; speaking?: 
       )}
       style={{ width: size, height: size }}
     >
-      <RobotFace scale={size === 36 ? 0.95 : 0.72} />
+      <RobotFace scale={size / 38} />
     </span>
   );
 }
@@ -371,6 +371,15 @@ export function AiAssistant() {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  // Phone-width panel: a shorter placeholder, so it fits beside the bigger mic and send buttons.
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 639px)");
+    const update = () => setNarrow(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
   const [streaming, setStreaming] = useState(false);
   const [retryText, setRetryText] = useState<string | null>(null);
   const [courseDraft, setCourseDraft] = useState<Course | null>(null);
@@ -1351,45 +1360,45 @@ export function AiAssistant() {
             aria-labelledby="assistant-title"
             aria-describedby="assistant-shortcuts-hint"
             onKeyDown={trapFocus}
-            className="fixed bottom-20 right-4 z-40 flex h-[34rem] w-[23rem] max-w-[calc(100vw-2.5rem)] flex-col overflow-hidden rounded-3xl border border-zinc-100 bg-card shadow-[0_25px_60px_-15px_rgba(15,23,42,0.25)]"
+            className="fixed bottom-20 right-4 z-40 flex h-[min(42rem,calc(100dvh-8rem))] w-[28rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-3xl border border-zinc-100 bg-card shadow-[0_25px_60px_-15px_rgba(15,23,42,0.25)]"
           >
             {/* Header */}
-            <div className="relative flex items-center gap-2.5 overflow-hidden bg-gradient-to-r from-primary/[0.07] via-white to-white px-4 py-3.5">
+            <div className="relative flex items-center gap-1.5 overflow-hidden bg-gradient-to-r from-primary/[0.07] via-white to-white px-3 py-4 sm:gap-2 sm:px-4">
               <motion.div
                 className="pointer-events-none absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-primary via-secondary to-primary"
                 animate={{ backgroundPositionX: ["0%", "200%"] }}
                 transition={{ duration: 6, repeat: Infinity, ease: "linear" }}
                 style={{ backgroundSize: "200% 100%" }}
               />
-              <div className="relative shrink-0">
-                <RobotAvatar size={36} speaking={avatarState === "speaking"} />
-                <span className="absolute -bottom-0.5 -right-0.5 flex h-2.5 w-2.5">
+              <div className="relative hidden shrink-0 sm:block">
+                <RobotAvatar size={44} speaking={avatarState === "speaking"} />
+                <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
+                  <span className="relative inline-flex h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-white" />
                 </span>
               </div>
               <div className="min-w-0 flex-1">
-                <p id="assistant-title" className="flex items-center gap-1 truncate text-sm font-semibold text-zinc-900">
+                <p id="assistant-title" className="flex items-center gap-1 truncate text-base font-semibold text-zinc-900">
                   {/* One name for the assistant, whichever voice it speaks in. */}
                   {isTutorMode ? "Requisor Assistant" : ASSISTANT_NAME}
                 </p>
-                <p className="truncate text-xs text-zinc-500">
+                <p className="truncate text-[13px] text-zinc-500">
                   {isTutorMode ? "Design courses, add lessons, grade and publish" : "Guidance, practice assignments, quizzes and grades"}
                 </p>
               </div>
               {/* Mute/unmute TTS button — only shown when TTS is supported */}
               {voice.ttsSupported && (
-                <div className="relative flex items-center">
+                <div className="relative flex items-center rounded-xl border border-zinc-200 bg-white/80">
                   <button
                     onClick={toggleMute}
                     aria-label={voiceMuted ? "Unmute voice response" : "Mute voice response"}
                     title={voiceMuted ? "Unmute voice" : "Mute voice"}
-                    className="focus-ring shrink-0 rounded-lg p-1.5 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
+                    className="focus-ring shrink-0 rounded-l-xl p-2 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800"
                   >
                     {voiceMuted ? (
-                      <VolumeX className="h-3.5 w-3.5" />
+                      <VolumeX className="h-5 w-5" />
                     ) : (
-                      <Volume2 className={cn("h-3.5 w-3.5", voice.isSpeaking && "text-primary")} />
+                      <Volume2 className={cn("h-5 w-5", voice.isSpeaking && "text-primary")} />
                     )}
                   </button>
                   {/* Voice picker — chevron only; dropdown rendered as top-level sibling */}
@@ -1408,9 +1417,9 @@ export function AiAssistant() {
                       }}
                       title="Change AI voice"
                       aria-label="Change AI voice"
-                      className="focus-ring -ml-0.5 shrink-0 rounded-lg p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
+                      className="focus-ring shrink-0 rounded-r-xl border-l border-zinc-200 px-1.5 py-2 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800"
                     >
-                      <ChevronDown className="h-3 w-3" />
+                      <ChevronDown className="h-4 w-4" />
                     </button>
                   )}
                 </div>
@@ -1420,9 +1429,9 @@ export function AiAssistant() {
                   onClick={newChat}
                   aria-label="Start a new chat"
                   title="New chat"
-                  className="focus-ring shrink-0 rounded-lg p-1.5 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
+                  className="focus-ring shrink-0 rounded-lg p-2 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800"
                 >
-                  <RotateCcw className="h-3.5 w-3.5" />
+                  <RotateCcw className="h-5 w-5" />
                 </button>
               )}
               <button
@@ -1432,20 +1441,20 @@ export function AiAssistant() {
                 aria-controls="assistant-a11y-panel"
                 title="Accessibility"
                 className={cn(
-                  "focus-ring shrink-0 rounded-lg p-1 transition",
+                  "focus-ring shrink-0 rounded-lg p-1.5 transition",
                   showA11yPanel || handsFree || wakeEnabled
                     ? "bg-primary/10 text-primary ring-1 ring-inset ring-primary/25 hover:bg-primary/15"
                     : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
                 )}
               >
-                <WheelchairIcon className="h-[18px] w-[18px]" />
+                <WheelchairIcon className="h-6 w-6" />
               </button>
               <button
                 onClick={closePanel}
                 aria-label="Close"
-                className="focus-ring shrink-0 rounded-lg p-1.5 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
+                className="focus-ring shrink-0 rounded-lg p-2 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800"
               >
-                <X className="h-4 w-4" />
+                <X className="h-5 w-5" />
               </button>
             </div>
             <p id="assistant-shortcuts-hint" className="sr-only">
@@ -1464,10 +1473,10 @@ export function AiAssistant() {
             )}
             {/* Messages: announced through the live region below, so streaming isn't read out word by word. */}
             <div ref={scrollRef} role="log" aria-label="Conversation" aria-live="off" className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
-              {draftError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{draftError}</div>}
+              {draftError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{draftError}</div>}
               {messages.length === 0 && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }} className="space-y-4">
-                  <p className="text-sm font-light text-zinc-600">
+                  <p className="text-[15px] font-light leading-relaxed text-zinc-600">
                     Hi {state.user?.name?.split(" ")[0] ?? "there"}.{" "}
                     {isTutorMode
                       ? "Ask me to create a course, add or edit a lesson, check submissions, or anything about your courses."
@@ -1486,10 +1495,10 @@ export function AiAssistant() {
                           if (isTutorMode && label === "Design a course from my topic") startCourseInterview();
                           else void send(label);
                         }}
-                        className="focus-ring group flex items-center gap-2.5 rounded-xl border border-border bg-white px-3 py-2.5 text-left text-xs font-medium text-zinc-700 shadow-soft transition-colors hover:border-primary/50 hover:text-primary"
+                        className="focus-ring group flex items-center gap-3 rounded-xl border border-border bg-white px-3.5 py-3 text-left text-sm font-medium text-zinc-700 shadow-soft transition-colors hover:border-primary/50 hover:text-primary"
                       >
-                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-gradient-to-br group-hover:from-primary group-hover:to-secondary group-hover:text-white">
-                          <Icon className="h-3.5 w-3.5" />
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-gradient-to-br group-hover:from-primary group-hover:to-secondary group-hover:text-white">
+                          <Icon className="h-[18px] w-[18px]" />
                         </span>
                         {label}
                       </motion.button>
@@ -1501,7 +1510,7 @@ export function AiAssistant() {
                 const isLastAssistant = streaming && m.role === "assistant" && i === messages.length - 1;
                 const isUser = m.role === "user";
                 const actionCards = m.role === "assistant" && m.actions?.length ? (
-                  <div key={`${i}-actions`} className="space-y-2 pl-8">
+                  <div key={`${i}-actions`} className="space-y-2 pl-10">
                     {m.actions.map((action) => (
                       <AssistantActionCard
                         key={action.id}
@@ -1525,13 +1534,13 @@ export function AiAssistant() {
                     className={cn("flex items-end gap-2", isUser ? "justify-end" : "justify-start")}
                   >
                     {!isUser && (
-                      <RobotAvatar size={28} speaking={isLastAssistant && streaming} className="mb-0.5" />
+                      <RobotAvatar size={34} speaking={isLastAssistant && streaming} className="mb-0.5" />
                     )}
                     <motion.div
                       layout
                       transition={{ layout: { duration: 0.18, ease: "easeOut" } }}
                       className={cn(
-                        "max-w-[80%] whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-sm font-light leading-relaxed",
+                        "max-w-[82%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-[15px] font-light leading-relaxed",
                         isUser
                           ? "rounded-br-md bg-gradient-to-br from-primary to-secondary text-white shadow-glow-sm"
                           : "rounded-bl-md bg-white text-zinc-800 shadow-soft"
@@ -1550,19 +1559,19 @@ export function AiAssistant() {
                       )}
                       {m.role === "assistant" && !isLastAssistant && m.content.trim() && (
                         <span className="mt-1.5 flex items-center gap-0.5 border-t border-zinc-100 pt-1.5 text-zinc-400">
-                          {m.stopped && <span className="mr-auto text-[11px] font-normal text-zinc-500">Stopped</span>}
+                          {m.stopped && <span className="mr-auto text-xs font-normal text-zinc-500">Stopped</span>}
                           {/* A reply that was cut short isn't rated: there is no finished answer to judge. */}
                           <span className={cn("flex items-center gap-0.5", m.stopped ? "hidden" : "ml-auto")}>
-                            {m.feedback && <span className="mr-1 text-[11px] font-normal text-zinc-500">Thanks for the feedback</span>}
+                            {m.feedback && <span className="mr-1 text-xs font-normal text-zinc-500">Thanks for the feedback</span>}
                             <button
                               type="button"
                               onClick={() => rateReply(i, "up")}
                               aria-label="Good response"
                               aria-pressed={m.feedback === "up"}
                               title="Good response"
-                              className={cn("focus-ring rounded-md p-1 transition hover:bg-zinc-100 hover:text-zinc-700", m.feedback === "up" && "bg-emerald-50 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-600")}
+                              className={cn("focus-ring rounded-md p-1.5 transition hover:bg-zinc-100 hover:text-zinc-700", m.feedback === "up" && "bg-emerald-50 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-600")}
                             >
-                              <ThumbsUp className="h-3.5 w-3.5" aria-hidden="true" />
+                              <ThumbsUp className="h-4 w-4" aria-hidden="true" />
                             </button>
                             <button
                               type="button"
@@ -1570,16 +1579,16 @@ export function AiAssistant() {
                               aria-label="Bad response"
                               aria-pressed={m.feedback === "down"}
                               title="Bad response"
-                              className={cn("focus-ring rounded-md p-1 transition hover:bg-zinc-100 hover:text-zinc-700", m.feedback === "down" && "bg-rose-50 text-rose-600 hover:bg-rose-50 hover:text-rose-600")}
+                              className={cn("focus-ring rounded-md p-1.5 transition hover:bg-zinc-100 hover:text-zinc-700", m.feedback === "down" && "bg-rose-50 text-rose-600 hover:bg-rose-50 hover:text-rose-600")}
                             >
-                              <ThumbsDown className="h-3.5 w-3.5" aria-hidden="true" />
+                              <ThumbsDown className="h-4 w-4" aria-hidden="true" />
                             </button>
                           </span>
                         </span>
                       )}
                     </motion.div>
                     {isUser && (
-                      <div className="mb-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-[10px] font-bold text-zinc-700">
+                      <div className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-xs font-bold text-zinc-700">
                         {initials}
                       </div>
                     )}
@@ -1588,12 +1597,12 @@ export function AiAssistant() {
                 ];
               })}
               {retryText && !streaming && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start pl-8">
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start pl-10">
                   <button
                     onClick={() => send(retryText)}
-                    className="focus-ring flex items-center gap-1.5 rounded-full border border-border bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-soft transition hover:border-primary/60 hover:text-primary"
+                    className="focus-ring flex items-center gap-1.5 rounded-full border border-border bg-white px-3.5 py-2 text-sm font-medium text-zinc-700 shadow-soft transition hover:border-primary/60 hover:text-primary"
                   >
-                    <RotateCcw className="h-3 w-3" />
+                    <RotateCcw className="h-4 w-4" />
                     Retry
                   </button>
                 </motion.div>
@@ -1634,11 +1643,11 @@ export function AiAssistant() {
             >
               {/* Why voice input gave nothing, when it has a reason. */}
               {voice.listenError && !voice.isListening && !voice.isTranscribing && !(handsFree && (voice.listenErrorKind === "silence" || voice.listenErrorKind === "unclear")) && (
-                <p role="alert" className="mb-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900">{voice.listenError}</p>
+                <p role="alert" className="mb-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">{voice.listenError}</p>
               )}
               <div
                 className={cn(
-                  "flex items-end gap-1.5 rounded-2xl border p-1.5 pl-3.5 transition",
+                  "flex items-end gap-2 rounded-2xl border p-2 pl-4 transition",
                   voice.isListening
                     ? "border-primary/40 bg-white ring-2 ring-primary/15"
                     : "border-border bg-zinc-50 focus-within:border-primary/50 focus-within:bg-white focus-within:ring-2 focus-within:ring-primary/15"
@@ -1655,7 +1664,7 @@ export function AiAssistant() {
                       className="flex min-w-0 flex-1 flex-col gap-1 py-1"
                     >
                       {/* The words heard so far, shown as the user speaks. */}
-                      <p aria-live="polite" className={cn("max-h-20 overflow-y-auto text-sm leading-snug", voice.liveTranscript ? "text-zinc-900" : "text-zinc-400")}>
+                      <p aria-live="polite" className={cn("max-h-24 overflow-y-auto text-base leading-snug", voice.liveTranscript ? "text-zinc-900" : "text-zinc-400")}>
                         {voice.liveTranscript || "Listening… start speaking"}
                       </p>
                       <RecordingWaveform bars={waveBars} />
@@ -1668,9 +1677,9 @@ export function AiAssistant() {
                       exit={{ opacity: 0 }}
                       transition={{ duration: 0.12 }}
                       role="status"
-                      className="flex min-h-9 min-w-0 flex-1 items-center gap-2 py-1 text-sm text-zinc-600"
+                      className="flex min-h-11 min-w-0 flex-1 items-center gap-2 py-1 text-base text-zinc-600"
                     >
-                      <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" aria-hidden="true" />
+                      <Loader2 className="h-5 w-5 shrink-0 animate-spin text-primary" aria-hidden="true" />
                       {voice.liveTranscript ? <span className="max-h-20 overflow-y-auto leading-snug">{voice.liveTranscript}</span> : "Writing out what you said…"}
                     </motion.div>
                   ) : (
@@ -1691,9 +1700,9 @@ export function AiAssistant() {
                           send(input);
                         }
                       }}
-                      placeholder={isTutorMode ? "Ask me to grade, add a lesson, publish…" : "Ask for a next step, an assignment, a quiz…"}
+                      placeholder={narrow ? "Ask me anything…" : isTutorMode ? "Ask me to grade, add a lesson…" : "Ask for a next step or a quiz…"}
                       disabled={streaming}
-                      className="max-h-[120px] flex-1 resize-none bg-transparent py-1.5 text-sm text-zinc-900 placeholder:text-zinc-500 focus:outline-none disabled:opacity-60"
+                      className="max-h-[160px] flex-1 resize-none bg-transparent py-2.5 text-base text-zinc-900 placeholder:text-zinc-500 focus:outline-none disabled:opacity-60"
                     />
                   )}
                 </AnimatePresence>
@@ -1783,9 +1792,9 @@ export function AiAssistant() {
                     title={streaming ? "Stop the response" : "Stop the voice"}
                     whileHover={{ scale: 1.06 }}
                     whileTap={{ scale: 0.94 }}
-                    className="focus-ring flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-600 shadow-sm ring-1 ring-inset ring-rose-200 transition-colors hover:bg-rose-200"
+                    className="focus-ring flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-600 shadow-sm ring-1 ring-inset ring-rose-200 transition-colors hover:bg-rose-200"
                   >
-                    <Square className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
+                    <Square className="h-4 w-4 fill-current" aria-hidden="true" />
                   </motion.button>
                 ) : (
                 <motion.button
@@ -1794,13 +1803,13 @@ export function AiAssistant() {
                   aria-label="Send message"
                   whileHover={{ scale: streaming || !input.trim() ? 1 : 1.06 }}
                   whileTap={{ scale: streaming || !input.trim() ? 1 : 0.94 }}
-                  className="focus-ring flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary text-white shadow-sm transition-opacity disabled:opacity-40"
+                  className="focus-ring flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary text-white shadow-sm transition-opacity disabled:opacity-40"
                 >
-                  {streaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  {streaming ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
                 </motion.button>
                 )}
               </div>
-              <p className="mt-2 text-center text-[11px] leading-snug text-zinc-500">AI can make mistakes. Check important information.</p>
+              <p className="mt-2 text-center text-xs leading-snug text-zinc-500">AI can make mistakes. Check important information.</p>
             </form>
           </motion.div>
         )}
@@ -1811,10 +1820,10 @@ export function AiAssistant() {
         <>
           <div className="fixed inset-0 z-[49]" onClick={() => setShowVoicePicker(false)} />
           <div
-            className="fixed z-50 w-56 rounded-xl border border-border bg-white p-2 shadow-lg"
+            className="fixed z-50 w-72 rounded-xl border border-border bg-white p-2 shadow-lg"
             style={{ top: voicePickerPos.top, right: voicePickerPos.right }}
           >
-            <p className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">AI voice</p>
+            <p className="mb-1.5 px-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">AI voice</p>
             <div className="max-h-72 overflow-y-auto">
               {voice.characters.map((character) => (
                 <button
@@ -1825,7 +1834,7 @@ export function AiAssistant() {
                   }}
                   aria-pressed={voice.selectedCharacter === character.key}
                   className={cn(
-                    "flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition",
+                    "flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition",
                     voice.selectedCharacter === character.key ? "bg-primary/10 font-medium text-primary" : "text-zinc-700 hover:bg-zinc-100"
                   )}
                 >
@@ -1833,10 +1842,10 @@ export function AiAssistant() {
                     {SHOW_VOICE_PORTRAITS && <PersonaAvatar personaId={assistantPersona} size="xs" imageSrc={`/voices/${character.key}.svg`} imageAlt="" />}
                     <span className="min-w-0">
                       <span className="block truncate">{character.name}</span>
-                      {character.description && <span className="block truncate text-[10px] font-normal text-zinc-500">{character.description}</span>}
+                      {character.description && <span className="block truncate text-xs font-normal text-zinc-500">{character.description}</span>}
                     </span>
                   </span>
-                  {voice.selectedCharacter === character.key && <Check className="h-3.5 w-3.5" />}
+                  {voice.selectedCharacter === character.key && <Check className="h-4 w-4" />}
                 </button>
               ))}
             </div>
@@ -1852,10 +1861,10 @@ export function AiAssistant() {
             onClick={() => setShowVoicePicker(false)}
           />
           <div
-            className="fixed z-50 w-64 rounded-xl border border-border bg-white p-2 shadow-lg"
+            className="fixed z-50 w-72 rounded-xl border border-border bg-white p-2 shadow-lg"
             style={{ top: voicePickerPos.top, right: voicePickerPos.right }}
           >
-            <p className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-400">
+            <p className="mb-1.5 px-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">
               AI voice
             </p>
             <div className="max-h-52 overflow-y-auto">
@@ -1896,7 +1905,7 @@ export function AiAssistant() {
                     setShowVoicePicker(false);
                   }}
                   className={cn(
-                    "flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs transition",
+                    "flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition",
                     voice.selectedVoiceName === v.name
                       ? "bg-primary/10 font-medium text-primary"
                       : "text-zinc-700 hover:bg-zinc-100"
@@ -1904,10 +1913,10 @@ export function AiAssistant() {
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block truncate">{displayName}</span>
-                    <span className={cn("text-[10px]", voice.selectedVoiceName === v.name ? "text-primary/60" : "text-zinc-400")}>{displayDesc}</span>
+                    <span className={cn("text-xs", voice.selectedVoiceName === v.name ? "text-primary/60" : "text-zinc-400")}>{displayDesc}</span>
                   </span>
                   {voice.selectedVoiceName === v.name && (
-                    <Check className="h-3 w-3 shrink-0 text-primary" />
+                    <Check className="h-4 w-4 shrink-0 text-primary" />
                   )}
                 </button>
                 );
@@ -1943,33 +1952,33 @@ function AccessibilityPanel({
             : wakeState === "unavailable" ? "Not installed on this server yet."
               : wakeState === "error" ? "Couldn't start — check the microphone permission."
                 : "Uses this device's microphone while the site is open. Recognised on your device; nothing is sent until you say it.";
-  const row = "flex items-start justify-between gap-3 rounded-xl border border-zinc-100 bg-white p-2.5";
+  const row = "flex items-center justify-between gap-3 rounded-xl border border-zinc-100 bg-white p-3";
   return (
-    <div id={id} className="space-y-2 border-b border-zinc-100 bg-zinc-50/80 px-4 py-3 text-xs text-zinc-700">
+    <div id={id} className="max-h-[55%] space-y-2 overflow-y-auto border-b border-zinc-100 bg-zinc-50/80 px-4 py-3 text-[13px] text-zinc-700">
       <div className={row}>
         <div className="min-w-0">
-          <p className="flex items-center gap-1.5 font-semibold text-zinc-900"><Headphones className="h-3.5 w-3.5 text-primary" aria-hidden="true" />Hands-free conversation</p>
+          <p className="flex items-center gap-2 text-sm font-semibold text-zinc-900"><Headphones className="h-[18px] w-[18px] text-primary" aria-hidden="true" />Hands-free conversation</p>
           <p className="mt-0.5 text-zinc-500">{voiceInput ? "After each reply I listen again. Say “stop” to end." : "Needs voice input, which isn't set up on this site."}</p>
         </div>
         <button type="button" role="switch" aria-checked={handsFree} aria-keyshortcuts="Alt+Shift+H" disabled={!voiceInput} onClick={onToggleHandsFree}
-          className={cn("focus-ring relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition disabled:opacity-40", handsFree ? "bg-primary" : "bg-zinc-300")}>
+          className={cn("focus-ring relative h-7 w-12 shrink-0 rounded-full transition disabled:opacity-40", handsFree ? "bg-primary" : "bg-zinc-300")}>
           <span className="sr-only">Hands-free conversation</span>
-          <span className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all", handsFree ? "left-[18px]" : "left-0.5")} />
+          <span className={cn("absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all", handsFree ? "left-[22px]" : "left-0.5")} />
         </button>
       </div>
       <div className={row}>
         <div className="min-w-0">
-          <p className="flex items-center gap-1.5 font-semibold text-zinc-900"><Ear className="h-3.5 w-3.5 text-primary" aria-hidden="true" />“Hey Requisor”</p>
+          <p className="flex items-center gap-2 text-sm font-semibold text-zinc-900"><Ear className="h-[18px] w-[18px] text-primary" aria-hidden="true" />“Hey Requisor”</p>
           <p className="mt-0.5 text-zinc-500" aria-live="polite">{wakeNote}</p>
         </div>
         <button type="button" role="switch" aria-checked={wakeEnabled} disabled={!voiceInput} onClick={onToggleWake}
-          className={cn("focus-ring relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition disabled:opacity-40", wakeEnabled ? "bg-primary" : "bg-zinc-300")}>
+          className={cn("focus-ring relative h-7 w-12 shrink-0 rounded-full transition disabled:opacity-40", wakeEnabled ? "bg-primary" : "bg-zinc-300")}>
           <span className="sr-only">Listen for Hey Requisor</span>
-          <span className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all", wakeEnabled ? "left-[18px]" : "left-0.5")} />
+          <span className={cn("absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all", wakeEnabled ? "left-[22px]" : "left-0.5")} />
         </button>
       </div>
-      <div className="rounded-xl border border-zinc-100 bg-white p-2.5">
-        <p className="font-semibold text-zinc-900">Keyboard shortcuts</p>
+      <div className="rounded-xl border border-zinc-100 bg-white p-3">
+        <p className="text-sm font-semibold text-zinc-900">Keyboard shortcuts</p>
         <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-zinc-600">
           <dt><kbd className="font-mono">Alt+Shift+A</kbd></dt><dd>Open or close the assistant</dd>
           <dt><kbd className="font-mono">Alt+Shift+V</kbd></dt><dd>Talk (press again to send)</dd>
