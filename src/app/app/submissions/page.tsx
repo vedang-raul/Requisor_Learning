@@ -2,12 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, FileCheck2, FileText, Loader2 } from "lucide-react";
+import { CalendarDays, CheckCircle2, CircleDashed, FileCheck2, FileText, Loader2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Tag } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/ui/motion";
-import { useStore } from "@/lib/store";
 import { dueDateLabel, dueInLabel } from "@/lib/courses/assignment-dates";
 import { cn } from "@/lib/utils";
 
@@ -31,6 +30,17 @@ interface Submission {
   totalMarks: number | null;
 }
 
+/** A graded assignment still to hand in: its lesson has been started or completed, with no file yet. */
+interface Due {
+  lessonId: string;
+  lessonTitle: string;
+  courseSlug: string;
+  courseTitle: string;
+  dueDate: string | null;
+  totalMarks: number | null;
+  lessonCompleted: boolean;
+}
+
 type Filter = "all" | "waiting" | "graded" | "attention";
 
 function formatBytes(bytes: number): string {
@@ -50,9 +60,8 @@ function score(s: Submission): { got: number; of: number } | null {
 }
 
 export default function SubmissionsPage() {
-  const { state: store } = useStore();
   const [state, setState] = useState<
-    { status: "loading" } | { status: "ready"; submissions: Submission[] } | { status: "error"; message: string }
+    { status: "loading" } | { status: "ready"; submissions: Submission[]; due: Due[] } | { status: "error"; message: string }
   >({ status: "loading" });
   const [filter, setFilter] = useState<Filter>("all");
   const [course, setCourse] = useState("all");
@@ -61,9 +70,9 @@ export default function SubmissionsPage() {
     let cancelled = false;
     fetch("/api/assignment/submissions")
       .then(async (response) => {
-        const data = (await response.json().catch(() => ({}))) as { submissions?: Submission[]; error?: string };
+        const data = (await response.json().catch(() => ({}))) as { submissions?: Submission[]; due?: Due[]; error?: string };
         if (!response.ok) throw new Error(data.error ?? "Couldn't load your submissions.");
-        if (!cancelled) setState({ status: "ready", submissions: data.submissions ?? [] });
+        if (!cancelled) setState({ status: "ready", submissions: data.submissions ?? [], due: data.due ?? [] });
       })
       .catch((error) => {
         if (!cancelled) setState({ status: "error", message: error instanceof Error ? error.message : "Couldn't load your submissions." });
@@ -73,20 +82,8 @@ export default function SubmissionsPage() {
 
   const submissions = useMemo(() => (state.status === "ready" ? state.submissions : []), [state]);
 
-  // Still to hand in: graded lessons in courses the learner has started, without a file yet.
-  const dueNext = useMemo(() => {
-    if (state.status !== "ready") return [];
-    const handedIn = new Set(submissions.map((s) => s.lessonId));
-    const started = new Set(store.history.map((h) => h.courseSlug));
-    for (const c of store.courses) if (c.lessons.some((l) => store.progress[l.id])) started.add(c.slug);
-    return store.courses
-      .filter((c) => started.has(c.slug))
-      .flatMap((c) => c.lessons
-        .filter((l) => l.requiresSubmission && l.published !== false && !handedIn.has(l.id))
-        .map((l) => ({ course: c, lesson: l })))
-      .sort((a, b) => (a.lesson.assignmentDueDate ?? "9999").localeCompare(b.lesson.assignmentDueDate ?? "9999"))
-      .slice(0, 4);
-  }, [state.status, submissions, store.courses, store.history, store.progress]);
+  // Still to hand in, from the server: graded lessons the learner has started or completed, with no file yet.
+  const dueNext = state.status === "ready" ? state.due : [];
 
   const courses = useMemo(() => [...new Map(submissions.map((s) => [s.courseSlug, s.courseTitle])).entries()], [submissions]);
   const inCourse = course === "all" ? submissions : submissions.filter((s) => s.courseSlug === course);
@@ -110,26 +107,32 @@ export default function SubmissionsPage() {
 
         {dueNext.length > 0 && (
           <section aria-labelledby="due-next">
-            <h2 id="due-next" className="mb-2 text-base font-semibold text-zinc-900">Still to hand in</h2>
+            <h2 id="due-next" className="text-base font-semibold text-zinc-900">Still to hand in · {dueNext.length}</h2>
+            <p className="mb-2 text-xs text-zinc-500">Graded assignments from lessons you&apos;ve started. Each one appears here as you reach its lesson.</p>
             <div className="grid gap-3 md:grid-cols-2">
-              {dueNext.map(({ course: c, lesson: l }, i) => {
-                const dueIn = l.assignmentDueDate ? dueInLabel(l.assignmentDueDate) : null;
+              {dueNext.map((d, i) => {
+                const dueIn = d.dueDate ? dueInLabel(d.dueDate) : null;
                 return (
-                  <Card key={l.id} className={cn("flex flex-col gap-3 p-4", dueIn?.soon && "border-amber-300")}>
+                  <Card key={d.lessonId} className={cn("flex flex-col gap-3 p-4", dueIn?.soon && "border-amber-300")}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="truncate font-semibold text-zinc-900">{l.title}</p>
-                        <p className="truncate text-xs text-zinc-500">{c.title}{l.assignmentMarks ? ` · ${l.assignmentMarks} points` : ""}</p>
+                        <p className="truncate font-semibold text-zinc-900">{d.lessonTitle}</p>
+                        <p className="truncate text-xs text-zinc-500">{d.courseTitle}{d.totalMarks ? ` · ${d.totalMarks} points` : ""}</p>
                       </div>
                       {dueIn && <Tag tone={dueIn.overdue ? "danger" : dueIn.soon ? "warning" : "default"} className="shrink-0">{dueIn.overdue ? dueIn.text : dueIn.text.replace(/^Due /, "")}</Tag>}
                     </div>
+                    <p className={cn("flex items-center gap-1.5 text-xs font-medium", d.lessonCompleted ? "text-emerald-700" : "text-zinc-500")}>
+                      {d.lessonCompleted
+                        ? <><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />Lesson completed · hand in your file</>
+                        : <><CircleDashed className="h-3.5 w-3.5" aria-hidden="true" />Lesson in progress</>}
+                    </p>
                     <div className="flex items-center justify-between gap-2">
                       <p className="flex items-center gap-1.5 text-sm font-medium text-zinc-800">
                         <CalendarDays className="h-4 w-4 text-zinc-400" aria-hidden="true" />
-                        {l.assignmentDueDate ? dueDateLabel(l.assignmentDueDate) : "No due date"}
+                        {d.dueDate ? dueDateLabel(d.dueDate) : "No due date"}
                       </p>
-                      <Link href={lessonHref(c.slug, l.id)}>
-                        <Button size="sm" variant={i === 0 ? "primary" : "outline"}>{i === 0 ? "Hand it in" : "Open lesson"}</Button>
+                      <Link href={lessonHref(d.courseSlug, d.lessonId)}>
+                        <Button size="sm" variant={i === 0 ? "primary" : "outline"}>{i === 0 || d.lessonCompleted ? "Hand it in" : "Open lesson"}</Button>
                       </Link>
                     </div>
                   </Card>
@@ -148,7 +151,9 @@ export default function SubmissionsPage() {
         {state.status === "ready" && submissions.length === 0 && (
           <Card className="flex flex-col items-center gap-2 p-10 text-center">
             <FileCheck2 className="h-6 w-6 text-zinc-300" />
-            <p className="text-sm text-zinc-500">You haven&apos;t handed in any assignments yet.</p>
+            <p className="text-sm text-zinc-500">
+              {dueNext.length ? "Nothing handed in yet. Your work appears here once you hand it in." : "No assignments yet. When a lesson you start has a graded assignment, it appears here."}
+            </p>
           </Card>
         )}
 

@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { PartnerBadge } from "@/components/layout/partner-badge";
+import { ASSIGNMENTS_CHANGED_EVENT } from "@/lib/courses/assignment-events";
 import { usePathname, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -82,6 +83,23 @@ export function Sidebar() {
   );
   const showLearnerNavigation = state.user?.role !== "tutor" || workspaceMode === "student";
 
+  // How many graded assignments the learner still has to hand in, beside "Submissions".
+  const learnerSubmissions = showLearnerNavigation && Boolean(state.user) && state.user?.role !== "admin";
+  const [dueCount, setDueCount] = useState(0);
+  useEffect(() => {
+    if (!learnerSubmissions) { setDueCount(0); return; }
+    let cancelled = false;
+    const refresh = () => {
+      fetch("/api/assignment/submissions/?count=due", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data: { due?: number } | null) => { if (!cancelled && typeof data?.due === "number") setDueCount(data.due); })
+        .catch(() => undefined);
+    };
+    refresh();
+    window.addEventListener(ASSIGNMENTS_CHANGED_EVENT, refresh);
+    return () => { cancelled = true; window.removeEventListener(ASSIGNMENTS_CHANGED_EVENT, refresh); };
+  }, [learnerSubmissions, pathname]);
+
   const switchWorkspaceMode = () => {
     const nextMode = workspaceMode === "tutor" ? "student" : "tutor";
     setWorkspaceMode(nextMode);
@@ -95,6 +113,7 @@ export function Sidebar() {
       pathname === item.href.replace(/\/$/, "") ||
       (item.href !== "/app/tutor/" && pathname?.startsWith(item.href) && item.href.length > 1);
     const isHovered = hoveredItem === item.href;
+    const badge = item.href === "/app/submissions/" ? dueCount : 0;
 
     return (
       <div
@@ -127,12 +146,19 @@ export function Sidebar() {
           />
           <span className="relative z-10 flex items-center justify-center">
             <Icon className={cn("h-[18px] w-[18px] shrink-0 text-zinc-500 transition-colors duration-200", active && "text-white", isHovered && !active && "text-zinc-900")} />
+            {collapsed && badge > 0 && <span className="absolute -right-1.5 -top-1 h-2.5 w-2.5 rounded-full bg-amber-500 ring-2 ring-white" aria-hidden="true" />}
           </span>
           {!collapsed && (
             <span className={cn("relative z-10 truncate transition-colors duration-200", isHovered && !active && "text-zinc-900")}>
               {navLabel(item, superAdmin)}
             </span>
           )}
+          {!collapsed && badge > 0 && (
+            <span className={cn("relative z-10 ml-auto shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold", active ? "bg-white/25 text-white" : "bg-amber-100 text-amber-800")}>
+              {badge} due
+            </span>
+          )}
+          {badge > 0 && <span className="sr-only">, {badge} assignment{badge === 1 ? "" : "s"} to hand in</span>}
         </Link>
       </div>
     );

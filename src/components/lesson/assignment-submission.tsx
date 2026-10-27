@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { dueDateLabel, dueInLabel } from "@/lib/courses/assignment-dates";
+import { ASSIGNMENTS_CHANGED_EVENT } from "@/lib/courses/assignment-events";
 
 type SubmissionState =
   | { status: "checking" }
@@ -89,6 +90,7 @@ export function AssignmentSubmission({ lessonId, assignmentBrief, totalMarks, du
         throw new Error(data.error || "Couldn't upload your assignment.");
       }
       setState({ status: "submitted", fileName: data.fileName, fileSize: data.fileSize, submittedAt: data.submittedAt });
+      window.dispatchEvent(new Event(ASSIGNMENTS_CHANGED_EVENT));
     } catch (error) {
       setState({ status: "error", message: error instanceof Error ? error.message : "Couldn't upload your assignment." });
     } finally {
