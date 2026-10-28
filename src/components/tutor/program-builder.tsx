@@ -103,7 +103,7 @@ function ProposalDocument({ proposal, onChange, printing = false, look }: { prop
       <header className="mb-6 flex flex-col gap-4 border-b-[3px] border-[color:var(--doc-accent)] pb-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-xs font-bold tracking-[0.08em] text-[color:var(--doc-accent)]">CUSTOM TRAINING PROPOSAL</p>
-          <h1 className="mt-1 text-2xl font-bold">{proposal.title}</h1>
+          <h1 className="mt-1 text-2xl font-bold text-zinc-900">{proposal.title}</h1>
         </div>
         <div className="text-[12.5px] text-zinc-600 sm:text-right">
           <span className="block">Prepared for {E({ value: proposal.employer, onEdit: (v) => set("employer", v), as: "b", className: "text-zinc-900", label: "Employer" })}</span>
@@ -130,7 +130,7 @@ function ProposalDocument({ proposal, onChange, printing = false, look }: { prop
       <div className="space-y-3">
         {proposal.modules.map((module, i) => (
           <div key={i}>
-            {E({ value: module.title, onEdit: (v) => set("modules", proposal.modules.map((m, j) => (j === i ? { ...m, title: v } : m))), as: "h4", className: "text-sm font-semibold", label: `Module ${i + 1} title` })}
+            {E({ value: module.title, onEdit: (v) => set("modules", proposal.modules.map((m, j) => (j === i ? { ...m, title: v } : m))), as: "h4", className: "text-sm font-semibold text-zinc-900", label: `Module ${i + 1} title` })}
             {E({ value: module.summary, onEdit: (v) => set("modules", proposal.modules.map((m, j) => (j === i ? { ...m, summary: v } : m))), as: "div", className: "text-[13px] text-zinc-600", label: `Module ${i + 1} contents`, multiline: true })}
           </div>
         ))}
@@ -190,7 +190,7 @@ function BlueprintDocument({ curriculum, employer, look }: { curriculum: Curricu
       <DocLogo look={look} />
       <header className="mb-5 border-b-[3px] border-[color:var(--doc-accent)] pb-4">
         <p className="text-xs font-bold tracking-[0.08em] text-[color:var(--doc-accent)]">{BLUEPRINT_LABEL.toUpperCase()}</p>
-        <h1 className="mt-1 text-2xl font-bold">{curriculum.title}</h1>
+        <h1 className="mt-1 text-2xl font-bold text-zinc-900">{curriculum.title}</h1>
         <p className="mt-2 text-sm leading-relaxed text-zinc-700">{curriculum.description}</p>
         {employer.trim() && <p className="mt-2 text-[12.5px] text-zinc-600">Prepared for <b className="text-zinc-900">{employer.trim()}</b></p>}
       </header>
@@ -210,7 +210,7 @@ function BlueprintDocument({ curriculum, employer, look }: { curriculum: Curricu
       <div className="space-y-4">
         {curriculum.modules.map((module, i) => (
           <section key={i} className="break-inside-avoid rounded border border-zinc-200 px-4 py-3">
-            <h3 className="text-[15px] font-semibold">Module {i + 1}: {module.title}</h3>
+            <h3 className="text-[15px] font-semibold text-zinc-900">Module {i + 1}: {module.title}</h3>
             {module.description && <p className="mt-1 text-[13px] text-zinc-600">{module.description}</p>}
             <div className="mt-2 grid grid-cols-2 gap-4 text-[13px]">
               <div>
