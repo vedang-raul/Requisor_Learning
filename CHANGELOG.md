@@ -24,15 +24,15 @@ Replit's Publish will show them as schema changes).
   own, or none) and a colour theme (six presets or a custom colour), remembered
   per account in the browser. Blueprint courses now get real modules with the
   curriculum's module descriptions.
-
-### Fixed
-- Program Builder documents: the title and module titles kept the app's teal
-  whatever colour theme was chosen.
 - **Lesson thumbnails** (tutors): a lesson uses its YouTube video's thumbnail by
   default; tutors can upload their own picture (PNG or JPG, up to 5 MB) on the
   lesson's Details step, replace it, or go back to the YouTube one. It shows in the
   course's lesson list, the tutor's lesson list and the admin course editor, and
   works for reading and code lessons too.
+
+### Fixed
+- Program Builder documents: the title and module titles kept the app's teal
+  whatever colour theme was chosen.
 
 ## [1.1.0] — 2026-10-28
 
