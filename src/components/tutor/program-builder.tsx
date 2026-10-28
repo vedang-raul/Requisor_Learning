@@ -2,7 +2,7 @@
 
 import { createElement, useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft, ArrowRight, BookOpenCheck, Download, FileText, Loader2, Printer, RotateCcw, Sparkles, Wand2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpenCheck, Check, Download, FileText, Loader2, Printer, RotateCcw, Sparkles, Wand2 } from "lucide-react";
 import { DATA_CHANGED_EVENT } from "@/components/assistant/assistant-action-card";
 import { DEFAULT_COURSE_ICON, getCategoryCover } from "@/components/course/category-icon";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { Input, Textarea } from "@/components/ui/input";
 import { useStore } from "@/lib/store";
 import type { Course } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { DEFAULT_PROGRAM_DOC_STYLE, DOC_THEMES, loadDocStyle, logoSource, MAX_LOGO_BYTES, saveDocStyle, type ProgramDocStyle } from "@/lib/courses/program-doc-style";
 import {
   analyzeTranscript, BLUEPRINT_LABEL, blueprintSlug, buildProposal, composeCurriculum, curriculumToCourse, EMPTY_DISCOVERY, FORMATS, INDUSTRIES, LEVELS, MODULE_COUNTS,
   PROGRAM_COMMAND_EVENT, PROGRAM_DRAFT_KEY, programStorageKey, sampleDiscovery, takeProgramCommand,
@@ -81,18 +82,27 @@ function NoticeBox({ notice }: { notice: Notice }) {
 }
 
 // ── The proposal document, as shown on screen (editable) and as printed ─────
-function ProposalDocument({ proposal, onChange, printing = false }: { proposal: Proposal; onChange?: (next: Proposal) => void; printing?: boolean }) {
+/** How the downloaded documents look: the accent colour and the logo (null for none). */
+type DocLook = { accent: string; logo: string | null };
+const lookStyle = (look: DocLook) => ({ "--doc-accent": look.accent }) as React.CSSProperties;
+function DocLogo({ look }: { look: DocLook }) {
+  // eslint-disable-next-line @next/next/no-img-element
+  return look.logo ? <img src={look.logo} alt="" className="mb-4 max-h-12 max-w-[14rem] object-contain" /> : null;
+}
+
+function ProposalDocument({ proposal, onChange, printing = false, look }: { proposal: Proposal; onChange?: (next: Proposal) => void; printing?: boolean; look: DocLook }) {
   const set = <K extends keyof Proposal>(key: K, value: Proposal[K]) => onChange?.({ ...proposal, [key]: value });
   // On screen every line is editable; the printed copy is the same text, plain.
   const E = ({ value, onEdit, as = "span", className, label, multiline }: { value: string; onEdit: (next: string) => void; as?: "span" | "p" | "h4" | "div" | "li" | "td" | "b"; className?: string; label: string; multiline?: boolean }) =>
     printing ? createElement(as, { className }, value) : <Editable value={value} onChange={onEdit} as={as} className={className} label={label} multiline={multiline} />;
-  const heading = "mb-2 mt-6 text-[15px] font-semibold text-primary";
+  const heading = "mb-2 mt-6 text-[15px] font-semibold text-[color:var(--doc-accent)]";
 
   return (
-    <article id={printing ? undefined : "program-proposal"} className={cn("bg-white text-zinc-900", printing ? "p-2" : "mx-auto max-w-[860px] rounded border border-zinc-200 px-6 py-10 shadow-soft sm:px-14 sm:py-12")}>
-      <header className="mb-6 flex flex-col gap-4 border-b-[3px] border-primary pb-4 sm:flex-row sm:items-start sm:justify-between">
+    <article id={printing ? undefined : "program-proposal"} style={lookStyle(look)} className={cn("bg-white text-zinc-900", printing ? "p-2" : "mx-auto max-w-[860px] rounded border border-zinc-200 px-6 py-10 shadow-soft sm:px-14 sm:py-12")}>
+      <DocLogo look={look} />
+      <header className="mb-6 flex flex-col gap-4 border-b-[3px] border-[color:var(--doc-accent)] pb-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-xs font-bold tracking-[0.08em] text-primary">CUSTOM TRAINING PROPOSAL</p>
+          <p className="text-xs font-bold tracking-[0.08em] text-[color:var(--doc-accent)]">CUSTOM TRAINING PROPOSAL</p>
           <h1 className="mt-1 text-2xl font-bold">{proposal.title}</h1>
         </div>
         <div className="text-[12.5px] text-zinc-600 sm:text-right">
@@ -172,13 +182,14 @@ function ProposalDocument({ proposal, onChange, printing = false }: { proposal: 
 }
 
 // ── The curriculum blueprint, as printed (Download PDF) ────────────────────
-function BlueprintDocument({ curriculum, employer }: { curriculum: Curriculum; employer: string }) {
-  const heading = "mb-2 mt-6 text-[15px] font-semibold text-primary";
+function BlueprintDocument({ curriculum, employer, look }: { curriculum: Curriculum; employer: string; look: DocLook }) {
+  const heading = "mb-2 mt-6 text-[15px] font-semibold text-[color:var(--doc-accent)]";
   const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
   return (
-    <article className="bg-white p-2 text-zinc-900">
-      <header className="mb-5 border-b-[3px] border-primary pb-4">
-        <p className="text-xs font-bold tracking-[0.08em] text-primary">{BLUEPRINT_LABEL.toUpperCase()}</p>
+    <article style={lookStyle(look)} className="bg-white p-2 text-zinc-900">
+      <DocLogo look={look} />
+      <header className="mb-5 border-b-[3px] border-[color:var(--doc-accent)] pb-4">
+        <p className="text-xs font-bold tracking-[0.08em] text-[color:var(--doc-accent)]">{BLUEPRINT_LABEL.toUpperCase()}</p>
         <h1 className="mt-1 text-2xl font-bold">{curriculum.title}</h1>
         <p className="mt-2 text-sm leading-relaxed text-zinc-700">{curriculum.description}</p>
         {employer.trim() && <p className="mt-2 text-[12.5px] text-zinc-600">Prepared for <b className="text-zinc-900">{employer.trim()}</b></p>}
@@ -203,11 +214,11 @@ function BlueprintDocument({ curriculum, employer }: { curriculum: Curriculum; e
             {module.description && <p className="mt-1 text-[13px] text-zinc-600">{module.description}</p>}
             <div className="mt-2 grid grid-cols-2 gap-4 text-[13px]">
               <div>
-                <p className="mb-1 text-xs font-bold text-primary">SUBMODULES</p>
+                <p className="mb-1 text-xs font-bold text-[color:var(--doc-accent)]">SUBMODULES</p>
                 <ul className="ml-4 list-disc space-y-0.5">{module.submodules.map((sub, j) => <li key={j}>{sub}</li>)}</ul>
               </div>
               <div>
-                <p className="mb-1 text-xs font-bold text-primary">LEARNING ACTIVITIES</p>
+                <p className="mb-1 text-xs font-bold text-[color:var(--doc-accent)]">LEARNING ACTIVITIES</p>
                 <ul className="ml-4 list-disc space-y-0.5">{module.activities.map((activity, j) => <li key={j}>{activity}</li>)}</ul>
               </div>
             </div>
@@ -236,10 +247,92 @@ function printAsPdf(fileName: string) {
 }
 
 /** Downloads the blueprint or the proposal as a Word file. The builder is loaded only when asked for. */
-async function downloadWord(doc: { curriculum: Curriculum; employer: string } | { proposal: Proposal }, fileName: string) {
+async function downloadWord(doc: { curriculum: Curriculum; employer: string } | { proposal: Proposal }, fileName: string, look: DocLook) {
   const { blueprintBlocks, downloadDocx, proposalBlocks } = await import("@/lib/courses/program-docx");
   const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-  await downloadDocx("proposal" in doc ? proposalBlocks(doc.proposal) : blueprintBlocks(doc.curriculum, doc.employer, date), fileName);
+  // A logo that can't be read (for example, blocked from another site) leaves the document without one.
+  const logo = look.logo ? await logoAsPng(look.logo).catch(() => null) : null;
+  await downloadDocx("proposal" in doc ? proposalBlocks(doc.proposal) : blueprintBlocks(doc.curriculum, doc.employer, date), fileName, { accent: look.accent, logo });
+}
+
+/** Any image the browser can show, redrawn as a PNG (at most 600 px wide) for the Word file. */
+async function logoAsPng(src: string): Promise<{ png: Uint8Array; width: number; height: number }> {
+  const img = new Image();
+  img.decoding = "async";
+  img.src = src;
+  await img.decode();
+  const scale = Math.min(1, 600 / Math.max(1, img.naturalWidth));
+  const width = Math.max(1, Math.round((img.naturalWidth || 300) * scale));
+  const height = Math.max(1, Math.round((img.naturalHeight || 100) * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width; canvas.height = height;
+  canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+  if (!blob) throw new Error("Couldn't read the logo.");
+  return { png: new Uint8Array(await blob.arrayBuffer()), width, height };
+}
+
+/** Logo and colour for the downloaded PDF and Word files. */
+function DocumentStyleControls({ style, onChange, defaultLogo }: { style: ProgramDocStyle; onChange: (next: ProgramDocStyle) => void; defaultLogo: string | null }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState<string | null>(null);
+  const logo = logoSource(style, defaultLogo);
+  async function upload(file: File | undefined) {
+    if (!file) return;
+    setError(null);
+    if (!/^image\/(png|jpeg|webp|svg\+xml)$/.test(file.type)) { setError("Choose a PNG, JPG, WebP or SVG image."); return; }
+    if (file.size > MAX_LOGO_BYTES) { setError("That logo is larger than 1 MB."); return; }
+    const dataUrl = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(new Error("read")); reader.readAsDataURL(file); }).catch(() => null);
+    if (!dataUrl) { setError("Couldn't read that image."); return; }
+    onChange({ ...style, logo: "custom", customLogo: dataUrl });
+    if (inputRef.current) inputRef.current.value = "";
+  }
+  const custom = !DOC_THEMES.some((t) => t.accent.toLowerCase() === style.accent.toLowerCase());
+  return (
+    <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
+      <p className="text-sm font-semibold text-zinc-900">Document style</p>
+      <p className="text-xs text-zinc-500">For the PDF and Word files only.</p>
+      <div className="mt-3 flex flex-wrap items-start gap-x-8 gap-y-3">
+        <div>
+          <p className="text-xs font-medium text-zinc-700">Logo</p>
+          <div className="mt-1.5 flex items-center gap-2.5">
+            <div className="flex h-12 w-28 items-center justify-center overflow-hidden rounded-lg border border-zinc-200 bg-white px-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {logo ? <img src={logo} alt="Document logo" className="max-h-10 max-w-full object-contain" /> : <span className="text-[11px] text-zinc-400">No logo</span>}
+            </div>
+            <div className="flex flex-col items-start gap-0.5 text-xs">
+              <button type="button" onClick={() => inputRef.current?.click()} className="font-semibold text-primary hover:underline">{style.logo === "custom" ? "Change logo" : "Use my own logo"}</button>
+              {style.logo !== "default" && <button type="button" onClick={() => onChange({ ...style, logo: "default" })} className="text-zinc-600 hover:underline">Use the platform logo</button>}
+              {style.logo !== "none" && <button type="button" onClick={() => onChange({ ...style, logo: "none" })} className="text-zinc-600 hover:underline">No logo</button>}
+            </div>
+          </div>
+          <p className="mt-1 text-[11px] text-zinc-400">{style.logo === "default" ? "The platform logo your admin set." : style.logo === "custom" ? "Your own logo, in this browser." : "Documents without a logo."}</p>
+          <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden" onChange={(e) => void upload(e.target.files?.[0])} />
+          {error && <p role="alert" className="mt-1 text-xs text-red-700">{error}</p>}
+        </div>
+        <div>
+          <p className="text-xs font-medium text-zinc-700">Colour</p>
+          <div role="radiogroup" aria-label="Document colour" className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            {DOC_THEMES.map((t) => {
+              const on = t.accent.toLowerCase() === style.accent.toLowerCase();
+              return (
+                <button key={t.key} type="button" role="radio" aria-checked={on} aria-label={t.label} title={t.label} onClick={() => onChange({ ...style, accent: t.accent })}
+                  className={cn("focus-ring flex h-8 w-8 items-center justify-center rounded-full ring-offset-2 transition", on ? "ring-2 ring-zinc-900" : "hover:scale-105")}
+                  style={{ background: t.accent }}>
+                  {on && <Check className="h-4 w-4 text-white" aria-hidden="true" />}
+                </button>
+              );
+            })}
+            <label title="Custom colour" className={cn("relative flex h-8 w-8 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-zinc-300 bg-white ring-offset-2", custom && "ring-2 ring-zinc-900")}>
+              <span className="sr-only">Custom colour</span>
+              <span aria-hidden="true" className="h-5 w-5 rounded-full" style={{ background: custom ? style.accent : "conic-gradient(#ef4444, #eab308, #22c55e, #3b82f6, #a855f7, #ef4444)" }} />
+              <input type="color" value={style.accent} onChange={(e) => onChange({ ...style, accent: e.target.value.toUpperCase() })} className="absolute inset-0 cursor-pointer opacity-0" />
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function WordButton({ size, onDownload }: { size?: "sm"; onDownload: () => Promise<void> }) {
@@ -261,6 +354,21 @@ type Blueprint = { slug: string; title: string };
 export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenCourse?: (slug: string) => void }) {
   const { upsertCourse } = useStore();
   const upsertRef = useRef(upsertCourse); upsertRef.current = upsertCourse;
+
+  // How the downloaded documents look. The default logo is the platform's (set by a super admin), or Requisor's.
+  const [docStyle, setDocStyle] = useState<ProgramDocStyle>(DEFAULT_PROGRAM_DOC_STYLE);
+  useEffect(() => { setDocStyle(loadDocStyle(owner)); }, [owner]);
+  const changeDocStyle = (next: ProgramDocStyle) => { setDocStyle(next); saveDocStyle(owner, next); };
+  const [platformLogo, setPlatformLogo] = useState<string | null>("/requisor.png");
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/branding", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { partner?: { logoUrl?: string | null } | null } | null) => { if (!cancelled && data?.partner?.logoUrl) setPlatformLogo(data.partner.logoUrl); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+  const look: DocLook = { accent: docStyle.accent, logo: logoSource(docStyle, platformLogo) };
   const draftKey = programStorageKey(PROGRAM_DRAFT_KEY, owner);
   const [step, setStep] = useState<Step>(1);
   const [form, setForm] = useState<Discovery>(EMPTY_DISCOVERY);
@@ -660,10 +768,14 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
                   <Button type="button" variant="outline" onClick={() => printAsPdf(`${curriculum.title} — ${BLUEPRINT_LABEL}`)}>
                     <Download className="h-4 w-4" />Download PDF
                   </Button>
-                  <WordButton onDownload={() => downloadWord({ curriculum, employer: form.employer }, `${curriculum.title} — ${BLUEPRINT_LABEL}`)} />
+                  <WordButton onDownload={() => downloadWord({ curriculum, employer: form.employer }, `${curriculum.title} — ${BLUEPRINT_LABEL}`, look)} />
                   <Button type="button" variant="outline" onClick={() => void generate()} disabled={generating}>
                     {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}Regenerate
                   </Button>
+                </div>
+
+                <div className="mt-4">
+                  <DocumentStyleControls style={docStyle} onChange={changeDocStyle} defaultLogo={platformLogo} />
                 </div>
 
                 <div className="mt-5 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
@@ -672,7 +784,7 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
                   </p>
                   <p className="mt-0.5 text-[13px] text-zinc-600">
                     {blueprint
-                      ? <>Saved in My Courses as a draft: <b className="font-semibold text-zinc-800">{blueprint.title}</b>. Each module is a section with a draft lesson per submodule, ready for your videos or text.</>
+                      ? <>Saved in My Courses as a draft: <b className="font-semibold text-zinc-800">{blueprint.title}</b>. Each module comes across with its description and a draft lesson per submodule, ready for your videos or text.</>
                       : blueprintBusy ? "Saving it as a draft course in My Courses…" : "Save this curriculum as a draft course in My Courses, with a draft lesson per submodule."}
                   </p>
                   <div className="mt-2.5 flex flex-wrap gap-2">
@@ -697,15 +809,18 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
             <p className="text-[13px] text-zinc-600">Click any line to edit it. Fill in the investment amounts before exporting.</p>
             <div className="flex flex-wrap gap-2">
               <Button type="button" size="sm" variant="outline" onClick={() => setStep(2)}><ArrowLeft className="h-3.5 w-3.5" />Back to curriculum</Button>
-              <WordButton size="sm" onDownload={() => downloadWord({ proposal }, `${proposal.title} — Proposal`)} />
+              <WordButton size="sm" onDownload={() => downloadWord({ proposal }, `${proposal.title} — Proposal`, look)} />
               <Button type="button" size="sm" onClick={() => printAsPdf(`${proposal.title} — Proposal`)}><Printer className="h-3.5 w-3.5" />Export PDF / Print</Button>
             </div>
           </div>
-          <ProposalDocument proposal={proposal} onChange={setProposal} />
+          <div className="mx-auto mb-4 max-w-[860px]">
+            <DocumentStyleControls style={docStyle} onChange={changeDocStyle} defaultLogo={platformLogo} />
+          </div>
+          <ProposalDocument proposal={proposal} onChange={setProposal} look={look} />
         </div>
       )}
-      {printRoot && printing === "proposal" && proposal && createPortal(<ProposalDocument proposal={proposal} printing />, printRoot)}
-      {printRoot && printing === "blueprint" && curriculum && createPortal(<BlueprintDocument curriculum={curriculum} employer={form.employer} />, printRoot)}
+      {printRoot && printing === "proposal" && proposal && createPortal(<ProposalDocument proposal={proposal} printing look={look} />, printRoot)}
+      {printRoot && printing === "blueprint" && curriculum && createPortal(<BlueprintDocument curriculum={curriculum} employer={form.employer} look={look} />, printRoot)}
 
     </div>
   );

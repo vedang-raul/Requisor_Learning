@@ -23,7 +23,7 @@ export interface Lesson {
   requiresSubmission?: boolean;
   /** Set when the tutor has the AI write each learner their own assignment, inside these guardrails. */
   assignmentAi?: import("@/lib/ai/assignment-ai").AssignmentAi;
-  /** Optional sub-part / module name used to group lessons on the course page. */
+  /** The module this lesson is in (a title from the course's modules), if any. */
   section?: string;
   /** "reading" lessons are article/tool links with no video by design — not a video pending upload.
    *  "code-tutorial" is a w3schools-style page: markdown `body` plus a live
@@ -56,6 +56,12 @@ export interface Lesson {
 export type CategoryKey = string;
 import type { Syllabus } from "@/lib/courses/syllabus";
 
+/** A course module: lessons name it in their `section`. See src/lib/courses/modules.ts. */
+export interface CourseModule {
+  title: string;
+  description?: string;
+}
+
 export interface Course {
   slug: string;
   title: string;
@@ -69,6 +75,8 @@ export interface Course {
   /** Monotonic catalog revision, supplied by the server for optimistic edits. */
   revision?: number;
   lessons: Lesson[];
+  /** The course's modules in order, with their descriptions. Lessons join one through `section`. */
+  modules?: CourseModule[];
   /** Base capstone assessment brief, personalised by AI on the course overview page. */
   baseAssessment?: string;
   /** Server-derived from owner_user_id — never write this, it's ignored on save. Null when unowned. */

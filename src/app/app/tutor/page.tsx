@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Activity, BarChart3, BookPlus, Briefcase, Check, CheckCircle2, Download, Eye, EyeOff, FileText, GraduationCap, Image as ImageIcon, Inbox, LayoutGrid, Paperclip, Upload,
-  ListChecks, Loader2, Pencil, Plus, RotateCcw, Send, Star, Terminal, Trash2, TrendingUp, Users, X,BookOpen, ChevronDown, ChevronLeft, ChevronRight, Clock, Layers, Sparkles, Video, Youtube
+  ListChecks, Loader2, Pencil, Plus, RotateCcw, Send, Star, Terminal, Trash2, TrendingUp, Users, X,BookOpen, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock, Layers, Sparkles, Video, Youtube
 } from "lucide-react";
 import { RecordStudio } from "@/components/tutor/video-recorder";
 import { ProgramBuilder } from "@/components/tutor/program-builder";
@@ -21,6 +21,7 @@ import { SyllabusPanel } from "@/components/course/syllabus-editor";
 import { isLessonScheduled } from "@/lib/utils";
 import { DATA_CHANGED_EVENT } from "@/components/assistant/assistant-action-card";
 import { lessonBrief } from "@/lib/courses/lesson-brief";
+import { addModule, assignLesson, groupByModule, moduleList, moveLesson, moveModule, removeModule, updateModule } from "@/lib/courses/modules";
 import { partitionHidden, readHiddenCourses, writeHiddenCourses } from "@/lib/courses/hidden-courses";
 import { useStore } from "@/lib/store";
 import { Course, Lesson, Resource } from "@/lib/types";
@@ -490,6 +491,8 @@ export default function TutorPage() {
                   allowUploads={!aiDraft}
                   onAddLesson={aiDraft ? async (lesson) => { setSelected((current) => current ? { ...current, lessons: [...current.lessons.filter((item) => item.id !== lesson.id), lesson] } : current); return true; } : updateLessons}
                   onDeleteLesson={aiDraft ? async (lesson) => { setSelected((current) => current ? { ...current, lessons: current.lessons.filter((item) => item.id !== lesson.id) } : current); return true; } : (lesson) => updateLessons(lesson, true)}
+                  // Module changes save the course straight away; an unsaved AI draft just updates on screen.
+                  onChangeCourse={aiDraft ? async (next) => { setSelected(next); } : saveCourse}
                   onDeleteCourse={aiDraft ? undefined : async () => { if (!confirm(`Delete "${selected.title}"?`)) return; setSaving(true); try { await deleteCourse(selected.slug); setSelected(null); await load(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Couldn't delete the course."); } finally { setSaving(false); } }}
                 />
               </div>}
@@ -941,19 +944,43 @@ function TutorSubmissionsPanel({ lesson, onClose }: { lesson: Lesson; onClose: (
 
 const DURATION_PRESETS = [5, 10, 15, 20, 30, 45, 60];
 
-function CourseEditor({ course, saving, onCancel, onSave, onAddLesson, onDeleteLesson, onDeleteCourse, allowUploads = true }: { course?: Course | null; saving: boolean; onCancel: () => void; onSave: (course: Course) => Promise<void>; onAddLesson?: (lesson: Lesson) => Promise<boolean>; onDeleteLesson?: (lesson: Lesson) => Promise<boolean>; onDeleteCourse?: () => Promise<void>; allowUploads?: boolean }) {
+function CourseEditor({ course, saving, onCancel, onSave, onAddLesson, onDeleteLesson, onDeleteCourse, onChangeCourse, allowUploads = true }: { course?: Course | null; saving: boolean; onCancel: () => void; onSave: (course: Course) => Promise<void>; onAddLesson?: (lesson: Lesson) => Promise<boolean>; onDeleteLesson?: (lesson: Lesson) => Promise<boolean>; onDeleteCourse?: () => Promise<void>; onChangeCourse?: (course: Course) => Promise<void>; allowUploads?: boolean }) {
   const { state } = useStore();
   const [title, setTitle] = useState(course?.title ?? ""); const [tagline, setTagline] = useState(course?.tagline ?? ""); const [category, setCategory] = useState(course?.category ?? DEFAULT_COURSE_ICON); const [level, setLevel] = useState<Course["level"]>(course?.level ?? "Beginner"); const [tags, setTags] = useState(course?.tags.join(", ") ?? ""); const [assessment, setAssessment] = useState(course?.baseAssessment ?? "");
   const submit = (event: FormEvent) => { event.preventDefault(); const cleanCategory = category.trim(); if (!title.trim() || !cleanCategory) return; void onSave(course ? { ...course, title: title.trim(), tagline: tagline.trim(), category: cleanCategory, level, tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean), baseAssessment: assessment.trim() || undefined, cover: getCategoryCover(cleanCategory) } : { slug: title.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || `course-${Date.now()}`, title: title.trim(), tagline: tagline.trim() || "New learning path.", category: cleanCategory, level, tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean), cover: getCategoryCover(cleanCategory), addedAt: new Date().toISOString().slice(0, 10), lessons: [], baseAssessment: assessment.trim() || undefined, published: false }); };
     return <Card className="space-y-4"><div className="flex items-center justify-between"><CardTitle>{course ? `Edit ${course.title}` : "New course"}</CardTitle><div className="flex gap-1">{course && <Button type="button" size="sm" variant="outline" onClick={() => window.open(`/api/courses/export?slug=${encodeURIComponent(course.slug)}`, "_blank")}><Download className="h-3.5 w-3.5" />Export ZIP</Button>}<Button size="sm" variant="ghost" onClick={onCancel}>Close</Button></div></div><form onSubmit={submit} className="grid gap-3 sm:grid-cols-2"><Field label="Course title"><Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={160} /></Field><Field label="Tagline"><Input value={tagline} onChange={(e) => setTagline(e.target.value)} required maxLength={400} /></Field><div className="sm:col-span-2"><p className="mb-1.5 text-sm font-medium text-zinc-800">Course icon</p><CourseIconPicker value={category} onChange={setCategory} /></div><Field label="Level"><Select value={level} onChange={(e) => setLevel(e.target.value as Course["level"])}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></Select></Field><Field label="Tags (comma separated)"><Input value={tags} onChange={(e) => setTags(e.target.value)} /></Field><Field label="Base assessment"><Textarea value={assessment} onChange={(e) => setAssessment(e.target.value)} maxLength={5000} /></Field><div className="flex items-end gap-2"><Button type="submit" disabled={saving} className="min-h-11">{saving && <Loader2 className="h-4 w-4 animate-spin" />}Save course</Button>{course && onDeleteCourse && <Button type="button" variant="danger" disabled={saving} onClick={() => void onDeleteCourse()} aria-label={`Delete ${course.title}`}><Trash2 className="h-4 w-4" /></Button>}</div></form>
-    {course && onAddLesson && <LessonsSection course={course} saving={saving} onAddLesson={onAddLesson} onDeleteLesson={onDeleteLesson} allowUploads={allowUploads} />}
+    {course && onAddLesson && <LessonsSection course={course} saving={saving} onAddLesson={onAddLesson} onDeleteLesson={onDeleteLesson} onChangeCourse={onChangeCourse} allowUploads={allowUploads} />}
   </Card>;
 }
 
 /* ---------------- Lessons list + create/edit flow ---------------- */
-function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, allowUploads }: { course: Course; saving: boolean; onAddLesson: (lesson: Lesson) => Promise<boolean>; onDeleteLesson?: (lesson: Lesson) => Promise<boolean>; allowUploads: boolean }) {
+function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, onChangeCourse, allowUploads }: { course: Course; saving: boolean; onAddLesson: (lesson: Lesson) => Promise<boolean>; onDeleteLesson?: (lesson: Lesson) => Promise<boolean>; onChangeCourse?: (course: Course) => Promise<void>; allowUploads: boolean }) {
   const [editing, setEditing] = useState<Lesson | null>(null);
   const [adding, setAdding] = useState(false);
+  // Modules (Coursera-style): a title and description each; lessons are put in one from the list or the lesson form.
+  const groups = groupByModule({ modules: moduleList(course), lessons: course.lessons });
+  const moduleTitles = moduleList(course).map((m) => m.title);
+  const hasModules = moduleTitles.length > 0;
+  const [newModuleFor, setNewModuleFor] = useState<string | null>(null);
+  const [moduleDraft, setModuleDraft] = useState<{ original: string | null; title: string; description: string } | null>(null);
+  const [moduleError, setModuleError] = useState<string | null>(null);
+  const change = async (next: Course) => { if (next !== course && onChangeCourse) await onChangeCourse(next); };
+  function saveModuleDraft() {
+    if (!moduleDraft) return;
+    const title = moduleDraft.title.trim();
+    if (!title) { setModuleError("Give the module a name."); return; }
+    const clash = moduleTitles.some((t) => t.toLowerCase() === title.toLowerCase() && t.toLowerCase() !== moduleDraft.original?.toLowerCase());
+    if (clash) { setModuleError(`There's already a module called "${title}".`); return; }
+    const next = moduleDraft.original === null
+      ? addModule(course, title, moduleDraft.description)
+      : updateModule(course, moduleDraft.original, { title, description: moduleDraft.description });
+    setModuleDraft(null); setModuleError(null);
+    void change(next);
+  }
+  function deleteModule(title: string, count: number) {
+    if (!window.confirm(count ? `Remove the module "${title}"? Its ${count} lesson${count === 1 ? "" : "s"} stay in the course, outside any module.` : `Remove the module "${title}"?`)) return;
+    void change(removeModule(course, title));
+  }
   const [lessonFormVersion, setLessonFormVersion] = useState(0);
   const [createdLesson, setCreatedLesson] = useState<{ id: string; title: string } | null>(null);
   const formRef = useRef<HTMLDivElement>(null);
@@ -963,7 +990,7 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, allowUplo
   const codeCount = course.lessons.filter((l) => l.format === "code-tutorial").length;
   const readingCount = course.lessons.length - videoCount - codeCount;
 
-  function openNew() { setCreatedLesson(null); setEditing(null); setAdding(true); queueMicrotask(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })); }
+  function openNew(moduleTitle: string | null = null) { setNewModuleFor(moduleTitle); setCreatedLesson(null); setEditing(null); setAdding(true); queueMicrotask(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })); }
   function openEdit(lesson: Lesson) { setCreatedLesson(null); setAdding(false); setEditing(lesson); setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 120); }
   function closeForm() { setAdding(false); setEditing(null); }
   // The lesson form: shown directly under the lesson being edited, or after the last lesson when adding a new one.
@@ -974,6 +1001,8 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, allowUplo
       courseTitle={course.title}
       coursePublished={course.published !== false}
       lesson={editing}
+      modules={moduleTitles}
+      defaultModule={editing ? undefined : newModuleFor ?? undefined}
       saving={saving}
       allowUploads={allowUploads}
       onCancel={closeForm}
@@ -996,96 +1025,167 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, allowUplo
     <section className="border-t pt-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="flex items-center gap-2 font-semibold text-zinc-900"><Layers className="h-4 w-4 text-primary" aria-hidden="true" />Lessons</h2>
+          <h2 className="flex items-center gap-2 font-semibold text-zinc-900"><Layers className="h-4 w-4 text-primary" aria-hidden="true" />Modules &amp; lessons</h2>
           <p className="mt-0.5 text-xs text-zinc-500">
-            {course.lessons.length === 0 ? "Nothing here yet — add the first lesson to start building the path." : `${course.lessons.length} lesson${course.lessons.length === 1 ? "" : "s"} · ${videoCount} video · ${readingCount} reading${codeCount ? ` · ${codeCount} code tutorial` : ""} · ~${totalMinutes} min total`}
+            {course.lessons.length === 0 && !hasModules ? "Nothing here yet. Add a module to organise the course, then its lessons." : `${hasModules ? `${moduleTitles.length} module${moduleTitles.length === 1 ? "" : "s"} · ` : ""}${course.lessons.length} lesson${course.lessons.length === 1 ? "" : "s"} · ${videoCount} video · ${readingCount} reading${codeCount ? ` · ${codeCount} code tutorial` : ""} · ~${totalMinutes} min total`}
           </p>
         </div>
-        <motion.div whileTap={{ scale: 0.97 }}>
-          <Button size="sm" onClick={openNew} disabled={saving || adding} className="shadow-sm"><Plus className="h-4 w-4" />Add lesson</Button>
-        </motion.div>
+        <div className="flex flex-wrap gap-2">
+          {onChangeCourse && <Button size="sm" variant="outline" onClick={() => { setModuleDraft({ original: null, title: "", description: "" }); setModuleError(null); }} disabled={saving || moduleDraft !== null}><Plus className="h-4 w-4" />Add module</Button>}
+          <motion.div whileTap={{ scale: 0.97 }}>
+            <Button size="sm" onClick={() => openNew()} disabled={saving || adding} className="shadow-sm"><Plus className="h-4 w-4" />Add lesson</Button>
+          </motion.div>
+        </div>
       </div>
+      {moduleDraft?.original === null && (
+        <ModuleForm draft={moduleDraft} error={moduleError} saving={saving} onChange={setModuleDraft} onSave={saveModuleDraft} onCancel={() => { setModuleDraft(null); setModuleError(null); }} />
+      )}
 
       <AnimatePresence>
         {createdLesson && (
           <motion.div role="status" aria-live="polite" initial={{ opacity: 0, y: -8, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -6 }} className="mt-3 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">
             <motion.span initial={{ scale: 0, rotate: -45 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: "spring", stiffness: 500, damping: 24 }} className="inline-flex rounded-full bg-emerald-600 p-1 text-white"><Check className="h-3.5 w-3.5" aria-hidden="true" /></motion.span>
             “{createdLesson.title}” was added to the course.
-            <button type="button" onClick={openNew} className="ml-auto text-xs font-semibold text-emerald-700 underline-offset-2 hover:underline">Add another</button>
+            <button type="button" onClick={() => openNew(newModuleFor)} className="ml-auto text-xs font-semibold text-emerald-700 underline-offset-2 hover:underline">Add another</button>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {course.lessons.length === 0 && !formOpen ? (
-        <motion.button type="button" onClick={openNew} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="focus-ring mt-3 flex w-full flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50/60 px-4 py-8 text-center transition-colors hover:border-primary/40 hover:bg-primary/5">
+      {course.lessons.length === 0 && !hasModules && !formOpen ? (
+        <motion.button type="button" onClick={() => openNew()} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="focus-ring mt-3 flex w-full flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-zinc-200 bg-zinc-50/60 px-4 py-8 text-center transition-colors hover:border-primary/40 hover:bg-primary/5">
           <motion.span animate={{ y: [0, -3, 0] }} transition={{ repeat: Infinity, duration: 2.2, ease: "easeInOut" }} className="rounded-xl bg-primary/10 p-2.5"><Sparkles className="h-5 w-5 text-primary" aria-hidden="true" /></motion.span>
           <span className="text-sm font-medium text-zinc-800">Create your first lesson</span>
           <span className="text-xs text-zinc-500">A video with a YouTube link, a reading with written content or an attached PDF, or a live code tutorial.</span>
         </motion.button>
       ) : (
-        <motion.ol layout className="mt-3 space-y-2">
-          <AnimatePresence initial={false}>
-            {course.lessons.flatMap((lesson, index) => {
-              const isCode = lesson.format === "code-tutorial";
-              const isVideo = lesson.format !== "reading" && !isCode;
-              const missingVideo = isVideo && isPlaceholder(lesson.youtubeId);
-              const isEditing = editing?.id === lesson.id;
-              const row = (
-                <motion.li
-                  key={lesson.id}
-                  layout
-                  initial={lesson.id === createdLesson?.id ? { opacity: 0, y: 12, backgroundColor: "rgb(209 250 229)" } : { opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0, backgroundColor: "rgb(255 255 255)" }}
-                  exit={{ opacity: 0, x: -12, height: 0, marginTop: 0, overflow: "hidden" }}
-                  transition={{ duration: 0.3, delay: lesson.id === createdLesson?.id ? 0 : Math.min(index * 0.03, 0.2) }}
-                  className={cn("group flex items-center gap-3 rounded-xl border p-3 text-sm transition-colors", isEditing ? "border-primary/50 ring-2 ring-primary/15" : "hover:border-zinc-300")}
-                >
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-xs font-bold text-primary">{index + 1}</span>
-                  {lessonThumbnail(lesson) ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={lessonThumbnail(lesson)!} alt="" title={isCode ? "Code tutorial" : isVideo ? "Video lesson" : "Reading lesson"} className="h-8 w-14 shrink-0 rounded-md object-cover ring-1 ring-zinc-200" loading="lazy" />
-                  ) : (
-                    <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", isCode ? "bg-emerald-50 text-emerald-600" : isVideo ? "bg-rose-50 text-rose-600" : "bg-sky-50 text-sky-600")} title={isCode ? "Code tutorial" : isVideo ? "Video lesson" : "Reading lesson"}>
-                      {isCode ? <Terminal className="h-4 w-4" aria-hidden="true" /> : isVideo ? <Video className="h-4 w-4" aria-hidden="true" /> : <BookOpen className="h-4 w-4" aria-hidden="true" />}
-                    </span>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium text-zinc-900">{lesson.title}</p>
-                    <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-zinc-500">
-                      <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" aria-hidden="true" />{lesson.durationMin} min</span>
-                      {lesson.section && <><span>·</span><span className="truncate">{lesson.section}</span></>}
-                      {lesson.requiresSubmission && <span className="rounded-full bg-violet-50 px-1.5 py-0.5 text-[11px] font-medium text-violet-700">Submission</span>}
-                      {missingVideo && <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700">No video yet</span>}
-                      {lesson.published === false && <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700">Draft</span>}
-                      {isLessonScheduled(lesson) && <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-1.5 py-0.5 text-[11px] font-semibold text-sky-800"><Clock className="h-3 w-3" aria-hidden="true" />Scheduled · {formatLaunch(lesson.publishAt!)}</span>}
-                    </p>
-                  </div>
-                  <span className="flex shrink-0 gap-0.5 opacity-70 transition-opacity group-hover:opacity-100">
-                    {lesson.requiresSubmission && <TutorSubmissionsButton lesson={lesson} />}
-                    <Button size="sm" variant="ghost" disabled={saving} onClick={() => openEdit(lesson)} aria-label={`Edit ${lesson.title}`}><Pencil className="h-4 w-4" /></Button>
-                    <Button size="sm" variant="ghost" disabled={saving} onClick={() => void onDeleteLesson?.(lesson)} aria-label={`Delete ${lesson.title}`}><Trash2 className="h-4 w-4 text-red-600" /></Button>
-                  </span>
-                </motion.li>
+        <div className="mt-3 space-y-3">
+          {(() => {
+            let number = 0; // lessons are numbered through the course, in module order
+            return groups.map((group, gi) => {
+              const moduleNumber = group.title ? gi + 1 : null;
+              const minutes = group.lessons.reduce((sum, l) => sum + (l.durationMin || 0), 0);
+              const editingThis = moduleDraft !== null && moduleDraft.original !== null && group.title !== null && moduleDraft.original === group.title;
+              const rows = (
+                <motion.ol layout className="space-y-2">
+                  <AnimatePresence initial={false}>
+                    {group.lessons.flatMap((lesson, position) => {
+                      number += 1;
+                      const isCode = lesson.format === "code-tutorial";
+                      const isVideo = lesson.format !== "reading" && !isCode;
+                      const missingVideo = isVideo && isPlaceholder(lesson.youtubeId);
+                      const isEditing = editing?.id === lesson.id;
+                      const row = (
+                        <motion.li
+                          key={lesson.id}
+                          layout
+                          initial={lesson.id === createdLesson?.id ? { opacity: 0, y: 12, backgroundColor: "rgb(209 250 229)" } : { opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0, backgroundColor: "rgb(255 255 255)" }}
+                          exit={{ opacity: 0, x: -12, height: 0, marginTop: 0, overflow: "hidden" }}
+                          transition={{ duration: 0.3, delay: lesson.id === createdLesson?.id ? 0 : Math.min(number * 0.03, 0.2) }}
+                          className={cn("group flex items-center gap-3 rounded-xl border p-3 text-sm transition-colors", isEditing ? "border-primary/50 ring-2 ring-primary/15" : "hover:border-zinc-300")}
+                        >
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-xs font-bold text-primary">{number}</span>
+                          {lessonThumbnail(lesson) ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={lessonThumbnail(lesson)!} alt="" title={isCode ? "Code tutorial" : isVideo ? "Video lesson" : "Reading lesson"} className="h-8 w-14 shrink-0 rounded-md object-cover ring-1 ring-zinc-200" loading="lazy" />
+                          ) : (
+                            <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", isCode ? "bg-emerald-50 text-emerald-600" : isVideo ? "bg-rose-50 text-rose-600" : "bg-sky-50 text-sky-600")} title={isCode ? "Code tutorial" : isVideo ? "Video lesson" : "Reading lesson"}>
+                              {isCode ? <Terminal className="h-4 w-4" aria-hidden="true" /> : isVideo ? <Video className="h-4 w-4" aria-hidden="true" /> : <BookOpen className="h-4 w-4" aria-hidden="true" />}
+                            </span>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate font-medium text-zinc-900">{lesson.title}</p>
+                            <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-zinc-500">
+                              <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" aria-hidden="true" />{lesson.durationMin} min</span>
+                              {lesson.requiresSubmission && <span className="rounded-full bg-violet-50 px-1.5 py-0.5 text-[11px] font-medium text-violet-700">Submission</span>}
+                              {missingVideo && <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700">No video yet</span>}
+                              {lesson.published === false && <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-700">Draft</span>}
+                              {isLessonScheduled(lesson) && <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-1.5 py-0.5 text-[11px] font-semibold text-sky-800"><Clock className="h-3 w-3" aria-hidden="true" />Scheduled · {formatLaunch(lesson.publishAt!)}</span>}
+                            </p>
+                          </div>
+                          <span className="flex shrink-0 items-center gap-0.5 opacity-80 transition-opacity group-hover:opacity-100">
+                            {onChangeCourse && (hasModules || moduleTitles.length > 0) && (
+                              <select
+                                aria-label={`Module for ${lesson.title}`}
+                                value={group.title ?? ""}
+                                disabled={saving}
+                                onChange={(e) => void change(assignLesson(course, lesson.id, e.target.value || null))}
+                                className="focus-ring mr-1 hidden h-8 max-w-[9rem] rounded-lg border border-border bg-white px-1.5 text-xs text-zinc-700 sm:block"
+                              >
+                                <option value="">No module</option>
+                                {moduleTitles.map((t) => <option key={t} value={t}>{t}</option>)}
+                              </select>
+                            )}
+                            {onChangeCourse && (
+                              <>
+                                <Button size="sm" variant="ghost" disabled={saving || position === 0} onClick={() => void change(moveLesson(course, lesson.id, -1))} aria-label={`Move ${lesson.title} up`}><ChevronUp className="h-4 w-4" /></Button>
+                                <Button size="sm" variant="ghost" disabled={saving || position === group.lessons.length - 1} onClick={() => void change(moveLesson(course, lesson.id, 1))} aria-label={`Move ${lesson.title} down`}><ChevronDown className="h-4 w-4" /></Button>
+                              </>
+                            )}
+                            {lesson.requiresSubmission && <TutorSubmissionsButton lesson={lesson} />}
+                            <Button size="sm" variant="ghost" disabled={saving} onClick={() => openEdit(lesson)} aria-label={`Edit ${lesson.title}`}><Pencil className="h-4 w-4" /></Button>
+                            <Button size="sm" variant="ghost" disabled={saving} onClick={() => void onDeleteLesson?.(lesson)} aria-label={`Delete ${lesson.title}`}><Trash2 className="h-4 w-4 text-red-600" /></Button>
+                          </span>
+                        </motion.li>
+                      );
+                      if (!isEditing) return [row];
+                      // The editor opens right under the lesson it belongs to.
+                      return [
+                        row,
+                        <motion.li
+                          key={`${lesson.id}-editor`}
+                          layout
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.25 }}
+                          className="overflow-hidden"
+                        >
+                          <div ref={formRef} className="scroll-mt-4">{lessonForm}</div>
+                        </motion.li>,
+                      ];
+                    })}
+                  </AnimatePresence>
+                </motion.ol>
               );
-              if (!isEditing) return [row];
-              // The editor opens right under the lesson it belongs to.
-              return [
-                row,
-                <motion.li
-                  key={`${lesson.id}-editor`}
-                  layout
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.25 }}
-                  className="overflow-hidden"
-                >
-                  <div ref={formRef} className="scroll-mt-4">{lessonForm}</div>
-                </motion.li>,
-              ];
-            })}
-          </AnimatePresence>
-        </motion.ol>
+              // A course with no modules yet: just the lessons, as before.
+              if (!hasModules) return <div key="lessons">{rows}</div>;
+              return (
+                <div key={group.title ?? "loose"} className={cn("rounded-2xl border p-3", group.title ? "border-zinc-200 bg-zinc-50/60" : "border-dashed border-zinc-300 bg-white")}>
+                  {editingThis ? (
+                    <ModuleForm draft={moduleDraft!} error={moduleError} saving={saving} onChange={setModuleDraft} onSave={saveModuleDraft} onCancel={() => { setModuleDraft(null); setModuleError(null); }} />
+                  ) : (
+                    <div className="mb-2 flex flex-wrap items-start justify-between gap-2 px-1">
+                      <div className="min-w-0">
+                        {moduleNumber && <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">Module {moduleNumber}</p>}
+                        <p className="font-semibold text-zinc-900">{group.title ?? "Not in a module"}</p>
+                        <p className="text-xs text-zinc-500">{group.lessons.length} lesson{group.lessons.length === 1 ? "" : "s"}{minutes ? ` · ${minutes} min` : ""}</p>
+                        {group.title && (group.description
+                          ? <p className="mt-1 max-w-2xl text-sm leading-relaxed text-zinc-600">{group.description}</p>
+                          : onChangeCourse && <button type="button" onClick={() => { setModuleDraft({ original: group.title!, title: group.title!, description: "" }); setModuleError(null); }} className="mt-1 text-xs font-semibold text-primary hover:underline">+ Add a description</button>)}
+                        {!group.title && <p className="mt-0.5 text-xs text-zinc-500">Use the Module picker on a lesson to put it in a module.</p>}
+                      </div>
+                      {group.title && onChangeCourse && (
+                        <div className="flex shrink-0 items-center gap-0.5">
+                          <Button size="sm" variant="ghost" disabled={saving || gi === 0} onClick={() => void change(moveModule(course, group.title!, -1))} aria-label={`Move module ${group.title} up`}><ChevronUp className="h-4 w-4" /></Button>
+                          <Button size="sm" variant="ghost" disabled={saving || gi >= moduleTitles.length - 1} onClick={() => void change(moveModule(course, group.title!, 1))} aria-label={`Move module ${group.title} down`}><ChevronDown className="h-4 w-4" /></Button>
+                          <Button size="sm" variant="ghost" disabled={saving} onClick={() => { setModuleDraft({ original: group.title!, title: group.title!, description: group.description }); setModuleError(null); }} aria-label={`Edit module ${group.title}`}><Pencil className="h-4 w-4" /></Button>
+                          <Button size="sm" variant="ghost" disabled={saving} onClick={() => deleteModule(group.title!, group.lessons.length)} aria-label={`Remove module ${group.title}`}><Trash2 className="h-4 w-4 text-red-600" /></Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {group.lessons.length ? rows : <p className="px-1 py-2 text-sm text-zinc-500">No lessons in this module yet.</p>}
+                  {group.title && (
+                    <button type="button" onClick={() => openNew(group.title)} disabled={saving || adding} className="focus-ring mt-2 inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-semibold text-primary hover:bg-primary/5 disabled:opacity-50">
+                      <Plus className="h-4 w-4" />Add lesson to this module
+                    </button>
+                  )}
+                </div>
+              );
+            });
+          })()}
+        </div>
       )}
 
       <AnimatePresence>
@@ -1103,6 +1203,29 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, allowUplo
         )}
       </AnimatePresence>
     </section>
+  );
+}
+
+/** A module's name and description, for adding or editing one. */
+function ModuleForm({ draft, error, saving, onChange, onSave, onCancel }: {
+  draft: { original: string | null; title: string; description: string }; error: string | null; saving: boolean;
+  onChange: (next: { original: string | null; title: string; description: string }) => void; onSave: () => void; onCancel: () => void;
+}) {
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); onSave(); }} className="mt-3 space-y-2 rounded-2xl border border-primary/30 bg-primary/[0.03] p-3">
+      <p className="text-sm font-semibold text-zinc-900">{draft.original === null ? "New module" : "Edit module"}</p>
+      <Field label="Module name">
+        <Input value={draft.title} onChange={(e) => onChange({ ...draft, title: e.target.value })} maxLength={200} placeholder="e.g. Foundations of agentic AI" autoFocus />
+      </Field>
+      <Field label="Description (optional)">
+        <Textarea value={draft.description} onChange={(e) => onChange({ ...draft, description: e.target.value })} maxLength={2000} rows={3} placeholder="What learners will do and be able to do in this module." />
+      </Field>
+      {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
+      <div className="flex gap-2">
+        <Button type="submit" size="sm" disabled={saving}>{saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}{draft.original === null ? "Add module" : "Save module"}</Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
+      </div>
+    </form>
   );
 }
 
@@ -1217,8 +1340,13 @@ function WizardTracker({ current, completed, onJump }: { current: number; comple
   );
 }
 
-function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving, onCancel, onSave, allowUploads }: {
-  courseSlug: string; courseTitle: string; coursePublished: boolean; lesson: Lesson | null; saving: boolean;
+function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, modules = [], defaultModule, saving, onCancel, onSave, allowUploads }: {
+  courseSlug: string; courseTitle: string; coursePublished: boolean; lesson: Lesson | null;
+  /** The course's module names, to pick this lesson's from. */
+  modules?: string[];
+  /** For a new lesson started from a module's "Add lesson to this module". */
+  defaultModule?: string;
+  saving: boolean;
   onCancel: () => void;
   /** afterSave runs once the lesson exists (transcript, rubric); false keeps the form open to show what failed. */
   onSave: (lesson: Lesson, afterSave?: () => Promise<boolean>) => Promise<void>;
@@ -1231,7 +1359,9 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
   const [title, setTitle] = useState(lesson?.title ?? "");
   const [description, setDescription] = useState(lesson?.description ?? "");
   const [duration, setDuration] = useState(String(lesson?.durationMin ?? 20));
-  const [section, setSection] = useState(lesson?.section ?? "");
+  const [section, setSection] = useState(lesson?.section ?? defaultModule ?? "");
+  // Typing a new module's name instead of picking one.
+  const [newModule, setNewModule] = useState(false);
   // Step 2 — video, reading or code-tutorial content
   // Step 2 decides the lesson format: a YouTube video (pasted, or made by
   // recorded in the Record tab), a text lesson, or a live Python "Try it
@@ -1461,7 +1591,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
 
   // ── AI help ───────────────────────────────────────────────────────────────
   const AI_FIELD_LABELS: Record<LessonAiField, string> = {
-    title: "title", description: "description", durationMin: "duration", section: "section",
+    title: "title", description: "description", durationMin: "duration", section: "module",
     body: "lesson text", assignment: "assignment", guardrails: "guardrails", takeaways: "key takeaways",
   };
   const aiCurrent = (): Required<LessonAiValues> => ({
@@ -1662,7 +1792,20 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
                 <div className="sm:col-span-2"><Field label="Lesson title" action={aiButton("title", Boolean(title.trim()))}><Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={200} autoFocus /></Field></div>
                 <div className="sm:col-span-2"><Field label="Description" action={aiButton("description", Boolean(description.trim()))}><Textarea value={description} onChange={(e) => setDescription(e.target.value)} required maxLength={2000} placeholder="What will learners get out of this lesson?" /></Field></div>
                 <Field label="Duration (minutes)" action={aiButton("durationMin", Boolean(duration.trim()))}><Input type="number" min="1" max="1440" step="1" value={duration} onChange={(e) => setDuration(e.target.value)} required /></Field>
-                <Field label="Section (optional)" action={aiButton("section", Boolean(section.trim()))}><Input value={section} onChange={(e) => setSection(e.target.value)} maxLength={200} placeholder="e.g. Module 1" /></Field>
+                <Field label="Module" action={aiButton("section", Boolean(section.trim()))}>
+                  {newModule || (section.trim() && !modules.some((m) => m.toLowerCase() === section.trim().toLowerCase())) ? (
+                    <span className="flex gap-2">
+                      <Input value={section} onChange={(e) => setSection(e.target.value)} maxLength={200} placeholder="New module name" autoFocus={newModule} />
+                      {modules.length > 0 && <Button type="button" size="sm" variant="ghost" onClick={(e) => { e.preventDefault(); setNewModule(false); setSection(""); }}>Pick one</Button>}
+                    </span>
+                  ) : (
+                    <Select value={section} onChange={(e) => { if (e.target.value === "__new") { setNewModule(true); setSection(""); } else setSection(e.target.value); }}>
+                      <option value="">No module</option>
+                      {modules.map((m) => <option key={m} value={m}>{m}</option>)}
+                      <option value="__new">+ New module…</option>
+                    </Select>
+                  )}
+                </Field>
                 <div className="sm:col-span-2">
                   <LessonThumbnailField value={thumbnailUrl} onChange={setThumbnailUrl} videoId={format === "video" ? detectedVideoId : null} allowUploads={allowUploads} uploading={uploading} setUploading={setUploading} />
                 </div>

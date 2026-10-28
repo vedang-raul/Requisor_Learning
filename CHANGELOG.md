@@ -7,11 +7,23 @@ only. How to cut a release is in [docs/RELEASING.md](docs/RELEASING.md).
 
 ## [Unreleased]
 
-Planned for 1.2.0. **Database change:** adds one nullable column,
-`course_lessons.thumbnail_url` (in `scripts/migrate.js`; Replit's Publish will
-show it as a schema change).
+Planned for 1.2.0. **Database change:** adds two nullable columns,
+`course_lessons.thumbnail_url` and `courses.modules` (in `scripts/migrate.js`;
+Replit's Publish will show them as schema changes).
 
 ### Added
+- **Modules** (tutors and learners): lesson "sections" become course modules,
+  Coursera-style. Tutors add modules with a name and description, reorder,
+  rename and remove them, put lessons in a module from the lesson list or the
+  lesson form ("+ New module…"), move lessons up and down within a module, and
+  add a lesson straight into a module. Learners see numbered modules with their
+  descriptions, lesson counts and length on the course page and in the lesson
+  sidebar. Existing sections carry over as modules automatically.
+- **Program Builder document style**: the blueprint and proposal PDFs and Word
+  files carry a logo (the platform's, set by a super admin, by default; or your
+  own, or none) and a colour theme (six presets or a custom colour), remembered
+  per account in the browser. Blueprint courses now get real modules with the
+  curriculum's module descriptions.
 - **Lesson thumbnails** (tutors): a lesson uses its YouTube video's thumbnail by
   default; tutors can upload their own picture (PNG or JPG, up to 5 MB) on the
   lesson's Details step, replace it, or go back to the YouTube one. It shows in the

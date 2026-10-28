@@ -20,6 +20,7 @@ import { Confetti } from "@/components/ui/confetti";
 import { PageTransition } from "@/components/ui/motion";
 import { LessonQuiz } from "@/components/lesson/lesson-quiz";
 import { LessonAssignments } from "@/components/lesson/lesson-assignments";
+import { groupByModule, moduleList } from "@/lib/courses/modules";
 import { SyllabusButton } from "@/components/course/syllabus-view";
 import { trackEvent } from "@/lib/analytics";
 
@@ -674,7 +675,18 @@ function LearnView() {
                 <span className="min-w-0 flex-1">Syllabus</span>
                 <span className="shrink-0 text-[11px] font-semibold text-primary">Read first</span>
               </SyllabusButton>
-              {course.lessons.map((l, i) => {
+              {/* Module headings between the lessons, in module order. */}
+              {(() => {
+                let n = 0; // lessons are numbered in the order shown
+                return groupByModule({ modules: moduleList(course), lessons: course.lessons }).flatMap((g, gi) => [
+                  ...(g.title ? [{ kind: "module" as const, key: `module-${gi}`, title: g.title }] : g.lessons.length && gi > 0 ? [{ kind: "module" as const, key: "module-loose", title: "More lessons" }] : []),
+                  ...g.lessons.map((l) => ({ kind: "lesson" as const, key: l.id, lesson: l, number: ++n })),
+                ]);
+              })().map((entry, i) => {
+                if (entry.kind === "module") {
+                  return <p key={entry.key} className="px-2.5 pb-0.5 pt-3 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">{entry.title}</p>;
+                }
+                const l = entry.lesson;
                 const p = state.progress[l.id];
                 const current = l.id === lesson.id;
                 return (
@@ -716,7 +728,7 @@ function LearnView() {
                         )}
                       </motion.span>
                       <span className="relative z-10 min-w-0 flex-1">
-                        <span className="block truncate text-[13px] font-medium">{i + 1}. {l.title}</span>
+                        <span className="block truncate text-[13px] font-medium">{entry.number}. {l.title}</span>
                         <span className="block text-[11px] text-zinc-600">{formatMinutes(l.durationMin)}{current ? " · Now playing" : ""}</span>
                       </span>
                     </Link>

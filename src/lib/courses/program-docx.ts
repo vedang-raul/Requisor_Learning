@@ -12,7 +12,15 @@ export type DocBlock =
   | { kind: "kicker" | "title" | "heading" | "subheading" | "paragraph" | "bullet" | "label" | "footer"; runs: Run[] }
   | { kind: "table"; header: string[]; rows: string[][]; alignLast?: boolean; bold?: number[] };
 
-const BRAND = "0F766E";
+/** How the document looks: its accent colour and, optionally, a logo at the top. */
+export type DocStyle = {
+  /** "#RRGGBB" */
+  accent: string;
+  /** A PNG, already sized: width and height in pixels. */
+  logo?: { png: Uint8Array; width: number; height: number } | null;
+};
+export const DEFAULT_DOC_STYLE: DocStyle = { accent: "#0F766E" };
+const hex = (color: string) => (/^#[0-9a-f]{6}$/i.test(color) ? color.slice(1).toUpperCase() : "0F766E");
 const run = (text: string, bold = false): Run => ({ text, bold });
 const block = (kind: Exclude<DocBlock["kind"], "table">, ...runs: (Run | string)[]): DocBlock =>
   ({ kind, runs: runs.map((r) => (typeof r === "string" ? run(r) : r)) });
@@ -108,17 +116,32 @@ function tableXml(table: Extract<DocBlock, { kind: "table" }>): string {
     + `</w:tbl><w:p><w:pPr><w:pStyle w:val="Normal"/></w:pPr></w:p>`;
 }
 
-export function documentXml(blocks: DocBlock[]): string {
-  const body = blocks.map((b) => (b.kind === "table" ? tableXml(b) : paragraphXml(b.kind, b.runs))).join("");
+/** The logo as an inline picture, at most 0.6 in tall and 2.5 in wide (EMU: 914400 per inch). */
+function logoXml(logo: NonNullable<DocStyle["logo"]>): string {
+  const EMU = 914400;
+  let cy = Math.round(0.6 * EMU);
+  let cx = Math.round((cy * logo.width) / Math.max(1, logo.height));
+  if (cx > 2.5 * EMU) { cx = Math.round(2.5 * EMU); cy = Math.round((cx * logo.height) / Math.max(1, logo.width)); }
+  return `<w:p><w:pPr><w:spacing w:after="200"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="1" name="Logo"/>`
+    + `<wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr>`
+    + `<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="0" name="logo.png"/><pic:cNvPicPr/></pic:nvPicPr>`
+    + `<pic:blipFill><a:blip r:embed="rIdLogo"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>`
+    + `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
+}
+
+export function documentXml(blocks: DocBlock[], style: DocStyle = DEFAULT_DOC_STYLE): string {
+  const body = (style.logo ? logoXml(style.logo) : "") + blocks.map((b) => (b.kind === "table" ? tableXml(b) : paragraphXml(b.kind, b.runs))).join("");
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
-    + `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${body}`
+    + `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"`
+    + ` xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"`
+    + ` xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:body>${body}`
     + `<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1300" w:right="1440" w:bottom="1300" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr></w:body></w:document>`;
 }
 
 const paraStyle = (id: string, name: string, ppr: string, rpr: string) =>
   `<w:style w:type="paragraph" w:styleId="${id}"><w:name w:val="${name}"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr>${ppr}</w:pPr><w:rPr>${rpr}</w:rPr></w:style>`;
 
-const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+const stylesXml = (BRAND: string) => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
   + `<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">`
   + `<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/><w:sz w:val="21"/><w:color w:val="27272A"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="120" w:line="276" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>`
   + `<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>`
@@ -134,30 +157,33 @@ const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
 
 const CONTENT_TYPES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
   + `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">`
-  + `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>`
+  + `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/>`
   + `<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>`
   + `<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>`;
 const ROOT_RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
   + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`;
-const DOCUMENT_RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
-  + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`;
+const documentRels = (withLogo: boolean) => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+  + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`
+  + (withLogo ? `<Relationship Id="rIdLogo" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/logo.png"/>` : "")
+  + `</Relationships>`;
 
 export const DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
-/** The blocks as a .docx package. */
-export function buildDocx(blocks: DocBlock[]): JSZip {
+/** The blocks as a .docx package, in the given style. */
+export function buildDocx(blocks: DocBlock[], style: DocStyle = DEFAULT_DOC_STYLE): JSZip {
   const zip = new JSZip();
   zip.file("[Content_Types].xml", CONTENT_TYPES);
   zip.file("_rels/.rels", ROOT_RELS);
-  zip.file("word/_rels/document.xml.rels", DOCUMENT_RELS);
-  zip.file("word/document.xml", documentXml(blocks));
-  zip.file("word/styles.xml", STYLES_XML);
+  zip.file("word/_rels/document.xml.rels", documentRels(Boolean(style.logo)));
+  zip.file("word/document.xml", documentXml(blocks, style));
+  zip.file("word/styles.xml", stylesXml(hex(style.accent)));
+  if (style.logo) zip.file("word/media/logo.png", style.logo.png);
   return zip;
 }
 
 /** Builds the file and hands it to the browser as a download (browser only). */
-export async function downloadDocx(blocks: DocBlock[], fileName: string): Promise<void> {
-  const blob = await buildDocx(blocks).generateAsync({ type: "blob", mimeType: DOCX_TYPE });
+export async function downloadDocx(blocks: DocBlock[], fileName: string, style: DocStyle = DEFAULT_DOC_STYLE): Promise<void> {
+  const blob = await buildDocx(blocks, style).generateAsync({ type: "blob", mimeType: DOCX_TYPE });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

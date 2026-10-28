@@ -363,8 +363,9 @@ export function blueprintSlug(curriculumTitle: string): string {
 
 /**
  * The curriculum as a private draft course for its tutor: each module is a
- * section, each submodule a draft lesson waiting for its video, and the
- * module's learning activities are the assignment on its last lesson.
+ * course module (with its description), each submodule a draft lesson in it
+ * waiting for its video, and the module's learning activities are the
+ * assignment on its last lesson.
  */
 export function curriculumToCourse(curriculum: Curriculum, options: { slug: string; category: string; cover: string; fallbackLevel: Level; today: Date }): Course {
   const { slug } = options;
@@ -375,7 +376,7 @@ export function curriculumToCourse(curriculum: Curriculum, options: { slug: stri
     return subs.map((sub, j): Lesson => ({
       id: `${slug}-m${i + 1}-${j + 1}`,
       title: text(sub, 200) || `Lesson ${j + 1}`,
-      description: text(j === 0 && module.description ? `${module.description} ${sub}` : sub, 2000) || section,
+      description: text(sub, 2000) || section,
       youtubeId: "REPLACE_ME",
       durationMin: 20,
       resources: [],
@@ -399,6 +400,10 @@ export function curriculumToCourse(curriculum: Curriculum, options: { slug: stri
     cover: options.cover,
     addedAt: options.today.toISOString().slice(0, 10),
     lessons,
+    modules: curriculum.modules.map((module, i) => ({
+      title: text(`Module ${i + 1}: ${module.title}`, 200),
+      ...(text(module.description, 2000) ? { description: text(module.description, 2000) } : {}),
+    })),
     published: false,
     ...(text(curriculum.assessment, 5000) ? { baseAssessment: text(curriculum.assessment, 5000) } : {}),
   };

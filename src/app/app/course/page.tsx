@@ -7,6 +7,7 @@ import { motion } from "framer-motion";
 import { CheckCircle2, Circle, Clock, FileText, PlayCircle, Video, Bookmark, BookmarkCheck, ChevronRight, SearchX, GraduationCap, Sparkles, Loader2, ScrollText, Terminal } from "lucide-react";
 import { useStore, useCourseProgress } from "@/lib/store";
 import { cn, formatMinutes, isPlaceholder, youTubeThumb } from "@/lib/utils";
+import { groupByModule, moduleList } from "@/lib/courses/modules";
 import { Card } from "@/components/ui/card";
 import { Tag } from "@/components/ui/badge";
 import { ProgressBar } from "@/components/ui/progress";
@@ -110,16 +111,23 @@ function CourseView() {
     });
   }, [course, filter, state.progress]);
 
-  // Group consecutive lessons by their sub-part (section); courses without sections get one unnamed group.
+  // Lesson numbers follow the module order (the whole course, whatever the filter shows).
+  const lessonNumbers = useMemo(() => {
+    const numbers = new Map<string, number>();
+    if (course) groupByModule({ modules: moduleList(course), lessons: course.lessons }).flatMap((g) => g.lessons).forEach((l, i) => numbers.set(l.id, i + 1));
+    return numbers;
+  }, [course]);
+
+  // Lessons by module, in the course's module order; a course without modules is one untitled group.
   const sections = useMemo(() => {
-    const groups: { name?: string; items: typeof lessons }[] = [];
-    for (const l of lessons) {
-      const last = groups[groups.length - 1];
-      if (last && last.name === l.section) last.items.push(l);
-      else groups.push({ name: l.section, items: [l] });
-    }
-    return groups;
-  }, [lessons]);
+    if (!course) return [];
+    const groups = groupByModule({ modules: moduleList(course), lessons });
+    const withModules = groups.some((g) => g.title);
+    // Numbered before filtering, so "Module 3" stays Module 3 when a filter hides others.
+    return groups
+      .map((g, i) => ({ name: g.title ?? (withModules ? "More lessons" : undefined), description: g.description, items: g.lessons, number: g.title ? i + 1 : null }))
+      .filter((g) => g.items.length > 0);
+  }, [course, lessons]);
 
   if (!course) {
     return (
@@ -248,16 +256,20 @@ function CourseView() {
         {sections.map((group, gi) => (
           <div key={group.name ?? gi} className="space-y-2.5">
             {group.name && (
-              <h2 className={cn("flex items-baseline gap-2 text-base font-semibold", gi > 0 && "pt-4")}>
-                {group.name}
-                <span className="text-xs font-normal text-zinc-500">{group.items.length} lesson{group.items.length === 1 ? "" : "s"}</span>
-              </h2>
+              <div className={cn(gi > 0 && "pt-4")}>
+                {group.number && <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">Module {group.number}</p>}
+                <h2 className="flex flex-wrap items-baseline gap-x-2 text-base font-semibold">
+                  {group.name}
+                  <span className="text-xs font-normal text-zinc-500">{group.items.length} lesson{group.items.length === 1 ? "" : "s"} · {formatMinutes(group.items.reduce((sum, l) => sum + (l.durationMin || 0), 0))}</span>
+                </h2>
+                {group.description && <p className="mt-0.5 max-w-3xl text-sm leading-relaxed text-zinc-600">{group.description}</p>}
+              </div>
             )}
             {group.items.map((lesson, i) => {
           const p = state.progress[lesson.id];
           const done = !!p?.completed;
           const started = !done && (p?.watchPct ?? 0) > 0;
-          const idx = course.lessons.indexOf(lesson);
+          const idx = (lessonNumbers.get(lesson.id) ?? course.lessons.indexOf(lesson) + 1) - 1;
           return (
             <Reveal key={lesson.id} delay={Math.min(i * 0.04, 0.3)}>
               <Link href={`/app/learn/?course=${course.slug}&lesson=${lesson.id}`} className="block">

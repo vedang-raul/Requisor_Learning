@@ -3,7 +3,7 @@ import { isValidAssignmentAi, readAssignmentAi } from "@/lib/ai/assignment-ai";
 import { manageReach, manageSql, reachParams, type ScopeUser } from "../server/course-scope";
 import { db } from "@/lib/server/db";
 import { seedCourses } from "@/lib/courses/data";
-import type { Course, Lesson, Resource } from "@/lib/types";
+import type { Course, CourseModule, Lesson, Resource } from "@/lib/types";
 import { extractYouTubeId, PLACEHOLDER_VIDEO } from "@/lib/utils";
 import { isResourceFileUrl } from "@/lib/courses/resource-files";
 import { isIsoCalendarDate } from "@/lib/auth/validation";
@@ -24,6 +24,7 @@ type CourseRow = {
   tutor_name: string | null;
   published: boolean;
   syllabus: Course["syllabus"];
+  modules: unknown;
 };
 type LessonRow = {
   course_slug: string | null; id: string | null; lesson_title: string | null; lesson_description: string | null; youtube_id: string | null;
@@ -70,6 +71,7 @@ export async function initializeCourseCatalog(client: CatalogClient): Promise<vo
         ADD COLUMN IF NOT EXISTS language TEXT
     `);
     await client.query("ALTER TABLE courses ADD COLUMN IF NOT EXISTS syllabus JSONB");
+    await client.query("ALTER TABLE courses ADD COLUMN IF NOT EXISTS modules JSONB");
     await client.query(`
       DO $$ BEGIN
         -- Databases created before code tutorials have format VARCHAR(10) limited
@@ -181,10 +183,34 @@ export function ensureCourseCatalog(): Promise<void> {
   return seedPromise;
 }
 
+const MAX_MODULES = 50;
+
+/** A course's stored modules, cleaned: titled, de-duplicated, in order. */
+function readModules(raw: unknown): CourseModule[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: CourseModule[] = [];
+  for (const m of raw.slice(0, MAX_MODULES)) {
+    if (!m || typeof m !== "object") continue;
+    const title = typeof (m as CourseModule).title === "string" ? (m as CourseModule).title.trim().replace(/\s+/g, " ").slice(0, 200) : "";
+    if (!title || seen.has(title.toLowerCase())) continue;
+    seen.add(title.toLowerCase());
+    const description = typeof (m as CourseModule).description === "string" ? (m as CourseModule).description!.trim().slice(0, 2000) : "";
+    out.push(description ? { title, description } : { title });
+  }
+  return out;
+}
+
+/** Writes the course's modules when the save includes them; a save without them keeps what is stored. */
+async function saveModules(client: CatalogClient, course: Course): Promise<void> {
+  if (course.modules === undefined) return;
+  await client.query("UPDATE courses SET modules=$2::jsonb WHERE slug=$1", [course.slug, JSON.stringify(readModules(course.modules))]);
+}
+
 export async function getCourses(where = "", params: unknown[] = []): Promise<Course[]> {
   const { rows } = await db.query<CourseRow & LessonRow>(
     `SELECT c.slug, c.title, c.tagline, c.category, c.level, c.tags, c.cover, c.added_at,
-             c.base_assessment, c.owner_user_id, c.revision, c.published, c.syllabus, c.university_id, u.name AS tutor_name,
+             c.base_assessment, c.owner_user_id, c.revision, c.published, c.syllabus, c.modules, c.university_id, u.name AS tutor_name,
             l.id, l.course_slug, l.title AS lesson_title, l.description AS lesson_description,
              l.youtube_id, l.duration_min, l.resources, l.key_takeaways, l.assignment,
              l.assignment_marks, to_char(l.assignment_due_date, 'YYYY-MM-DD') AS assignment_due_date, l.assignment_ai,
@@ -200,6 +226,7 @@ export async function getCourses(where = "", params: unknown[] = []): Promise<Co
       course = { slug: row.slug, title: row.title, tagline: row.tagline, category: row.category,
         level: row.level, tags: row.tags, cover: row.cover, addedAt: new Date(row.added_at).toISOString().slice(0, 10), revision: row.revision,
         tutorName: row.tutor_name ?? null, published: row.published, universityId: row.university_id ?? null, ...(row.syllabus ? { syllabus: row.syllabus } : {}),
+        ...(readModules(row.modules).length ? { modules: readModules(row.modules) } : {}),
         lessons: [], ...(row.base_assessment ? { baseAssessment: row.base_assessment } : {}) };
       courses.set(row.slug, course);
     }
@@ -259,7 +286,7 @@ export function validateCourse(value: unknown, expectedSlug?: string, requireRev
   // the editor UI, but it's never read below — only owner_user_id, set from
   // the session, controls actual ownership. universityId round-trips the same
   // way (courses are loaded with it) and is dropped: the server decides it.
-  const allowed = new Set(["slug", "title", "tagline", "category", "level", "tags", "cover", "addedAt", "lessons", "baseAssessment", "revision", "tutorName", "published", "syllabus", "universityId"]);
+  const allowed = new Set(["slug", "title", "tagline", "category", "level", "tags", "cover", "addedAt", "lessons", "baseAssessment", "revision", "tutorName", "published", "syllabus", "universityId", "modules"]);
   if (Object.keys(c).some((key) => !allowed.has(key))) return { ok: false, error: "Course contains unsupported fields." };
   if (!string(c.slug, 80) || !slugPattern.test(c.slug as string) || (expectedSlug && c.slug !== expectedSlug)) return { ok: false, error: "Invalid course slug." };
   if (!string(c.title, 160) || !string(c.tagline, 400) || !string(c.cover, 200) ||
@@ -323,9 +350,19 @@ export function validateCourse(value: unknown, expectedSlug?: string, requireRev
     }
     normalizedLessons.push({ ...l, youtubeId, format } as unknown as Lesson);
   }
-  const { universityId: _ignored, ...rest } = c;
-  void _ignored;
-  return { ok: true, course: { ...rest, lessons: normalizedLessons } as unknown as Course };
+  let modules: CourseModule[] | undefined;
+  if (c.modules !== undefined) {
+    if (!Array.isArray(c.modules) || c.modules.length > MAX_MODULES || c.modules.some((m) =>
+      !m || typeof m !== "object" || Array.isArray(m) || Object.keys(m).some((k) => k !== "title" && k !== "description") ||
+      !string((m as Record<string, unknown>).title, 200) ||
+      ((m as Record<string, unknown>).description !== undefined && !string((m as Record<string, unknown>).description, 2000, 0)))) {
+      return { ok: false, error: "Invalid course modules." };
+    }
+    modules = readModules(c.modules);
+  }
+  const { universityId: _ignored, modules: _rawModules, ...rest } = c;
+  void _ignored; void _rawModules;
+  return { ok: true, course: { ...rest, lessons: normalizedLessons, ...(modules !== undefined ? { modules } : {}) } as unknown as Course };
 }
 
 export async function replaceCourse(
@@ -352,6 +389,7 @@ export async function replaceCourse(
       [course.slug, course.title, course.tagline, course.category, course.level, JSON.stringify(course.tags), course.cover,
         course.addedAt, course.baseAssessment ?? null, ownerId, course.published ?? false, createOnly ? universityId : preserveOwner]);
     if (ownerId !== null) await assertResourceFileOwnership(client, course, ownerId);
+    await saveModules(client, course);
     await client.query("DELETE FROM course_lessons WHERE course_slug=$1", [course.slug]);
     for (let i = 0; i < course.lessons.length; i++) {
       const l = course.lessons[i];
@@ -403,6 +441,7 @@ export async function updateOwnedCourse(course: Course, userId: number, manager:
       [course.title, course.tagline, course.category, course.level, JSON.stringify(course.tags), course.cover,
         course.addedAt, course.baseAssessment ?? null, course.published ?? null, next, course.slug, course.revision]
     );
+    await saveModules(client, course);
     await client.query("DELETE FROM course_lessons WHERE course_slug=$1", [course.slug]);
     for (let i = 0; i < course.lessons.length; i++) {
       const l = course.lessons[i];
