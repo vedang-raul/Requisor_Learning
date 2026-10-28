@@ -270,7 +270,10 @@ function CourseView() {
                 >
                   <span className="w-7 shrink-0 text-center text-sm font-semibold text-zinc-600">{String(idx + 1).padStart(2, "0")}</span>
                   <div className="relative hidden h-14 w-24 shrink-0 overflow-hidden rounded-lg sm:block">
-                    {lesson.format === "reading" ? (
+                    {lesson.thumbnailUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={lesson.thumbnailUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+                    ) : lesson.format === "reading" ? (
                       <div className={cn("flex h-full w-full items-center justify-center bg-gradient-to-br", course.cover)}>
                         <FileText className="h-6 w-6 text-white/80" />
                       </div>

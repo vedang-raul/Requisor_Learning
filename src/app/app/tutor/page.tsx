@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Activity, BarChart3, BookPlus, Briefcase, Check, CheckCircle2, Download, Eye, EyeOff, FileText, GraduationCap, Inbox, LayoutGrid, Paperclip, Upload,
+  Activity, BarChart3, BookPlus, Briefcase, Check, CheckCircle2, Download, Eye, EyeOff, FileText, GraduationCap, Image as ImageIcon, Inbox, LayoutGrid, Paperclip, Upload,
   ListChecks, Loader2, Pencil, Plus, RotateCcw, Send, Star, Terminal, Trash2, TrendingUp, Users, X,BookOpen, ChevronDown, ChevronLeft, ChevronRight, Clock, Layers, Sparkles, Video, Youtube
 } from "lucide-react";
 import { RecordStudio } from "@/components/tutor/video-recorder";
@@ -24,7 +24,7 @@ import { lessonBrief } from "@/lib/courses/lesson-brief";
 import { partitionHidden, readHiddenCourses, writeHiddenCourses } from "@/lib/courses/hidden-courses";
 import { useStore } from "@/lib/store";
 import { Course, Lesson, Resource } from "@/lib/types";
-import { cn, extractYouTubeId, isPlaceholder, PLACEHOLDER_VIDEO, youTubeThumb } from "@/lib/utils";
+import { cn, extractYouTubeId, isPlaceholder, lessonThumbnail, PLACEHOLDER_VIDEO, youTubeThumb } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { parseCanvasCartridge, type CanvasImportSummary } from "@/lib/courses/canvas-import";
@@ -1041,9 +1041,14 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, allowUplo
                   className={cn("group flex items-center gap-3 rounded-xl border p-3 text-sm transition-colors", isEditing ? "border-primary/50 ring-2 ring-primary/15" : "hover:border-zinc-300")}
                 >
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-xs font-bold text-primary">{index + 1}</span>
-                  <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", isCode ? "bg-emerald-50 text-emerald-600" : isVideo ? "bg-rose-50 text-rose-600" : "bg-sky-50 text-sky-600")} title={isCode ? "Code tutorial" : isVideo ? "Video lesson" : "Reading lesson"}>
-                    {isCode ? <Terminal className="h-4 w-4" aria-hidden="true" /> : isVideo ? <Video className="h-4 w-4" aria-hidden="true" /> : <BookOpen className="h-4 w-4" aria-hidden="true" />}
-                  </span>
+                  {lessonThumbnail(lesson) ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={lessonThumbnail(lesson)!} alt="" title={isCode ? "Code tutorial" : isVideo ? "Video lesson" : "Reading lesson"} className="h-8 w-14 shrink-0 rounded-md object-cover ring-1 ring-zinc-200" loading="lazy" />
+                  ) : (
+                    <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", isCode ? "bg-emerald-50 text-emerald-600" : isVideo ? "bg-rose-50 text-rose-600" : "bg-sky-50 text-sky-600")} title={isCode ? "Code tutorial" : isVideo ? "Video lesson" : "Reading lesson"}>
+                      {isCode ? <Terminal className="h-4 w-4" aria-hidden="true" /> : isVideo ? <Video className="h-4 w-4" aria-hidden="true" /> : <BookOpen className="h-4 w-4" aria-hidden="true" />}
+                    </span>
+                  )}
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium text-zinc-900">{lesson.title}</p>
                     <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-zinc-500">
@@ -1239,6 +1244,8 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
   const [youtubeId, setYoutubeId] = useState(lesson?.youtubeId === "REPLACE_ME" ? "" : lesson?.youtubeId ?? "");
   const [body, setBody] = useState(lesson?.body ?? "");
   const [bodyFileUrl, setBodyFileUrl] = useState(lesson?.bodyFileUrl);
+  // Optional: the tutor's own picture for the lesson. Without one, a YouTube video's thumbnail is used.
+  const [thumbnailUrl, setThumbnailUrl] = useState(lesson?.thumbnailUrl);
   const [starterCode, setStarterCode] = useState(lesson?.starterCode ?? "");
   const [codeLanguage, setCodeLanguage] = useState<"python" | "javascript">(lesson?.language ?? "python");
   // The video's transcript: what the learner's assistant answers from. Saved separately, after the lesson itself.
@@ -1409,6 +1416,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
       resources: finalResources,
       body: (format === "reading" || format === "code-tutorial") && body.trim() ? body.trim() : undefined,
       bodyFileUrl: format === "reading" && !body.trim() ? bodyFileUrl : undefined,
+      thumbnailUrl: thumbnailUrl || undefined,
       starterCode: format === "code-tutorial" && starterCode.trim() ? starterCode.trim() : undefined,
       language: format === "code-tutorial" ? codeLanguage : undefined,
       published,
@@ -1655,6 +1663,9 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, saving
                 <div className="sm:col-span-2"><Field label="Description" action={aiButton("description", Boolean(description.trim()))}><Textarea value={description} onChange={(e) => setDescription(e.target.value)} required maxLength={2000} placeholder="What will learners get out of this lesson?" /></Field></div>
                 <Field label="Duration (minutes)" action={aiButton("durationMin", Boolean(duration.trim()))}><Input type="number" min="1" max="1440" step="1" value={duration} onChange={(e) => setDuration(e.target.value)} required /></Field>
                 <Field label="Section (optional)" action={aiButton("section", Boolean(section.trim()))}><Input value={section} onChange={(e) => setSection(e.target.value)} maxLength={200} placeholder="e.g. Module 1" /></Field>
+                <div className="sm:col-span-2">
+                  <LessonThumbnailField value={thumbnailUrl} onChange={setThumbnailUrl} videoId={format === "video" ? detectedVideoId : null} allowUploads={allowUploads} uploading={uploading} setUploading={setUploading} />
+                </div>
               </div>
             )}
 
@@ -2066,6 +2077,68 @@ function LessonContentField({ body, bodyFileUrl, uploading, setUploading, onChan
       <div className="flex items-center gap-2">{bodyFileUrl ? <><FileText className="h-4 w-4 text-primary" /><a href={bodyFileUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline">View attached document</a><Button type="button" size="icon" variant="ghost" onClick={() => onChange({ body: "", bodyFileUrl: undefined })} aria-label="Remove document"><X className="h-4 w-4" /></Button></> : <Button type="button" size="sm" variant="outline" onClick={() => inputRef.current?.click()} disabled={uploading}>{uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}Attach PDF or TXT</Button>}<input ref={inputRef} type="file" accept=".pdf,.txt" className="hidden" onChange={(e) => void upload(e.target.files?.[0])} /></div>}
     {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
   </div>;
+}
+
+/** Largest thumbnail image accepted: a picture, not a document. */
+const MAX_THUMBNAIL_BYTES = 5 * 1024 * 1024;
+
+/** Optional lesson thumbnail: by default a YouTube video's own; the tutor can upload a picture instead. */
+function LessonThumbnailField({ value, onChange, videoId, allowUploads, uploading, setUploading }: {
+  value: string | undefined; onChange: (next: string | undefined) => void; videoId: string | null;
+  allowUploads: boolean; uploading: boolean; setUploading: (busy: boolean) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const shown = value ?? (videoId ? youTubeThumb(videoId) : null);
+  async function upload(file: File | undefined) {
+    if (!file) return;
+    setError(null);
+    if (!/\.(png|jpe?g)$/i.test(file.name) || !/^image\/(png|jpeg)$/.test(file.type)) { setError("Choose a PNG or JPG image."); return; }
+    if (file.size > MAX_THUMBNAIL_BYTES) { setError("That image is larger than 5 MB."); return; }
+    setBusy(true); setUploading(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(new Error("Could not read the image.")); reader.readAsDataURL(file); });
+      const response = await fetch("/api/tutor/resources-files", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ filename: file.name, dataUrl }) });
+      const data = await response.json().catch(() => ({})) as { url?: string; error?: string };
+      if (!response.ok || !data.url) throw new Error(data.error ?? "Couldn't upload the image.");
+      onChange(data.url);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Couldn't upload the image.");
+    } finally {
+      setBusy(false); setUploading(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  }
+  return (
+    <div>
+      <span className="text-sm font-medium text-zinc-800">Thumbnail <span className="font-normal text-zinc-500">(optional)</span></span>
+      <div className="mt-1.5 flex flex-wrap items-center gap-3">
+        <div className="flex aspect-video w-40 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-zinc-100">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {shown ? <img src={shown} alt="Lesson thumbnail" className="h-full w-full object-cover" /> : <ImageIcon className="h-6 w-6 text-zinc-400" aria-hidden="true" />}
+        </div>
+        <div className="min-w-0 space-y-1.5">
+          <p className="text-xs text-zinc-500">
+            {value ? "Your own picture is shown for this lesson." : videoId ? "Using the YouTube video's thumbnail. Upload a picture to use your own instead." : "No picture yet: the lesson shows the course colour. Add a YouTube video or upload a picture."}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" size="sm" variant="outline" onClick={() => inputRef.current?.click()} disabled={!allowUploads || uploading} title={!allowUploads ? "Save the course draft before uploading images" : undefined}>
+              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}{value ? "Replace" : "Upload image"}
+            </Button>
+            {value && (
+              <Button type="button" size="sm" variant="ghost" onClick={() => onChange(undefined)}>
+                <X className="h-3.5 w-3.5" />{videoId ? "Use the YouTube thumbnail" : "Remove"}
+              </Button>
+            )}
+          </div>
+          <p className="text-[11px] text-zinc-400">{allowUploads ? "PNG or JPG, up to 5 MB. 16:9 looks best (e.g. 1280 × 720)." : "Save this course draft before uploading images."}</p>
+        </div>
+      </div>
+      <input ref={inputRef} type="file" accept=".png,.jpg,.jpeg,image/png,image/jpeg" className="hidden" onChange={(e) => void upload(e.target.files?.[0])} />
+      {error && <p role="alert" className="mt-1.5 text-xs text-red-700">{error}</p>}
+    </div>
+  );
 }
 
 function ResourcesField({ resources, onChange, uploading, setUploading, error, setError, allowUploads }: {

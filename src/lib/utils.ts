@@ -59,6 +59,13 @@ export function youTubeThumb(id: string): string {
 
 export const PLACEHOLDER_VIDEO = "REPLACE_ME";
 
+/** The picture for a lesson: the tutor's own thumbnail, else its YouTube video's, else none. */
+export function lessonThumbnail(lesson: { thumbnailUrl?: string; format?: string; youtubeId: string }): string | null {
+  if (lesson.thumbnailUrl) return lesson.thumbnailUrl;
+  const isVideo = lesson.format !== "reading" && lesson.format !== "code-tutorial";
+  return isVideo && lesson.youtubeId && lesson.youtubeId !== PLACEHOLDER_VIDEO ? youTubeThumb(lesson.youtubeId) : null;
+}
+
 export function isPlaceholder(id: string): boolean {
   return !id || id === PLACEHOLDER_VIDEO;
 }

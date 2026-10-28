@@ -242,6 +242,8 @@ p.query(`
   ALTER TABLE course_lessons ADD COLUMN IF NOT EXISTS requires_submission BOOLEAN NOT NULL DEFAULT FALSE;
   ALTER TABLE course_lessons ADD COLUMN IF NOT EXISTS body TEXT;
   ALTER TABLE course_lessons ADD COLUMN IF NOT EXISTS body_file_url VARCHAR(200);
+  -- A lesson thumbnail the tutor uploaded (a resource file URL); NULL uses the YouTube video's.
+  ALTER TABLE course_lessons ADD COLUMN IF NOT EXISTS thumbnail_url VARCHAR(200);
   ALTER TABLE course_lessons ADD COLUMN IF NOT EXISTS assignment_marks INT;
   ALTER TABLE course_lessons ADD COLUMN IF NOT EXISTS assignment_due_date DATE;
   -- AI-curated assignment: the tutor's guardrails and which learner data may be used. NULL = off.

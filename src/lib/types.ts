@@ -31,6 +31,8 @@ export interface Lesson {
   format?: "video" | "reading" | "code-tutorial";
   body?:string;
   bodyFileUrl?:string;
+  /** A thumbnail the tutor uploaded (/api/resources/…). Without one, a YouTube video's own thumbnail is used. */
+  thumbnailUrl?: string;
   /** "code-tutorial" lessons only: starter code the "Try it Yourself" editor loads. */
   starterCode?: string;
   /** "code-tutorial" lessons only: which in-browser runtime powers the "Try it

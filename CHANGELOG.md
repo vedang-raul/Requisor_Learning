@@ -5,6 +5,19 @@ Every release of Alma 41 (Requisor Learning), newest first. Versions follow
 people or other systems use the app, MINOR for new features, PATCH for fixes
 only. How to cut a release is in [docs/RELEASING.md](docs/RELEASING.md).
 
+## [Unreleased]
+
+Planned for 1.2.0. **Database change:** adds one nullable column,
+`course_lessons.thumbnail_url` (in `scripts/migrate.js`; Replit's Publish will
+show it as a schema change).
+
+### Added
+- **Lesson thumbnails** (tutors): a lesson uses its YouTube video's thumbnail by
+  default; tutors can upload their own picture (PNG or JPG, up to 5 MB) on the
+  lesson's Details step, replace it, or go back to the YouTube one. It shows in the
+  course's lesson list, the tutor's lesson list and the admin course editor, and
+  works for reading and code lessons too.
+
 ## [1.1.0] — not yet published
 
 Release candidate on `main`: the commit that sets version 1.1.0 (changes since 1.0.0 are
@@ -63,5 +76,6 @@ includes everything built before it. Highlights since the previous publish
   been deleted.
 - Tutor workspace tabs could stay blank after switching.
 
-[1.1.0]: https://github.com/vedang-raul/Requisor_Learning/compare/v1.0.0...main
+[Unreleased]: https://github.com/vedang-raul/Requisor_Learning/compare/57611de...main
+[1.1.0]: https://github.com/vedang-raul/Requisor_Learning/compare/v1.0.0...57611de
 [1.0.0]: https://github.com/vedang-raul/Requisor_Learning/releases/tag/v1.0.0

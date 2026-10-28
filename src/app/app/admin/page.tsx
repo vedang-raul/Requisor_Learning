@@ -547,7 +547,10 @@ function ContentManager() {
                   >
                     <span className="w-6 text-center text-xs font-semibold text-zinc-600">{i + 1}</span>
                     <div className="relative hidden h-10 w-16 shrink-0 overflow-hidden rounded-md sm:block">
-                      {l.format === "reading" || l.format === "code-tutorial" ? (
+                      {l.thumbnailUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={l.thumbnailUrl} alt="" className="h-full w-full object-cover" loading="lazy" />
+                      ) : l.format === "reading" || l.format === "code-tutorial" ? (
                         <div className="flex h-full w-full items-center justify-center bg-zinc-200">
                           {l.format === "code-tutorial" ? <Terminal className="h-4 w-4 text-zinc-600" /> : <FileText className="h-4 w-4 text-zinc-600" />}
                         </div>
@@ -852,6 +855,7 @@ function LessonForm({ courseSlug, lesson, nextIndex, onSave, onClose }: { course
                 format: mode,
                 body: mode !== "video" && body.trim() ? body.trim() : undefined,
                 bodyFileUrl: mode === "reading" && !body.trim() ? lesson?.bodyFileUrl : undefined,
+                thumbnailUrl: lesson?.thumbnailUrl,
                 starterCode: mode === "code-tutorial" && starterCode.trim() ? starterCode.trim() : undefined,
                 language: mode === "code-tutorial" ? codeLanguage : undefined,
               })
