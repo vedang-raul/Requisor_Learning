@@ -5,9 +5,9 @@ Every release of Alma 41 (Requisor Learning), newest first. Versions follow
 people or other systems use the app, MINOR for new features, PATCH for fixes
 only. How to cut a release is in [docs/RELEASING.md](docs/RELEASING.md).
 
-## [Unreleased]
+## [1.2.0] — not yet published
 
-Planned for 1.2.0. **Database change:** adds two nullable columns,
+Release candidate on `main`: the commit that sets version 1.2.0. **Database change:** adds two nullable columns,
 `course_lessons.thumbnail_url` and `courses.modules` (in `scripts/migrate.js`;
 Replit's Publish will show them as schema changes).
 
@@ -24,16 +24,20 @@ Replit's Publish will show them as schema changes).
   own, or none) and a colour theme (six presets or a custom colour), remembered
   per account in the browser. Blueprint courses now get real modules with the
   curriculum's module descriptions.
+
+### Fixed
+- Program Builder documents: the title and module titles kept the app's teal
+  whatever colour theme was chosen.
 - **Lesson thumbnails** (tutors): a lesson uses its YouTube video's thumbnail by
   default; tutors can upload their own picture (PNG or JPG, up to 5 MB) on the
   lesson's Details step, replace it, or go back to the YouTube one. It shows in the
   course's lesson list, the tutor's lesson list and the admin course editor, and
   works for reading and code lessons too.
 
-## [1.1.0] — not yet published
+## [1.1.0] — 2026-10-28
 
-Release candidate on `main`: the commit that sets version 1.1.0 (changes since 1.0.0 are
-`94c938c..8bc8bb7`). No database changes.
+Live on learning.requisor.io: commit `57611de` (tag `v1.1.0`). Changes since 1.0.0 are
+`94c938c..8bc8bb7`. No database changes.
 
 ### Added
 - **Assignments for this lesson** (learners): one card per lesson with a to-do
@@ -88,6 +92,6 @@ includes everything built before it. Highlights since the previous publish
   been deleted.
 - Tutor workspace tabs could stay blank after switching.
 
-[Unreleased]: https://github.com/vedang-raul/Requisor_Learning/compare/57611de...main
-[1.1.0]: https://github.com/vedang-raul/Requisor_Learning/compare/v1.0.0...57611de
+[1.2.0]: https://github.com/vedang-raul/Requisor_Learning/compare/v1.1.0...main
+[1.1.0]: https://github.com/vedang-raul/Requisor_Learning/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/vedang-raul/Requisor_Learning/releases/tag/v1.0.0
