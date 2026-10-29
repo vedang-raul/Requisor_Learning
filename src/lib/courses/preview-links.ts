@@ -11,6 +11,7 @@
  */
 import { createHash, randomBytes } from "node:crypto";
 import { db } from "@/lib/server/db";
+import { getCourses } from "@/lib/courses/course-catalog";
 import { PREVIEW_LINK_DAYS, pickPreviewModules, previewModuleChoices } from "@/lib/courses/preview-modules";
 import type { Course } from "@/lib/types";
 
@@ -118,4 +119,33 @@ export async function openPreviewLink(token: unknown): Promise<{ courseSlug: str
   const row = rows[0];
   if (!row || !Array.isArray(row.module_keys)) return null;
   return { courseSlug: row.course_slug, keys: row.module_keys.filter((k): k is string => typeof k === "string"), expiresAt: row.expires_at };
+}
+
+export type MyPreviewLink = PreviewLinkSummary & { course: { slug: string; title: string } };
+
+/**
+ * Every link this person made, across all their courses, newest first. Module
+ * names come from the course as it is now. Links of a deleted course are gone
+ * with it (the table cascades).
+ */
+export async function listMyPreviewLinks(userId: number, now = Date.now()): Promise<MyPreviewLink[]> {
+  await ensurePreviewLinks();
+  const { rows } = await db.query<LinkRow & { course_slug: string }>(
+    `SELECT id, course_slug, label, module_keys, created_at, expires_at, revoked_at, view_count, last_viewed_at
+       FROM course_preview_links WHERE created_by=$1 ORDER BY created_at DESC, id DESC LIMIT 500`, [userId]);
+  if (!rows.length) return [];
+  const courses = new Map((await getCourses("WHERE c.slug = ANY($1::text[])", [[...new Set(rows.map((r) => r.course_slug))]])).map((c) => [c.slug, c]));
+  const titles = new Map([...courses].map(([slug, c]) => [slug, new Map(previewModuleChoices(c, now).map((m) => [m.key, m.title]))]));
+  return rows.map((row) => ({
+    ...summary(row, titles.get(row.course_slug) ?? new Map(), now),
+    course: { slug: row.course_slug, title: courses.get(row.course_slug)?.title ?? row.course_slug },
+  }));
+}
+
+/** Turns off one of this person's own links, whichever course it's for. */
+export async function revokeMyPreviewLink(id: number, userId: number): Promise<boolean> {
+  await ensurePreviewLinks();
+  const { rowCount } = await db.query(
+    "UPDATE course_preview_links SET revoked_at=COALESCE(revoked_at, NOW()) WHERE id=$1 AND created_by=$2", [id, userId]);
+  return (rowCount ?? 0) > 0;
 }

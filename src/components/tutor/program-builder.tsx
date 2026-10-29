@@ -12,7 +12,7 @@ import { useStore } from "@/lib/store";
 import type { Course } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { isPreviewUrl, PREVIEW_LINK_DAYS, previewModuleChoices } from "@/lib/courses/preview-modules";
-import type { PreviewLinkSummary } from "@/lib/courses/preview-links";
+import type { MyPreviewLink, PreviewLinkSummary } from "@/lib/courses/preview-links";
 import { DEFAULT_PROGRAM_DOC_STYLE, DOC_THEMES, loadDocStyle, logoSource, MAX_LOGO_BYTES, saveDocStyle, type ProgramDocStyle } from "@/lib/courses/program-doc-style";
 import {
   analyzeTranscript, BLUEPRINT_LABEL, blueprintSlug, buildProposal, composeCurriculum, curriculumFromCourse, curriculumToCourse, EMPTY_DISCOVERY, FORMATS, INDUSTRIES, LEVELS, MODULE_COUNTS,
@@ -196,6 +196,9 @@ function ProposalDocument({ proposal, onChange, printing = false, look }: { prop
 
 // ── Preview link for the proposal's readers ────────────────────────────────
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+/** Fired when a preview link is made or turned off, so every list on the page reloads. */
+const LINKS_CHANGED = "program-builder:preview-links-changed";
+const linksChanged = () => window.dispatchEvent(new Event(LINKS_CHANGED));
 
 /**
  * The tutor picks modules of the course and gets a link (/p/<code>) that shows
@@ -218,7 +221,12 @@ function PreviewLinkPanel({ course, proposal, onChange, label }: { course: Cours
       setLinks(res.ok ? data.links ?? [] : []);
     } catch { setLinks([]); }
   }, [api]);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+    const reload = () => void load();
+    window.addEventListener(LINKS_CHANGED, reload);
+    return () => window.removeEventListener(LINKS_CHANGED, reload);
+  }, [load]);
 
   const toggle = (key: string) => setPicked((now) => (now.includes(key) ? now.filter((k) => k !== key) : [...now, key]));
 
@@ -233,7 +241,7 @@ function PreviewLinkPanel({ course, proposal, onChange, label }: { course: Cours
       if (!res.ok || !data.token || !data.link) { setNote({ kind: "warn", text: data.error ?? "Couldn't make the link. Try again." }); return; }
       onChange({ ...proposal, preview: { id: data.link.id, url: `${window.location.origin}/p/${data.token}`, until: fmtDate(data.link.expiresAt) } });
       setNote({ kind: "ok", text: "Link made and added to the proposal. Copy it now: for safety it can't be shown again later." });
-      void load();
+      linksChanged();
     } catch {
       setNote({ kind: "warn", text: "Couldn't make the link. Check your connection and try again." });
     } finally { setBusy(false); }
@@ -245,7 +253,7 @@ function PreviewLinkPanel({ course, proposal, onChange, label }: { course: Cours
     if (!res?.ok) { setNote({ kind: "warn", text: "Couldn't turn the link off. Try again." }); return; }
     if (proposal.preview?.id === id) onChange({ ...proposal, preview: undefined });
     setNote({ kind: "ok", text: "Link turned off." });
-    void load();
+    linksChanged();
   }
 
   async function copy(url: string) {
@@ -307,6 +315,111 @@ function PreviewLinkPanel({ course, proposal, onChange, label }: { course: Cours
             })}
           </ul>
         </details>
+      )}
+    </Card>
+  );
+}
+
+/**
+ * Every preview link the tutor has made, across all their courses and
+ * programs: who it was for, what it opens, whether it still works and how often
+ * it was opened, with Turn off. The addresses themselves aren't kept (only their
+ * hash is stored), so they can't be shown again here.
+ */
+function AllPreviewLinks({ onTurnedOff }: { onTurnedOff: (id: number) => void }) {
+  const [links, setLinks] = useState<MyPreviewLink[] | null>(null);
+  const [show, setShow] = useState<"open" | "all">("open");
+  const [course, setCourse] = useState("");
+  const [note, setNote] = useState<Notice>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/tutor/preview-links", { cache: "no-store" });
+      const data = (await res.json().catch(() => ({}))) as { links?: MyPreviewLink[] };
+      setLinks(res.ok ? data.links ?? [] : []);
+    } catch { setLinks([]); }
+  }, []);
+  useEffect(() => {
+    void load();
+    const reload = () => void load();
+    window.addEventListener(LINKS_CHANGED, reload);
+    return () => window.removeEventListener(LINKS_CHANGED, reload);
+  }, [load]);
+
+  async function turnOff(link: MyPreviewLink) {
+    if (!window.confirm(`Turn off the link for ${link.label || "this proposal"}? Anyone who has it will no longer be able to open the preview.`)) return;
+    const res = await fetch(`/api/tutor/preview-links?id=${link.id}`, { method: "DELETE" }).catch(() => null);
+    if (!res?.ok) { setNote({ kind: "warn", text: "Couldn't turn the link off. Try again." }); return; }
+    setNote({ kind: "ok", text: "Link turned off." });
+    onTurnedOff(link.id);
+    linksChanged();
+  }
+
+  const isOpen = (l: MyPreviewLink) => !l.revoked && !l.expired;
+  const courses = [...new Map((links ?? []).map((l) => [l.course.slug, l.course.title])).entries()];
+  const shown = (links ?? []).filter((l) => (show === "all" || isOpen(l)) && (!course || l.course.slug === course));
+  const openCount = (links ?? []).filter(isOpen).length;
+
+  return (
+    <Card className="mt-8 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="flex items-center gap-2 text-base font-semibold text-zinc-900"><Link2 className="h-4 w-4 text-primary" aria-hidden="true" />All your preview links</p>
+          <p className="mt-0.5 text-[13px] text-zinc-600">
+            Every link you&apos;ve made for proposals, across all your courses.{links ? ` ${openCount} open, ${links.length} in total.` : ""}
+          </p>
+        </div>
+        {links && links.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {courses.length > 1 && (
+              <select aria-label="Course" className={cn(selectClass, "h-9 w-auto")} value={course} onChange={(e) => setCourse(e.target.value)}>
+                <option value="">All courses</option>
+                {courses.map(([slug, title]) => <option key={slug} value={slug}>{title}</option>)}
+              </select>
+            )}
+            <div role="group" aria-label="Which links" className="inline-flex rounded-xl border border-zinc-200 p-0.5">
+              {(["open", "all"] as const).map((v) => (
+                <button key={v} type="button" aria-pressed={show === v} onClick={() => setShow(v)}
+                  className={cn("focus-ring rounded-lg px-3 py-1 text-[13px] font-semibold transition", show === v ? "bg-primary text-white" : "text-zinc-600 hover:text-zinc-900")}>
+                  {v === "open" ? "Open" : "All"}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+      <NoticeBox notice={note} />
+      {links === null ? (
+        <p className="mt-4 flex items-center gap-2 text-[13px] text-zinc-500"><Loader2 className="h-4 w-4 animate-spin" />Loading your links…</p>
+      ) : links.length === 0 ? (
+        <p className="mt-4 text-[13px] text-zinc-500">No links yet. Build a program from one of your courses, create the proposal, and make a preview link there.</p>
+      ) : shown.length === 0 ? (
+        <p className="mt-4 text-[13px] text-zinc-500">{show === "open" ? "No open links here. Choose All to see expired and turned-off ones." : "No links for this course."}</p>
+      ) : (
+        <ul className="mt-4 divide-y divide-zinc-100 overflow-hidden rounded-xl border border-zinc-200">
+          {shown.map((l) => {
+            const open = isOpen(l);
+            return (
+              <li key={l.id} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3 text-[13px]">
+                <div className="min-w-0 flex-1">
+                  <p className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-zinc-900">{l.label || "Untitled"}</span>
+                    <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", open ? "bg-emerald-50 text-emerald-700" : "bg-zinc-100 text-zinc-500")}>
+                      {l.revoked ? "Turned off" : l.expired ? "Expired" : "Open"}
+                    </span>
+                  </p>
+                  <p className="mt-0.5 text-zinc-700"><span className="text-zinc-500">Course:</span> {l.course.title}</p>
+                  <p className="text-zinc-700"><span className="text-zinc-500">Opens:</span> {l.modules.join(", ") || "—"}</p>
+                  <p className="mt-0.5 text-zinc-500">
+                    Made {fmtDate(l.createdAt)} · {open ? `open until ${fmtDate(l.expiresAt)}` : l.revoked ? "turned off" : `expired ${fmtDate(l.expiresAt)}`} · {l.views} view{l.views === 1 ? "" : "s"}
+                    {l.lastViewedAt ? ` · last opened ${fmtDate(l.lastViewedAt)}` : ""}
+                  </p>
+                </div>
+                {open && <Button type="button" size="sm" variant="outline" onClick={() => void turnOff(l)}>Turn off</Button>}
+              </li>
+            );
+          })}
+        </ul>
       )}
     </Card>
   );
@@ -1013,6 +1126,8 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
       )}
       {printRoot && printing === "proposal" && proposal && createPortal(<ProposalDocument proposal={proposal} printing look={look} />, printRoot)}
       {printRoot && printing === "blueprint" && curriculum && createPortal(<BlueprintDocument curriculum={curriculum} employer={form.employer} look={look} />, printRoot)}
+
+      <AllPreviewLinks onTurnedOff={(id) => setProposal((p) => (p?.preview?.id === id ? { ...p, preview: undefined } : p))} />
 
     </div>
   );

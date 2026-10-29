@@ -2,15 +2,17 @@ import { NextResponse } from "next/server";
 import { requireAccess, type RequestAccess } from "@/lib/server/access";
 import { manageReach, manageSql, reachParams } from "@/lib/server/course-scope";
 import { ensureCourseCatalog, getCourses } from "@/lib/courses/course-catalog";
-import { createPreviewLink, listPreviewLinks, revokePreviewLink } from "@/lib/courses/preview-links";
+import { createPreviewLink, listMyPreviewLinks, listPreviewLinks, revokeMyPreviewLink, revokePreviewLink } from "@/lib/courses/preview-links";
 import { createRateLimiter } from "@/lib/server/rate-limit";
 import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
 
 /**
  * Proposal preview links for a course the tutor owns (or, for admins, manages):
  *   GET    ?course=<slug>         the course's links
+ *   GET    (no course)            every link this person made, across their courses
  *   POST   { course, modules, label }  a new link; its address is returned only now
- *   DELETE ?course=<slug>&id=<n>  revoke a link
+ *   DELETE ?course=<slug>&id=<n>  revoke a link of a course they manage
+ *   DELETE ?id=<n>                revoke one of their own links
  */
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const creating = createRateLimiter(30, 60 * 60_000);
@@ -28,7 +30,9 @@ const noStore = { headers: { "Cache-Control": "private, no-store" } };
 export async function GET(req: Request) {
   const who = await requireAccess("tutor");
   if (who instanceof Response) return who;
-  const course = await managedCourse(new URL(req.url).searchParams.get("course"), who);
+  const slug = new URL(req.url).searchParams.get("course");
+  if (slug === null) return NextResponse.json({ links: await listMyPreviewLinks(who.userId) }, noStore);
+  const course = await managedCourse(slug, who);
   if (!course) return notFound();
   return NextResponse.json({ links: await listPreviewLinks(course) }, noStore);
 }
@@ -59,6 +63,10 @@ export async function DELETE(req: Request) {
   const params = new URL(req.url).searchParams;
   const id = Number(params.get("id"));
   if (!Number.isSafeInteger(id) || id < 1) return NextResponse.json({ error: "Invalid link." }, { status: 400 });
+  if (!params.has("course")) {
+    if (!(await revokeMyPreviewLink(id, who.userId))) return NextResponse.json({ error: "Link not found." }, { status: 404 });
+    return NextResponse.json({ ok: true }, noStore);
+  }
   const course = await managedCourse(params.get("course"), who);
   if (!course) return notFound();
   if (!(await revokePreviewLink(course.slug, id))) return NextResponse.json({ error: "Link not found." }, { status: 404 });

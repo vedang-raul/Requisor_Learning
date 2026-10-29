@@ -23,6 +23,10 @@ it on first use). Nothing existing changes.
   resources, assignments, quizzes, tutor or course details, and the page makes
   no requests for app data. Links last 15 days, can be turned off at any time,
   and count their views. The link's code is random and only its hash is stored.
+- **All your preview links** (Program Builder): every preview link you've made,
+  across all your courses, in one list: who it was for, the course and modules it
+  opens, open/expired/turned off, views and when it was last opened, with
+  Turn off. Filter by course, or show only open links.
 - **Course share links**: a Share button on the course page and in the course
   editor gives a short link (`/c/<course>`) to copy or send. Whoever opens it signs
   in first (or signs up) and is then taken to the course. The link grants nothing:

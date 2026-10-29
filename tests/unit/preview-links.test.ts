@@ -154,6 +154,33 @@ describe("preview link API", () => {
     expect(JSON.stringify(insert[1])).not.toContain(data.token);
   });
 
+  it("lists every link the person made, across courses, and nobody else's", async () => {
+    session.mockResolvedValue(tutor);
+    mockGetCourses.mockResolvedValue([course]);
+    const now = new Date();
+    query.mockImplementation(async (sql: string) => sql.includes("WHERE created_by=$1")
+      ? { rows: [{ id: 3, course_slug: "agentic-ai", label: "Acme", module_keys: ["tools"], created_at: now, expires_at: new Date(now.getTime() - 1000), revoked_at: null, view_count: 4, last_viewed_at: now }] }
+      : { rows: [] });
+    const res = await GET(new Request("http://x/api/tutor/preview-links"));
+    expect(res.status).toBe(200);
+    const { links } = await res.json();
+    expect(links).toEqual([expect.objectContaining({ id: 3, label: "Acme", modules: ["Tools"], expired: true, views: 4, course: { slug: "agentic-ai", title: "Agentic AI" } })]);
+    expect(JSON.stringify(links)).not.toMatch(/token|hash/i);
+    const listQuery = query.mock.calls.find(([sql]) => String(sql).includes("WHERE created_by=$1"))!;
+    expect(listQuery[1]).toEqual([5]);
+  });
+
+  it("turns off only the person's own links", async () => {
+    session.mockResolvedValue(tutor);
+    query.mockResolvedValue({ rows: [], rowCount: 0 });
+    expect((await DELETE(new Request("http://x/api/tutor/preview-links?id=3", { method: "DELETE" }))).status).toBe(404);
+    const [sql, params] = query.mock.calls.at(-1)!;
+    expect(sql).toMatch(/WHERE id=\$1 AND created_by=\$2/);
+    expect(params).toEqual([3, 5]);
+    query.mockResolvedValue({ rows: [], rowCount: 1 });
+    expect((await DELETE(new Request("http://x/api/tutor/preview-links?id=3", { method: "DELETE" }))).status).toBe(200);
+  });
+
   it("refuses a link with no real modules", async () => {
     session.mockResolvedValue(tutor);
     mockGetCourses.mockResolvedValue([course]);
