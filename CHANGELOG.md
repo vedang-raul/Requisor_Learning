@@ -10,6 +10,10 @@ only. How to cut a release is in [docs/RELEASING.md](docs/RELEASING.md).
 No database changes.
 
 ### Added
+- **Program Builder: start from one of your courses**: pick a course you already
+  teach and its modules, lessons, outcomes and assessment become the program's
+  curriculum, ready for an employer proposal (PDF or Word). No extra draft course
+  is made, and edits in the builder change the proposal only, not the course.
 - **Course share links**: a Share button on the course page and in the course
   editor gives a short link (`/c/<course>`) to copy or send. Whoever opens it signs
   in first (or signs up) and is then taken to the course. The link grants nothing:

@@ -1,5 +1,6 @@
 import { validateCourse } from "@/lib/courses/course-catalog";
-import { blueprintCourseTitle, blueprintSlug, composeCurriculum, curriculumToCourse, sampleDiscovery, EMPTY_DISCOVERY } from "@/lib/courses/program-builder";
+import { blueprintCourseTitle, blueprintSlug, composeCurriculum, curriculumFromCourse, curriculumToCourse, sampleDiscovery, EMPTY_DISCOVERY } from "@/lib/courses/program-builder";
+import type { Course, Lesson } from "@/lib/types";
 
 describe("Curriculum blueprint course", () => {
   const curriculum = composeCurriculum(sampleDiscovery(EMPTY_DISCOVERY));
@@ -29,5 +30,37 @@ describe("Curriculum blueprint course", () => {
     expect(blueprintCourseTitle("x".repeat(300)).length).toBeLessThanOrEqual(160);
     expect(blueprintSlug("Ünïcode & symbols!! ".repeat(10)).length).toBeLessThanOrEqual(80);
     expect(blueprintSlug("!!!")).toBe("program-blueprint");
+  });
+});
+
+describe("Program from an existing course", () => {
+  const lesson = (id: string, section: string, extra: Partial<Lesson> = {}): Lesson => ({ id, title: `Lesson ${id}`, description: id, youtubeId: "REPLACE_ME", durationMin: 30, resources: [], keyTakeaways: [`Takeaway ${id}`], section, ...extra });
+  const course: Course = {
+    slug: "agentic-ai", title: "Agentic AI", tagline: "Build agents that work.", category: "study", level: "Advanced", tags: [], cover: "x", addedAt: "2026-10-01",
+    modules: [{ title: "Foundations", description: "What agents are." }, { title: "Tools" }],
+    lessons: [lesson("a", "Foundations"), lesson("b", "Foundations", { assignment: "Write an agent" }), lesson("c", "Tools"), lesson("d", "Tools")],
+    baseAssessment: "A capstone agent.",
+  };
+  const curriculum = curriculumFromCourse(course, { ...EMPTY_DISCOVERY, employer: "Acme" });
+
+  it("uses the course's modules, lessons and assessment as the curriculum", () => {
+    expect(curriculum.title).toBe("Agentic AI");
+    expect(curriculum.level).toBe("Advanced");
+    expect(curriculum.description).toBe("Build agents that work.");
+    expect(curriculum.modules.map((m) => [m.title, m.description, m.submodules])).toEqual([
+      ["Foundations", "What agents are.", ["Lesson a", "Lesson b"]],
+      ["Tools", "", ["Lesson c", "Lesson d"]],
+    ]);
+    expect(curriculum.modules[0].activities).toEqual(["Assignment: Lesson b"]);
+    expect(curriculum.duration).toBe("2 modules · 4 lessons · ~2 h");
+    expect(curriculum.outcomes).toEqual(["Takeaway a", "Takeaway b", "Takeaway c", "Takeaway d"]);
+    expect(curriculum.assessment).toBe("A capstone agent.");
+  });
+
+  it("makes one module from a course without modules", () => {
+    const flat = curriculumFromCourse({ ...course, modules: undefined, lessons: course.lessons.map((l) => ({ ...l, section: undefined })) }, EMPTY_DISCOVERY);
+    expect(flat.modules).toHaveLength(1);
+    expect(flat.modules[0].title).toBe("Agentic AI");
+    expect(flat.modules[0].submodules).toHaveLength(4);
   });
 });

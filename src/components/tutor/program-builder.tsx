@@ -13,7 +13,7 @@ import type { Course } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { DEFAULT_PROGRAM_DOC_STYLE, DOC_THEMES, loadDocStyle, logoSource, MAX_LOGO_BYTES, saveDocStyle, type ProgramDocStyle } from "@/lib/courses/program-doc-style";
 import {
-  analyzeTranscript, BLUEPRINT_LABEL, blueprintSlug, buildProposal, composeCurriculum, curriculumToCourse, EMPTY_DISCOVERY, FORMATS, INDUSTRIES, LEVELS, MODULE_COUNTS,
+  analyzeTranscript, BLUEPRINT_LABEL, blueprintSlug, buildProposal, composeCurriculum, curriculumFromCourse, curriculumToCourse, EMPTY_DISCOVERY, FORMATS, INDUSTRIES, LEVELS, MODULE_COUNTS,
   PROGRAM_COMMAND_EVENT, PROGRAM_DRAFT_KEY, programStorageKey, sampleDiscovery, takeProgramCommand,
   type Curriculum, type Discovery, type Industry, type Level, type Proposal,
 } from "@/lib/courses/program-builder";
@@ -389,6 +389,23 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
   // changes reach it only when the tutor asks (Update draft course), so lessons they
   // have since filled in are never replaced behind their back.
   const [blueprint, setBlueprint] = useState<Blueprint | null>(null);
+  // A program built on one of the tutor's existing courses: no blueprint course is made (the course exists).
+  const [sourceCourse, setSourceCourse] = useState<{ slug: string; title: string } | null>(null);
+  const [myCourses, setMyCourses] = useState<Course[] | null>(null);
+  const [pickedCourse, setPickedCourse] = useState("");
+  const [courseNote, setCourseNote] = useState<Notice>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/tutor/courses", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { courses?: { course: Course }[] } | null) => {
+        if (cancelled) return;
+        // Blueprint courses made by this builder aren't offered: they came from a program in the first place.
+        setMyCourses((data?.courses ?? []).map((i) => i.course).filter((c) => c.lessons.length > 0 && !c.title.endsWith(`— ${BLUEPRINT_LABEL}`)));
+      })
+      .catch(() => { if (!cancelled) setMyCourses([]); });
+    return () => { cancelled = true; };
+  }, []);
   const blueprintRef = useRef(blueprint); blueprintRef.current = blueprint;
   const [blueprintBusy, setBlueprintBusy] = useState(false);
   const [blueprintNote, setBlueprintNote] = useState<Notice>(null);
@@ -478,8 +495,9 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
     const show = (next: Curriculum) => {
       setCurriculum(next);
       setProposal(null);
+      setSourceCourse(null);
       setStep(2);
-      requestAnimationFrame(() => curriculumRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+      setTimeout(() => curriculumRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80); // after the card first renders
       void saveBlueprint(next, "auto");
     };
     if (!useAiRef.current) { show(base); setGenNote(null); return base; }
@@ -503,6 +521,19 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
     }
   }, [saveBlueprint]);
 
+  function applyCourse(slug = pickedCourse) {
+    const course = myCourses?.find((c) => c.slug === slug);
+    if (!course) { setCourseNote({ kind: "warn", text: "Pick one of your courses first." }); return; }
+    const next = curriculumFromCourse(course, formRef.current);
+    setCurriculum(next);
+    setProposal(null);
+    setSourceCourse({ slug: course.slug, title: course.title });
+    setGenNote(null);
+    setCourseNote({ kind: "ok", text: `Built from "${course.title}". Add the employer above, then create the proposal.` });
+    setStep(2);
+    setTimeout(() => curriculumRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80); // after the card first renders
+  }
+
   const editCurriculum = (change: Partial<Curriculum>) => setCurriculum((current) => (current ? { ...current, ...change } : current));
   const editModule = (index: number, change: Partial<Curriculum["modules"][number]>) =>
     setCurriculum((current) => (current ? { ...current, modules: current.modules.map((m, i) => (i === index ? { ...m, ...change } : m)) } : current));
@@ -523,11 +554,12 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
   useEffect(() => {
     if (!draftKey) return;
     try {
-      const saved = JSON.parse(sessionStorage.getItem(draftKey) ?? "null") as { form?: Discovery; curriculum?: Curriculum | null; proposal?: Proposal | null; step?: Step; blueprint?: Blueprint | null } | null;
+      const saved = JSON.parse(sessionStorage.getItem(draftKey) ?? "null") as { form?: Discovery; curriculum?: Curriculum | null; proposal?: Proposal | null; step?: Step; blueprint?: Blueprint | null; sourceCourse?: { slug?: unknown; title?: unknown } | null } | null;
       if (saved?.form && typeof saved.form === "object") {
         setForm({ ...EMPTY_DISCOVERY, ...saved.form });
         if (saved.curriculum?.modules) setCurriculum(saved.curriculum);
         if (typeof saved.blueprint?.slug === "string" && typeof saved.blueprint.title === "string") setBlueprint({ slug: saved.blueprint.slug, title: saved.blueprint.title });
+        if (typeof saved.sourceCourse?.slug === "string" && typeof saved.sourceCourse.title === "string") setSourceCourse({ slug: saved.sourceCourse.slug, title: saved.sourceCourse.title });
         if (saved.proposal?.pricing) setProposal(saved.proposal);
         if (saved.step === 2 && saved.curriculum) setStep(2);
         if (saved.step === 3 && saved.proposal) setStep(3);
@@ -537,8 +569,8 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
   }, [draftKey]);
   useEffect(() => {
     if (!restored || !draftKey) return;
-    try { sessionStorage.setItem(draftKey, JSON.stringify({ form, curriculum, proposal, step, blueprint })); } catch { /* storage is unavailable */ }
-  }, [restored, form, curriculum, proposal, step, blueprint, draftKey]);
+    try { sessionStorage.setItem(draftKey, JSON.stringify({ form, curriculum, proposal, step, blueprint, sourceCourse })); } catch { /* storage is unavailable */ }
+  }, [restored, form, curriculum, proposal, step, blueprint, sourceCourse, draftKey]);
   // A remembered draft course may have been deleted since (in My Courses, or elsewhere).
   const checkedBlueprint = useRef(false);
   useEffect(() => {
@@ -551,6 +583,7 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
     setForm(EMPTY_DISCOVERY); setCurriculum(null); setProposal(null); setStep(1); setAnalyzeNote(null); setGenNote(null);
     // The saved draft course stays in My Courses; the next program gets its own.
     setBlueprint(null); setBlueprintNote(null);
+    setSourceCourse(null); setPickedCourse(""); setCourseNote(null);
   }
 
   // ── Commands from the AI assistant ────────────────────────────────────────
@@ -636,6 +669,19 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
         <div className="grid items-start gap-5 lg:grid-cols-[400px_1fr]">
           {/* Intake */}
           <Card className="p-5">
+            <div className="mb-5 rounded-xl border border-primary/20 bg-primary/[0.03] p-3.5">
+              <p className="flex items-center gap-2 text-sm font-semibold text-zinc-900"><BookOpenCheck className="h-4 w-4 text-primary" aria-hidden="true" />Start from one of your courses</p>
+              <p className="mt-0.5 text-[13px] text-zinc-600">Offer a course you already teach: its modules and lessons become the program&apos;s curriculum, ready for a proposal.</p>
+              <div className="mt-2.5 flex gap-2">
+                <select aria-label="Your course" className={selectClass} value={pickedCourse} onChange={(e) => { setPickedCourse(e.target.value); setCourseNote(null); }} disabled={!myCourses?.length}>
+                  <option value="">{myCourses === null ? "Loading your courses…" : myCourses.length ? "Choose a course…" : "No courses with lessons yet"}</option>
+                  {myCourses?.map((c) => <option key={c.slug} value={c.slug}>{c.title}{c.published === false ? " (draft)" : ""}</option>)}
+                </select>
+                <Button type="button" onClick={() => applyCourse()} disabled={!pickedCourse} className="shrink-0">Use course</Button>
+              </div>
+              <NoticeBox notice={courseNote} />
+            </div>
+
             <h3 className="text-base font-semibold text-zinc-900">Employer discovery</h3>
             <p className="mt-0.5 text-[13px] text-zinc-600">Paste the transcript of the discovery call (for example from a Concap recording), or fill the fields directly. Everything extracted stays editable.</p>
 
@@ -706,7 +752,7 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
             ) : (
               <Card className="p-5">
                 <div className="mb-4 border-b-2 border-primary pb-4">
-                  <span className="mb-2 inline-block rounded-full border border-primary/30 bg-primary/5 px-2.5 py-0.5 text-[11.5px] font-bold tracking-wide text-primary">DRAFT — FOR PROGRAM TEAM REVIEW</span>
+                  <span className="mb-2 inline-block rounded-full border border-primary/30 bg-primary/5 px-2.5 py-0.5 text-[11.5px] font-bold tracking-wide text-primary">{sourceCourse ? `BASED ON YOUR COURSE: ${sourceCourse.title.toUpperCase()}` : "DRAFT — FOR PROGRAM TEAM REVIEW"}</span>
                   <Editable as="h1" value={curriculum.title} onChange={(v) => editCurriculum({ title: v })} className="block text-2xl font-bold text-zinc-900" label="Program title" />
                   <Editable as="p" value={curriculum.description} onChange={(v) => editCurriculum({ description: v })} className="mt-2 block max-w-[72ch] text-sm text-zinc-600" label="Program description" multiline />
                 </div>
@@ -769,8 +815,8 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
                     <Download className="h-4 w-4" />Download PDF
                   </Button>
                   <WordButton onDownload={() => downloadWord({ curriculum, employer: form.employer }, `${curriculum.title} — ${BLUEPRINT_LABEL}`, look)} />
-                  <Button type="button" variant="outline" onClick={() => void generate()} disabled={generating}>
-                    {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}Regenerate
+                  <Button type="button" variant="outline" onClick={() => (sourceCourse ? applyCourse(sourceCourse.slug) : void generate())} disabled={generating}>
+                    {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}{sourceCourse ? "Rebuild from the course" : "Regenerate"}
                   </Button>
                 </div>
 
@@ -778,6 +824,13 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
                   <DocumentStyleControls style={docStyle} onChange={changeDocStyle} defaultLogo={platformLogo} />
                 </div>
 
+                {sourceCourse ? (
+                <div className="mt-5 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
+                  <p className="flex items-center gap-2 text-sm font-semibold text-zinc-900"><BookOpenCheck className="h-4 w-4 text-primary" aria-hidden="true" />Based on your course</p>
+                  <p className="mt-0.5 text-[13px] text-zinc-600"><b className="font-semibold text-zinc-800">{sourceCourse.title}</b>. No new draft course is made: the program is this course. Edits here change the proposal only, not the course.</p>
+                  {onOpenCourse && <Button type="button" size="sm" variant="outline" className="mt-2.5" onClick={() => onOpenCourse(sourceCourse.slug)}>Open in My Courses</Button>}
+                </div>
+                ) : (
                 <div className="mt-5 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
                   <p className="flex items-center gap-2 text-sm font-semibold text-zinc-900">
                     <BookOpenCheck className="h-4 w-4 text-primary" aria-hidden="true" />{BLUEPRINT_LABEL} course
@@ -797,6 +850,7 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
                   </div>
                   <NoticeBox notice={blueprintNote} />
                 </div>
+                )}
               </Card>
             )}
           </div>

@@ -6,6 +6,7 @@
  * assistant uses to drive the builder.
  */
 import type { Course, Lesson } from "@/lib/types";
+import { groupByModule, moduleList } from "@/lib/courses/modules";
 
 export const INDUSTRIES = [
   { key: "construction", label: "Construction & engineering" },
@@ -406,6 +407,41 @@ export function curriculumToCourse(curriculum: Curriculum, options: { slug: stri
     })),
     published: false,
     ...(text(curriculum.assessment, 5000) ? { baseAssessment: text(curriculum.assessment, 5000) } : {}),
+  };
+}
+
+// ── A curriculum from one of the tutor's existing courses ───────────────────
+/**
+ * The curriculum for a program built on a course the tutor already has: its
+ * modules (or one module of all its lessons) with their lessons as submodules,
+ * assignments as learning activities, and outcomes from the syllabus or the
+ * lessons' key takeaways. Discovery fields (audience, format, pains) still
+ * shape the proposal. No AI, no network.
+ */
+export function curriculumFromCourse(course: Course, form: Discovery): Curriculum {
+  const groups = groupByModule({ modules: moduleList(course), lessons: course.lessons }).filter((g) => g.lessons.length > 0);
+  const modules: ProgramModule[] = groups.map((g, i) => ({
+    title: text(g.title ?? (groups.length === 1 ? course.title : "More lessons"), 160) || `Module ${i + 1}`,
+    description: text(g.description, 400),
+    submodules: g.lessons.map((l) => text(l.title, 200)).filter(Boolean),
+    activities: g.lessons.filter((l) => l.assignment || l.requiresSubmission).map((l) => text(`Assignment: ${l.title}`, 300)),
+  }));
+  const syllabus = course.syllabus && course.syllabus.kind === "template" ? course.syllabus : null;
+  const fromSyllabus = (syllabus?.outcomes ?? []).map((o) => text(o.outcome, 300)).filter(Boolean);
+  const fromTakeaways = course.lessons.flatMap((l) => l.keyTakeaways.slice(0, 1)).map((t) => text(t, 300)).filter(Boolean);
+  const base = composeCurriculum({ ...form, topic: course.title, level: course.level, modules: clampModules(modules.length || 4) });
+  const outcomes = (fromSyllabus.length ? fromSyllabus : fromTakeaways).slice(0, 6);
+  const minutes = course.lessons.reduce((sum, l) => sum + (l.durationMin || 0), 0);
+  const hours = minutes >= 90 ? `~${Math.round(minutes / 60)} h` : `${minutes} min`;
+  return {
+    ...base,
+    title: text(course.title, 160),
+    description: text(syllabus?.description || course.tagline, 900) || base.description,
+    level: course.level,
+    duration: `${modules.length} module${modules.length === 1 ? "" : "s"} · ${course.lessons.length} lesson${course.lessons.length === 1 ? "" : "s"} · ${hours}`,
+    outcomes: outcomes.length >= 2 ? outcomes : base.outcomes,
+    modules: modules.length ? modules : base.modules,
+    assessment: text(course.baseAssessment, 900) || base.assessment,
   };
 }
 
