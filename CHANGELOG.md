@@ -9,7 +9,22 @@ only. How to cut a release is in [docs/RELEASING.md](docs/RELEASING.md).
 
 No database changes.
 
+### Added
+- **Course share links**: a Share button on the course page and in the course
+  editor gives a short link (`/c/<course>`) to copy or send. Whoever opens it signs
+  in first (or signs up) and is then taken to the course. The link grants nothing:
+  the course still shows only to people allowed to see it (drafts and other
+  universities' courses stay hidden), and sign-in only ever returns to a page
+  inside the app.
+- **Hide modules** (tutors): tuck modules away in a course's "Modules & lessons"
+  list, with Show hidden; learners still see them.
+
 ### Changed
+- **Program Builder assistant**: on the Program Builder page the AI assistant is a
+  separate flow, with its own conversation, instructions and actions. It only
+  builds the employer program there and sends course work to the Tutor Workspace;
+  elsewhere it builds courses and sends program requests to the Program Builder.
+  Actions from the other side are refused even if asked for.
 - **Program Builder** has its own place in the sidebar (Tutor Workspace →
   Program Builder → Check Assignments) instead of a tab inside the Tutor
   Workspace. "Open in My Courses" opens the blueprint course in the Tutor

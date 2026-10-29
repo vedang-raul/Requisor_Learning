@@ -14,6 +14,7 @@ import { signIn } from "next-auth/react";
 import { RequisorAI } from "@/components/ui/requisor-ai";
 import { Turnstile } from "@marsidev/react-turnstile";
 import type { TurnstileInstance } from "@marsidev/react-turnstile";
+import { peekAfterSignIn } from "@/lib/navigation/after-sign-in";
 
 type View = "login" | "signup" | "success";
 type PasswordField = "loginPassword" | "signupPassword" | "signupConfirm";
@@ -156,7 +157,7 @@ export default function TutorAuth() {
         return;
       }
 
-      void signIn("google", { callbackUrl: "/app/tutor/" });
+      void signIn("google", { callbackUrl: peekAfterSignIn() ?? "/app/tutor/" });
     } catch {
       setGoogleError("Network error. Please try again.");
       setSubmitting(false);
@@ -190,7 +191,7 @@ export default function TutorAuth() {
         setSubmitting(false);
         return;
       }
-      window.location.assign("/app/tutor/");
+      window.location.assign(peekAfterSignIn() ?? "/app/tutor/");
     } catch {
       setFormError("Network error. Please try again.");
       setSubmitting(false);

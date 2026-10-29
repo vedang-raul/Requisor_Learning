@@ -18,6 +18,7 @@ import { PasswordStrength } from "@/components/ui/password-strength";
 import { cn } from "@/lib/utils";
 import { checkJobTitle, JOB_TITLE_HINT, JOB_TITLE_MAX_LENGTH, stripJobTitle } from "@/lib/auth/job-title";
 import { trackEvent } from "@/lib/analytics";
+import { peekAfterSignIn } from "@/lib/navigation/after-sign-in";
 
 type Mode = "login" | "signup" | "forgot";
 
@@ -74,9 +75,10 @@ export function LoginScreen() {
   const [captchaToken, setCaptchaToken] = useState<string>("");
   const [captchaErrorCode, setCaptchaErrorCode] = useState<string | null>(null);
 
-  // Already signed in? Straight to the dashboard.
+  // Already signed in? Straight on: to the page they were heading for (a shared course), else the dashboard.
+  // Only read here: the app clears it once they arrive (this can run twice in development).
   useEffect(() => {
-    if (hydrated && state.user) router.replace("/app/dashboard/");
+    if (hydrated && state.user) router.replace(peekAfterSignIn() ?? "/app/dashboard/");
   }, [hydrated, state.user, router]);
 
   // Surface verification / auth redirect messages.
@@ -271,7 +273,7 @@ export function LoginScreen() {
           );
         } else {
           if (res?.ok) trackEvent("email_signin_completed");
-          router.push("/app/dashboard/");
+          router.push(peekAfterSignIn() ?? "/app/dashboard/");
         }
       }
     } catch {
@@ -318,7 +320,7 @@ export function LoginScreen() {
         return;
       }
       trackEvent("google_signin_started");
-      void signIn("google", { callbackUrl: "/app/dashboard/" });
+      void signIn("google", { callbackUrl: peekAfterSignIn() ?? "/app/dashboard/" });
     } catch {
       trackEvent("google_signin_blocked");
       setError("Network error. Please try again.");

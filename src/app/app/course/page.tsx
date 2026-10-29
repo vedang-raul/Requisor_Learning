@@ -8,6 +8,7 @@ import { CheckCircle2, Circle, Clock, FileText, PlayCircle, Video, Bookmark, Boo
 import { useStore, useCourseProgress } from "@/lib/store";
 import { cn, formatMinutes, isPlaceholder, youTubeThumb } from "@/lib/utils";
 import { groupByModule, moduleList } from "@/lib/courses/modules";
+import { ShareCourseButton } from "@/components/course/share-course-button";
 import { Card } from "@/components/ui/card";
 import { Tag } from "@/components/ui/badge";
 import { ProgressBar } from "@/components/ui/progress";
@@ -134,7 +135,7 @@ function CourseView() {
       <div className="glass-card mx-auto mt-16 flex max-w-md flex-col items-center gap-3 p-10 text-center">
         <SearchX className="h-10 w-10 text-zinc-600" />
         <p className="text-sm font-medium text-zinc-800">Course not found</p>
-        <p className="text-xs text-zinc-500">It may have been removed by an admin.</p>
+        <p className="text-xs text-zinc-500">It may not be published yet, or it isn&apos;t open to your account.</p>
         <Link href="/app/paths/"><Button variant="outline" size="sm">Back to Learning Paths</Button></Link>
       </div>
     );
@@ -177,6 +178,7 @@ function CourseView() {
           </div>
           <div className="flex items-center gap-3">
             <SyllabusButton syllabus={course.syllabus} courseTitle={course.title} className="focus-ring inline-flex items-center gap-2 rounded-xl bg-black/25 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-black/45" />
+            <ShareCourseButton course={course} label="" className="focus-ring inline-flex items-center rounded-xl bg-black/25 p-2.5 text-white backdrop-blur-sm transition hover:bg-black/45" />
             <button
               onClick={() => toggleBookmark(course.slug)}
               aria-label={bookmarked ? "Remove bookmark" : "Bookmark course"}

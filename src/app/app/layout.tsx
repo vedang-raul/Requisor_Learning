@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
@@ -14,6 +14,7 @@ import { ActivityTracker } from "@/components/layout/activity-tracker";
 import { ViewingAsBanner } from "@/components/admin/view-as";
 import { REPLAY_TOUR_KEY } from "@/lib/utils";
 import { trackEvent } from "@/lib/analytics";
+import { rememberAfterSignIn, takeAfterSignIn } from "@/lib/navigation/after-sign-in";
 
 interface MeData {
   onboardingDone: boolean;
@@ -28,8 +29,16 @@ function Shell({ children }: { children: React.ReactNode }) {
   const [meLoaded, setMeLoaded] = useState(false);
   const [replayTour, setReplayTour] = useState(false);
 
+  // Arriving signed out (say from a course's share link): sign in, then come back here.
+  // Signing out mid-visit goes to the home page as before.
+  const wasSignedIn = useRef(false);
   useEffect(() => {
-    if (hydrated && !state.user) router.replace("/");
+    // Signed in: any remembered destination has been used (Google sign-in comes straight back to it).
+    if (state.user) { wasSignedIn.current = true; takeAfterSignIn(); return; }
+    if (!hydrated) return;
+    if (wasSignedIn.current) { router.replace("/"); return; }
+    rememberAfterSignIn(window.location.pathname + window.location.search);
+    router.replace("/login/");
   }, [hydrated, state.user, router]);
 
   // Fetch onboarding status once the user is confirmed

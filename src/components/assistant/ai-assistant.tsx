@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { BookPlus, Check, Compass, Ear, Headphones, ListChecks, Loader2, RotateCcw, Send, Sparkles, Square, ThumbsDown, ThumbsUp, TrendingUp, Volume2, VolumeX, X, ChevronDown } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useStore } from "@/lib/store";
 import { getNudge, markNudgeSeen, type Nudge } from "@/lib/ai/nudges";
 import { cn } from "@/lib/utils";
@@ -50,6 +50,13 @@ const LEARNER_QUICK_PROMPTS = [
   { icon: Compass, label: "What should I learn next?" },
   { icon: TrendingUp, label: "What grades did I get?" },
   { icon: Sparkles, label: "Give me a practice assignment" },
+];
+/** On the Program Builder page: its own starting points, about the employer program only. */
+const PROGRAM_BUILDER_QUICK_PROMPTS = [
+  { icon: Sparkles, label: "Build a program from my discovery call notes" },
+  { icon: ListChecks, label: "Write the curriculum from what's filled in" },
+  { icon: BookPlus, label: "Make it 5 modules" },
+  { icon: TrendingUp, label: "Assemble the employer proposal" },
 ];
 const TUTOR_QUICK_PROMPTS = [
   { icon: Sparkles, label: "Design a course from my topic" },
@@ -368,6 +375,9 @@ export function AiAssistant() {
   const { state, hydrated } = useStore();
   const router = useRouter();
   const isTutorMode = state.user?.role === "tutor" || state.user?.role === "admin";
+  // The Program Builder page has a separate assistant flow: its own conversation, instructions and actions.
+  const pathname = usePathname();
+  const builderMode = isTutorMode && Boolean(pathname?.startsWith("/app/tutor/program-builder"));
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -439,7 +449,7 @@ export function AiAssistant() {
   const didNavigateRef = useRef(false);
   const requestStartedAtRef = useRef(0);
   const requestFailedRef = useRef(false);
-  const quickPrompts = isTutorMode ? TUTOR_QUICK_PROMPTS : LEARNER_QUICK_PROMPTS;
+  const quickPrompts = builderMode ? PROGRAM_BUILDER_QUICK_PROMPTS : isTutorMode ? TUTOR_QUICK_PROMPTS : LEARNER_QUICK_PROMPTS;
   const initials = (state.user?.name ?? "U").slice(0, 1).toUpperCase();
   const voice = useVoice();
   const waveBars = useMicWaveform(voice.isListening);
@@ -1088,8 +1098,8 @@ export function AiAssistant() {
           // Sent even while muted: the assistant still goes by this character's name.
           // A browser voice (no ElevenLabs): its language, so a Spanish voice gets a Spanish reply, not English in an accent.
           ...(!voice.premiumVoice && !voiceMuted && browserVoiceLang ? { voiceLanguage: browserVoiceLang } : {}),
-          // What is in the Program Builder, so the assistant can pick up where the tutor left it.
-          ...(isTutorMode && programDraftSummary() ? { programBuilder: programDraftSummary() } : {}),
+          // On the Program Builder page: its own flow, and what is in the builder so the assistant can pick up there.
+          ...(builderMode ? { workspace: "program_builder", ...(programDraftSummary() ? { programBuilder: programDraftSummary() } : {}) } : {}),
           ...(window.location.pathname.startsWith("/app/learn") ? { viewingLessonId: new URLSearchParams(window.location.search).get("lesson") ?? undefined } : {}),
           messages: next.map((m) => ({
             role: m.role,
@@ -1149,6 +1159,23 @@ export function AiAssistant() {
       setNudge(null);
     }
   }
+  // Each workspace keeps its own conversation, so a program never mixes with course work.
+  const threadsRef = useRef<{ courses: ChatMessage[]; program_builder: ChatMessage[] }>({ courses: [], program_builder: [] });
+  const workspaceRef = useRef<"courses" | "program_builder">("courses");
+  const messagesRef = useRef(messages); messagesRef.current = messages;
+  useEffect(() => {
+    const next = builderMode ? "program_builder" : "courses";
+    if (next === workspaceRef.current) return;
+    threadsRef.current[workspaceRef.current] = messagesRef.current;
+    workspaceRef.current = next;
+    cancelActiveRequest();
+    setMessages(threadsRef.current[next]);
+    setActionOutcomes({});
+    setRetryText(null);
+    // cancelActiveRequest is stable for this purpose; only the workspace switch matters here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [builderMode]);
+
   function newChat() {
     cancelActiveRequest();
     cancelDraftGeneration();
@@ -1380,10 +1407,10 @@ export function AiAssistant() {
               <div className="min-w-0 flex-1">
                 <p id="assistant-title" className="flex items-center gap-1 truncate text-base font-semibold text-zinc-900">
                   {/* One name for the assistant, whichever voice it speaks in. */}
-                  {isTutorMode ? "Requisor Assistant" : ASSISTANT_NAME}
+                  {builderMode ? "Program Builder Assistant" : isTutorMode ? "Requisor Assistant" : ASSISTANT_NAME}
                 </p>
                 <p className="truncate text-[13px] text-zinc-500">
-                  {isTutorMode ? "Design courses, add lessons, grade and publish" : "Guidance, practice assignments, quizzes and grades"}
+                  {builderMode ? "Employer programs: curriculum and proposal" : isTutorMode ? "Design courses, add lessons, grade and publish" : "Guidance, practice assignments, quizzes and grades"}
                 </p>
               </div>
               {/* Mute/unmute TTS button — only shown when TTS is supported */}
@@ -1478,7 +1505,9 @@ export function AiAssistant() {
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }} className="space-y-4">
                   <p className="text-[15px] font-light leading-relaxed text-zinc-600">
                     Hi {state.user?.name?.split(" ")[0] ?? "there"}.{" "}
-                    {isTutorMode
+                    {builderMode
+                      ? "Tell me about the employer's training need, or paste the discovery call, and I'll build the program here: the curriculum, then the proposal. Course work happens in the Tutor Workspace."
+                      : isTutorMode
                       ? "Ask me to create a course, add or edit a lesson, check submissions, or anything about your courses."
                       : "Ask which course fits your background, or what to learn next based on your progress."}
                   </p>
@@ -1492,7 +1521,7 @@ export function AiAssistant() {
                         whileHover={{ y: -2 }}
                         whileTap={{ scale: 0.97 }}
                         onClick={() => {
-                          if (isTutorMode && label === "Design a course from my topic") startCourseInterview();
+                          if (isTutorMode && !builderMode && label === "Design a course from my topic") startCourseInterview();
                           else void send(label);
                         }}
                         className="focus-ring group flex items-center gap-3 rounded-xl border border-border bg-white px-3.5 py-3 text-left text-sm font-medium text-zinc-700 shadow-soft transition-colors hover:border-primary/50 hover:text-primary"

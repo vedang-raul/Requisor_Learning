@@ -28,7 +28,19 @@ import { transcriptForAi } from "@/lib/courses/transcript";
 
 export type AssistantRole = "employee" | "tutor" | "admin";
 /** Who the assistant acts for. superAdmin and universityId decide which universities' courses it reaches. */
-export type ToolContext = { userId: number; role: AssistantRole; superAdmin?: boolean; universityId?: number | null };
+/**
+ * Where the assistant is working. On the Program Builder page it only builds
+ * employer programs; everywhere else it works on courses and can't touch the
+ * builder (it offers to open it). Each has its own conversation.
+ */
+export type AssistantWorkspace = "courses" | "program_builder";
+export type ToolContext = { userId: number; role: AssistantRole; superAdmin?: boolean; universityId?: number | null; workspace?: AssistantWorkspace };
+
+/** The only tools offered on the Program Builder page. */
+const PROGRAM_BUILDER_TOOLS = new Set(["propose_program_builder", "propose_open_page", "list_my_courses"]);
+function inWorkspace(name: string, workspace: AssistantWorkspace = "courses"): boolean {
+  return workspace === "program_builder" ? PROGRAM_BUILDER_TOOLS.has(name) : name !== "propose_program_builder";
+}
 const see = (ctx: ToolContext) => reachParams(seeReach(ctx));
 const manage = (ctx: ToolContext) => reachParams(manageReach(ctx));
 export type ToolOutcome = { content: string; action?: AssistantAction };
@@ -1113,8 +1125,8 @@ function parseSchedule(value: unknown): { publishAt: string } | { error: string 
 }
 
 /** Tool definitions (OpenAI/xAI function-calling format) available to a role. */
-export function toolsForRole(role: AssistantRole) {
-  return TOOLS.filter((t) => t.roles.includes(role)).map((t) => ({
+export function toolsForRole(role: AssistantRole, workspace: AssistantWorkspace = "courses") {
+  return TOOLS.filter((t) => t.roles.includes(role) && inWorkspace(t.name, workspace)).map((t) => ({
     type: "function" as const,
     function: { name: t.name, description: t.description, parameters: t.parameters },
   }));
@@ -1124,6 +1136,12 @@ export function toolsForRole(role: AssistantRole) {
 export async function runAssistantTool(name: string, rawArgs: string, ctx: ToolContext): Promise<ToolOutcome> {
   const tool = TOOLS.find((t) => t.name === name && t.roles.includes(ctx.role));
   if (!tool) return fail(`Unknown tool "${name}".`);
+  // A tool from the other workspace is refused even if the model asks for it.
+  if (!inWorkspace(name, ctx.workspace)) {
+    return fail(ctx.workspace === "program_builder"
+      ? "Courses and lessons aren't changed from the Program Builder. Offer to open the Tutor Workspace instead."
+      : "The Program Builder isn't run from here. Offer to open the Program Builder page instead.");
+  }
   let args: Args = {};
   try {
     const parsed = rawArgs ? JSON.parse(rawArgs) : {};

@@ -19,7 +19,9 @@ import { SyllabusPanel } from "@/components/course/syllabus-editor";
 import { isLessonScheduled } from "@/lib/utils";
 import { DATA_CHANGED_EVENT } from "@/components/assistant/assistant-action-card";
 import { lessonBrief } from "@/lib/courses/lesson-brief";
+import { ShareCourseButton } from "@/components/course/share-course-button";
 import { addModule, assignLesson, groupByModule, moduleList, moveLesson, moveModule, removeModule, updateModule } from "@/lib/courses/modules";
+import { isModuleHidden, readHiddenModules, toggleModule, writeHiddenModules } from "@/lib/courses/hidden-modules";
 import { partitionHidden, readHiddenCourses, writeHiddenCourses } from "@/lib/courses/hidden-courses";
 import { useStore } from "@/lib/store";
 import { Course, Lesson, Resource } from "@/lib/types";
@@ -939,7 +941,7 @@ function CourseEditor({ course, saving, onCancel, onSave, onAddLesson, onDeleteL
   const { state } = useStore();
   const [title, setTitle] = useState(course?.title ?? ""); const [tagline, setTagline] = useState(course?.tagline ?? ""); const [category, setCategory] = useState(course?.category ?? DEFAULT_COURSE_ICON); const [level, setLevel] = useState<Course["level"]>(course?.level ?? "Beginner"); const [tags, setTags] = useState(course?.tags.join(", ") ?? ""); const [assessment, setAssessment] = useState(course?.baseAssessment ?? "");
   const submit = (event: FormEvent) => { event.preventDefault(); const cleanCategory = category.trim(); if (!title.trim() || !cleanCategory) return; void onSave(course ? { ...course, title: title.trim(), tagline: tagline.trim(), category: cleanCategory, level, tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean), baseAssessment: assessment.trim() || undefined, cover: getCategoryCover(cleanCategory) } : { slug: title.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || `course-${Date.now()}`, title: title.trim(), tagline: tagline.trim() || "New learning path.", category: cleanCategory, level, tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean), cover: getCategoryCover(cleanCategory), addedAt: new Date().toISOString().slice(0, 10), lessons: [], baseAssessment: assessment.trim() || undefined, published: false }); };
-    return <Card className="space-y-4"><div className="flex items-center justify-between"><CardTitle>{course ? `Edit ${course.title}` : "New course"}</CardTitle><div className="flex gap-1">{course && <Button type="button" size="sm" variant="outline" onClick={() => window.open(`/api/courses/export?slug=${encodeURIComponent(course.slug)}`, "_blank")}><Download className="h-3.5 w-3.5" />Export ZIP</Button>}<Button size="sm" variant="ghost" onClick={onCancel}>Close</Button></div></div><form onSubmit={submit} className="grid gap-3 sm:grid-cols-2"><Field label="Course title"><Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={160} /></Field><Field label="Tagline"><Input value={tagline} onChange={(e) => setTagline(e.target.value)} required maxLength={400} /></Field><div className="sm:col-span-2"><p className="mb-1.5 text-sm font-medium text-zinc-800">Course icon</p><CourseIconPicker value={category} onChange={setCategory} /></div><Field label="Level"><Select value={level} onChange={(e) => setLevel(e.target.value as Course["level"])}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></Select></Field><Field label="Tags (comma separated)"><Input value={tags} onChange={(e) => setTags(e.target.value)} /></Field><Field label="Base assessment"><Textarea value={assessment} onChange={(e) => setAssessment(e.target.value)} maxLength={5000} /></Field><div className="flex items-end gap-2"><Button type="submit" disabled={saving} className="min-h-11">{saving && <Loader2 className="h-4 w-4 animate-spin" />}Save course</Button>{course && onDeleteCourse && <Button type="button" variant="danger" disabled={saving} onClick={() => void onDeleteCourse()} aria-label={`Delete ${course.title}`}><Trash2 className="h-4 w-4" /></Button>}</div></form>
+    return <Card className="space-y-4"><div className="flex items-center justify-between"><CardTitle>{course ? `Edit ${course.title}` : "New course"}</CardTitle><div className="flex gap-1">{course && <ShareCourseButton course={course} className="focus-ring inline-flex h-9 items-center gap-1.5 rounded-xl border border-border bg-white px-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50" />}{course && <Button type="button" size="sm" variant="outline" onClick={() => window.open(`/api/courses/export?slug=${encodeURIComponent(course.slug)}`, "_blank")}><Download className="h-3.5 w-3.5" />Export ZIP</Button>}<Button size="sm" variant="ghost" onClick={onCancel}>Close</Button></div></div><form onSubmit={submit} className="grid gap-3 sm:grid-cols-2"><Field label="Course title"><Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={160} /></Field><Field label="Tagline"><Input value={tagline} onChange={(e) => setTagline(e.target.value)} required maxLength={400} /></Field><div className="sm:col-span-2"><p className="mb-1.5 text-sm font-medium text-zinc-800">Course icon</p><CourseIconPicker value={category} onChange={setCategory} /></div><Field label="Level"><Select value={level} onChange={(e) => setLevel(e.target.value as Course["level"])}><option>Beginner</option><option>Intermediate</option><option>Advanced</option></Select></Field><Field label="Tags (comma separated)"><Input value={tags} onChange={(e) => setTags(e.target.value)} /></Field><Field label="Base assessment"><Textarea value={assessment} onChange={(e) => setAssessment(e.target.value)} maxLength={5000} /></Field><div className="flex items-end gap-2"><Button type="submit" disabled={saving} className="min-h-11">{saving && <Loader2 className="h-4 w-4 animate-spin" />}Save course</Button>{course && onDeleteCourse && <Button type="button" variant="danger" disabled={saving} onClick={() => void onDeleteCourse()} aria-label={`Delete ${course.title}`}><Trash2 className="h-4 w-4" /></Button>}</div></form>
     {course && onAddLesson && <LessonsSection course={course} saving={saving} onAddLesson={onAddLesson} onDeleteLesson={onDeleteLesson} onChangeCourse={onChangeCourse} allowUploads={allowUploads} />}
   </Card>;
 }
@@ -950,6 +952,18 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, onChangeC
   const [adding, setAdding] = useState(false);
   // Modules (Coursera-style): a title and description each; lessons are put in one from the list or the lesson form.
   const groups = groupByModule({ modules: moduleList(course), lessons: course.lessons });
+  // Modules the tutor has hidden from this list to declutter it (this browser; learners still see them).
+  const { state: storeState } = useStore();
+  const tutorEmail = storeState.user?.email ?? "";
+  const [hiddenModules, setHiddenModules] = useState<string[]>([]);
+  const [showHiddenModules, setShowHiddenModules] = useState(false);
+  useEffect(() => { setHiddenModules(tutorEmail ? readHiddenModules(tutorEmail, course.slug) : []); setShowHiddenModules(false); }, [tutorEmail, course.slug]);
+  const hideModule = (title: string) => setHiddenModules((current) => {
+    const next = toggleModule(current, title);
+    writeHiddenModules(tutorEmail, course.slug, next);
+    return next;
+  });
+  const hiddenCount = groups.filter((g) => isModuleHidden(hiddenModules, g.title)).length;
   const moduleTitles = moduleList(course).map((m) => m.title);
   const hasModules = moduleTitles.length > 0;
   const [newModuleFor, setNewModuleFor] = useState<string | null>(null);
@@ -1050,9 +1064,20 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, onChangeC
         </motion.button>
       ) : (
         <div className="mt-3 space-y-3">
+          {hiddenCount > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 py-2 text-sm text-zinc-600">
+              <span className="flex items-center gap-2"><EyeOff className="h-4 w-4 text-zinc-400" aria-hidden="true" />{hiddenCount} module{hiddenCount === 1 ? "" : "s"} hidden from this list. Learners still see {hiddenCount === 1 ? "it" : "them"}.</span>
+              <button type="button" onClick={() => setShowHiddenModules((v) => !v)} aria-expanded={showHiddenModules} className="focus-ring rounded-md font-semibold text-primary hover:underline">
+                {showHiddenModules ? "Hide them again" : `Show hidden (${hiddenCount})`}
+              </button>
+            </div>
+          )}
           {(() => {
             let number = 0; // lessons are numbered through the course, in module order
             return groups.map((group, gi) => {
+              const moduleHidden = isModuleHidden(hiddenModules, group.title);
+              // Hidden: skipped, but its lessons still count, so the numbers stay the same.
+              if (moduleHidden && !showHiddenModules) { number += group.lessons.length; return null; }
               const moduleNumber = group.title ? gi + 1 : null;
               const minutes = group.lessons.reduce((sum, l) => sum + (l.durationMin || 0), 0);
               const editingThis = moduleDraft !== null && moduleDraft.original !== null && group.title !== null && moduleDraft.original === group.title;
@@ -1142,13 +1167,13 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, onChangeC
               // A course with no modules yet: just the lessons, as before.
               if (!hasModules) return <div key="lessons">{rows}</div>;
               return (
-                <div key={group.title ?? "loose"} className={cn("rounded-2xl border p-3", group.title ? "border-zinc-200 bg-zinc-50/60" : "border-dashed border-zinc-300 bg-white")}>
+                <div key={group.title ?? "loose"} className={cn("rounded-2xl border p-3", group.title ? "border-zinc-200 bg-zinc-50/60" : "border-dashed border-zinc-300 bg-white", moduleHidden && "opacity-60 hover:opacity-100")}>
                   {editingThis ? (
                     <ModuleForm draft={moduleDraft!} error={moduleError} saving={saving} onChange={setModuleDraft} onSave={saveModuleDraft} onCancel={() => { setModuleDraft(null); setModuleError(null); }} />
                   ) : (
                     <div className="mb-2 flex flex-wrap items-start justify-between gap-2 px-1">
                       <div className="min-w-0">
-                        {moduleNumber && <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">Module {moduleNumber}</p>}
+                        {moduleNumber && <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-primary">Module {moduleNumber}{moduleHidden && <span className="inline-flex items-center gap-1 rounded-full bg-zinc-200 px-1.5 py-0.5 text-[10px] normal-case tracking-normal text-zinc-600"><EyeOff className="h-3 w-3" aria-hidden="true" />Hidden</span>}</p>}
                         <p className="font-semibold text-zinc-900">{group.title ?? "Not in a module"}</p>
                         <p className="text-xs text-zinc-500">{group.lessons.length} lesson{group.lessons.length === 1 ? "" : "s"}{minutes ? ` · ${minutes} min` : ""}</p>
                         {group.title && (group.description
@@ -1156,12 +1181,17 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, onChangeC
                           : onChangeCourse && <button type="button" onClick={() => { setModuleDraft({ original: group.title!, title: group.title!, description: "" }); setModuleError(null); }} className="mt-1 text-xs font-semibold text-primary hover:underline">+ Add a description</button>)}
                         {!group.title && <p className="mt-0.5 text-xs text-zinc-500">Use the Module picker on a lesson to put it in a module.</p>}
                       </div>
-                      {group.title && onChangeCourse && (
+                      {group.title && (
                         <div className="flex shrink-0 items-center gap-0.5">
+                          <Button size="sm" variant="ghost" onClick={() => hideModule(group.title!)} aria-label={moduleHidden ? `Show module ${group.title} in this list` : `Hide module ${group.title} from this list`} title={moduleHidden ? "Show in this list" : "Hide from this list (learners still see it)"}>
+                            {moduleHidden ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                          </Button>
+                          {onChangeCourse && <>
                           <Button size="sm" variant="ghost" disabled={saving || gi === 0} onClick={() => void change(moveModule(course, group.title!, -1))} aria-label={`Move module ${group.title} up`}><ChevronUp className="h-4 w-4" /></Button>
                           <Button size="sm" variant="ghost" disabled={saving || gi >= moduleTitles.length - 1} onClick={() => void change(moveModule(course, group.title!, 1))} aria-label={`Move module ${group.title} down`}><ChevronDown className="h-4 w-4" /></Button>
                           <Button size="sm" variant="ghost" disabled={saving} onClick={() => { setModuleDraft({ original: group.title!, title: group.title!, description: group.description }); setModuleError(null); }} aria-label={`Edit module ${group.title}`}><Pencil className="h-4 w-4" /></Button>
                           <Button size="sm" variant="ghost" disabled={saving} onClick={() => deleteModule(group.title!, group.lessons.length)} aria-label={`Remove module ${group.title}`}><Trash2 className="h-4 w-4 text-red-600" /></Button>
+                          </>}
                         </div>
                       )}
                     </div>
