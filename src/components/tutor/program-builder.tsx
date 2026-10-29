@@ -1,8 +1,8 @@
 "use client";
 
-import { createElement, useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { createElement, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft, ArrowRight, BookOpenCheck, Check, Download, FileText, Loader2, Printer, RotateCcw, Sparkles, Wand2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpenCheck, Check, Copy, Download, FileText, Link2, Loader2, Printer, RotateCcw, Sparkles, Wand2 } from "lucide-react";
 import { DATA_CHANGED_EVENT } from "@/components/assistant/assistant-action-card";
 import { DEFAULT_COURSE_ICON, getCategoryCover } from "@/components/course/category-icon";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,8 @@ import { Input, Textarea } from "@/components/ui/input";
 import { useStore } from "@/lib/store";
 import type { Course } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { isPreviewUrl, PREVIEW_LINK_DAYS, previewModuleChoices } from "@/lib/courses/preview-modules";
+import type { PreviewLinkSummary } from "@/lib/courses/preview-links";
 import { DEFAULT_PROGRAM_DOC_STYLE, DOC_THEMES, loadDocStyle, logoSource, MAX_LOGO_BYTES, saveDocStyle, type ProgramDocStyle } from "@/lib/courses/program-doc-style";
 import {
   analyzeTranscript, BLUEPRINT_LABEL, blueprintSlug, buildProposal, composeCurriculum, curriculumFromCourse, curriculumToCourse, EMPTY_DISCOVERY, FORMATS, INDUSTRIES, LEVELS, MODULE_COUNTS,
@@ -136,6 +138,17 @@ function ProposalDocument({ proposal, onChange, printing = false, look }: { prop
         ))}
       </div>
 
+      {proposal.preview && isPreviewUrl(proposal.preview.url) && (
+        <>
+          <h2 className={heading}>Preview the course</h2>
+          <p className="text-sm leading-relaxed">
+            See the selected modules for yourself, no account needed:{" "}
+            <a href={proposal.preview.url} className="break-all font-semibold text-[color:var(--doc-accent)] underline">{proposal.preview.url}</a>
+          </p>
+          <p className="mt-1 text-xs text-zinc-600">The link is available until {proposal.preview.until}.</p>
+        </>
+      )}
+
       <h2 className={heading}>Delivery &amp; measurement</h2>
       {E({ value: proposal.delivery, onEdit: (v) => set("delivery", v), as: "p", className: "text-sm leading-relaxed", label: "Delivery", multiline: true })}
       <ul className="ml-5 mt-2 list-disc space-y-1 text-sm">
@@ -178,6 +191,124 @@ function ProposalDocument({ proposal, onChange, printing = false, look }: { prop
         <span>{proposal.date}</span>
       </footer>
     </article>
+  );
+}
+
+// ── Preview link for the proposal's readers ────────────────────────────────
+const fmtDate = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+
+/**
+ * The tutor picks modules of the course and gets a link (/p/<code>) that shows
+ * only those, without signing in, for PREVIEW_LINK_DAYS days. The newest link
+ * goes into the proposal; earlier ones are listed to revoke.
+ */
+function PreviewLinkPanel({ course, proposal, onChange, label }: { course: Course; proposal: Proposal; onChange: (next: Proposal) => void; label: string }) {
+  const choices = useMemo(() => previewModuleChoices(course), [course]);
+  const [picked, setPicked] = useState<string[]>(() => choices.slice(0, 1).map((c) => c.key));
+  const [links, setLinks] = useState<PreviewLinkSummary[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<Notice>(null);
+  const [copied, setCopied] = useState(false);
+  const api = `/api/tutor/preview-links?course=${encodeURIComponent(course.slug)}`;
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch(api, { cache: "no-store" });
+      const data = (await res.json().catch(() => ({}))) as { links?: PreviewLinkSummary[] };
+      setLinks(res.ok ? data.links ?? [] : []);
+    } catch { setLinks([]); }
+  }, [api]);
+  useEffect(() => { void load(); }, [load]);
+
+  const toggle = (key: string) => setPicked((now) => (now.includes(key) ? now.filter((k) => k !== key) : [...now, key]));
+
+  async function create() {
+    setBusy(true); setNote(null);
+    try {
+      const res = await fetch("/api/tutor/preview-links", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ course: course.slug, modules: picked, label }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { token?: string; link?: PreviewLinkSummary; error?: string };
+      if (!res.ok || !data.token || !data.link) { setNote({ kind: "warn", text: data.error ?? "Couldn't make the link. Try again." }); return; }
+      onChange({ ...proposal, preview: { id: data.link.id, url: `${window.location.origin}/p/${data.token}`, until: fmtDate(data.link.expiresAt) } });
+      setNote({ kind: "ok", text: "Link made and added to the proposal. Copy it now: for safety it can't be shown again later." });
+      void load();
+    } catch {
+      setNote({ kind: "warn", text: "Couldn't make the link. Check your connection and try again." });
+    } finally { setBusy(false); }
+  }
+
+  async function revoke(id: number) {
+    if (!window.confirm("Turn this link off? Anyone who has it will no longer be able to open the preview.")) return;
+    const res = await fetch(`${api}&id=${id}`, { method: "DELETE" }).catch(() => null);
+    if (!res?.ok) { setNote({ kind: "warn", text: "Couldn't turn the link off. Try again." }); return; }
+    if (proposal.preview?.id === id) onChange({ ...proposal, preview: undefined });
+    setNote({ kind: "ok", text: "Link turned off." });
+    void load();
+  }
+
+  async function copy(url: string) {
+    try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* clipboard blocked: the link is selectable */ }
+  }
+
+  const current = proposal.preview && isPreviewUrl(proposal.preview.url) ? proposal.preview : null;
+  return (
+    <Card className="p-5">
+      <p className="flex items-center gap-2 text-sm font-semibold text-zinc-900"><Link2 className="h-4 w-4 text-primary" aria-hidden="true" />Preview link for the proposal&apos;s readers</p>
+      <p className="mt-0.5 text-[13px] text-zinc-600">
+        Readers open it without an account and see only the modules you tick (their published lessons); the other modules show as locked titles.
+        Nothing else from your course or the site is shown. It works for {PREVIEW_LINK_DAYS} days, or until you turn it off.
+      </p>
+      {choices.length === 0 ? (
+        <p className="mt-3 text-[13px] text-amber-700">This course has no published lessons yet, so there&apos;s nothing to preview.</p>
+      ) : (
+        <>
+          <fieldset className="mt-3 grid gap-1.5 sm:grid-cols-2">
+            <legend className="sr-only">Modules readers can open</legend>
+            {choices.map((c, i) => (
+              <label key={c.key} className={cn("flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-[13px] transition", picked.includes(c.key) ? "border-primary/40 bg-primary/5" : "border-zinc-200 hover:border-zinc-300")}>
+                <input type="checkbox" className="mt-0.5 accent-[color:var(--color-primary,#0f766e)]" checked={picked.includes(c.key)} onChange={() => toggle(c.key)} />
+                <span><span className="font-semibold text-zinc-900">Module {i + 1}: {c.title}</span><span className="block text-zinc-500">{c.lessons} lesson{c.lessons === 1 ? "" : "s"}</span></span>
+              </label>
+            ))}
+          </fieldset>
+          <Button type="button" size="sm" className="mt-3" onClick={() => void create()} disabled={busy || picked.length === 0}>
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}{current ? "Make a new link" : "Make preview link"}
+          </Button>
+        </>
+      )}
+      {current && (
+        <div className="mt-3 flex gap-2">
+          <input readOnly value={current.url} aria-label="Preview link" onFocus={(e) => e.currentTarget.select()} className="focus-ring h-9 min-w-0 flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-[13px] text-zinc-700" />
+          <Button type="button" size="sm" variant="outline" onClick={() => void copy(current.url)}>{copied ? <><Check className="h-3.5 w-3.5" />Copied</> : <><Copy className="h-3.5 w-3.5" />Copy</>}</Button>
+          <Button type="button" size="sm" variant="outline" onClick={() => onChange({ ...proposal, preview: undefined })}>Remove from proposal</Button>
+        </div>
+      )}
+      <NoticeBox notice={note} />
+      {links && links.length > 0 && (
+        <details className="mt-3">
+          <summary className="cursor-pointer text-[13px] font-semibold text-zinc-700">Links for this course ({links.length})</summary>
+          <ul className="mt-2 divide-y divide-zinc-100 rounded-lg border border-zinc-200">
+            {links.map((l) => {
+              const live = !l.revoked && !l.expired;
+              return (
+                <li key={l.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-[12.5px]">
+                  <span className="min-w-0">
+                    <span className="block font-semibold text-zinc-900">{l.label || "Untitled"}{current?.id === l.id ? " · in this proposal" : ""}</span>
+                    <span className="block text-zinc-500">{l.modules.join(", ")}</span>
+                    <span className="block text-zinc-500">
+                      {l.revoked ? "Turned off" : l.expired ? `Expired ${fmtDate(l.expiresAt)}` : `Open until ${fmtDate(l.expiresAt)}`} · {l.views} view{l.views === 1 ? "" : "s"}
+                    </span>
+                  </span>
+                  {live && <Button type="button" size="sm" variant="outline" onClick={() => void revoke(l.id)}>Turn off</Button>}
+                </li>
+              );
+            })}
+          </ul>
+        </details>
+      )}
+    </Card>
   );
 }
 
@@ -631,6 +762,8 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
     return () => { root.remove(); document.body.classList.remove("print-program-document"); };
   }, []);
   const printing = step === 3 && proposal ? "proposal" : step === 2 && curriculum ? "blueprint" : null;
+  // Preview links are for programs built on one of the tutor's own courses.
+  const previewCourse = sourceCourse ? myCourses?.find((c) => c.slug === sourceCourse.slug) ?? null : null;
   useEffect(() => {
     document.body.classList.toggle("print-program-document", printing !== null);
   }, [printing]);
@@ -870,6 +1003,11 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
           <div className="mx-auto mb-4 max-w-[860px]">
             <DocumentStyleControls style={docStyle} onChange={changeDocStyle} defaultLogo={platformLogo} />
           </div>
+          {previewCourse && (
+            <div className="mx-auto mb-4 max-w-[860px]">
+              <PreviewLinkPanel course={previewCourse} proposal={proposal} onChange={setProposal} label={form.employer.trim() || proposal.employer} />
+            </div>
+          )}
           <ProposalDocument proposal={proposal} onChange={setProposal} look={look} />
         </div>
       )}

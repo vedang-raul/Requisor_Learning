@@ -221,6 +221,10 @@ export async function middleware(req: NextRequest) {
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("content-security-policy", csp);
+  // Proposal preview pages render bare: no session, store or app data requests
+  // (src/app/layout.tsx). Set only here, never taken from the visitor.
+  if (path.startsWith("/p/")) requestHeaders.set("x-preview-page", "1");
+  else requestHeaders.delete("x-preview-page");
 
   const response = NextResponse.next({
     request: { headers: requestHeaders },
@@ -228,10 +232,16 @@ export async function middleware(req: NextRequest) {
 
   response.headers.set("Content-Security-Policy", csp);
   // Do not expose account screens or API responses as search results.
-  if (["/app", "/api", "/login", "/reset-password"].some(
+  if (["/app", "/api", "/login", "/reset-password", "/p"].some(
     (prefix) => path === prefix || path.startsWith(`${prefix}/`),
   )) {
     response.headers.set("X-Robots-Tag", "noindex, nofollow");
+  }
+  // Proposal preview links (/p/<code>): the code is the key, so keep it out of
+  // caches and out of the Referer header that other sites receive.
+  if (path.startsWith("/p/")) {
+    response.headers.set("Cache-Control", "private, no-store");
+    response.headers.set("Referrer-Policy", "strict-origin");
   }
 
   return response;

@@ -6,6 +6,7 @@
 import JSZip from "jszip";
 import type { Curriculum, Proposal } from "@/lib/courses/program-builder";
 import { BLUEPRINT_LABEL } from "@/lib/courses/program-builder";
+import { isPreviewUrl } from "@/lib/courses/preview-modules";
 
 type Run = { text: string; bold?: boolean };
 export type DocBlock =
@@ -66,6 +67,11 @@ export function proposalBlocks(proposal: Proposal): DocBlock[] {
     ...proposal.outcomes.map((outcome) => block("bullet", outcome)),
     block("heading", "Curriculum"),
     ...proposal.modules.flatMap((module) => [block("subheading", module.title), block("paragraph", module.summary)]),
+    ...(proposal.preview && isPreviewUrl(proposal.preview.url) ? [
+      block("heading", "Preview the course"),
+      block("paragraph", "See the selected modules for yourself, no account needed: ", run(proposal.preview.url, true)),
+      block("paragraph", `The link is available until ${proposal.preview.until}.`),
+    ] : []),
     block("heading", "Delivery & measurement"),
     block("paragraph", proposal.delivery),
     ...proposal.deliveryPoints.map((point) => block("bullet", point)),

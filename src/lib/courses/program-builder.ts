@@ -319,6 +319,8 @@ export type Proposal = {
   pricing: PricingRow[];
   total: string;
   pricingNote: string;
+  /** A preview link for the proposal's readers (see src/lib/courses/preview-links.ts), when the tutor made one. */
+  preview?: { id: number; url: string; until: string };
 };
 
 /** Assembles the employer proposal from the curriculum as it currently stands, edits included. */

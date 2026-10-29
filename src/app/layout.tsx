@@ -23,6 +23,15 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // explicit Script component currently needs it.
   const headersList = await headers();
   headersList.get("x-nonce");
+  // Proposal preview links (/p/<code>) show only what the page itself renders:
+  // no session, store or accessibility providers, so no requests for app data.
+  if (headersList.get("x-preview-page") === "1") {
+    return (
+      <html lang="en">
+        <body className="min-h-screen bg-background font-sans text-[#111827]">{children}</body>
+      </html>
+    );
+  }
 
   return (
     <html lang="en">

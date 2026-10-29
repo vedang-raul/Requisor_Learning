@@ -643,6 +643,24 @@ p.query(`
     PRIMARY KEY (submission_id, criterion_id)
   );
 
+  -- Proposal preview links (src/lib/courses/preview-links.ts): chosen modules of
+  -- a course, readable without signing in until expires_at. Only the SHA-256 of
+  -- the link's code is stored. The app also creates this table on first use.
+  CREATE TABLE IF NOT EXISTS course_preview_links (
+    id SERIAL PRIMARY KEY,
+    token_hash CHAR(64) NOT NULL UNIQUE,
+    course_slug VARCHAR(80) NOT NULL REFERENCES courses(slug) ON DELETE CASCADE,
+    module_keys JSONB NOT NULL,
+    label VARCHAR(160) NOT NULL DEFAULT '',
+    created_by INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ,
+    view_count INT NOT NULL DEFAULT 0,
+    last_viewed_at TIMESTAMPTZ
+  );
+  CREATE INDEX IF NOT EXISTS course_preview_links_course_idx ON course_preview_links (course_slug);
+
   -- Server-side notifications (the notification bell was purely a local,
   -- per-browser mock before this: seeded with two hardcoded welcome
   -- messages, never written to by any server event — see src/lib/store.tsx).

@@ -7,13 +7,22 @@ only. How to cut a release is in [docs/RELEASING.md](docs/RELEASING.md).
 
 ## [Unreleased]
 
-No database changes.
+Database: one new table, `course_preview_links` (additive; the app also creates
+it on first use). Nothing existing changes.
 
 ### Added
 - **Program Builder: start from one of your courses**: pick a course you already
   teach and its modules, lessons, outcomes and assessment become the program's
   curriculum, ready for an employer proposal (PDF or Word). No extra draft course
   is made, and edits in the builder change the proposal only, not the course.
+- **Proposal preview links**: for a program built on one of your courses, tick
+  the modules the proposal's readers may open and make a link (`/p/<code>`). It
+  goes into the proposal (screen, PDF and Word). Readers need no account and see
+  only those modules' published lessons (video, description, key takeaways);
+  the other modules show as locked titles. Nothing else is sent to them: no
+  resources, assignments, quizzes, tutor or course details, and the page makes
+  no requests for app data. Links last 15 days, can be turned off at any time,
+  and count their views. The link's code is random and only its hash is stored.
 - **Course share links**: a Share button on the course page and in the course
   editor gives a short link (`/c/<course>`) to copy or send. Whoever opens it signs
   in first (or signs up) and is then taken to the course. The link grants nothing:
