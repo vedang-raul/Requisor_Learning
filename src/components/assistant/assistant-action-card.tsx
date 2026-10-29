@@ -142,7 +142,7 @@ function describe(action: AssistantAction): { icon: typeof Sparkles; title: stri
         : action.run === "proposal" ? "Create the employer proposal"
         : "Back to the curriculum";
       const confirm = action.run === "fill" ? "Fill in" : action.run === "generate" ? "Build curriculum" : action.run === "proposal" ? "Create proposal" : "Open curriculum";
-      return { icon: Briefcase, title, lines: [...action.summary.slice(0, 4), "Opens the Program Builder tab"], confirm };
+      return { icon: Briefcase, title, lines: [...action.summary.slice(0, 4), "Opens the Program Builder"], confirm };
     }
     case "update_course":
       return { icon: Pencil, title: `Update ${action.courseTitle}`, lines: action.summary.slice(0, 8), confirm: "Save changes" };
@@ -302,7 +302,7 @@ export function AssistantActionCard({ action, onOutcome, voiceAnswer, onAnnounce
           // The builder picks the command up, whether it is open now or opened by this.
           sendProgramCommand({ run: action.run, form: action.form }, accountState.user?.email);
           finish(action.run === "fill" ? "Filled in the discovery fields." : action.run === "generate" ? "Building the curriculum in the Program Builder." : action.run === "proposal" ? "Assembling the proposal in the Program Builder." : "Opened the curriculum.");
-          if (!["/app/tutor", "/app/tutor/"].includes(window.location.pathname)) router.push("/app/tutor/");
+          if (!window.location.pathname.startsWith("/app/tutor/program-builder")) router.push("/app/tutor/program-builder/");
           return;
         case "update_course":
           await updateCourse(action.courseSlug, (c) => ({ ...c, ...action.changes }));

@@ -232,11 +232,11 @@ const TOOLS: ToolDef[] = [
   },
   {
     name: "propose_open_page",
-    description: "Propose taking the user to a page. Anyone: 'dashboard', 'profile' (settings, accessibility, retaking onboarding), 'course' (needs course_slug), 'lesson' (needs lesson_id; where learners upload assignment files and post comments). Learners: 'my_learning', 'submissions'. Tutors/admins: 'grading_inbox', 'tutor_workspace' (lessons, recordings and video edits, insights, Program Builder), 'grader' (needs submission_id; annotate a submission or score a rubric). Admins: 'admin_people' (approvals, roles), 'admin_courses' (courses and, for super admins, assigning tutors). Super admins: 'admin_activity' (sign-ins and time spent), 'admin_universities'.",
+    description: "Propose taking the user to a page. Anyone: 'dashboard', 'profile' (settings, accessibility, retaking onboarding), 'course' (needs course_slug), 'lesson' (needs lesson_id; where learners upload assignment files and post comments). Learners: 'my_learning', 'submissions'. Tutors/admins: 'grading_inbox', 'tutor_workspace' (courses, modules, lessons, recordings and video edits, insights), 'program_builder' (employer training programs: curriculum, blueprint and proposal), 'grader' (needs submission_id; annotate a submission or score a rubric). Admins: 'admin_people' (approvals, roles), 'admin_courses' (courses and, for super admins, assigning tutors). Super admins: 'admin_activity' (sign-ins and time spent), 'admin_universities'.",
     parameters: {
       type: "object",
       properties: {
-        page: { type: "string", enum: ["dashboard", "profile", "course", "my_learning", "submissions", "lesson", "grading_inbox", "tutor_workspace", "grader", "admin_people", "admin_courses", "admin_activity", "admin_universities"] },
+        page: { type: "string", enum: ["dashboard", "profile", "course", "my_learning", "submissions", "lesson", "grading_inbox", "tutor_workspace", "program_builder", "grader", "admin_people", "admin_courses", "admin_activity", "admin_universities"] },
         lesson_id: { type: "string" },
         course_slug: { type: "string" },
         submission_id: { type: "integer" },
@@ -279,6 +279,7 @@ const TOOLS: ToolDef[] = [
       if (!isManager) return fail("That page is only for tutors.");
       if (page === "grading_inbox") return go("/app/tutor/assignment/", "the grading inbox");
       if (page === "tutor_workspace") return go("/app/tutor/", "Tutor Workspace");
+      if (page === "program_builder") return go("/app/tutor/program-builder/", "the Program Builder");
       if (page === "grader") {
         const id = int(args.submission_id);
         if (!Number.isSafeInteger(id) || id < 1) return fail("A valid submission_id is required.");
@@ -777,7 +778,7 @@ const TOOLS: ToolDef[] = [
         : run === "generate" ? "Write the curriculum in the Program Builder"
         : run === "proposal" ? "Assemble the employer proposal in the Program Builder"
         : "Go back to the curriculum in the Program Builder";
-      return proposed({ kind: "program_builder", id: newId(), run, form, summary }, `${what}${summary.length ? `: ${summary[0]}` : ""}. It opens the Program Builder tab. ${run === "generate" || run === "proposal" ? "A new program's first curriculum is also saved as a private draft \"Curriculum Blueprint\" course in their courses; nothing is published or sent to anyone." : "Nothing there is saved or sent to anyone."}`);
+      return proposed({ kind: "program_builder", id: newId(), run, form, summary }, `${what}${summary.length ? `: ${summary[0]}` : ""}. It opens the Program Builder. ${run === "generate" || run === "proposal" ? "A new program's first curriculum is also saved as a private draft \"Curriculum Blueprint\" course in their courses; nothing is published or sent to anyone." : "Nothing there is saved or sent to anyone."}`);
     },
   },
   {

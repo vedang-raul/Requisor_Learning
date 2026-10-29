@@ -5,6 +5,16 @@ Every release of Alma 41 (Requisor Learning), newest first. Versions follow
 people or other systems use the app, MINOR for new features, PATCH for fixes
 only. How to cut a release is in [docs/RELEASING.md](docs/RELEASING.md).
 
+## [Unreleased]
+
+No database changes.
+
+### Changed
+- **Program Builder** has its own place in the sidebar (Tutor Workspace →
+  Program Builder → Check Assignments) instead of a tab inside the Tutor
+  Workspace. "Open in My Courses" opens the blueprint course in the Tutor
+  Workspace, and the AI assistant opens the new page when it builds a program.
+
 ## [1.2.0] — not yet published
 
 Release candidate on `main`: the commit that sets version 1.2.0. **Database change:** adds two nullable columns,
@@ -92,6 +102,7 @@ includes everything built before it. Highlights since the previous publish
   been deleted.
 - Tutor workspace tabs could stay blank after switching.
 
-[1.2.0]: https://github.com/vedang-raul/Requisor_Learning/compare/v1.1.0...main
+[Unreleased]: https://github.com/vedang-raul/Requisor_Learning/compare/bcc5aed...main
+[1.2.0]: https://github.com/vedang-raul/Requisor_Learning/compare/v1.1.0...bcc5aed
 [1.1.0]: https://github.com/vedang-raul/Requisor_Learning/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/vedang-raul/Requisor_Learning/releases/tag/v1.0.0

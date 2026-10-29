@@ -6,7 +6,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, Library,
-  MonitorPlay, Trophy,FileCheck2 , ShieldCheck, ChevronsLeft, LogOut, ChevronDown, GraduationCap, ClipboardCheck, CircleUserRound,
+  MonitorPlay, Trophy, FileCheck2, Briefcase, ShieldCheck, ChevronsLeft, LogOut, ChevronDown, GraduationCap, ClipboardCheck, CircleUserRound,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useStore } from "@/lib/store";
@@ -25,6 +25,7 @@ export const navItems = [
   { href: "/app/badges/",     label: "Badges",      icon: Trophy, learnerOnly: true, notForAdmins: true },
   { href: "/app/submissions/",label: "Submissions", icon: FileCheck2, learnerOnly: true, notForAdmins: true },
   { href: "/app/tutor/",      label: "Tutor Workspace", icon: GraduationCap, tutorOnly: true },
+  { href: "/app/tutor/program-builder/", label: "Program Builder", icon: Briefcase, tutorOnly: true },
   { href: "/app/tutor/assignment/", label: "Check Assignments", icon: ClipboardCheck, tutorOnly: true, notForAdmins: true },
   // Shown as "University Admin Panel" or "Super Admin Panel" (see navLabel).
   { href: "/app/admin/",      label: "Admin Panel", icon: ShieldCheck, adminOnly: true },

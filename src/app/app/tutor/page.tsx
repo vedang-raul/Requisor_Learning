@@ -5,15 +5,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Activity, BarChart3, BookPlus, Briefcase, Check, CheckCircle2, Download, Eye, EyeOff, FileText, GraduationCap, Image as ImageIcon, Inbox, LayoutGrid, Paperclip, Upload,
+  Activity, BarChart3, BookPlus, Check, CheckCircle2, Download, Eye, EyeOff, FileText, GraduationCap, Image as ImageIcon, Inbox, LayoutGrid, Paperclip, Upload,
   ListChecks, Loader2, Pencil, Plus, RotateCcw, Send, Star, Terminal, Trash2, TrendingUp, Users, X,BookOpen, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock, Layers, Sparkles, Video, Youtube
 } from "lucide-react";
 import { RecordStudio } from "@/components/tutor/video-recorder";
-import { ProgramBuilder } from "@/components/tutor/program-builder";
 import { AiVideoStudio } from "@/components/tutor/ai-video-studio";
 import type { LessonAiField, LessonAiValues } from "@/lib/ai/lesson-ai";
 import { trackEvent } from "@/lib/analytics";
-import { hasProgramCommand, PROGRAM_COMMAND_EVENT } from "@/lib/courses/program-builder";
 import { AssignmentBrief } from "@/components/lesson/lesson-assignment";
 import { parseAssignment } from "@/lib/ai/assignment-format";
 import { ASSIGNMENT_DATA, GUARDRAILS_MAX_CHARS, GUARDRAILS_MIN_CHARS, type AssignmentDataKey } from "@/lib/ai/assignment-ai";
@@ -39,7 +37,7 @@ import { mergeSavedTutorCourse, reconcileTutorCourses, type TutorCourseSummary }
 import { SubmissionSourceBadge } from "@/components/lesson/submission-source-badge";
 import type { SubmissionSource } from "@/lib/courses/submission-source";
 
-type TabKey = "analytics" | "courses" | "learners" | "ratings" | "programs";
+type TabKey = "analytics" | "courses" | "learners" | "ratings";
 type TutorCourse = TutorCourseSummary;
 const AI_COURSE_DRAFT_KEY = "requisor-ai-course-draft";
 const AI_COURSE_DRAFT_EVENT = "requisor:open-ai-course-draft";
@@ -192,15 +190,6 @@ export default function TutorPage() {
   const { state, hydrated, upsertCourse, upsertLesson, deleteLesson, deleteCourse } = useStore();
   const router = useRouter();
   const [tab, setTab] = useState<TabKey>("analytics");
-  // The AI assistant drives the Program Builder: show its tab when a command is waiting or arrives.
-  useEffect(() => {
-    if (hasProgramCommand(state.user?.email)) setTab("programs");
-    const open = () => {
-      if (hasProgramCommand(state.user?.email)) setTab("programs");
-    };
-    window.addEventListener(PROGRAM_COMMAND_EVENT, open);
-    return () => window.removeEventListener(PROGRAM_COMMAND_EVENT, open);
-  }, [state.user?.email]);
   const [items, setItems] = useState<TutorCourse[]>([]);
   // Courses the tutor has hidden from My Courses to declutter it (this browser, per account; learners are unaffected).
   const [hiddenSlugs, setHiddenSlugs] = useState<string[]>([]);
@@ -269,7 +258,17 @@ export default function TutorPage() {
   useEffect(() => {
     if (hydrated && state.user && state.user.role !== "tutor" && state.user.role !== "admin") router.replace("/app/dashboard/");
   }, [hydrated, router, state.user]);
-  useEffect(() => { if (hydrated && state.user && (state.user.role === "tutor" || state.user.role === "admin")) void load(); }, [hydrated, state.user, load]);
+  useEffect(() => {
+    if (!hydrated || !state.user || (state.user.role !== "tutor" && state.user.role !== "admin")) return;
+    // ?course=<slug> opens that course in My Courses (the Program Builder's "Open in My Courses" links here).
+    const openSlug = new URLSearchParams(window.location.search).get("course");
+    if (openSlug) {
+      setTab("courses");
+      scrollToEditorRef.current = true;
+      window.history.replaceState(null, "", "/app/tutor/");
+    }
+    void load(openSlug ?? undefined);
+  }, [hydrated, state.user, load]);
   useEffect(() => {
     if (!hydrated || state.user?.role !== "tutor") return;
     const openDraft = (value: unknown) => {
@@ -364,7 +363,6 @@ export default function TutorPage() {
           ["courses", "My Courses", LayoutGrid],
           ["learners", "Learners", Users],
           ["ratings", "Ratings", Star],
-          ["programs", "Program Builder", Briefcase],
         ] as [TabKey, string, typeof BarChart3][]).map(([key, label, Icon]) => {
           const active = tab === key;
           return (
@@ -499,13 +497,6 @@ export default function TutorPage() {
             </div>
           )}
           {tab === "learners" && <LearnersPanel />}
-          {tab === "programs" && state.user && (
-            <ProgramBuilder
-              key={state.user.email}
-              owner={state.user.email}
-              onOpenCourse={(slug) => { setTab("courses"); setCreating(false); setAiDraft(false); scrollToEditorRef.current = true; void load(slug); }}
-            />
-          )}
           {tab === "ratings" && (
             loading ? <Card className="flex items-center gap-2 py-10 text-sm text-zinc-600"><Loader2 className="h-5 w-5 animate-spin" /> Loading ratings…</Card> :
             <RatingsPanel items={items} />
