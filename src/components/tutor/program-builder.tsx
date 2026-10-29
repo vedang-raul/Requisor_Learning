@@ -361,9 +361,9 @@ function AllPreviewLinks({ onTurnedOff }: { onTurnedOff: (id: number) => void })
   const openCount = (links ?? []).filter(isOpen).length;
 
   return (
-    <Card className="mt-8 p-5">
+    <Card className="p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <p className="flex items-center gap-2 text-base font-semibold text-zinc-900"><Link2 className="h-4 w-4 text-primary" aria-hidden="true" />All your preview links</p>
           <p className="mt-0.5 text-[13px] text-zinc-600">
             Every link you&apos;ve made for proposals, across all your courses.{links ? ` ${openCount} open, ${links.length} in total.` : ""}
@@ -372,7 +372,7 @@ function AllPreviewLinks({ onTurnedOff }: { onTurnedOff: (id: number) => void })
         {links && links.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {courses.length > 1 && (
-              <select aria-label="Course" className={cn(selectClass, "h-9 w-auto")} value={course} onChange={(e) => setCourse(e.target.value)}>
+              <select aria-label="Course" className={cn(selectClass, "h-9 w-auto max-w-[16rem]")} value={course} onChange={(e) => setCourse(e.target.value)}>
                 <option value="">All courses</option>
                 {courses.map(([slug, title]) => <option key={slug} value={slug}>{title}</option>)}
               </select>
@@ -1127,7 +1127,12 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
       {printRoot && printing === "proposal" && proposal && createPortal(<ProposalDocument proposal={proposal} printing look={look} />, printRoot)}
       {printRoot && printing === "blueprint" && curriculum && createPortal(<BlueprintDocument curriculum={curriculum} employer={form.employer} look={look} />, printRoot)}
 
-      <AllPreviewLinks onTurnedOff={(id) => setProposal((p) => (p?.preview?.id === id ? { ...p, preview: undefined } : p))} />
+      {/* Lined up with the content above: the curriculum column in steps 1–2, the proposal's width in step 3. */}
+      <div className={step === 3 && proposal ? "mx-auto max-w-[860px]" : "grid gap-5 lg:grid-cols-[400px_1fr]"}>
+        <div className={step === 3 && proposal ? undefined : "min-w-0 lg:col-start-2"}>
+          <AllPreviewLinks onTurnedOff={(id) => setProposal((p) => (p?.preview?.id === id ? { ...p, preview: undefined } : p))} />
+        </div>
+      </div>
 
     </div>
   );
