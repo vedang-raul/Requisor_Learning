@@ -38,6 +38,7 @@
   ],
   "exclude": [
     "node_modules",
-    "docs/archive"
+    "docs/archive",
+    "services"
   ]
 }
