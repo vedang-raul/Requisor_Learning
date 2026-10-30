@@ -215,6 +215,20 @@ async function readItemHtml(fileBytes: ArrayBuffer, resource: CanvasResource, en
   return (await readZipTextEntry(fileBytes, htmlPath, entries)) ?? "";
 }
 
+/**
+ * An export that was unzipped and zipped again keeps everything under one
+ * folder ("course-export/imsmanifest.xml"). Read it from inside that folder.
+ * Entries are found by their offset, not their name, so renaming is safe.
+ */
+export function unwrapSingleFolder(entries: ZipEntry[]): ZipEntry[] {
+  if (entries.some((e) => e.name === MANIFEST_PATH)) return entries;
+  const nested = entries.filter((e) => /^[^/]+\/imsmanifest\.xml$/.test(e.name));
+  if (nested.length !== 1) return entries;
+  const prefix = nested[0].name.slice(0, -MANIFEST_PATH.length);
+  return entries.filter((e) => e.name.startsWith(prefix) && e.name.length > prefix.length)
+    .map((e) => ({ ...e, name: e.name.slice(prefix.length) }));
+}
+
 export async function parseCanvasCartridge(fileBytes: ArrayBuffer): Promise<CanvasImportResult> {
   let entries: ZipEntry[];
   try {
@@ -222,6 +236,7 @@ export async function parseCanvasCartridge(fileBytes: ArrayBuffer): Promise<Canv
   } catch (error) {
     throw new CanvasImportError(error instanceof ZipParseError ? error.message : "Couldn't read this file as a Canvas export package.");
   }
+  entries = unwrapSingleFolder(entries);
 
   const manifestXml = await readZipTextEntry(fileBytes, MANIFEST_PATH, entries);
   if (!manifestXml) throw new CanvasImportError("This doesn't look like a Canvas course export — imsmanifest.xml is missing.");
