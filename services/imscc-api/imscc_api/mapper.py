@@ -24,12 +24,11 @@ from dataclasses import dataclass, field
 from . import schema as S
 from .canvas import (AssignmentSettings, Resource, parse_manifest, parse_modules, parse_rubrics,
                      read_assignment_settings, read_discussion)
-from .content import PageContent, convert_html, plain_text, summary_line
+from .content import PageContent, convert_html, fit_paragraphs, plain_text, summary_line
 from .package import Package
 from .qti import read_quiz
 
 HAND_IN_TYPES = {"online_upload", "online_text_entry", "online_url", "media_recording", "student_annotation"}
-VIDEO_LESSON_MAX_WORDS = 250   # more reading than this and the page is a reading with videos alongside
 READ_WPM = 200
 MINUTES_PER_VIDEO = 6          # Canvas doesn't record video length
 
@@ -103,7 +102,7 @@ class _Builder:
                      page: PageContent, brief: S.Assignment | None, notes: list[str]) -> _Draft:
         lesson_id = self.unique_id(title)
         videos = page.youtube_ids
-        is_video = bool(videos) and page.words <= VIDEO_LESSON_MAX_WORDS
+        is_video = bool(videos)  # a page with a video is a video lesson; its reading becomes the description
         body = page.body if page.words >= 15 else ""
         # The page's own title often opens the reading: the lesson title already says it.
         bare_title = re.sub(r"^\s*M\d+\s*:\s*", "", title).strip().lower()
@@ -114,10 +113,14 @@ class _Builder:
             body = body[m.end():]
 
         if is_video:
-            # The page's words become the description (a video lesson has no body in Alma 41).
-            description = clip(plain_text(body), 2000) if body else ""
+            # A video lesson has no body in Alma 41: the page's reading becomes the description,
+            # whole paragraphs up to the 2000-character limit. The full reading comes back too.
+            description, left_out = fit_paragraphs(plain_text(body), 2000) if body else ("", 0)
             content = S.Content(format="video", youtube_id=videos[0], body=None, other_videos=videos[1:],
-                                images=[], word_count=page.words)
+                                images=[], full_reading=body or None, word_count=page.words)
+            if left_out:
+                notes.append(f"The reading is longer than a description can hold: the first {len(description):,} characters "
+                             f"are the description and {left_out:,} more didn't fit (the whole reading is in content.fullReading).")
             if page.images:
                 notes.append(f"{len(page.images)} image(s) on the Canvas page aren't shown in a video lesson.")
         else:
@@ -127,9 +130,6 @@ class _Builder:
             content = S.Content(format="reading", youtube_id=None, body=clip(body, 20_000) or None,
                                 other_videos=videos, images=[p for p in (self.use_file(i, lesson_id) for i in page.images) if p],
                                 word_count=page.words)
-            if videos:
-                notes.append(f"Reading lesson with {len(videos)} video(s): they're listed under resources. "
-                             "Switch the lesson to video in step 2 if the video is the main content.")
             if not body and not brief:
                 notes.append("The Canvas page had no content to bring over.")
 

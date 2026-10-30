@@ -46,6 +46,8 @@ class Content(Model):
     body: str | None = Field(description="Markdown reading; set when format is reading.")
     other_videos: list[str] = Field(description="Further YouTube ids on the page (also listed as resources).")
     images: list[str] = Field(description="Images the body uses: package paths to upload.")
+    full_reading: str | None = Field(None, description="Video lessons: the page's whole reading (Markdown). "
+                                     "details.description holds as much of it as fits in 2000 characters.")
     word_count: int
 
 

@@ -72,8 +72,8 @@ def test_parses_an_upload(client, cartridge):
     assert res.status_code == 200
     body = res.json()
     assert body["course"]["title"] == "AI at Work"
-    assert body["summary"]["lessons"] == 3 and body["summary"]["quizzesKeptAside"] == 1
-    assert body["lessons"][2]["assignment"]["assignmentDueDate"] == "2026-05-24"
+    assert body["summary"]["lessons"] == 4 and body["summary"]["quizzesKeptAside"] == 1
+    assert body["lessons"][3]["assignment"]["assignmentDueDate"] == "2026-05-24"
 
 
 def test_bad_uploads(client, cartridge, monkeypatch):

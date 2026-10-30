@@ -15,6 +15,7 @@ FILES: dict[str, str | bytes] = {
   <resources>
     <resource identifier="p1" type="webcontent" href="wiki_content/intro.html"><file href="wiki_content/intro.html"/></resource>
     <resource identifier="p2" type="webcontent" href="wiki_content/reading.html"><file href="wiki_content/reading.html"/></resource>
+    <resource identifier="p3" type="webcontent" href="wiki_content/deep.html"><file href="wiki_content/deep.html"/></resource>
     <resource identifier="a1" type="associatedcontent/imscc_xmlv1p1/learning-application-resource" href="a1/brief.html">
       <file href="a1/brief.html"/><file href="a1/assignment_settings.xml"/></resource>
     <resource identifier="q1" type="imsqti_xmlv1p2/imscc_xmlv1p1/assessment"><file href="q1/assessment_qti.xml"/></resource>
@@ -35,6 +36,7 @@ FILES: dict[str, str | bytes] = {
       <item identifier="i1"><content_type>ContextModuleSubHeader</content_type><workflow_state>active</workflow_state><title>Week 1</title><position>1</position></item>
       <item identifier="i2"><content_type>WikiPage</content_type><workflow_state>active</workflow_state><title>M1: Welcome video</title><identifierref>p1</identifierref><position>2</position></item>
       <item identifier="i3"><content_type>WikiPage</content_type><workflow_state>active</workflow_state><title>M1: Why AI at work</title><identifierref>p2</identifierref><position>3</position></item>
+      <item identifier="i3b"><content_type>WikiPage</content_type><workflow_state>active</workflow_state><title>M1: Deep dive</title><identifierref>p3</identifierref><position>3</position></item>
       <item identifier="i4"><content_type>Assignment</content_type><workflow_state>active</workflow_state><title>M1: Assignment—Map your workflow</title><identifierref>a1</identifierref><position>4</position></item>
       <item identifier="i5"><content_type>Quizzes::Quiz</content_type><workflow_state>active</workflow_state><title>M1: Quiz</title><identifierref>q1</identifierref><position>5</position></item>
       <item identifier="i6"><content_type>Attachment</content_type><workflow_state>active</workflow_state><title>Guide book.pdf</title><identifierref>f1</identifierref><position>6</position></item>
@@ -68,7 +70,6 @@ FILES: dict[str, str | bytes] = {
 <p>See the <a href="https://example.com/report">2026 report</a> and the
 <a href="$IMS-CC-FILEBASE$/Docs/guide%20book.pdf">guide book</a>.</p>
 <p><img src="$IMS-CC-FILEBASE$/Images/chart.png" alt="Adoption chart"></p>
-<iframe src="https://www.youtube.com/embed/ZyXwVuTsRqP"></iframe>
 <table class="esComponent-callout"><caption>esComponent-callout</caption><tbody>
 <tr class="title-row"><th colspan="2"><p>Callout (Summary)</p></th></tr>
 <tr><td class="key-options"><p>Options</p></td><td><p>## For Callout Summary consistency ##</p></td></tr>
@@ -79,6 +80,12 @@ FILES: dict[str, str | bytes] = {
 <tr><td class="key-launcherText"><p>Launcher Text</p></td><td><p>What should you automate first?</p></td></tr>
 <tr><td class="key-body"><p>Body Content</p></td><td><p>The task you repeat most.</p></td></tr>
 </tbody></table></body></html>""",
+    "wiki_content/deep.html": f"""<html><body><h2>Deep dive</h2>
+<iframe src="https://www.youtube.com/embed/ZyXwVuTsRqP"></iframe>
+<p>Short opening paragraph about the deep dive and what it covers in this module.</p>
+<p>{LONG}</p>
+<iframe src="https://www.youtube-nocookie.com/embed/QwErTyUiOpA"></iframe>
+</body></html>""",
     "a1/brief.html": """<html><body><h2>Your task</h2><p>Map one workflow in your team and mark two places where AI could help.</p></body></html>""",
     "a1/assignment_settings.xml": """<?xml version="1.0"?>
 <assignment identifier="a1" xmlns="http://canvas.instructure.com/xsd/cccv1p0"><title>M1: Assignment—Map your workflow</title>
