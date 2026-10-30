@@ -40,14 +40,13 @@ class Details(Model):
 
 
 class Content(Model):
-    """Step 2. A lesson is a video OR a reading in Alma 41: `format` picks one."""
+    """Step 2. A video lesson (with the page's reading below the video) or a reading lesson."""
     format: Literal["video", "reading"]
     youtube_id: str | None = Field(description="Set when format is video.")
-    body: str | None = Field(description="Markdown reading; set when format is reading.")
+    body: str | None = Field(description="The page's reading as Markdown: the lesson itself for a reading, "
+                             "the text below the video for a video lesson.")
     other_videos: list[str] = Field(description="Further YouTube ids on the page (also listed as resources).")
     images: list[str] = Field(description="Images the body uses: package paths to upload.")
-    full_reading: str | None = Field(None, description="Video lessons: the page's whole reading (Markdown). "
-                                     "details.description holds as much of it as fits in 2000 characters.")
     word_count: int
 
 

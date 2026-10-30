@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { extractYouTubeId, isPlaceholder } from "@/lib/utils";
 import { ExternalLink, FileText, Loader2, MonitorPlay } from "lucide-react";
-import { renderMarkdownLite } from "@/components/ui/markdown-lite";
+import { LessonMarkdown } from "@/components/ui/lesson-markdown";
 
 // CodeMirror touches the DOM at mount time — load it client-only.
 const CodePlayground = dynamic(
@@ -155,9 +155,7 @@ export function VideoEmbed({
       <div className="space-y-4">
         {body?.trim() && (
           <div className="glass w-full rounded-2xl p-6">
-            <div className="prose prose-sm max-w-none text-sm leading-relaxed text-zinc-800">
-              {renderMarkdownLite(body)}
-            </div>
+            <LessonMarkdown content={body} />
           </div>
         )}
         <CodePlayground language={language ?? "python"} starterCode={starterCode} />
@@ -168,9 +166,7 @@ export function VideoEmbed({
   if (format === "reading" && body?.trim()) {
     return (
       <div className="glass w-full rounded-2xl p-6">
-        <div className="prose prose-sm max-w-none text-sm leading-relaxed text-zinc-800">
-          {renderMarkdownLite(body)}
-        </div>
+        <LessonMarkdown content={body} />
       </div>
     );
   }

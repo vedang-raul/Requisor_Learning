@@ -175,7 +175,7 @@ export function buildCourseFromImport(raw: unknown): CourseImportResult {
     const format = l.format === "reading" ? "reading" : "video";
     const bodyFileUrl = typeof l.bodyFileUrl === "string" && string(l.bodyFileUrl, 200) &&
       isResourceFileUrl(l.bodyFileUrl.trim()) ? l.bodyFileUrl.trim() : null;
-    if ((l.body !== undefined && (format !== "reading" || !string(l.body, 20_000))) ||
+    if ((l.body !== undefined && !string(l.body, 20_000)) ||
         (l.bodyFileUrl !== undefined && (format !== "reading" || !bodyFileUrl)) ||
         (l.body !== undefined && l.bodyFileUrl !== undefined)) {
       return { ok: false, error: `Lesson ${i + 1} has invalid reading content.` };

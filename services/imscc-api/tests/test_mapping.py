@@ -28,8 +28,8 @@ def test_short_page_with_a_video_is_a_video_lesson(result):
     l = lesson(result, "M1: Welcome video")
     assert l.content.format == "video"
     assert l.content.youtube_id == "AbCdEfGhIjK"          # the template's escaped {{<iframe>}}
-    assert l.content.body is None
-    assert "short welcome" in l.details.description       # the page's words become the description
+    assert l.content.body.startswith("Start here: a short welcome")   # the reading below the video
+    assert l.details.description == "Start here: a short welcome to the course and how it works."
     assert l.assignment is None
 
 
@@ -53,23 +53,13 @@ def test_long_page_is_a_clean_reading(result):
 def test_a_page_with_video_and_long_reading_is_a_video_lesson(result):
     l = lesson(result, "M1: Deep dive")
     c = l.content
-    assert c.format == "video" and c.youtube_id == "ZyXwVuTsRqP" and c.body is None
+    assert c.format == "video" and c.youtube_id == "ZyXwVuTsRqP"
     assert c.other_videos == ["QwErTyUiOpA"]
-    # The reading becomes the description: whole paragraphs, up to the 2000-character limit.
-    d = l.details.description
-    assert d.startswith("Short opening paragraph") and len(d) <= 2000
-    assert "Teams use AI tools" not in d            # the next paragraph (2,800 characters) doesn't fit whole
-    assert any("didn't fit" in n for n in l.notes)
-    assert "Teams use AI tools" in c.full_reading   # nothing is lost
+    # The whole reading goes below the video, formatted; the description is its opening.
+    assert c.body.startswith("Short opening paragraph") and "Teams use AI tools" in c.body
+    assert l.details.description == "Short opening paragraph about the deep dive and what it covers in this module."
     res = {r.label: r for r in l.takeaways_and_resources.resources}
     assert res["More video 1"].url == "https://www.youtube.com/watch?v=QwErTyUiOpA"
-
-
-def test_a_short_reading_fits_the_description_whole(result):
-    l = lesson(result, "M1: Welcome video")
-    paragraphs = l.details.description.split(chr(10) * 2)
-    assert paragraphs == ["Start here: a short welcome to the course and how it works.", "Welcome from your tutor"]
-    assert not any("didn't fit" in n for n in l.notes)
 
 
 def test_takeaways_and_resources(result):

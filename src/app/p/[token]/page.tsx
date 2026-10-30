@@ -5,6 +5,7 @@ import { ensureCourseCatalog, getCourses } from "@/lib/courses/course-catalog";
 import { openPreviewLink } from "@/lib/courses/preview-links";
 import { buildPreview, type PreviewCourse, type PreviewLesson } from "@/lib/courses/preview-modules";
 import { createRateLimiter } from "@/lib/server/rate-limit";
+import { LessonMarkdown } from "@/components/ui/lesson-markdown";
 
 /**
  * A proposal's preview link: /p/<code>. No sign-in. The page is rendered on the
@@ -107,7 +108,7 @@ function LessonView({ lesson }: { lesson: PreviewLesson }) {
         </div>
       )}
       {lesson.description && <p className="mt-3 text-sm leading-relaxed text-zinc-700">{lesson.description}</p>}
-      {lesson.body && <div className="mt-3 max-h-[28rem] overflow-y-auto whitespace-pre-line rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm leading-relaxed text-zinc-700">{lesson.body}</div>}
+      {lesson.body && <div className="mt-3 max-h-[32rem] overflow-y-auto rounded-xl border border-zinc-200 bg-zinc-50 p-4"><LessonMarkdown content={lesson.body} /></div>}
       {lesson.keyTakeaways.length > 0 && (
         <div className="mt-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Key takeaways</p>

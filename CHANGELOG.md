@@ -11,6 +11,18 @@ Database: one new table, `course_preview_links` (additive; the app also creates
 it on first use). Nothing existing changes.
 
 ### Added
+- **Reading below the video** (tutors and learners): a video lesson can now have a
+  reading under the video (step 2 of the lesson wizard, for YouTube, recorded and AI
+  videos), up to 20,000 characters. No database change: lessons already had a body.
+- **Formatted lesson readings**: readings (text lessons, code tutorials and the new
+  video readings) now show smaller headings, numbered and nested lists, clickable
+  links, quotes, dividers, simple tables and images. Links work only for https,
+  mailto and the app's own pages, images only from https or our file store, and
+  nothing in a reading is ever run as HTML. Chat replies are unchanged.
+- **IMSCC import API** (`services/imscc-api`, not yet connected to the app): a
+  Python service that reads a Canvas export and returns each lesson split by the
+  wizard's steps, with pages that have a video becoming video lessons with their
+  full, formatted reading below.
 - **Program Builder: start from one of your courses**: pick a course you already
   teach and its modules, lessons, outcomes and assessment become the program's
   curriculum, ready for an employer proposal (PDF or Word). No extra draft course

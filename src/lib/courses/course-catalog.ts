@@ -331,7 +331,8 @@ export function validateCourse(value: unknown, expectedSlug?: string, requireRev
       (l.section !== undefined && !string(l.section, 200)) ||
       (l.format !== undefined && l.format !== "video" && l.format !== "reading" && l.format !== "code-tutorial") ||
       (!isTextLesson && !youtubeId) ||
-      (l.body !== undefined && (!isTextLesson || !string(l.body, 20000))) ||
+      // A video lesson may have a reading below the video; text and code lessons are their reading.
+      (l.body !== undefined && !string(l.body, 20000)) ||
       (l.bodyFileUrl !== undefined && (format !== "reading" || !string(l.bodyFileUrl, 200) || !isResourceFileUrl(l.bodyFileUrl as string))) ||
       (l.body !== undefined && l.bodyFileUrl !== undefined) ||
       (l.thumbnailUrl !== undefined && (!string(l.thumbnailUrl, 200) || !isResourceFileUrl(l.thumbnailUrl as string))) ||

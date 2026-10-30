@@ -45,7 +45,7 @@ const lessonForPreview = (l: Lesson): PreviewLesson => ({
   durationMin: l.durationMin,
   youtubeId: (l.format ?? "video") === "video" && !isPlaceholder(l.youtubeId) ? l.youtubeId : null,
   keyTakeaways: l.keyTakeaways.slice(0, 12),
-  body: (l.format === "reading" || l.format === "code-tutorial") && l.body ? l.body.slice(0, 20_000) : null,
+  body: l.body ? l.body.slice(0, 20_000) : null,
 });
 
 /**

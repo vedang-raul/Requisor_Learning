@@ -377,27 +377,6 @@ def plain_text(markdown: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", t).strip()
 
 
-def fit_paragraphs(text: str, limit: int) -> tuple[str, int]:
-    """As many whole paragraphs as fit in `limit` characters (a long first one is cut at a
-    sentence), and how many characters were left out."""
-    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
-    total = len("\n\n".join(paragraphs))
-    kept: list[str] = []
-    used = 0
-    for p in paragraphs:
-        extra = len(p) + (2 if kept else 0)
-        if used + extra > limit:
-            if not kept:
-                cut = p[: limit - 1]
-                end = max(cut.rfind(". "), cut.rfind("? "), cut.rfind("! "))
-                kept.append(cut[: end + 1] if end > limit // 2 else cut.rsplit(" ", 1)[0] + "…")
-            break
-        kept.append(p)
-        used += extra
-    out = "\n\n".join(kept)
-    return out, max(0, total - len(out))
-
-
 def summary_line(markdown: str, limit: int = 300) -> str:
     """The first real paragraph (not a heading), cut at a sentence boundary."""
     prose = re.sub(r"^(?:#+ .*|---)$", "", markdown, flags=re.M)

@@ -16,6 +16,7 @@ import { Tag } from "@/components/ui/badge";
 import { ProgressBar } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/input";
 import { VideoEmbed } from "@/components/lesson/video-embed";
+import { LessonMarkdown } from "@/components/ui/lesson-markdown";
 import { Confetti } from "@/components/ui/confetti";
 import { PageTransition } from "@/components/ui/motion";
 import { LessonQuiz } from "@/components/lesson/lesson-quiz";
@@ -384,6 +385,12 @@ function LearnView() {
             language={lesson.format === "code-tutorial" ? lesson.language : undefined}
             onEnded={onVideoEnded}
           />
+          {/* A video lesson's reading, below the video (text and code lessons show theirs in place of one). */}
+          {lesson.format !== "reading" && lesson.format !== "code-tutorial" && lesson.body?.trim() && (
+            <div className="glass w-full rounded-2xl p-6">
+              <LessonMarkdown content={lesson.body} />
+            </div>
+          )}
 
           {/* Auto-advance banner */}
           <AnimatePresence>

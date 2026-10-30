@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from . import schema as S
 from .canvas import (AssignmentSettings, Resource, parse_manifest, parse_modules, parse_rubrics,
                      read_assignment_settings, read_discussion)
-from .content import PageContent, convert_html, fit_paragraphs, plain_text, summary_line
+from .content import PageContent, convert_html, plain_text, summary_line
 from .package import Package
 from .qti import read_quiz
 
@@ -102,7 +102,7 @@ class _Builder:
                      page: PageContent, brief: S.Assignment | None, notes: list[str]) -> _Draft:
         lesson_id = self.unique_id(title)
         videos = page.youtube_ids
-        is_video = bool(videos)  # a page with a video is a video lesson; its reading becomes the description
+        is_video = bool(videos)  # a page with a video is a video lesson, its reading below the video
         body = page.body if page.words >= 15 else ""
         # The page's own title often opens the reading: the lesson title already says it.
         bare_title = re.sub(r"^\s*M\d+\s*:\s*", "", title).strip().lower()
@@ -112,28 +112,19 @@ class _Builder:
                 break
             body = body[m.end():]
 
+        if len(body) > 20_000:
+            notes.append("The reading was longer than 20,000 characters and was cut; check the end.")
+        images = [p for p in (self.use_file(i, lesson_id) for i in page.images) if p]
         if is_video:
-            # A video lesson has no body in Alma 41: the page's reading becomes the description,
-            # whole paragraphs up to the 2000-character limit. The full reading comes back too.
-            description, left_out = fit_paragraphs(plain_text(body), 2000) if body else ("", 0)
-            content = S.Content(format="video", youtube_id=videos[0], body=None, other_videos=videos[1:],
-                                images=[], full_reading=body or None, word_count=page.words)
-            if left_out:
-                notes.append(f"The reading is longer than a description can hold: the first {len(description):,} characters "
-                             f"are the description and {left_out:,} more didn't fit (the whole reading is in content.fullReading).")
-            if page.images:
-                notes.append(f"{len(page.images)} image(s) on the Canvas page aren't shown in a video lesson.")
+            content = S.Content(format="video", youtube_id=videos[0], body=clip(body, 20_000) or None,
+                                other_videos=videos[1:], images=images, word_count=page.words)
         else:
-            description = ""
-            if len(body) > 20_000:
-                notes.append("The reading was longer than 20,000 characters and was cut; check the end.")
             content = S.Content(format="reading", youtube_id=None, body=clip(body, 20_000) or None,
-                                other_videos=videos, images=[p for p in (self.use_file(i, lesson_id) for i in page.images) if p],
-                                word_count=page.words)
+                                other_videos=videos, images=images, word_count=page.words)
             if not body and not brief:
                 notes.append("The Canvas page had no content to bring over.")
 
-        description = description or summary_line(body) or (brief and summary_line(brief.assignment)) or ""
+        description = summary_line(body) or (brief and summary_line(brief.assignment)) or ""
         if not description:
             description = f"Part of {module}." if module else title
         description = clip(description, 2000)

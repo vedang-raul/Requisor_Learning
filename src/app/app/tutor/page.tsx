@@ -1565,7 +1565,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
       assignmentAi: aiAssignment ? { guardrails: guardrails.trim(), use: ASSIGNMENT_DATA.map((d) => d.key).filter((key) => aiData.includes(key)) } : undefined,
       keyTakeaways: takeawayList,
       resources: finalResources,
-      body: (format === "reading" || format === "code-tutorial") && body.trim() ? body.trim() : undefined,
+      body: body.trim() ? body.trim() : undefined,
       bodyFileUrl: format === "reading" && !body.trim() ? bodyFileUrl : undefined,
       thumbnailUrl: thumbnailUrl || undefined,
       starterCode: format === "code-tutorial" && starterCode.trim() ? starterCode.trim() : undefined,
@@ -1893,6 +1893,17 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
                     onReadyToLink={() => setVideoMode("youtube")}
                     onVideoPosted={(videoId) => { setYoutubeId(videoId); setVideoMode("youtube"); }}
                   />
+                )}
+                {format === "video" && (
+                  <Field label="Reading below the video (optional)">
+                    <span className="mb-1.5 block text-xs font-normal text-zinc-500">
+                      Notes, links or the full write-up learners read under the video. Use # and ## for headings, - or 1. for lists,
+                      **bold**, and [link text](https://…) for links.
+                    </span>
+                    <Textarea value={body} onChange={(e) => setBody(e.target.value)} maxLength={20000} rows={8} className="text-sm"
+                      placeholder={"## In this video\n\n- The three ideas we cover\n- Where to try them\n\nRead more: [the guide](https://example.com)"} />
+                    {body.trim() && <span className="mt-1 block text-xs font-normal text-zinc-500">{body.trim().length.toLocaleString()} / 20,000 characters</span>}
+                  </Field>
                 )}
                 {videoMode === "text" && (
                   <LessonContentField action={aiButton("body", Boolean(body.trim()))} body={body} bodyFileUrl={bodyFileUrl} uploading={uploading} setUploading={setUploading} allowUploads={allowUploads} onChange={({ body: nextBody, bodyFileUrl: nextUrl }) => { setBody(nextBody); setBodyFileUrl(nextUrl); }} />

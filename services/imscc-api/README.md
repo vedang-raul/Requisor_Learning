@@ -8,7 +8,7 @@ shows the result to the tutor, who saves the lessons.
 | Wizard step | Field in the response | Filled from Canvas |
 |---|---|---|
 | 1 Details | `details` | page title, first real paragraph, estimated minutes, module |
-| 2 Video or text | `content` | a page with a video: `format: "video"` with `youtubeId` (its reading goes into the description); a page without one: `format: "reading"` with the page as Markdown in `body` |
+| 2 Video or text | `content` | a page with a video: `format: "video"` with `youtubeId`, and the page's reading as Markdown in `body` (shown below the video); a page without one: `format: "reading"` with the reading in `body` |
 | 3 Assignment | `assignment` | assignment and discussion briefs, points, due date, hand-in, Canvas rubric criteria |
 | 4 Takeaways & resources | `takeawaysAndResources` | summary callouts / "key takeaways" lists; links, extra videos, files packed in the export, and files and links placed in the module |
 | 5 Publish | — | the tutor reviews; `notes` lists what to check |
@@ -37,10 +37,9 @@ left out, with the reason) and `summary` (counts).
   module headings, external tools (LTI), and pages, assignments, quizzes and discussions that
   aren't in any module (usually left over from another course, or announcements).
 
-Alma 41 lessons are a video *or* a reading, so a page with a video becomes a video lesson
-(the first video; any others are resources) and its reading text becomes the lesson's
-description, in whole paragraphs up to the 2,000-character limit. When a reading is longer, a
-note says how much didn't fit and the whole reading comes back in `content.fullReading`. Packed files come back
+A page with a video becomes a video lesson (the first video; any others are resources) with
+the page's whole reading below it, headings, lists, bold text and links kept; its opening
+paragraph is the description. Packed files come back
 with `needsUpload: true` and no URL: upload them through Alma 41's resource uploads, then
 use the returned address.
 
