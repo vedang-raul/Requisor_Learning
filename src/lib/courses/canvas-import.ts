@@ -22,18 +22,18 @@
  *    against, so these are surfaced as a summary for the tutor to attach
  *    manually rather than guessed at by title-matching.
  *
- * Requisor has no equivalent for quizzes (Canvas's QTI-based quiz engine is
- * unrelated to Requisor's own AI-generated quiz feature), discussion
- * boards, a file library, or hidden/instructor-only modules — those items
- * are skipped and counted in the returned summary rather than silently
- * dropped. Every imported lesson is "reading" format with no video, since
- * nothing in a Canvas page/assignment maps to Requisor's single-video
- * lesson field.
+ * Pages and assignment briefs go through canvas-html.ts: Canvas's template
+ * tables are unwrapped and the content kept as formatted Markdown. A page with
+ * a YouTube video becomes a video lesson with its reading below the video;
+ * other pages become reading lessons. Quizzes come in as graded quizzes (see
+ * src/lib/quiz/canvas-qti.ts). Discussion boards, the file library and
+ * hidden/instructor-only modules are skipped and listed in the summary.
  */
 
 import { listZipEntries, readZipTextEntry, ZipParseError, type ZipEntry } from "@/lib/files/browser-zip";
 import { COURSE_EXPORT_FORMAT, type CourseExportPayload, type CourseExportLesson } from "@/lib/courses/course-export";
 import { canvasQuiz } from "@/lib/quiz/canvas-qti";
+import { convertCanvasHtml, markdownText, summaryLine } from "@/lib/courses/canvas-html";
 
 export class CanvasImportError extends Error {}
 
@@ -141,61 +141,6 @@ function parseRubricsSummary(xml: string): CanvasImportSummary["rubricsFound"] {
     criteriaCount: r.getElementsByTagName("criterion").length,
     totalPoints: Number(firstText(r, "points_possible")) || 0,
   }));
-}
-
-/** Detached-div HTML → readable plain text: real tag/entity handling via the
- *  browser's own HTML parser, with paragraph breaks preserved for block
- *  elements — far more robust than a regex tag-stripper, and safe (the div
- *  is never attached to the document, so nothing in the HTML executes). */
-function htmlToText(html: string): string {
-  if (!html.trim() || typeof document === "undefined") return "";
-  const container = document.createElement("div");
-  container.innerHTML = html;
-  const blockTags = new Set(["P", "DIV", "H1", "H2", "H3", "H4", "H5", "H6", "LI", "BLOCKQUOTE", "TR"]);
-  const lines: string[] = [];
-  let current = "";
-  const walk = (node: ChildNode) => {
-    if (node.nodeType === Node.TEXT_NODE) { current += node.textContent ?? ""; return; }
-    if (node.nodeType !== Node.ELEMENT_NODE) return;
-    const el = node as Element;
-    if (el.tagName === "SCRIPT" || el.tagName === "STYLE") return;
-    if (el.tagName === "BR") { current += "\n"; return; }
-    for (const child of Array.from(el.childNodes)) walk(child);
-    if (blockTags.has(el.tagName)) { lines.push(current.trim()); current = ""; }
-  };
-  for (const child of Array.from(container.childNodes)) walk(child);
-  if (current.trim()) lines.push(current.trim());
-  return lines.filter(Boolean).join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
-}
-
-const YOUTUBE_ID_PATTERN = /^https:\/\/(?:www\.)?(?:youtu\.be\/([a-zA-Z0-9_-]{6,})|youtube\.com\/watch\?v=([a-zA-Z0-9_-]{6,}))/i;
-
-/** Pulls https:// links out of the same HTML as Requisor lesson resources —
- *  except a youtu.be/youtube.com link, which is pulled out separately as
- *  the lesson's video rather than a generic resource. This specifically
- *  closes the loop with src/lib/courses/canvas-export.ts's own "Watch the lesson
- *  video" link: a Requisor video lesson exported to .imscc and re-imported
- *  gets its video back, not just a link to it, since both ends of that
- *  round trip are this app's own code. */
-function extractLinksAndVideo(html: string): { resources: CourseExportLesson["resources"]; youtubeId: string | null } {
-  if (!html.trim() || typeof document === "undefined") return { resources: [], youtubeId: null };
-  const container = document.createElement("div");
-  container.innerHTML = html;
-  const seen = new Set<string>();
-  const resources: CourseExportLesson["resources"] = [];
-  let youtubeId: string | null = null;
-  for (const a of Array.from(container.querySelectorAll("a[href]"))) {
-    const url = a.getAttribute("href")?.trim() ?? "";
-    if (!/^https:\/\//i.test(url) || seen.has(url)) continue;
-    const videoMatch = YOUTUBE_ID_PATTERN.exec(url);
-    if (videoMatch && !youtubeId) { youtubeId = videoMatch[1] ?? videoMatch[2]; seen.add(url); continue; }
-    const label = (a.textContent || url).trim().slice(0, 200);
-    if (!label) continue;
-    seen.add(url);
-    resources.push({ label, url, type: "link" });
-    if (resources.length >= MAX_RESOURCES_PER_LESSON) break;
-  }
-  return { resources, youtubeId };
 }
 
 async function readXmlIfPresent(fileBytes: ArrayBuffer, path: string, entries: ZipEntry[]): Promise<Document | null> {
@@ -311,18 +256,33 @@ export async function parseCanvasCartridge(fileBytes: ArrayBuffer): Promise<Canv
       if (!resource) { skippedItems.push({ title: item.title, reason: "Couldn't locate this item's content" }); continue; }
 
       const html = await readItemHtml(fileBytes, resource, entries);
-      const text = htmlToText(html);
-      const { resources: lessonResources, youtubeId } = extractLinksAndVideo(html);
+      const page = convertCanvasHtml(html);
+      const isAssignment = item.contentType === "Assignment";
+      // The page's own title often opens the reading; the lesson title already says it.
+      let body = page.body;
+      const bareTitle = item.title.replace(/^\s*M\d+\s*:\s*/, "").trim().toLowerCase();
+      const leadingHeading = /^\s*#+ (.+)\n+(?:---\n+)?/;
+      for (let m = leadingHeading.exec(body); m && [item.title.trim().toLowerCase(), bareTitle].includes(m[1].trim().toLowerCase()); m = leadingHeading.exec(body)) {
+        body = body.slice(m[0].length);
+      }
+      const videos = page.youtubeIds;
+      const text = markdownText(body);
+      // A page with a video is a video lesson with the reading below it; otherwise a reading.
+      const extraVideos = videos.slice(1).map((id, i) => ({ label: (page.videoTitles[id] ? `Video: ${page.videoTitles[id]}` : `More video ${i + 1}`).slice(0, 200), url: `https://www.youtube.com/watch?v=${id}`, type: "link" as const }));
+      const lessonResources = [...extraVideos, ...page.links.filter((l) => !extraVideos.some((v) => v.url === l.url)).map((l) => ({ label: l.label, url: l.url, type: "link" as const }))].slice(0, MAX_RESOURCES_PER_LESSON);
+      const minutes = page.words / 200 + videos.length * 6 + (isAssignment ? 15 : 0);
 
       const lesson: CourseExportLesson = {
         title: item.title.slice(0, 200),
-        description: (text || "Imported from Canvas — see the assignment brief for full details.").slice(0, MAX_LESSON_DESCRIPTION),
-        youtubeId: youtubeId ?? "",
-        durationMin: 20,
+        description: (summaryLine(body) || (isAssignment ? "See the assignment brief for full details." : `Part of ${mod.title}.`)).slice(0, MAX_LESSON_DESCRIPTION),
+        youtubeId: videos[0] ?? "",
+        durationMin: Math.max(5, Math.min(1440, Math.ceil(minutes / 5) * 5)),
         resources: lessonResources,
-        keyTakeaways: [],
+        keyTakeaways: page.takeaways.slice(0, 20),
         section: mod.title.slice(0, 200),
-        format: youtubeId ? "video" : "reading",
+        format: videos.length ? "video" : "reading",
+        // An assignment's page is its brief (step 3); a page's reading is the lesson.
+        ...(!isAssignment && body.trim() ? { body: body.slice(0, 20_000) } : {}),
         rubric: [],
       };
 
