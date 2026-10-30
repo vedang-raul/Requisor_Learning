@@ -159,6 +159,18 @@ function CanvasImportSummaryPanel({ summary, onClose }: { summary: CanvasImportS
         </div>
         <p className="text-sm text-zinc-700">{summary.lessonCount} lesson{summary.lessonCount === 1 ? "" : "s"} imported as a draft — review before publishing.</p>
 
+        {(summary.quizzes ?? []).length > 0 && (
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+            <p className="text-sm font-medium text-emerald-900">{summary.quizzes.length} quiz{summary.quizzes.length === 1 ? "" : "zes"} imported</p>
+            <p className="mt-1 text-xs text-emerald-800">Each is its own lesson with the quiz in its Assignment step: questions, answers, points and settings, as in Canvas.</p>
+            <ul className="mt-2 space-y-1 text-xs text-emerald-800">
+              {summary.quizzes.map((q, i) => (
+                <li key={i}>• {q.title} — {q.questions} question{q.questions === 1 ? "" : "s"}, {q.points} points{q.skipped.length ? ` (${q.skipped.join("; ")})` : ""}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {summary.rubricsFound.length > 0 && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
             <p className="text-sm font-medium text-amber-900">{summary.rubricsFound.length} rubric{summary.rubricsFound.length === 1 ? "" : "s"} found in this export</p>
@@ -172,7 +184,7 @@ function CanvasImportSummaryPanel({ summary, onClose }: { summary: CanvasImportS
         {summary.skippedItems.length > 0 && (
           <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
             <p className="text-sm font-medium text-zinc-800">{summary.skippedItems.length} item{summary.skippedItems.length === 1 ? "" : "s"} skipped</p>
-            <p className="mt-1 text-xs text-zinc-500">Quizzes, discussions, files, and instructor-only content have no equivalent in Requisor.</p>
+            <p className="mt-1 text-xs text-zinc-500">Discussions, files and instructor-only content aren&apos;t imported.</p>
             <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto text-xs text-zinc-600">
               {summary.skippedItems.map((item, i) => <li key={i} className="truncate">• {item.title} — {item.reason}</li>)}
             </ul>

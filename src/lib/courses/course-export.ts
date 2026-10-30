@@ -49,6 +49,8 @@ export interface CourseExportLesson {
   body?: string;
   bodyFileUrl?: string;
   rubric: RubricCriterionExport[];
+  /** The lesson's graded quiz (see src/lib/quiz/quiz.ts), e.g. from a Canvas quiz. */
+  quiz?: unknown;
 }
 
 export interface CourseExportPayload {
@@ -74,6 +76,7 @@ import { getCategoryCover } from "@/components/course/category-icon";
 import { isResourceFileUrl } from "@/lib/courses/resource-files";
 import { extractYouTubeId, PLACEHOLDER_VIDEO } from "@/lib/utils";
 import { isIsoCalendarDate } from "@/lib/auth/validation";
+import { checkQuiz, type Quiz } from "@/lib/quiz/quiz";
 
 const string = (value: unknown, max: number, min = 1) =>
   typeof value === "string" && value.trim().length >= min && value.trim().length <= max;
@@ -96,7 +99,7 @@ function slugify(title: string): string {
 }
 
 export type CourseImportResult =
-  | { ok: true; course: Course; rubricByLessonId: Record<string, RubricCriterionExport[]> }
+  | { ok: true; course: Course; rubricByLessonId: Record<string, RubricCriterionExport[]>; quizByLessonId: Record<string, { quiz: Quiz; points: number }> }
   | { ok: false; error: string };
 
 /**
@@ -129,6 +132,7 @@ export function buildCourseFromImport(raw: unknown): CourseImportResult {
   const slug = slugify(courseIn.title as string);
   const category = (courseIn.category as string).trim();
   const rubricByLessonId: Record<string, RubricCriterionExport[]> = {};
+  const quizByLessonId: Record<string, { quiz: Quiz; points: number }> = {};
   const lessons: Lesson[] = [];
 
   for (let i = 0; i < body.lessons.length; i++) {
@@ -231,6 +235,11 @@ export function buildCourseFromImport(raw: unknown): CourseImportResult {
       });
     }
     if (rubric.length) rubricByLessonId[lessonId] = rubric;
+    if (l.quiz !== undefined) {
+      const checked = checkQuiz(l.quiz);
+      if (!checked.ok) return { ok: false, error: `Lesson ${i + 1}'s quiz: ${checked.error}` };
+      quizByLessonId[lessonId] = { quiz: checked.quiz, points: checked.points };
+    }
   }
 
   const course: Course = {
@@ -247,5 +256,5 @@ export function buildCourseFromImport(raw: unknown): CourseImportResult {
     published: false,
   };
 
-  return { ok: true, course, rubricByLessonId };
+  return { ok: true, course, rubricByLessonId, quizByLessonId };
 }

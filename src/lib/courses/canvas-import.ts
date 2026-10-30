@@ -33,6 +33,7 @@
 
 import { listZipEntries, readZipTextEntry, ZipParseError, type ZipEntry } from "@/lib/files/browser-zip";
 import { COURSE_EXPORT_FORMAT, type CourseExportPayload, type CourseExportLesson } from "@/lib/courses/course-export";
+import { canvasQuiz } from "@/lib/quiz/canvas-qti";
 
 export class CanvasImportError extends Error {}
 
@@ -41,6 +42,8 @@ export interface CanvasImportSummary {
   lessonCount: number;
   skippedItems: { title: string; reason: string }[];
   rubricsFound: { title: string; criteriaCount: number; totalPoints: number }[];
+  /** Canvas quizzes brought in as graded quizzes: title, questions, and any questions left out. */
+  quizzes: { title: string; questions: number; points: number; skipped: string[] }[];
 }
 
 export interface CanvasImportResult {
@@ -75,14 +78,22 @@ const MAX_LESSON_ASSIGNMENT = 5000;
 const MAX_RESOURCES_PER_LESSON = 20;
 
 const CONTENT_TYPE_LABELS: Record<string, string> = {
-  "Quizzes::Quiz": "Canvas quiz — no equivalent in Requisor",
   DiscussionTopic: "Discussion board — no equivalent in Requisor",
   Attachment: "File attachment — not imported",
   ContextModuleSubHeader: "Section header, no content",
 };
 
+/**
+ * Canvas writes some files (quiz settings) with an invalid namespace, e.g.
+ * xmlns:xsi="<url> <url>", which browsers refuse to parse. The XML-schema
+ * attributes carry no data, so they're dropped before parsing.
+ */
+export function withoutSchemaAttributes(xml: string): string {
+  return xml.replace(/\s(?:xmlns:xsi|xsi:schemaLocation|xsi:noNamespaceSchemaLocation)\s*=\s*("[^"]*"|'[^']*')/g, "");
+}
+
 function parseXml(xml: string, errorContext: string): Document {
-  const doc = new DOMParser().parseFromString(xml, "application/xml");
+  const doc = new DOMParser().parseFromString(withoutSchemaAttributes(xml), "application/xml");
   if (doc.getElementsByTagName("parsererror")[0]) throw new CanvasImportError(`Couldn't parse ${errorContext} in this export.`);
   return doc;
 }
@@ -252,6 +263,7 @@ export async function parseCanvasCartridge(fileBytes: ArrayBuffer): Promise<Canv
 
   const lessons: CourseExportLesson[] = [];
   const skippedItems: CanvasImportSummary["skippedItems"] = [];
+  const quizzes: CanvasImportSummary["quizzes"] = [];
 
   for (const mod of modules) {
     if (mod.workflowState === "unpublished") {
@@ -261,6 +273,31 @@ export async function parseCanvasCartridge(fileBytes: ArrayBuffer): Promise<Canv
     for (const item of mod.items) {
       if (item.workflowState === "unpublished") {
         skippedItems.push({ title: item.title, reason: "Unpublished item" });
+        continue;
+      }
+      if (item.contentType === "Quizzes::Quiz") {
+        const resource = item.identifierref ? resources.get(item.identifierref) : undefined;
+        const qtiXml = item.identifierref ? await readZipTextEntry(fileBytes, `non_cc_assessments/${item.identifierref}.xml.qti`, entries) : null;
+        if (!resource || !qtiXml) { skippedItems.push({ title: item.title, reason: "The quiz's questions are missing from the export" }); continue; }
+        const metaXml = await readZipTextEntry(fileBytes, `${item.identifierref}/assessment_meta.xml`, entries);
+        const quiz = canvasQuiz(parseXml(qtiXml, "a quiz"), metaXml ? parseXml(metaXml, "quiz settings") : null);
+        if (!quiz.questions.length) { skippedItems.push({ title: item.title, reason: quiz.skipped.join("; ") || "No questions to import" }); continue; }
+        const count = quiz.questions.filter((q) => q.type !== "text_only").length;
+        quizzes.push({ title: item.title, questions: count, points: quiz.points, skipped: quiz.skipped });
+        // A quiz is its own lesson, as in Canvas: its instructions as the reading, the quiz as its assessment.
+        lessons.push({
+          title: item.title.slice(0, 200),
+          description: (quiz.settings.instructions || `Quiz: ${count} question${count === 1 ? "" : "s"}, ${quiz.points} points.`).slice(0, MAX_LESSON_DESCRIPTION),
+          youtubeId: "",
+          durationMin: quiz.settings.timeLimitMin ?? Math.max(5, Math.ceil((count * 1.5) / 5) * 5),
+          resources: [],
+          keyTakeaways: [],
+          section: mod.title.slice(0, 200),
+          format: "reading",
+          ...(quiz.settings.instructions ? { body: quiz.settings.instructions.slice(0, 20_000) } : {}),
+          rubric: [],
+          quiz: { settings: quiz.settings, questions: quiz.questions },
+        });
         continue;
       }
       if (item.contentType !== "Assignment" && item.contentType !== "WikiPage") {
@@ -321,6 +358,6 @@ export async function parseCanvasCartridge(fileBytes: ArrayBuffer): Promise<Canv
 
   return {
     payload,
-    summary: { courseTitle, lessonCount: lessons.length, skippedItems, rubricsFound },
+    summary: { courseTitle, lessonCount: lessons.length, skippedItems, rubricsFound, quizzes },
   };
 }

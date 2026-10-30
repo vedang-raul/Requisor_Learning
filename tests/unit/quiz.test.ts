@@ -145,3 +145,23 @@ describe("the learner's quiz panel", () => {
     expect(JSON.stringify(v.inProgress)).not.toContain("correct");
   });
 });
+
+describe("importing a course with quizzes", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { buildCourseFromImport, COURSE_EXPORT_FORMAT } = require("@/lib/courses/course-export");
+  const payload = (quizValue: unknown) => ({
+    format: COURSE_EXPORT_FORMAT, exportedAt: "2026-10-30T00:00:00Z", sourcePlatform: "Requisor Learning",
+    course: { title: "Imported", tagline: "t", category: "imported", level: "Beginner", tags: [] },
+    lessons: [{ title: "M1: Quiz", description: "Quiz", youtubeId: "", durationMin: 15, resources: [], keyTakeaways: [], format: "reading", rubric: [], quiz: quizValue }],
+  });
+  it("keeps each lesson's quiz, checked like any quiz", () => {
+    const r = buildCourseFromImport(payload({ settings: { allowedAttempts: 2 }, questions: [mc, ma] }));
+    expect(r.ok).toBe(true);
+    const [entry] = Object.values(r.quizByLessonId) as { points: number; quiz: Quiz }[];
+    expect(entry.points).toBe(6);
+    expect(entry.quiz.settings.allowedAttempts).toBe(2);
+  });
+  it("refuses a broken quiz", () => {
+    expect(buildCourseFromImport(payload({ questions: [] }))).toMatchObject({ ok: false, error: "Lesson 1's quiz: Add at least one question." });
+  });
+});

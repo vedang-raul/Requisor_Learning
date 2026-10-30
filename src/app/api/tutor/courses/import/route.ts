@@ -6,6 +6,7 @@ import { authOptions } from "@/lib/auth/auth";
 import { db } from "@/lib/server/db";
 import { replaceCourse, validateCourse, CourseConflictError } from "@/lib/courses/course-catalog";
 import { buildCourseFromImport } from "@/lib/courses/course-export";
+import { saveQuiz } from "@/lib/quiz/quiz-store";
 import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
 import type { Course } from "@/lib/types";
 
@@ -17,7 +18,7 @@ import type { Course } from "@/lib/types";
  * going live to learners.
  */
 const canManage = (role: unknown) => role === "admin" || role === "tutor";
-const MAX_IMPORT_BYTES = 512 * 1024;
+const MAX_IMPORT_BYTES = 4 * 1024 * 1024;
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
@@ -82,5 +83,15 @@ export async function POST(req: Request) {
     }
   }
 
-  return Response.json({ course: validated.course, ...(warning ? { warning } : {}) });
+  const quizzes = Object.entries(imported.quizByLessonId);
+  if (quizzes.length) {
+    try {
+      for (const [lessonId, { quiz, points }] of quizzes) await saveQuiz(lessonId, candidate.slug, quiz, points, userId);
+    } catch (error) {
+      console.error(JSON.stringify({ operation: "tutor.course.import.quiz", slug: candidate.slug, error: error instanceof Error ? error.message : "unknown" }));
+      warning = [warning, "The course imported, but some of its quizzes could not be saved."].filter(Boolean).join(" ");
+    }
+  }
+
+  return Response.json({ course: validated.course, quizzes: quizzes.length, ...(warning ? { warning } : {}) });
 }

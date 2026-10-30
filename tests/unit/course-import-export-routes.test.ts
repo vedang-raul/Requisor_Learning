@@ -237,7 +237,7 @@ describe("POST /api/tutor/courses/import", () => {
   it("rejects packages larger than the import limit with 413", async () => {
     const oversized = {
       ...validPackage,
-      course: { ...validPackage.course, tagline: "x".repeat(513 * 1024) },
+      course: { ...validPackage.course, tagline: "x".repeat(4 * 1024 * 1024 + 1024) },
     };
 
     const response = await POST(importRequest(oversized));
