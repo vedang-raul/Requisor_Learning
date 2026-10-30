@@ -104,7 +104,69 @@ FILES: dict[str, str | bytes] = {
       </render_choice></response_lid></presentation>
     <resprocessing><respcondition continue="No"><conditionvar><varequal respident="response1">c1</varequal></conditionvar>
       <setvar action="Set" varname="SCORE">100</setvar></respcondition></resprocessing>
-  </item></section></assessment></questestinterop>""",
+  </item>
+  <item ident="it2"><itemmetadata><qtimetadata>
+    <qtimetadatafield><fieldlabel>question_type</fieldlabel><fieldentry>multiple_answers_question</fieldentry></qtimetadatafield>
+    <qtimetadatafield><fieldlabel>points_possible</fieldlabel><fieldentry>4</fieldentry></qtimetadatafield></qtimetadata></itemmetadata>
+    <presentation><material><mattext>Pick the AI labs</mattext></material>
+      <response_lid ident="response1" rcardinality="Multiple"><render_choice>
+        <response_label ident="a"><material><mattext>OpenAI</mattext></material></response_label>
+        <response_label ident="b"><material><mattext>IKEA</mattext></material></response_label>
+        <response_label ident="c"><material><mattext>Anthropic</mattext></material></response_label>
+      </render_choice></response_lid></presentation>
+    <resprocessing><respcondition continue="No"><conditionvar><and>
+      <varequal respident="response1">a</varequal><not><varequal respident="response1">b</varequal></not><varequal respident="response1">c</varequal>
+    </and></conditionvar><setvar action="Set" varname="SCORE">100</setvar></respcondition></resprocessing>
+    <itemfeedback ident="general_incorrect_fb"><flow_mat><material><mattext>Think about who builds models.</mattext></material></flow_mat></itemfeedback>
+  </item>
+  <item ident="it3"><itemmetadata><qtimetadata>
+    <qtimetadatafield><fieldlabel>question_type</fieldlabel><fieldentry>short_answer_question</fieldentry></qtimetadatafield>
+    <qtimetadatafield><fieldlabel>points_possible</fieldlabel><fieldentry>1</fieldentry></qtimetadatafield></qtimetadata></itemmetadata>
+    <presentation><material><mattext>Capital of France?</mattext></material><response_str ident="response1" rcardinality="Single"><render_fib><response_label ident="answer1" rshuffle="No"/></render_fib></response_str></presentation>
+    <resprocessing><respcondition continue="No"><conditionvar><varequal respident="response1">Paris</varequal><varequal respident="response1">paris, france</varequal></conditionvar><setvar action="Set" varname="SCORE">100</setvar></respcondition></resprocessing>
+  </item>
+  <item ident="it4"><itemmetadata><qtimetadata>
+    <qtimetadatafield><fieldlabel>question_type</fieldlabel><fieldentry>numerical_question</fieldentry></qtimetadatafield>
+    <qtimetadatafield><fieldlabel>points_possible</fieldlabel><fieldentry>2</fieldentry></qtimetadatafield></qtimetadata></itemmetadata>
+    <presentation><material><mattext>Pi to two places?</mattext></material><response_str ident="response1" rcardinality="Single"><render_fib fibtype="Decimal"><response_label ident="answer1"/></render_fib></response_str></presentation>
+    <resprocessing><respcondition continue="No"><conditionvar><or><varequal respident="response1">3.14</varequal><and><vargte respident="response1">3.13</vargte><varlte respident="response1">3.15</varlte></and></or></conditionvar><setvar action="Set" varname="SCORE">100</setvar></respcondition></resprocessing>
+  </item>
+  <item ident="it5"><itemmetadata><qtimetadata>
+    <qtimetadatafield><fieldlabel>question_type</fieldlabel><fieldentry>matching_question</fieldentry></qtimetadatafield>
+    <qtimetadatafield><fieldlabel>points_possible</fieldlabel><fieldentry>2</fieldentry></qtimetadatafield></qtimetadata></itemmetadata>
+    <presentation><material><mattext>Match the model to its maker</mattext></material>
+      <response_lid ident="response_m1"><material><mattext>GPT</mattext></material><render_choice>
+        <response_label ident="r1"><material><mattext>OpenAI</mattext></material></response_label>
+        <response_label ident="r2"><material><mattext>Anthropic</mattext></material></response_label>
+        <response_label ident="r3"><material><mattext>IKEA</mattext></material></response_label></render_choice></response_lid>
+      <response_lid ident="response_m2"><material><mattext>Claude</mattext></material><render_choice>
+        <response_label ident="r1"><material><mattext>OpenAI</mattext></material></response_label>
+        <response_label ident="r2"><material><mattext>Anthropic</mattext></material></response_label>
+        <response_label ident="r3"><material><mattext>IKEA</mattext></material></response_label></render_choice></response_lid>
+    </presentation>
+    <resprocessing>
+      <respcondition><conditionvar><varequal respident="response_m1">r1</varequal></conditionvar><setvar varname="SCORE" action="Add">50</setvar></respcondition>
+      <respcondition><conditionvar><varequal respident="response_m2">r2</varequal></conditionvar><setvar varname="SCORE" action="Add">50</setvar></respcondition>
+    </resprocessing>
+  </item>
+  <item ident="it6"><itemmetadata><qtimetadata>
+    <qtimetadatafield><fieldlabel>question_type</fieldlabel><fieldentry>essay_question</fieldentry></qtimetadatafield>
+    <qtimetadatafield><fieldlabel>points_possible</fieldlabel><fieldentry>10</fieldentry></qtimetadatafield></qtimetadata></itemmetadata>
+    <presentation><material><mattext>&lt;p&gt;Explain one &lt;strong&gt;risk&lt;/strong&gt;.&lt;/p&gt;</mattext></material><response_str ident="response1" rcardinality="Single"><render_fib><response_label ident="answer1" rshuffle="No"/></render_fib></response_str></presentation>
+  </item>
+  <item ident="it7"><itemmetadata><qtimetadata>
+    <qtimetadatafield><fieldlabel>question_type</fieldlabel><fieldentry>calculated_question</fieldentry></qtimetadatafield>
+    <qtimetadatafield><fieldlabel>points_possible</fieldlabel><fieldentry>1</fieldentry></qtimetadatafield></qtimetadata></itemmetadata>
+    <presentation><material><mattext>What is [x] + 2?</mattext></material></presentation>
+  </item>
+  </section></assessment></questestinterop>""",
+    "q1/assessment_meta.xml": """<?xml version="1.0"?>
+<quiz identifier="q1" xmlns="http://canvas.instructure.com/xsd/cccv1p0"><title>M1: Quiz</title>
+  <description>&lt;p&gt;Two attempts; your &lt;strong&gt;highest&lt;/strong&gt; score counts.&lt;/p&gt;</description>
+  <due_at>2026-05-25T04:59:59Z</due_at><time_limit>20</time_limit><shuffle_answers>true</shuffle_answers><scoring_policy>keep_highest</scoring_policy>
+  <points_possible>20.0</points_possible><show_correct_answers>true</show_correct_answers><show_correct_answers_last_attempt>true</show_correct_answers_last_attempt>
+  <allowed_attempts>2</allowed_attempts><one_question_at_a_time>false</one_question_at_a_time><cant_go_back>false</cant_go_back>
+</quiz>""",
     "web_resources/Docs/guide book.pdf": b"%PDF-1.4 tiny",
     "web_resources/Images/chart.png": b"\x89PNG tiny",
     "wiki_content/old.html": "<html><head><title>Old course page</title></head><body><p>Left over.</p></body></html>",

@@ -12,8 +12,9 @@ Alma 41 module; each page, assignment or discussion in it becomes a lesson:
                        videos, and files packed in the export as resources
 
 Files and web links placed directly in a module attach to the lesson before
-them. Quizzes have no wizard step yet, so they're returned whole under
-`unmapped`. Everything left out is listed under `skipped` with the reason.
+them. Each Canvas quiz becomes its own lesson whose step 3 is the quiz, in
+Alma 41's quiz format (every question type, settings, due date). Everything
+left out is listed under `skipped` with the reason.
 """
 from __future__ import annotations
 
@@ -260,15 +261,28 @@ class _Builder:
                 self.lessons.append(self.build_lesson(item.title, name, kind, item.ref, item.position, lesson_page, brief, notes))
             elif kind in ("Quizzes::Quiz", "Assessment") and res:
                 quiz = read_quiz(self.pkg, res)
-                after = last_lesson()
-                self.unmapped.append(S.Unmapped(
-                    kind="quiz", title=item.title, module=name, after_lesson=after.lesson.id if after else None,
-                    reason="Alma 41 quizzes are written by AI from the lesson; there's no step for a fixed quiz yet.",
-                    points=quiz.points if quiz else None,
-                    questions=[S.QuizQuestion(type=q.type, text=q.text, points=q.points, supported=q.supported,
-                                              choices=[S.QuizChoice(text=c.text, correct=c.correct) for c in q.choices])
-                               for q in (quiz.questions if quiz else [])],
-                ))
+                if quiz is None or not quiz.questions:
+                    after = last_lesson()
+                    self.unmapped.append(S.Unmapped(
+                        kind="quiz", title=item.title, module=name, after_lesson=after.lesson.id if after else None,
+                        reason="; ".join(quiz.skipped) if quiz and quiz.skipped else "The quiz's questions are missing from the export."))
+                    continue
+                n = sum(1 for q in quiz.questions if q["type"] != "text_only")
+                notes = [f"Canvas quiz: {n} question{'' if n == 1 else 's'}, {quiz.points or 0:g} points."] + quiz.skipped
+                step3 = S.Assignment(kind="quiz", assignment="", requires_submission=False, assignment_marks=None,
+                                     assignment_due_date=None, grade_with="score", rubric=[],
+                                     quiz={"settings": quiz.settings, "questions": quiz.questions})
+                # Keep the quiz's instructions as the lesson's reading, however short.
+                words = max(15, len(re.findall(r"[A-Za-z0-9']+", quiz.description))) if quiz.description.strip() else 0
+                draft = self.build_lesson(item.title, name, kind, item.ref, item.position,
+                                          PageContent(body=quiz.description, words=words), step3, notes)
+                d = draft.lesson.details
+                if d.description.startswith("Part of ") or d.description == item.title:
+                    d.description = f"Quiz: {n} question{'' if n == 1 else 's'}, {quiz.points or 0:g} points."
+                limit = quiz.settings.get("timeLimitMin")
+                d.duration_min = max(5, min(1440, limit or int(math.ceil(n * 1.5 / 5.0)) * 5))
+                draft.lesson.notes = [x for x in draft.lesson.notes if not x.startswith("No key takeaways")]
+                self.lessons.append(draft)
             elif kind == "Attachment" and res:
                 label = item.title or res.href.rsplit("/", 1)[-1]
                 owner = last_lesson().lesson.id if last_lesson() else f"module:{name}"
@@ -334,7 +348,8 @@ class _Builder:
             with_reading=sum(1 for l in lessons if l.content.format == "reading" and l.content.body),
             with_assignment=sum(1 for l in lessons if l.assignment),
             videos_found=sum(len(l.content.other_videos) + (1 if l.content.youtube_id else 0) for l in lessons),
-            files_to_upload=len(files), quizzes_kept_aside=len(self.unmapped), skipped=len(self.skipped),
+            files_to_upload=len(files), quizzes=sum(1 for l in lessons if l.assignment and l.assignment.kind == "quiz"),
+            quizzes_not_imported=len(self.unmapped), skipped=len(self.skipped),
         )
         return S.ImportResult(course=S.CourseOut(title=clip(self.title, 160), modules=self.modules), lessons=lessons,
                               unmapped=self.unmapped, files=files, skipped=self.skipped, summary=summary)

@@ -72,7 +72,7 @@ def test_parses_an_upload(client, cartridge):
     assert res.status_code == 200
     body = res.json()
     assert body["course"]["title"] == "AI at Work"
-    assert body["summary"]["lessons"] == 4 and body["summary"]["quizzesKeptAside"] == 1
+    assert body["summary"]["lessons"] == 5 and body["summary"]["quizzes"] == 1
     assert body["lessons"][3]["assignment"]["assignmentDueDate"] == "2026-05-24"
 
 

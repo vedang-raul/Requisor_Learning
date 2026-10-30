@@ -661,6 +661,46 @@ p.query(`
   );
   CREATE INDEX IF NOT EXISTS course_preview_links_course_idx ON course_preview_links (course_slug);
 
+  -- Graded quizzes (src/lib/quiz/quiz-store.ts): one per lesson, keyed by lesson
+  -- id like the rubric (course saves replace lesson rows). Holds the answer key,
+  -- so it's only read on the server. The app also creates these on first use.
+  CREATE TABLE IF NOT EXISTS lesson_quizzes (
+    lesson_id TEXT PRIMARY KEY,
+    course_slug VARCHAR(80) NOT NULL REFERENCES courses(slug) ON DELETE CASCADE,
+    quiz JSONB NOT NULL,
+    points REAL NOT NULL,
+    updated_by INT REFERENCES users(id) ON DELETE SET NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS lesson_quizzes_course_idx ON lesson_quizzes (course_slug);
+
+  -- Each learner attempt keeps a copy of the quiz as it was when started, so a
+  -- later edit never changes a grade. answers save as the learner goes; a timed
+  -- attempt that runs out is scored with what was saved by its deadline.
+  CREATE TABLE IF NOT EXISTS quiz_attempts (
+    id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    lesson_id TEXT NOT NULL,
+    course_slug VARCHAR(80) NOT NULL REFERENCES courses(slug) ON DELETE CASCADE,
+    attempt INT NOT NULL,
+    seed TEXT NOT NULL,
+    quiz JSONB NOT NULL,
+    answers JSONB NOT NULL DEFAULT '{}'::jsonb,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deadline TIMESTAMPTZ,
+    submitted_at TIMESTAMPTZ,
+    score REAL,
+    max_score REAL NOT NULL,
+    pending BOOLEAN NOT NULL DEFAULT FALSE,
+    manual JSONB NOT NULL DEFAULT '{}'::jsonb,
+    tutor_comment TEXT,
+    graded_by INT REFERENCES users(id) ON DELETE SET NULL,
+    graded_at TIMESTAMPTZ,
+    UNIQUE (user_id, lesson_id, attempt)
+  );
+  CREATE INDEX IF NOT EXISTS quiz_attempts_lesson_idx ON quiz_attempts (lesson_id, submitted_at DESC);
+  CREATE INDEX IF NOT EXISTS quiz_attempts_user_idx ON quiz_attempts (user_id, lesson_id);
+
   -- Server-side notifications (the notification bell was purely a local,
   -- per-browser mock before this: seeded with two hardcoded welcome
   -- messages, never written to by any server event — see src/lib/store.tsx).

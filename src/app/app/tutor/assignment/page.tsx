@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, FileText, Loader2, Save, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { QuizAttemptsCard } from "@/components/tutor/quiz-attempts";
 import { Input } from "@/components/ui/input";
 import { PageTransition } from "@/components/ui/motion";
 import { cn } from "@/lib/utils";
@@ -405,6 +406,8 @@ function SubmissionInbox() {
             )}
           </Card>
         )}
+
+        <QuizAttemptsCard />
       </div>
     </PageTransition>
   );

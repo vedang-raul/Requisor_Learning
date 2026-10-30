@@ -9,7 +9,7 @@ shows the result to the tutor, who saves the lessons.
 |---|---|---|
 | 1 Details | `details` | page title, first real paragraph, estimated minutes, module |
 | 2 Video or text | `content` | a page with a video: `format: "video"` with `youtubeId`, and the page's reading as Markdown in `body` (shown below the video); a page without one: `format: "reading"` with the reading in `body` |
-| 3 Assignment | `assignment` | assignment and discussion briefs, points, due date, hand-in, Canvas rubric criteria |
+| 3 Assignment | `assignment` | assignment and discussion briefs, points, due date, hand-in and Canvas rubric criteria; or, for a Canvas quiz (its own lesson, as in Canvas), `kind: "quiz"` with the whole quiz in Alma 41's format in `quiz` |
 | 4 Takeaways & resources | `takeawaysAndResources` | summary callouts / "key takeaways" lists; links, extra videos, files packed in the export, and files and links placed in the module |
 | 5 Publish | — | the tutor reviews; `notes` lists what to check |
 
@@ -18,16 +18,22 @@ fit its limits (title ≤ 200, description ≤ 2000, body ≤ 20000, ≤ 20 take
 resources, marks 1–10000, dates `YYYY-MM-DD`).
 
 Also returned: `course` (title and modules, with each module's description taken
-from its Overview page), `unmapped` (Canvas quizzes, complete with questions and
-answers; there's no wizard step for a fixed quiz yet), `files` (packed images,
-PDFs and documents to upload, and which lessons use them), `skipped` (everything
-left out, with the reason) and `summary` (counts).
+from its Overview page), `unmapped` (a quiz with no question Alma 41 supports),
+`files` (packed images, PDFs and documents to upload, and which lessons use them),
+`skipped` (everything left out, with the reason) and `summary` (counts).
+
+**Quizzes** come over completely: every question with its answers, points and
+feedback (multiple choice, true/false, multiple answers, fill in the blank, fill
+in multiple blanks, multiple dropdowns, matching, numerical, essay, text), and the
+quiz's settings (attempts, score that counts, time limit, shuffling, one question
+at a time, results and correct answers shown, due date). Formula and file-upload
+questions are listed in the lesson's notes as not supported.
 
 ## What it understands in Canvas exports
 
 - `imsmanifest.xml`, `course_settings/module_meta.xml` (module order, published state),
   `course_settings.xml`, `rubrics.xml`, `<id>/assignment_settings.xml`, discussion topics,
-  QTI quizzes (`non_cc_assessments/*.qti`).
+  QTI quizzes (`non_cc_assessments/*.qti`) and their settings (`<id>/assessment_meta.xml`).
 - Pages built with Canvas's design-tool templates (`esComponent-*` tables): section
   headers, callouts, captioned images, quote boxes, click-to-reveal knowledge checks and
   video boxes, including the template's escaped `{{<iframe …>}}` YouTube embeds. The

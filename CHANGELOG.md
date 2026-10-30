@@ -7,10 +7,27 @@ only. How to cut a release is in [docs/RELEASING.md](docs/RELEASING.md).
 
 ## [Unreleased]
 
-Database: one new table, `course_preview_links` (additive; the app also creates
-it on first use). Nothing existing changes.
+Database: three new tables, `course_preview_links`, `lesson_quizzes` and
+`quiz_attempts` (additive; the app also creates them on first use). Nothing
+existing changes.
 
 ### Added
+- **Graded quizzes** (tutors and learners), modelled on Canvas Classic Quizzes: a
+  fourth way to assess a lesson in step 3 of the lesson wizard. Ten question types
+  (multiple choice, true/false, multiple answers, fill in the blank, fill in
+  multiple blanks, multiple dropdowns, matching, numerical, essay, text), with
+  points, feedback, and settings for due date, time limit, attempts, the score
+  that counts (highest, latest, average), shuffling, one question at a time, and
+  when learners see their results and the correct answers. Learners take quizzes
+  on the lesson page; answers save as they go, a timed quiz hands itself in when
+  time runs out, and everything is scored on the server (answers never reach the
+  browser). Partial credit works as in Canvas. Quizzes show in the learner's
+  Submissions (still to do, and scores) and in Check assignments, where tutors
+  give points for essay answers. Each attempt keeps the quiz as it was, so later
+  edits never change a grade.
+- **Canvas quizzes import completely** (IMSCC import API): every supported
+  question with its answers, points and feedback, and the quiz's settings and due
+  date, as a lesson whose step 3 is the quiz.
 - **Reading below the video** (tutors and learners): a video lesson can now have a
   reading under the video (step 2 of the lesson wizard, for YouTube, recorded and AI
   videos), up to 20,000 characters. No database change: lessons already had a body.

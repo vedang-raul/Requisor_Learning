@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import { RecordStudio } from "@/components/tutor/video-recorder";
 import { AiVideoStudio } from "@/components/tutor/ai-video-studio";
+import { QuizBuilder, emptyQuiz } from "@/components/tutor/quiz-builder";
+import { checkQuiz, type Quiz } from "@/lib/quiz/quiz";
 import type { LessonAiField, LessonAiValues } from "@/lib/ai/lesson-ai";
 import { trackEvent } from "@/lib/analytics";
 import { AssignmentBrief } from "@/components/lesson/lesson-assignment";
@@ -1431,6 +1433,25 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
   const [criteria, setCriteria] = useState<RubricCriterionDraft[]>([]);
   const [savedCriteria, setSavedCriteria] = useState<string>("[]");
   const [rubricState, setRubricState] = useState<"idle" | "loading" | "ready" | "error">(lesson ? "loading" : "ready");
+  // A graded quiz as the lesson's assessment. Stored by lesson id (answers stay on the server), so saved after the lesson.
+  const [quizOn, setQuizOn] = useState(false);
+  const [quiz, setQuiz] = useState<Quiz>(emptyQuiz);
+  const [quizState, setQuizState] = useState<"loading" | "ready" | "error">(lesson ? "loading" : "ready");
+  const [savedQuiz, setSavedQuiz] = useState<string | null>(null);
+  useEffect(() => {
+    if (!lesson?.id || !allowUploads) { setQuizState("ready"); return; }
+    let cancelled = false;
+    fetch(`/api/tutor/lesson-quiz/?lessonId=${encodeURIComponent(lesson.id)}`, { cache: "no-store" })
+      .then(async (response) => {
+        const data = (await response.json().catch(() => ({}))) as { quiz?: Quiz | null };
+        if (!response.ok) throw new Error();
+        if (cancelled) return;
+        if (data.quiz) { setQuiz(data.quiz); setQuizOn(true); setSavedQuiz(JSON.stringify(data.quiz)); }
+        setQuizState("ready");
+      })
+      .catch(() => { if (!cancelled) setQuizState("error"); });
+    return () => { cancelled = true; };
+  }, [lesson?.id, allowUploads]);
   const rubricTotal = criteria.reduce((sum, c) => sum + (Number(c.maxPoints) || 0), 0);
   const criteriaSignature = (list: RubricCriterionDraft[]) => JSON.stringify(list.map((c) => [c.id ?? null, c.title.trim(), c.description.trim(), Number(c.maxPoints)]));
   useEffect(() => {
@@ -1508,7 +1529,8 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
   const detailsOk = Boolean(title.trim() && description.trim());
   const contentOk = format === "video" ? Boolean(detectedVideoId) : format === "code-tutorial" ? Boolean(body.trim() || starterCode.trim()) : Boolean(body.trim() || bodyFileUrl);
   const pointsSet = gradeWith === "rubric" ? rubricTotal > 0 : Boolean(assignmentMarks);
-  const assignmentOk = guardrailsOk && (!requiresSubmission || Boolean((assignment.trim() || aiAssignment) && pointsSet && assignmentDueDate));
+  const quizCheck = quizOn ? checkQuiz(quiz) : null;
+  const assignmentOk = quizOn ? Boolean(quizCheck?.ok) : guardrailsOk && (!requiresSubmission || Boolean((assignment.trim() || aiAssignment) && pointsSet && assignmentDueDate));
   const completed = [
     detailsOk,
     visited[1] && contentOk,
@@ -1691,8 +1713,13 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
 
   function save(published: boolean) {
     try {
+      if (quizOn && !allowUploads) throw new Error("Save the course first, then add the quiz.");
+      if (quizOn && quizCheck && !quizCheck.ok) throw new Error(`Quiz: ${quizCheck.error}`);
+      if (quizOn && quizState !== "ready") throw new Error("The quiz is still loading. Try again in a moment.");
       const built = buildLesson(published);
       setFormError(null);
+      const quizJson = quizOn && quizCheck?.ok ? JSON.stringify(quizCheck.quiz) : null;
+      const quizChanged = quizState === "ready" && quizJson !== savedQuiz;
       // The transcript is stored by lesson id, so it goes up once the lesson exists.
       const nextTranscript = built.format === "video" ? transcript.trim() : "";
       const transcriptChanged = nextTranscript !== savedTranscript.trim();
@@ -1705,6 +1732,19 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
             method: "PUT", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ lessonId: built.id, transcript: nextTranscript, source: transcriptSource }),
           }).catch(() => undefined);
+        }
+        if (quizChanged) {
+          try {
+            const response = quizJson
+              ? await fetch("/api/tutor/lesson-quiz/", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lessonId: built.id, quiz: JSON.parse(quizJson) }) })
+              : await fetch(`/api/tutor/lesson-quiz/?lessonId=${encodeURIComponent(built.id)}`, { method: "DELETE" });
+            const data = (await response.json().catch(() => ({}))) as { quiz?: Quiz; error?: string };
+            if (!response.ok) throw new Error(data.error ?? "Couldn't save the quiz.");
+            setSavedQuiz(data.quiz ? JSON.stringify(data.quiz) : null);
+          } catch (error) {
+            setFormError(`The lesson is saved, but the quiz isn't: ${error instanceof Error ? error.message : "please try again"}. Save again to retry.`);
+            return false;
+          }
         }
         if (!rubricChanged) return true;
         try {
@@ -1736,7 +1776,9 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
   const checklist: { label: string; ok: boolean; optional?: boolean; step: number }[] = [
     { label: "Title and description", ok: detailsOk, step: 0 },
     { label: contentOk ? (format === "video" ? "YouTube video" : "Text lesson") : "Video or text content", ok: contentOk, step: 1 },
-    { label: requiresSubmission ? "Graded assignment (points + due date)" : "Assignment", ok: requiresSubmission ? assignmentOk : Boolean(assignment.trim()), optional: !requiresSubmission, step: 2 },
+    quizOn
+      ? { label: `Quiz (${quiz.questions.length} question${quiz.questions.length === 1 ? "" : "s"})`, ok: assignmentOk, step: 2 }
+      : { label: requiresSubmission ? "Graded assignment (points + due date)" : "Assignment", ok: requiresSubmission ? assignmentOk : Boolean(assignment.trim()), optional: !requiresSubmission, step: 2 },
     { label: `Key takeaways (${takeawayList.length})`, ok: takeawayList.length > 0, optional: true, step: 3 },
     { label: `Resources (${resources.length})`, ok: resources.length > 0, optional: true, step: 3 },
   ];
@@ -1935,17 +1977,19 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
 
             {step === "assignment" && (() => {
               // The three ways a lesson can be assessed, over the same fields as before.
-              const mode: "none" | "one" | "each" = aiAssignment ? "each" : requiresSubmission ? "one" : "none";
-              const pickMode = (next: "none" | "one" | "each") => {
+              const mode: "none" | "one" | "each" | "quiz" = quizOn ? "quiz" : aiAssignment ? "each" : requiresSubmission ? "one" : "none";
+              const pickMode = (next: "none" | "one" | "each" | "quiz") => {
+                setQuizOn(next === "quiz");
                 setAiAssignment(next === "each");
-                setRequiresSubmission(next !== "none" ? (next === "one" || mode !== "each" ? true : requiresSubmission) : false);
+                setRequiresSubmission(next === "quiz" || next === "none" ? false : next === "one" || mode !== "each" ? true : requiresSubmission);
                 setAiPreview({ status: "idle" });
                 setFormError(null);
               };
-              const modes: { key: "none" | "one" | "each"; title: string; text: string }[] = [
+              const modes: { key: "none" | "one" | "each" | "quiz"; title: string; text: string }[] = [
                 { key: "none", title: "None", text: "Practice only. Nothing to hand in." },
                 { key: "one", title: "One brief for all", text: "Everyone gets the same brief you write." },
                 { key: "each", title: "A brief per learner", text: "AI writes each learner their own, inside your rules." },
+                { key: "quiz", title: "Quiz", text: "Graded questions, marked automatically." },
               ];
               const section = "space-y-3 rounded-2xl border border-border bg-white p-4";
               return (
@@ -1957,7 +2001,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
 
                   <div className={section}>
                     <p className="text-base font-semibold text-zinc-900">Graded assignment</p>
-                    <div role="radiogroup" aria-label="Graded assignment" className="grid gap-2 sm:grid-cols-3">
+                    <div role="radiogroup" aria-label="Graded assignment" className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                       {modes.map((m) => (
                         <button key={m.key} type="button" role="radio" aria-checked={mode === m.key} onClick={() => pickMode(m.key)}
                           className={cn("focus-ring flex items-start gap-2.5 rounded-xl border p-3 text-left transition",
@@ -1970,7 +2014,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
                       ))}
                     </div>
 
-                    {mode !== "each" && (
+                    {(mode === "none" || mode === "one") && (
                       <Field label={mode === "one" ? "The brief" : "Assignment (optional)"} action={aiButton("assignment", Boolean(assignment.trim()))}>
                         <Textarea value={assignment} onChange={(e) => setAssignment(e.target.value)} maxLength={5000}
                           placeholder={mode === "one" ? "What should every learner do and hand in?" : "What should learners do after this lesson? (optional)"} />
@@ -2057,6 +2101,13 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
                       </div>
                     )}
                   </div>
+
+                  {mode === "quiz" && (
+                    !allowUploads ? <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">Save the course first, then add the quiz.</p>
+                      : quizState === "loading" ? <p className="flex items-center gap-2 text-sm text-zinc-500"><Loader2 className="h-4 w-4 animate-spin" />Loading the quiz…</p>
+                        : quizState === "error" ? <p role="alert" className="text-sm text-red-700">Couldn&apos;t load this lesson&apos;s quiz, so it won&apos;t be changed when you save. Reopen the lesson to try again.</p>
+                          : <QuizBuilder value={quiz} onChange={(next) => { setQuiz(next); setFormError(null); }} />
+                  )}
 
                   {requiresSubmission && (
                     <div className={section}>

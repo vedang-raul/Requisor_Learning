@@ -21,6 +21,7 @@ import { Confetti } from "@/components/ui/confetti";
 import { PageTransition } from "@/components/ui/motion";
 import { LessonQuiz } from "@/components/lesson/lesson-quiz";
 import { LessonAssignments } from "@/components/lesson/lesson-assignments";
+import { QuizPanel } from "@/components/lesson/quiz-panel";
 import { groupByModule, moduleList } from "@/lib/courses/modules";
 import { SyllabusButton } from "@/components/course/syllabus-view";
 import { trackEvent } from "@/lib/analytics";
@@ -536,6 +537,7 @@ function LearnView() {
                         </ul>
                       </div>
                       <LessonAssignments lesson={lesson} />
+                      <QuizPanel lessonId={lesson.id} />
                     </div>
                   )}
                   {tab === "resources" && (

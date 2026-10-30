@@ -20,7 +20,7 @@ def lesson(result, title):
 def test_course_and_modules(result):
     assert result.course.title == "AI at Work"
     assert [m.title for m in result.course.modules] == ["Module 1: Getting started"]
-    assert [l.details.title for l in result.lessons] == ["M1: Welcome video", "M1: Why AI at work", "M1: Deep dive", "M1: Assignment—Map your workflow"]
+    assert [l.details.title for l in result.lessons] == ["M1: Welcome video", "M1: Why AI at work", "M1: Deep dive", "M1: Assignment—Map your workflow", "M1: Quiz"]
     assert all(l.details.section == "Module 1: Getting started" for l in result.lessons)
 
 
@@ -84,17 +84,33 @@ def test_assignment_step(result):
 
 
 def test_module_files_and_links_attach_to_the_lesson_before_them(result):
-    l = lesson(result, "M1: Assignment—Map your workflow")
+    l = lesson(result, "M1: Quiz")
     labels = [r.label for r in l.takeaways_and_resources.resources]
     assert labels == ["Guide book.pdf", "Prompting guide"]
 
 
-def test_quizzes_are_kept_aside_whole(result):
-    [quiz] = result.unmapped
-    assert quiz.title == "M1: Quiz" and quiz.after_lesson == "m1-assignment-map-your-workflow"
-    q = quiz.questions[0]
-    assert q.text == "What does LLM stand for?" and q.points == 5
-    assert [(c.text, c.correct) for c in q.choices] == [("Large Language Model", True), ("Long Learning Machine", False)]
+def test_a_canvas_quiz_becomes_a_lesson_with_its_quiz_in_step_3(result):
+    assert result.unmapped == []
+    l = lesson(result, "M1: Quiz")
+    a = l.assignment
+    assert a.kind == "quiz" and a.requires_submission is False
+    assert l.content.format == "reading" and "**highest**" in l.content.body   # the quiz's description
+    s = a.quiz["settings"]
+    assert s == {"instructions": s["instructions"], "timeLimitMin": 20, "allowedAttempts": 2, "scoringPolicy": "keep_highest",
+                 "shuffleAnswers": True, "shuffleQuestions": False, "oneQuestionAtATime": False, "cantGoBack": False,
+                 "showResults": True, "showCorrectAnswers": "after_last_attempt", "dueDate": "2026-05-24"}
+    qs = {q["type"]: q for q in a.quiz["questions"]}
+    assert qs["multiple_choice"]["text"] == "What does LLM stand for?"
+    assert [(c["text"], c["correct"]) for c in qs["multiple_choice"]["choices"]] == [("Large Language Model", True), ("Long Learning Machine", False)]
+    assert [(c["text"], c["correct"]) for c in qs["multiple_answers"]["choices"]] == [("OpenAI", True), ("IKEA", False), ("Anthropic", True)]
+    assert qs["multiple_answers"]["feedback"] == {"incorrect": "Think about who builds models."}
+    assert qs["short_answer"]["answers"] == ["Paris", "paris, france"]
+    assert qs["numerical"]["numeric"] == [{"kind": "exact", "value": 3.14, "margin": 0.01}]
+    assert qs["matching"]["pairs"] == [{"id": "p1", "left": "GPT", "right": "OpenAI"}, {"id": "p2", "left": "Claude", "right": "Anthropic"}]
+    assert qs["matching"]["distractors"] == ["IKEA"]
+    assert qs["essay"]["text"] == "Explain one **risk**." and qs["essay"]["points"] == 10
+    assert any("formula questions aren't supported" in n for n in l.notes)
+    assert result.summary.quizzes == 1
 
 
 def test_skipped_items_say_why(result):
@@ -136,7 +152,7 @@ def test_json_uses_the_wizard_field_names(result):
 
 def test_a_rezipped_export_is_read_from_its_folder():
     result = map_cartridge(Package(make_zip(FILES, prefix="course-export/")))
-    assert len(result.lessons) == 4
+    assert len(result.lessons) == 5
 
 
 SAMPLE = os.environ.get("IMSCC_SAMPLE")

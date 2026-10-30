@@ -57,13 +57,16 @@ class RubricCriterion(Model):
 
 
 class Assignment(Model):
-    """Step 3."""
-    assignment: str = Field(description="The brief (plain text, ≤ 5000).")
+    """Step 3: a brief to hand in, or a graded quiz."""
+    kind: Literal["brief", "quiz"] = "brief"
+    assignment: str = Field(description="The brief (plain text, ≤ 5000); empty for a quiz.")
     requires_submission: bool = Field(description="Learners hand in a file for grading.")
     assignment_marks: int | None
     assignment_due_date: str | None
     grade_with: Literal["rubric", "score"]
     rubric: list[RubricCriterion]
+    quiz: dict | None = Field(None, description="For kind \"quiz\": the quiz exactly as Alma 41 stores it "
+                              "({settings, questions}, see src/lib/quiz/quiz.ts). Save it with PUT /api/tutor/lesson-quiz.")
 
 
 class Resource(Model):
@@ -100,28 +103,13 @@ class CourseOut(Model):
     modules: list[ModuleOut]
 
 
-class QuizChoice(Model):
-    text: str
-    correct: bool
-
-
-class QuizQuestion(Model):
-    type: str
-    text: str
-    points: float
-    choices: list[QuizChoice]
-    supported: bool
-
-
 class Unmapped(Model):
-    """Material with no wizard step yet (for now: Canvas quizzes), kept so nothing is lost."""
+    """Material that couldn't be brought in (a quiz with no questions Alma 41 supports)."""
     kind: Literal["quiz"]
     title: str
     module: str | None
     after_lesson: str | None = Field(description="Id of the lesson it followed in Canvas.")
     reason: str
-    points: float | None = None
-    questions: list[QuizQuestion] = []
 
 
 class PackagedFile(Model):
@@ -146,7 +134,8 @@ class Summary(Model):
     with_assignment: int
     videos_found: int
     files_to_upload: int
-    quizzes_kept_aside: int
+    quizzes: int
+    quizzes_not_imported: int
     skipped: int
 
 

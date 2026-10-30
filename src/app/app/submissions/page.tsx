@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, CheckCircle2, CircleDashed, FileCheck2, FileText, Loader2 } from "lucide-react";
+import { CalendarDays, CheckCircle2, CircleDashed, ClipboardCheck, FileCheck2, FileText, Hourglass, Loader2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Tag } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,7 @@ interface Submission {
 
 /** A graded assignment still to hand in: its lesson has been started or completed, with no file yet. */
 interface Due {
+  kind?: "file" | "quiz";
   lessonId: string;
   lessonTitle: string;
   courseSlug: string;
@@ -39,6 +40,22 @@ interface Due {
   dueDate: string | null;
   totalMarks: number | null;
   lessonCompleted: boolean;
+}
+
+/** A quiz the learner has taken: the score that counts under the quiz's policy. */
+interface QuizResult {
+  lessonId: string;
+  lessonTitle: string;
+  lessonExists: boolean;
+  courseSlug: string;
+  courseTitle: string;
+  attempts: number;
+  kept: number | null;
+  maxScore: number;
+  pending: boolean;
+  lastSubmittedAt: string;
+  dueDate: string | null;
+  late: boolean;
 }
 
 type Filter = "all" | "waiting" | "graded" | "attention";
@@ -61,7 +78,7 @@ function score(s: Submission): { got: number; of: number } | null {
 
 export default function SubmissionsPage() {
   const [state, setState] = useState<
-    { status: "loading" } | { status: "ready"; submissions: Submission[]; due: Due[] } | { status: "error"; message: string }
+    { status: "loading" } | { status: "ready"; submissions: Submission[]; due: Due[]; quizzes: QuizResult[] } | { status: "error"; message: string }
   >({ status: "loading" });
   const [filter, setFilter] = useState<Filter>("all");
   const [course, setCourse] = useState("all");
@@ -70,9 +87,9 @@ export default function SubmissionsPage() {
     let cancelled = false;
     fetch("/api/assignment/submissions")
       .then(async (response) => {
-        const data = (await response.json().catch(() => ({}))) as { submissions?: Submission[]; due?: Due[]; error?: string };
+        const data = (await response.json().catch(() => ({}))) as { submissions?: Submission[]; due?: Due[]; quizzes?: QuizResult[]; error?: string };
         if (!response.ok) throw new Error(data.error ?? "Couldn't load your submissions.");
-        if (!cancelled) setState({ status: "ready", submissions: data.submissions ?? [], due: data.due ?? [] });
+        if (!cancelled) setState({ status: "ready", submissions: data.submissions ?? [], due: data.due ?? [], quizzes: data.quizzes ?? [] });
       })
       .catch((error) => {
         if (!cancelled) setState({ status: "error", message: error instanceof Error ? error.message : "Couldn't load your submissions." });
@@ -84,6 +101,7 @@ export default function SubmissionsPage() {
 
   // Still to hand in, from the server: graded lessons the learner has started or completed, with no file yet.
   const dueNext = state.status === "ready" ? state.due : [];
+  const quizzes = state.status === "ready" ? state.quizzes : [];
 
   const courses = useMemo(() => [...new Map(submissions.map((s) => [s.courseSlug, s.courseTitle])).entries()], [submissions]);
   const inCourse = course === "all" ? submissions : submissions.filter((s) => s.courseSlug === course);
@@ -113,17 +131,17 @@ export default function SubmissionsPage() {
               {dueNext.map((d, i) => {
                 const dueIn = d.dueDate ? dueInLabel(d.dueDate) : null;
                 return (
-                  <Card key={d.lessonId} className={cn("flex flex-col gap-3 p-4", dueIn?.soon && "border-amber-300")}>
+                  <Card key={`${d.kind ?? "file"}-${d.lessonId}`} className={cn("flex flex-col gap-3 p-4", dueIn?.soon && "border-amber-300")}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="truncate font-semibold text-zinc-900">{d.lessonTitle}</p>
-                        <p className="truncate text-xs text-zinc-500">{d.courseTitle}{d.totalMarks ? ` · ${d.totalMarks} points` : ""}</p>
+                        <p className="flex items-center gap-1.5 truncate font-semibold text-zinc-900">{d.kind === "quiz" && <ClipboardCheck className="h-4 w-4 shrink-0 text-primary" aria-label="Quiz" />}{d.lessonTitle}</p>
+                        <p className="truncate text-xs text-zinc-500">{d.kind === "quiz" ? "Quiz · " : ""}{d.courseTitle}{d.totalMarks ? ` · ${d.totalMarks} points` : ""}</p>
                       </div>
                       {dueIn && <Tag tone={dueIn.overdue ? "danger" : dueIn.soon ? "warning" : "default"} className="shrink-0">{dueIn.overdue ? dueIn.text : dueIn.text.replace(/^Due /, "")}</Tag>}
                     </div>
                     <p className={cn("flex items-center gap-1.5 text-xs font-medium", d.lessonCompleted ? "text-emerald-700" : "text-zinc-500")}>
                       {d.lessonCompleted
-                        ? <><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />Lesson completed · hand in your file</>
+                        ? <><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />Lesson completed · {d.kind === "quiz" ? "take the quiz" : "hand in your file"}</>
                         : <><CircleDashed className="h-3.5 w-3.5" aria-hidden="true" />Lesson in progress</>}
                     </p>
                     <div className="flex items-center justify-between gap-2">
@@ -132,7 +150,7 @@ export default function SubmissionsPage() {
                         {d.dueDate ? dueDateLabel(d.dueDate) : "No due date"}
                       </p>
                       <Link href={lessonHref(d.courseSlug, d.lessonId)}>
-                        <Button size="sm" variant={i === 0 ? "primary" : "outline"}>{i === 0 || d.lessonCompleted ? "Hand it in" : "Open lesson"}</Button>
+                        <Button size="sm" variant={i === 0 ? "primary" : "outline"}>{d.kind === "quiz" ? "Take the quiz" : i === 0 || d.lessonCompleted ? "Hand it in" : "Open lesson"}</Button>
                       </Link>
                     </div>
                   </Card>
@@ -148,6 +166,31 @@ export default function SubmissionsPage() {
         {state.status === "error" && (
           <Card className="p-6"><p role="alert" className="text-sm text-red-700">{state.message}</p></Card>
         )}
+        {quizzes.length > 0 && (
+          <Card className="overflow-hidden p-0">
+            <div className="border-b border-zinc-100 px-4 py-3"><h2 className="text-base font-semibold text-zinc-900">Quizzes · {quizzes.length}</h2></div>
+            <ul className="divide-y divide-zinc-100">
+              {quizzes.map((q) => (
+                <li key={q.lessonId} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5">
+                  <div className="min-w-0">
+                    <p className="flex items-center gap-1.5 truncate font-semibold text-zinc-900"><ClipboardCheck className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />{q.lessonTitle}</p>
+                    <p className="truncate text-xs text-zinc-500">{q.courseTitle} · {q.attempts} attempt{q.attempts === 1 ? "" : "s"} · last {shortDate(q.lastSubmittedAt)}</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      {q.kept !== null
+                        ? <p className="text-zinc-900"><span className="text-lg font-semibold tabular-nums">{Math.round(q.kept * 100) / 100}</span><span className="text-sm text-zinc-500"> / {q.maxScore}</span></p>
+                        : <p className="flex items-center gap-1 text-xs font-medium text-zinc-600"><Hourglass className="h-3.5 w-3.5" />Waiting for your tutor</p>}
+                      <div className="flex justify-end gap-1">{q.pending && q.kept !== null && <Tag tone="primary">Essay being checked</Tag>}{q.late && <Tag tone="warning">Late</Tag>}</div>
+                    </div>
+                    {q.lessonExists && <Link href={lessonHref(q.courseSlug, q.lessonId)}><Button size="sm" variant="outline">Open</Button></Link>}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
+
         {state.status === "ready" && submissions.length === 0 && (
           <Card className="flex flex-col items-center gap-2 p-10 text-center">
             <FileCheck2 className="h-6 w-6 text-zinc-300" />
