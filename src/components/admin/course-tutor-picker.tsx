@@ -3,6 +3,7 @@
 import { useEffect, useId, useState } from "react";
 import { Loader2, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { askConfirm } from "@/components/ui/confirm-dialog";
 
 /**
  * Super admin: choose which tutor teaches a course. Saving emails the new
@@ -54,7 +55,7 @@ export function CourseTutorPicker({ slug, courseTitle }: { slug: string; courseT
     const question = tutor
       ? `Make ${label(tutor)} the tutor of "${courseTitle}"? They'll get an email saying they've been assigned.`
       : `Leave "${courseTitle}" without a tutor?`;
-    if (!confirm(question)) return;
+    if (!(await askConfirm(question, { confirmLabel: tutor ? "Assign tutor" : "Remove tutor" }))) return;
     setBusy(true);
     setMessage(null);
     try {

@@ -7,6 +7,7 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { dueDateLabel, dueInLabel } from "@/lib/courses/assignment-dates";
 import { ASSIGNMENTS_CHANGED_EVENT } from "@/lib/courses/assignment-events";
+import { askConfirm } from "@/components/ui/confirm-dialog";
 
 type SubmissionState =
   | { status: "checking" }
@@ -99,21 +100,21 @@ export function AssignmentSubmission({ lessonId, assignmentBrief, totalMarks, du
   }
 
   // Replacing a file clears any grade and comments the tutor has given it.
-  function replace() {
-    if (!window.confirm("Replace your file? If your tutor has already checked it, their grade and comments are cleared and they check the new one.")) return;
+  async function replace() {
+    if (!(await askConfirm("Replace your file? If your tutor has already checked it, their grade and comments are cleared and they check the new one.", { confirmLabel: "Replace file" }))) return;
     fileInputRef.current?.click();
   }
   function pick() {
-    if (state.status === "submitted") replace();
+    if (state.status === "submitted") void replace();
     else fileInputRef.current?.click();
   }
 
-  function onDrop(event: DragEvent<HTMLDivElement>) {
+  async function onDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
     setDragging(false);
     const file = event.dataTransfer.files?.[0];
     if (!file) return;
-    if (state.status === "submitted" && !window.confirm("Replace your file? If your tutor has already checked it, their grade and comments are cleared and they check the new one.")) return;
+    if (state.status === "submitted" && !(await askConfirm("Replace your file? If your tutor has already checked it, their grade and comments are cleared and they check the new one.", { confirmLabel: "Replace file" }))) return;
     void upload(file);
   }
 

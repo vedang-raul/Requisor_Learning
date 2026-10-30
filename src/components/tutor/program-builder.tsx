@@ -19,6 +19,7 @@ import {
   PROGRAM_COMMAND_EVENT, PROGRAM_DRAFT_KEY, programStorageKey, sampleDiscovery, takeProgramCommand,
   type Curriculum, type Discovery, type Industry, type Level, type Proposal,
 } from "@/lib/courses/program-builder";
+import { askConfirm } from "@/components/ui/confirm-dialog";
 
 /**
  * Program Builder: employer need → curriculum → priced proposal.
@@ -248,7 +249,7 @@ function PreviewLinkPanel({ course, proposal, onChange, label }: { course: Cours
   }
 
   async function revoke(id: number) {
-    if (!window.confirm("Turn this link off? Anyone who has it will no longer be able to open the preview.")) return;
+    if (!(await askConfirm("Turn this link off? Anyone who has it will no longer be able to open the preview.", { confirmLabel: "Turn off", danger: true }))) return;
     const res = await fetch(`${api}&id=${id}`, { method: "DELETE" }).catch(() => null);
     if (!res?.ok) { setNote({ kind: "warn", text: "Couldn't turn the link off. Try again." }); return; }
     if (proposal.preview?.id === id) onChange({ ...proposal, preview: undefined });
@@ -347,7 +348,7 @@ function AllPreviewLinks({ onTurnedOff }: { onTurnedOff: (id: number) => void })
   }, [load]);
 
   async function turnOff(link: MyPreviewLink) {
-    if (!window.confirm(`Turn off the link for ${link.label || "this proposal"}? Anyone who has it will no longer be able to open the preview.`)) return;
+    if (!(await askConfirm(`Turn off the link for ${link.label || "this proposal"}? Anyone who has it will no longer be able to open the preview.`, { confirmLabel: "Turn off", danger: true }))) return;
     const res = await fetch(`/api/tutor/preview-links?id=${link.id}`, { method: "DELETE" }).catch(() => null);
     if (!res?.ok) { setNote({ kind: "warn", text: "Couldn't turn the link off. Try again." }); return; }
     setNote({ kind: "ok", text: "Link turned off." });
@@ -713,9 +714,9 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
     if (course === undefined) { setBlueprintNote({ kind: "warn", text: "Couldn't load your courses. Please try again." }); return; }
     onOpenCourse(blueprint.slug);
   }
-  function updateBlueprint() {
+  async function updateBlueprint() {
     if (!curriculum) return;
-    if (blueprint && !confirm(`Update "${blueprint.title}" to match this curriculum? Its lessons are replaced, including any videos or text added to them since.`)) return;
+    if (blueprint && !(await askConfirm(`Update "${blueprint.title}" to match this curriculum? Its lessons are replaced, including any videos or text added to them since.`, { confirmLabel: "Update", danger: true }))) return;
     void saveBlueprint(curriculum, "update");
   }
 

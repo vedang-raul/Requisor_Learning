@@ -7,6 +7,7 @@ import { SyllabusView } from "@/components/course/syllabus-view";
 import { MAX_RESOURCE_FILE_BYTES } from "@/lib/courses/resource-files";
 import { blankSyllabus, gradingShares, syllabusHasContent, type Syllabus, type SyllabusTemplate } from "@/lib/courses/syllabus";
 import type { Course } from "@/lib/types";
+import { askConfirm } from "@/components/ui/confirm-dialog";
 
 /**
  * The tutor's syllabus panel for a course. Two ways to provide one:
@@ -189,7 +190,7 @@ export function SyllabusPanel({ course, onSaved }: { course: Course; onSaved: (s
     setSavedNote(null);
     if (!/\.(pdf|docx)$/i.test(file.name)) { setError("Choose a PDF or Word (.docx) file."); return; }
     if (file.size > MAX_RESOURCE_FILE_BYTES) { setError("The syllabus file can be up to 10 MB."); return; }
-    if (syllabus?.kind === "template" && !window.confirm("Replace the filled-in syllabus with this file? Students will see the file instead.")) return;
+    if (syllabus?.kind === "template" && !(await askConfirm("Replace the filled-in syllabus with this file? Students will see the file instead.", { confirmLabel: "Replace" }))) return;
     setBusy("upload");
     try {
       const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -209,7 +210,7 @@ export function SyllabusPanel({ course, onSaved }: { course: Course; onSaved: (s
   }
 
   async function saveTemplate() {
-    if (syllabus?.kind === "file" && !window.confirm("Replace the uploaded syllabus file with this filled-in one? Students will see this instead.")) return;
+    if (syllabus?.kind === "file" && !(await askConfirm("Replace the uploaded syllabus file with this filled-in one? Students will see this instead.", { confirmLabel: "Replace" }))) return;
     if (await save(draft, "save")) { setEditing(false); setPreview(false); }
   }
 
@@ -238,7 +239,7 @@ export function SyllabusPanel({ course, onSaved }: { course: Course; onSaved: (s
           </Button>
           <input ref={fileRef} type="file" accept=".pdf,.docx" className="hidden" onChange={(e) => void upload(e.target.files?.[0])} />
           {has && <Button type="button" size="sm" variant="ghost" onClick={() => setPreview(true)}><Eye className="h-3.5 w-3.5" />View as a student</Button>}
-          {syllabus && <Button type="button" size="sm" variant="ghost" disabled={Boolean(busy)} onClick={() => { if (window.confirm("Remove this course's syllabus?")) void save(null, "remove"); }}><Trash2 className="h-3.5 w-3.5 text-red-600" />Remove</Button>}
+          {syllabus && <Button type="button" size="sm" variant="ghost" disabled={Boolean(busy)} onClick={async () => { if (await askConfirm("Remove this course's syllabus?", { confirmLabel: "Remove", danger: true })) void save(null, "remove"); }}><Trash2 className="h-3.5 w-3.5 text-red-600" />Remove</Button>}
         </div>
       )}
       {error && !editing && <p role="alert" className="text-sm text-red-700">{error}</p>}

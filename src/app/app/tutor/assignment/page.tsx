@@ -18,6 +18,7 @@ import { DATA_CHANGED_EVENT } from "@/components/assistant/assistant-action-card
 import { parseAssignment } from "@/lib/ai/assignment-format";
 import { daysAgoLabel, isLate } from "@/lib/courses/assignment-dates";
 import type { SubmissionSource } from "@/lib/courses/submission-source";
+import { askConfirm } from "@/components/ui/confirm-dialog";
 
 interface RubricCriterion {
   id: number;
@@ -682,9 +683,9 @@ function GradeView() {
     return detail.rubric.some((c) => (scoreInputs[c.id] ?? "") !== (c.score !== null ? String(c.score) : ""));
   }
 
-  function goToSubmission(id: number) {
+  async function goToSubmission(id: number) {
     if (!Number.isSafeInteger(id) || id === submissionId) return;
-    if (hasUnsavedGrade() && !window.confirm(`You haven't saved the grade for ${detail?.submission.studentName}. Leave without saving?`)) return;
+    if (hasUnsavedGrade() && !(await askConfirm(`You haven't saved the grade for ${detail?.submission.studentName}. Leave without saving?`, { confirmLabel: "Leave without saving", danger: true }))) return;
     router.push(submissionHref(id, filter));
   }
 

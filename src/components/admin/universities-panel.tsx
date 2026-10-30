@@ -6,6 +6,7 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { cleanDomains, isPublicEmailDomain, MAX_UNIVERSITY_DOMAINS } from "@/lib/auth/roles";
 import { refreshBranding } from "@/lib/branding-client";
+import { askConfirm } from "@/components/ui/confirm-dialog";
 
 /**
  * For super admins: the universities on the platform, and which one the public
@@ -121,7 +122,7 @@ export function UniversitiesPanel({ onChanged }: { onChanged?: () => void }) {
   }
 
   async function remove(row: UniversityRow) {
-    if (!window.confirm(`Remove ${row.name}? Its ${row.people} people and ${row.courses} courses stay on the platform without a university, and its university admins become students.`)) return;
+    if (!(await askConfirm(`Remove ${row.name}? Its ${row.people} people and ${row.courses} courses stay on the platform without a university, and its university admins become students.`, { confirmLabel: "Remove university", danger: true }))) return;
     try {
       await send("DELETE", { id: row.id });
       changed(`${row.name} was removed.`);

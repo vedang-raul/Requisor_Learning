@@ -5,6 +5,7 @@ import { Check, Loader2, Search, UserCheck, UserMinus, X } from "lucide-react";
 import { Card, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { UniversityOption } from "@/lib/branding-client";
+import { askConfirm } from "@/components/ui/confirm-dialog";
 
 /**
  * Managing people. A university admin sees their own university's students and
@@ -188,7 +189,7 @@ export function PeoplePanel({ superAdmin, universities }: { superAdmin: boolean;
                           {p.universityId && (
                             <button
                               type="button" disabled={locked}
-                              onClick={() => { if (window.confirm(`Take ${p.name || p.email} out of ${p.universityName ?? "the university"}? They become a student with no university.`)) void act(p, { action: "remove" }, "removed from the university"); }}
+                              onClick={async () => { if (await askConfirm(`Take ${p.name || p.email} out of ${p.universityName ?? "the university"}? They become a student with no university.`, { confirmLabel: "Remove", danger: true })) void act(p, { action: "remove" }, "removed from the university"); }}
                               className="focus-ring inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
                             >
                               <UserMinus className="h-3.5 w-3.5" aria-hidden="true" />{p.status === "pending" ? "Decline" : "Remove"}

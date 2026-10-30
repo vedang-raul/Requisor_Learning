@@ -15,6 +15,7 @@ import { LessonMarkdown } from "@/components/ui/lesson-markdown";
 import { cn } from "@/lib/utils";
 import type { LearnerQuiz } from "@/lib/quiz/learner-view";
 import type { Answer, Answers, PublicQuestion, ResultQuestion } from "@/lib/quiz/quiz";
+import { askConfirm } from "@/components/ui/confirm-dialog";
 
 const BLANK = /\[([A-Za-z0-9_ -]{1,40})\]/g;
 const fmt = (n: number) => (Math.round(n * 100) / 100).toString();
@@ -158,8 +159,8 @@ function Runner({ panel, onDone }: { panel: NonNullable<LearnerQuiz["inProgress"
   }
 
   const unanswered = questions.filter((q) => q.type !== "text_only" && !answered(answers[q.id])).length;
-  const finish = () => {
-    if (unanswered && !window.confirm(`${unanswered} question${unanswered === 1 ? " is" : "s are"} unanswered. Hand in anyway?`)) return;
+  const finish = async () => {
+    if (unanswered && !(await askConfirm(`${unanswered} question${unanswered === 1 ? " is" : "s are"} unanswered. Hand in anyway?`, { confirmLabel: "Hand in" }))) return;
     void submit();
   };
   const timeText = left !== null ? `${Math.max(0, Math.floor(left / 60000))}:${String(Math.max(0, Math.floor((left % 60000) / 1000))).padStart(2, "0")}` : null;
@@ -191,7 +192,7 @@ function Runner({ panel, onDone }: { panel: NonNullable<LearnerQuiz["inProgress"
             <Button type="button" variant="outline" size="sm" disabled={index >= questions.length - 1} onClick={() => { setLocked(Math.max(locked, index + 1)); setIndex((i) => i + 1); }}>Next<ArrowRight className="h-3.5 w-3.5" /></Button>
           </span>
         ) : <span className="text-xs text-zinc-500">{unanswered ? `${unanswered} unanswered` : "All answered"}</span>}
-        <Button type="button" onClick={finish} disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardCheck className="h-4 w-4" />}Hand in quiz</Button>
+        <Button type="button" onClick={() => void finish()} disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardCheck className="h-4 w-4" />}Hand in quiz</Button>
       </div>
     </div>
   );

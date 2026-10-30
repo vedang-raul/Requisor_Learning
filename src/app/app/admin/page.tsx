@@ -29,6 +29,7 @@ import { useSession } from "next-auth/react";
 import { Building2, UserCog, UserRound } from "lucide-react";
 import { getCategoryCover, DEFAULT_COURSE_ICON } from "@/components/course/category-icon";
 import { CourseIconPicker } from "@/components/course/course-icon-picker";
+import { askConfirm } from "@/components/ui/confirm-dialog";
 
 type TabKey = "analytics" | "activity" | "content" | "people" | "universities" | "reviews" | "bugs";
 const AI_COURSE_DRAFT_KEY = "requisor-ai-course-draft";
@@ -512,7 +513,7 @@ function ContentManager() {
                   </Button>
                   </motion.div>
                   <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
-                  <Button size="sm" variant="danger" onClick={async () => { if (confirm(`Delete course "${course.title}" and all its lessons?`)) { try { await deleteCourse(course.slug); setSelected(state.courses.find((c) => c.slug !== course.slug)?.slug ?? null); } catch (error) { reportFailure(error); } } }}>
+                  <Button size="sm" variant="danger" onClick={async () => { if (await askConfirm(`Delete course "${course.title}" and all its lessons?`, { confirmLabel: "Delete course", danger: true })) { try { await deleteCourse(course.slug); setSelected(state.courses.find((c) => c.slug !== course.slug)?.slug ?? null); } catch (error) { reportFailure(error); } } }}>
                     <Trash2 className="h-3.5 w-3.5" />Delete course
                   </Button>
                 </motion.div>
@@ -575,7 +576,7 @@ function ContentManager() {
                       <Button size="icon" variant="ghost" aria-label={`Edit ${l.title}`} onClick={() => { setEditingLesson(l); setCreatingLesson(false); }}><Pencil className="h-4 w-4" /></Button>
                     </motion.div>}
                     {!aiDraft && <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
-                      <Button size="icon" variant="ghost" aria-label={`Delete ${l.title}`} onClick={async () => { if (confirm(`Delete lesson "${l.title}"?`)) { try { await deleteLesson(course.slug, l.id); } catch (error) { reportFailure(error); } } }}><Trash2 className="h-4 w-4 text-red-600" /></Button>
+                      <Button size="icon" variant="ghost" aria-label={`Delete ${l.title}`} onClick={async () => { if (await askConfirm(`Delete lesson "${l.title}"?`, { confirmLabel: "Delete lesson", danger: true })) { try { await deleteLesson(course.slug, l.id); } catch (error) { reportFailure(error); } } }}><Trash2 className="h-4 w-4 text-red-600" /></Button>
                     </motion.div>}
                   </motion.div>
                 ))}

@@ -9,6 +9,7 @@ import { VideoEditor, type EditorSource } from "@/components/tutor/video-editor"
 import { defaultScriptMinutes, followSpeech, lessonBriefKey, normalizeWord, parseScript, SCRIPT_MINUTES, type LessonBrief } from "@/lib/video/teleprompter";
 import { lessonBrief } from "@/lib/courses/lesson-brief";
 import { cn } from "@/lib/utils";
+import { askConfirm } from "@/components/ui/confirm-dialog";
 
 /**
  * Lesson recording. The wizard's Record tab (RecordStudio) opens the recorder
@@ -396,7 +397,7 @@ export function VideoRecorder({
     const title = (brief?.title || lessonTitle).trim();
     setScriptError(null);
     if (!title) { setScriptError("Add a lesson title in step 1 of the lesson first."); return; }
-    if (script.trim() && !window.confirm("Replace the script you have with a new one?")) return;
+    if (script.trim() && !(await askConfirm("Replace the script you have with a new one?", { confirmLabel: "Replace script" }))) return;
     setWriting(true);
     try {
       const res = await fetch("/api/tutor/teleprompter-script", {
@@ -636,8 +637,8 @@ export function VideoRecorder({
     setPhase("idle");
   }
 
-  function recordAgain() {
-    if (!window.confirm("Discard this recording and start again? Download it first if you want to keep it.")) return;
+  async function recordAgain() {
+    if (!(await askConfirm("Discard this recording and start again? Download it first if you want to keep it.", { confirmLabel: "Discard", danger: true }))) return;
     setRecording(null);
     setError(null);
     setPhase("idle");

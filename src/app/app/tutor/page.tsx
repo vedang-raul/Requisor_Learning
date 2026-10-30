@@ -40,6 +40,7 @@ import { MAX_RESOURCE_FILE_BYTES, RESOURCE_FILE_ACCEPT } from "@/lib/courses/res
 import { mergeSavedTutorCourse, reconcileTutorCourses, type TutorCourseSummary } from "@/lib/courses/tutor-course-sync";
 import { SubmissionSourceBadge } from "@/components/lesson/submission-source-badge";
 import type { SubmissionSource } from "@/lib/courses/submission-source";
+import { askConfirm } from "@/components/ui/confirm-dialog";
 
 type TabKey = "analytics" | "courses" | "learners" | "ratings";
 type TutorCourse = TutorCourseSummary;
@@ -507,7 +508,7 @@ export default function TutorPage() {
                   onDeleteLesson={aiDraft ? async (lesson) => { setSelected((current) => current ? { ...current, lessons: current.lessons.filter((item) => item.id !== lesson.id) } : current); return true; } : (lesson) => updateLessons(lesson, true)}
                   // Module changes save the course straight away; an unsaved AI draft just updates on screen.
                   onChangeCourse={aiDraft ? async (next) => { setSelected(next); } : saveCourse}
-                  onDeleteCourse={aiDraft ? undefined : async () => { if (!confirm(`Delete "${selected.title}"?`)) return; setSaving(true); try { await deleteCourse(selected.slug); setSelected(null); await load(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Couldn't delete the course."); } finally { setSaving(false); } }}
+                  onDeleteCourse={aiDraft ? undefined : async () => { if (!(await askConfirm(`Delete "${selected.title}"? Its lessons, quizzes and learners' progress go with it. This can't be undone.`, { title: "Delete this course?", confirmLabel: "Delete course", danger: true }))) return; setSaving(true); try { await deleteCourse(selected.slug); setSelected(null); await load(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Couldn't delete the course."); } finally { setSaving(false); } }}
                 />
               </div>}
             </div>
@@ -996,8 +997,8 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, onChangeC
     setModuleDraft(null); setModuleError(null);
     void change(next);
   }
-  function deleteModule(title: string, count: number) {
-    if (!window.confirm(count ? `Remove the module "${title}"? Its ${count} lesson${count === 1 ? "" : "s"} stay in the course, outside any module.` : `Remove the module "${title}"?`)) return;
+  async function deleteModule(title: string, count: number) {
+    if (!(await askConfirm(count ? `Remove the module "${title}"? Its ${count} lesson${count === 1 ? "" : "s"} stay in the course, outside any module.` : `Remove the module "${title}"?`, { confirmLabel: "Remove module", danger: true }))) return;
     void change(removeModule(course, title));
   }
   const [lessonFormVersion, setLessonFormVersion] = useState(0);
@@ -1486,9 +1487,9 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
     // criteriaSignature is a pure helper.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lesson?.id, allowUploads]);
-  function pickGradeWith(next: "rubric" | "score") {
+  async function pickGradeWith(next: "rubric" | "score") {
     if (next === gradeWith) return;
-    if (next === "score" && criteria.some((c) => c.id) && !window.confirm("Grade with one score instead? This lesson's rubric is removed when you save. Grades already given keep their totals.")) return;
+    if (next === "score" && criteria.some((c) => c.id) && !(await askConfirm("Grade with one score instead? This lesson's rubric is removed when you save. Grades already given keep their totals.", { confirmLabel: "Use one score" }))) return;
     if (next === "rubric" && criteria.length === 0) setCriteria([{ title: "", description: "", maxPoints: "10" }]);
     setGradeWith(next);
     setFormError(null);
