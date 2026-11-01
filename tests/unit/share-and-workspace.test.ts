@@ -40,13 +40,14 @@ describe("returning to a page after sign-in", () => {
 
 describe("course share link", () => {
   const go = async (slug: string) => {
-    const res = await shareLink(new Request(`https://learning.example/c/${slug}`), { params: Promise.resolve({ slug }) });
+    // As on Replit: the app sees the proxy's internal address, not the public one.
+    const res = await shareLink(new Request(`http://localhost:5000/c/${slug}`), { params: Promise.resolve({ slug }) });
     return { status: res.status, location: res.headers.get("location") };
   };
   it("points at the course page, and nowhere else", async () => {
-    expect(await go("agentic-ai")).toEqual({ status: 307, location: "https://learning.example/app/course/?slug=agentic-ai" });
-    expect((await go("..%2F..%2Fadmin")).location).toBe("https://learning.example/app/dashboard/");
-    expect((await go("Bad Slug")).location).toBe("https://learning.example/app/dashboard/");
+    expect(await go("agentic-ai")).toEqual({ status: 307, location: "/app/course/?slug=agentic-ai" });   // relative: never the internal host
+    expect((await go("..%2F..%2Fadmin")).location).toBe("/app/dashboard/");
+    expect((await go("Bad Slug")).location).toBe("/app/dashboard/");
   });
 });
 

@@ -12,6 +12,8 @@ Database: three new tables, `course_preview_links`, `lesson_quizzes` and
 existing changes.
 
 ### Fixed
+- **Course share links on the live site**: `/c/<course>` sent people to the server's
+  internal address (`localhost:5000`) instead of the course.
 - **Program Builder documents, long ones**: the chosen colour showed only on section
   headings, so pages of curriculum looked uncoloured. Module titles and the pricing
   table now use it, every page has a band in the theme colour (PDF and Word), and PDFs

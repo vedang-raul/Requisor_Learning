@@ -8,8 +8,10 @@
  */
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-export async function GET(req: Request, { params }: { params: Promise<{ slug: string }> }) {
+export async function GET(_req: Request, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const target = new URL(SLUG.test(slug) && slug.length <= 80 ? `/app/course/?slug=${slug}` : "/app/dashboard/", req.url);
-  return Response.redirect(target, 307);
+  // A relative address: behind a proxy req.url is the internal host (localhost:5000 on Replit),
+  // so the browser must resolve this against the address the visitor actually used.
+  const target = SLUG.test(slug) && slug.length <= 80 ? `/app/course/?slug=${slug}` : "/app/dashboard/";
+  return new Response(null, { status: 307, headers: { Location: target } });
 }
