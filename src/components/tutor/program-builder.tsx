@@ -15,7 +15,7 @@ import { isPreviewUrl, PREVIEW_LINK_DAYS, previewModuleChoices } from "@/lib/cou
 import type { MyPreviewLink, PreviewLinkSummary } from "@/lib/courses/preview-links";
 import { DEFAULT_PROGRAM_DOC_STYLE, DOC_THEMES, loadDocStyle, logoSources, MAX_DOC_LOGOS, MAX_LOGO_BYTES, saveDocStyle, type ProgramDocStyle } from "@/lib/courses/program-doc-style";
 import {
-  analyzeTranscript, BLUEPRINT_LABEL, blueprintSlug, buildProposal, composeCurriculum, curriculumFromCourse, curriculumToCourse, EMPTY_DISCOVERY, FORMATS, INDUSTRIES, LEVELS, MODULE_COUNTS,
+  analyzeTranscript, BLUEPRINT_LABEL, blueprintSlug, buildProposal, composeCurriculum, courseChoiceGroups, curriculumFromCourse, curriculumToCourse, EMPTY_DISCOVERY, FORMATS, INDUSTRIES, LEVELS, MODULE_COUNTS,
   PROGRAM_COMMAND_EVENT, PROGRAM_DRAFT_KEY, programStorageKey, sampleDiscovery, takeProgramCommand,
   type Curriculum, type Discovery, type Industry, type Level, type Proposal,
 } from "@/lib/courses/program-builder";
@@ -959,7 +959,11 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
               <div className="mt-2.5 flex gap-2">
                 <select aria-label="Your course" className={selectClass} value={pickedCourse} onChange={(e) => { setPickedCourse(e.target.value); setCourseNote(null); }} disabled={!myCourses?.length}>
                   <option value="">{myCourses === null ? "Loading your courses…" : myCourses.length ? "Choose a course…" : "No courses with lessons yet"}</option>
-                  {myCourses?.map((c) => <option key={c.slug} value={c.slug}>{c.title}{c.published === false ? " (draft)" : ""}</option>)}
+                  {courseChoiceGroups(myCourses ?? []).map((group) => (
+                    <optgroup key={group.label} label={`${group.label} (${group.courses.length})`}>
+                      {group.courses.map((c) => <option key={c.slug} value={c.slug}>{c.title} · {c.lessons.length} lesson{c.lessons.length === 1 ? "" : "s"}</option>)}
+                    </optgroup>
+                  ))}
                 </select>
                 <Button type="button" onClick={() => applyCourse()} disabled={!pickedCourse} className="shrink-0">Use course</Button>
               </div>

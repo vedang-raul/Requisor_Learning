@@ -420,6 +420,16 @@ export function curriculumToCourse(curriculum: Curriculum, options: { slug: stri
  * lessons' key takeaways. Discovery fields (audience, format, pains) still
  * shape the proposal. No AI, no network.
  */
+/** The tutor's courses for picking one: published first, then drafts, each A to Z (Module 2 before Module 10). */
+export function courseChoiceGroups<C extends Pick<Course, "title" | "slug" | "published">>(courses: C[]): { label: string; courses: C[] }[] {
+  const sorted = [...courses].sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: "base" }) || a.slug.localeCompare(b.slug));
+  const groups = [
+    { label: "Published", courses: sorted.filter((c) => c.published !== false) },
+    { label: "Drafts", courses: sorted.filter((c) => c.published === false) },
+  ];
+  return groups.filter((g) => g.courses.length > 0);
+}
+
 export function curriculumFromCourse(course: Course, form: Discovery): Curriculum {
   const groups = groupByModule({ modules: moduleList(course), lessons: course.lessons }).filter((g) => g.lessons.length > 0);
   const modules: ProgramModule[] = groups.map((g, i) => ({

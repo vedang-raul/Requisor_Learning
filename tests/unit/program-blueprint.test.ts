@@ -1,5 +1,5 @@
 import { validateCourse } from "@/lib/courses/course-catalog";
-import { blueprintCourseTitle, blueprintSlug, composeCurriculum, curriculumFromCourse, curriculumToCourse, sampleDiscovery, EMPTY_DISCOVERY } from "@/lib/courses/program-builder";
+import { blueprintCourseTitle, blueprintSlug, composeCurriculum, courseChoiceGroups, curriculumFromCourse, curriculumToCourse, sampleDiscovery, EMPTY_DISCOVERY } from "@/lib/courses/program-builder";
 import type { Course, Lesson } from "@/lib/types";
 
 describe("Curriculum blueprint course", () => {
@@ -62,5 +62,22 @@ describe("Program from an existing course", () => {
     expect(flat.modules).toHaveLength(1);
     expect(flat.modules[0].title).toBe("Agentic AI");
     expect(flat.modules[0].submodules).toHaveLength(4);
+  });
+});
+
+describe("Choosing one of your courses", () => {
+  const c = (title: string, published?: boolean, slug = title.toLowerCase()) => ({ title, slug, published });
+  it("lists published courses, then drafts, each A to Z", () => {
+    const groups = courseChoiceGroups([c("zebra"), c("Draft B", false), c("apple", true), c("Draft A", false), c("Module 10"), c("Module 2")]);
+    expect(groups.map((g) => [g.label, g.courses.map((x) => x.title)])).toEqual([
+      ["Published", ["apple", "Module 2", "Module 10", "zebra"]],
+      ["Drafts", ["Draft A", "Draft B"]],
+    ]);
+  });
+  it("leaves out an empty section, and keeps same-named courses in a steady order", () => {
+    expect(courseChoiceGroups([c("Only draft", false)]).map((g) => g.label)).toEqual(["Drafts"]);
+    expect(courseChoiceGroups([])).toEqual([]);
+    const [{ courses }] = courseChoiceGroups([c("Same", true, "b"), c("Same", true, "a")]);
+    expect(courses.map((x) => x.slug)).toEqual(["a", "b"]);
   });
 });
