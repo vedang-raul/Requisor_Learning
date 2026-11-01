@@ -18,6 +18,10 @@ existing changes.
   print the exact colour. Modules and the pricing table no longer split across pages.
 
 ### Added
+- **Several logos on Program Builder documents**: up to four, side by side at the top
+  of the proposal and blueprint (PDF and Word): the platform logo plus your own, each
+  removable. Added logos are shrunk and kept in the browser; existing logo settings
+  carry over.
 - **Graded quizzes** (tutors and learners), modelled on Canvas Classic Quizzes: a
   fourth way to assess a lesson in step 3 of the lesson wizard. Ten question types
   (multiple choice, true/false, multiple answers, fill in the blank, fill in

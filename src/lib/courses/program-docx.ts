@@ -13,12 +13,12 @@ export type DocBlock =
   | { kind: "kicker" | "title" | "heading" | "subheading" | "paragraph" | "bullet" | "label" | "footer"; runs: Run[] }
   | { kind: "table"; header: string[]; rows: string[][]; alignLast?: boolean; bold?: number[] };
 
-/** How the document looks: its accent colour and, optionally, a logo at the top. */
+/** How the document looks: its accent colour and, optionally, logos side by side at the top. */
 export type DocStyle = {
   /** "#RRGGBB" */
   accent: string;
   /** A PNG, already sized: width and height in pixels. */
-  logo?: { png: Uint8Array; width: number; height: number } | null;
+  logos?: { png: Uint8Array; width: number; height: number }[];
 };
 export const DEFAULT_DOC_STYLE: DocStyle = { accent: "#0F766E" };
 const hex = (color: string) => (/^#[0-9a-f]{6}$/i.test(color) ? color.slice(1).toUpperCase() : "0F766E");
@@ -122,21 +122,32 @@ function tableXml(table: Extract<DocBlock, { kind: "table" }>): string {
     + `</w:tbl><w:p><w:pPr><w:pStyle w:val="Normal"/></w:pPr></w:p>`;
 }
 
-/** The logo as an inline picture, at most 0.6 in tall and 2.5 in wide (EMU: 914400 per inch). */
-function logoXml(logo: NonNullable<DocStyle["logo"]>): string {
+const TEXT_WIDTH_IN = 6.5;
+const LOGO_GAP_IN = 0.2;
+
+/** One logo as an inline picture, at most 0.6 in tall and maxWidthIn wide (EMU: 914400 per inch). */
+function logoXml(logo: NonNullable<DocStyle["logos"]>[number], n: number, maxWidthIn: number): string {
   const EMU = 914400;
   let cy = Math.round(0.6 * EMU);
   let cx = Math.round((cy * logo.width) / Math.max(1, logo.height));
-  if (cx > 2.5 * EMU) { cx = Math.round(2.5 * EMU); cy = Math.round((cx * logo.height) / Math.max(1, logo.width)); }
-  return `<w:p><w:pPr><w:spacing w:after="200"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="1" name="Logo"/>`
+  if (cx > maxWidthIn * EMU) { cx = Math.round(maxWidthIn * EMU); cy = Math.round((cx * logo.height) / Math.max(1, logo.width)); }
+  return `<w:r><w:drawing><wp:inline distT="0" distB="0" distL="${n > 1 ? Math.round(LOGO_GAP_IN * EMU) : 0}" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${n}" name="Logo ${n}"/>`
     + `<wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr>`
-    + `<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="0" name="logo.png"/><pic:cNvPicPr/></pic:nvPicPr>`
-    + `<pic:blipFill><a:blip r:embed="rIdLogo"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>`
+    + `<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="${n}" name="logo${n}.png"/><pic:cNvPicPr/></pic:nvPicPr>`
+    + `<pic:blipFill><a:blip r:embed="rIdLogo${n}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>`
     + `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
 }
 
+/** The logos in one line, each narrow enough that they all fit across the page. */
+function logosXml(logos: NonNullable<DocStyle["logos"]>): string {
+  if (!logos.length) return "";
+  const maxWidthIn = Math.min(2.5, (TEXT_WIDTH_IN - LOGO_GAP_IN * (logos.length - 1)) / logos.length);
+  const pictures = logos.map((logo, i) => logoXml(logo, i + 1, maxWidthIn)).join(`<w:r><w:t xml:space="preserve">   </w:t></w:r>`);
+  return `<w:p><w:pPr><w:spacing w:after="200"/></w:pPr>${pictures}</w:p>`;
+}
+
 export function documentXml(blocks: DocBlock[], style: DocStyle = DEFAULT_DOC_STYLE): string {
-  const body = (style.logo ? logoXml(style.logo) : "") + blocks.map((b) => (b.kind === "table" ? tableXml(b) : paragraphXml(b.kind, b.runs))).join("");
+  const body = logosXml(style.logos ?? []) + blocks.map((b) => (b.kind === "table" ? tableXml(b) : paragraphXml(b.kind, b.runs))).join("");
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
     + `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"`
     + ` xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"`
@@ -168,9 +179,9 @@ const CONTENT_TYPES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
   + `<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>`;
 const ROOT_RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
   + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`;
-const documentRels = (withLogo: boolean) => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+const documentRels = (logoCount: number) => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
   + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`
-  + (withLogo ? `<Relationship Id="rIdLogo" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/logo.png"/>` : "")
+  + Array.from({ length: logoCount }, (_, i) => `<Relationship Id="rIdLogo${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/logo${i + 1}.png"/>`).join("")
   + `</Relationships>`;
 
 export const DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -180,10 +191,11 @@ export function buildDocx(blocks: DocBlock[], style: DocStyle = DEFAULT_DOC_STYL
   const zip = new JSZip();
   zip.file("[Content_Types].xml", CONTENT_TYPES);
   zip.file("_rels/.rels", ROOT_RELS);
-  zip.file("word/_rels/document.xml.rels", documentRels(Boolean(style.logo)));
+  const logos = style.logos ?? [];
+  zip.file("word/_rels/document.xml.rels", documentRels(logos.length));
   zip.file("word/document.xml", documentXml(blocks, style));
   zip.file("word/styles.xml", stylesXml(hex(style.accent)));
-  if (style.logo) zip.file("word/media/logo.png", style.logo.png);
+  logos.forEach((logo, i) => zip.file(`word/media/logo${i + 1}.png`, logo.png));
   return zip;
 }
 

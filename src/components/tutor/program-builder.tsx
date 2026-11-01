@@ -2,7 +2,7 @@
 
 import { createElement, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft, ArrowRight, BookOpenCheck, Check, Copy, Download, FileText, Link2, Loader2, Printer, RotateCcw, Sparkles, Wand2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpenCheck, Check, Copy, Download, FileText, Link2, Loader2, Plus, Printer, RotateCcw, Sparkles, Wand2, X } from "lucide-react";
 import { DATA_CHANGED_EVENT } from "@/components/assistant/assistant-action-card";
 import { DEFAULT_COURSE_ICON, getCategoryCover } from "@/components/course/category-icon";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ import type { Course } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { isPreviewUrl, PREVIEW_LINK_DAYS, previewModuleChoices } from "@/lib/courses/preview-modules";
 import type { MyPreviewLink, PreviewLinkSummary } from "@/lib/courses/preview-links";
-import { DEFAULT_PROGRAM_DOC_STYLE, DOC_THEMES, loadDocStyle, logoSource, MAX_LOGO_BYTES, saveDocStyle, type ProgramDocStyle } from "@/lib/courses/program-doc-style";
+import { DEFAULT_PROGRAM_DOC_STYLE, DOC_THEMES, loadDocStyle, logoSources, MAX_DOC_LOGOS, MAX_LOGO_BYTES, saveDocStyle, type ProgramDocStyle } from "@/lib/courses/program-doc-style";
 import {
   analyzeTranscript, BLUEPRINT_LABEL, blueprintSlug, buildProposal, composeCurriculum, curriculumFromCourse, curriculumToCourse, EMPTY_DISCOVERY, FORMATS, INDUSTRIES, LEVELS, MODULE_COUNTS,
   PROGRAM_COMMAND_EVENT, PROGRAM_DRAFT_KEY, programStorageKey, sampleDiscovery, takeProgramCommand,
@@ -85,8 +85,8 @@ function NoticeBox({ notice }: { notice: Notice }) {
 }
 
 // ── The proposal document, as shown on screen (editable) and as printed ─────
-/** How the downloaded documents look: the accent colour and the logo (null for none). */
-type DocLook = { accent: string; logo: string | null };
+/** How the downloaded documents look: the accent colour and the logos, left to right. */
+type DocLook = { accent: string; logos: string[] };
 const lookStyle = (look: DocLook) => ({ "--doc-accent": look.accent }) as React.CSSProperties;
 /** The printed copy: a band in the theme colour repeats at the top of every page. */
 function PrintFrame({ look, children }: { look: DocLook; children: ReactNode }) {
@@ -99,8 +99,13 @@ function PrintFrame({ look, children }: { look: DocLook; children: ReactNode }) 
 }
 
 function DocLogo({ look }: { look: DocLook }) {
-  // eslint-disable-next-line @next/next/no-img-element
-  return look.logo ? <img src={look.logo} alt="" className="mb-4 max-h-12 max-w-[14rem] object-contain" /> : null;
+  if (!look.logos.length) return null;
+  return (
+    <div className="mb-4 flex items-center gap-6">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {look.logos.map((src, i) => <img key={i} src={src} alt="" className="max-h-12 min-w-0 max-w-[11rem] object-contain" />)}
+    </div>
+  );
 }
 
 function ProposalDocument({ proposal, onChange, printing = false, look }: { proposal: Proposal; onChange?: (next: Proposal) => void; printing?: boolean; look: DocLook }) {
@@ -197,7 +202,7 @@ function ProposalDocument({ proposal, onChange, printing = false, look }: { prop
       </table>
       {E({ value: proposal.pricingNote, onEdit: (v) => set("pricingNote", v), as: "p", className: "mt-2 text-xs text-zinc-600", label: "Pricing note", multiline: true })}
 
-      <footer className="mt-8 flex justify-between border-t border-zinc-200 pt-4 text-xs text-zinc-600">
+      <footer className="mt-8 flex break-before-avoid justify-between border-t border-zinc-200 pt-4 text-xs text-zinc-600">
         <span>Generated with the Alma 41 Program Builder</span>
         <span>{proposal.date}</span>
       </footer>
@@ -505,9 +510,9 @@ function printAsPdf(fileName: string) {
 async function downloadWord(doc: { curriculum: Curriculum; employer: string } | { proposal: Proposal }, fileName: string, look: DocLook) {
   const { blueprintBlocks, downloadDocx, proposalBlocks } = await import("@/lib/courses/program-docx");
   const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-  // A logo that can't be read (for example, blocked from another site) leaves the document without one.
-  const logo = look.logo ? await logoAsPng(look.logo).catch(() => null) : null;
-  await downloadDocx("proposal" in doc ? proposalBlocks(doc.proposal) : blueprintBlocks(doc.curriculum, doc.employer, date), fileName, { accent: look.accent, logo });
+  // A logo that can't be read (for example, blocked from another site) is left out.
+  const logos = (await Promise.all(look.logos.map((src) => logoAsPng(src).catch(() => null)))).filter((l) => l !== null);
+  await downloadDocx("proposal" in doc ? proposalBlocks(doc.proposal) : blueprintBlocks(doc.curriculum, doc.employer, date), fileName, { accent: look.accent, logos });
 }
 
 /** Any image the browser can show, redrawn as a PNG (at most 600 px wide) for the Word file. */
@@ -527,11 +532,18 @@ async function logoAsPng(src: string): Promise<{ png: Uint8Array; width: number;
   return { png: new Uint8Array(await blob.arrayBuffer()), width, height };
 }
 
-/** Logo and colour for the downloaded PDF and Word files. */
+/** An uploaded logo, shrunk to at most 600 px wide: several full-size images wouldn't fit in browser storage. */
+async function shrinkLogo(dataUrl: string): Promise<string> {
+  const { png } = await logoAsPng(dataUrl);
+  return `data:image/png;base64,${btoa(Array.from(png, (b) => String.fromCharCode(b)).join(""))}`;
+}
+
+/** Logos and colour for the downloaded PDF and Word files. */
 function DocumentStyleControls({ style, onChange, defaultLogo }: { style: ProgramDocStyle; onChange: (next: ProgramDocStyle) => void; defaultLogo: string | null }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
-  const logo = logoSource(style, defaultLogo);
+  const logos = logoSources(style, defaultLogo);
+  const canAdd = logos.length < MAX_DOC_LOGOS;
   async function upload(file: File | undefined) {
     if (!file) return;
     setError(null);
@@ -539,8 +551,9 @@ function DocumentStyleControls({ style, onChange, defaultLogo }: { style: Progra
     if (file.size > MAX_LOGO_BYTES) { setError("That logo is larger than 1 MB."); return; }
     const dataUrl = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(new Error("read")); reader.readAsDataURL(file); }).catch(() => null);
     if (!dataUrl) { setError("Couldn't read that image."); return; }
-    onChange({ ...style, logo: "custom", customLogo: dataUrl });
     if (inputRef.current) inputRef.current.value = "";
+    try { onChange({ ...style, customLogos: [...style.customLogos, await shrinkLogo(dataUrl)] }); }
+    catch { setError("Couldn't read that image."); }
   }
   const custom = !DOC_THEMES.some((t) => t.accent.toLowerCase() === style.accent.toLowerCase());
   return (
@@ -549,19 +562,33 @@ function DocumentStyleControls({ style, onChange, defaultLogo }: { style: Progra
       <p className="text-xs text-zinc-500">For the PDF and Word files only.</p>
       <div className="mt-3 flex flex-wrap items-start gap-x-8 gap-y-3">
         <div>
-          <p className="text-xs font-medium text-zinc-700">Logo</p>
-          <div className="mt-1.5 flex items-center gap-2.5">
-            <div className="flex h-12 w-28 items-center justify-center overflow-hidden rounded-lg border border-zinc-200 bg-white px-2">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              {logo ? <img src={logo} alt="Document logo" className="max-h-10 max-w-full object-contain" /> : <span className="text-[11px] text-zinc-400">No logo</span>}
-            </div>
-            <div className="flex flex-col items-start gap-0.5 text-xs">
-              <button type="button" onClick={() => inputRef.current?.click()} className="font-semibold text-primary hover:underline">{style.logo === "custom" ? "Change logo" : "Use my own logo"}</button>
-              {style.logo !== "default" && <button type="button" onClick={() => onChange({ ...style, logo: "default" })} className="text-zinc-600 hover:underline">Use the platform logo</button>}
-              {style.logo !== "none" && <button type="button" onClick={() => onChange({ ...style, logo: "none" })} className="text-zinc-600 hover:underline">No logo</button>}
-            </div>
+          <p className="text-xs font-medium text-zinc-700">Logos</p>
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+            {logos.map((src, i) => {
+              const isPlatform = style.platformLogo && Boolean(defaultLogo) && i === 0;
+              const remove = () => onChange(isPlatform ? { ...style, platformLogo: false } : { ...style, customLogos: style.customLogos.filter((_, j) => j !== i - (style.platformLogo && defaultLogo ? 1 : 0)) });
+              return (
+                <div key={i} className="relative flex h-12 w-24 items-center justify-center rounded-lg border border-zinc-200 bg-white px-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={src} alt={isPlatform ? "Platform logo" : `Your logo ${i + 1}`} className="max-h-10 max-w-full object-contain" />
+                  <button type="button" onClick={remove} aria-label={isPlatform ? "Remove the platform logo" : `Remove logo ${i + 1}`} title="Remove"
+                    className="focus-ring absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 shadow-sm hover:text-red-600">
+                    <X className="h-3 w-3" aria-hidden="true" />
+                  </button>
+                </div>
+              );
+            })}
+            {canAdd && (
+              <button type="button" onClick={() => inputRef.current?.click()}
+                className="focus-ring flex h-12 w-24 items-center justify-center gap-1 rounded-lg border border-dashed border-zinc-300 bg-white text-xs font-semibold text-primary hover:border-primary/50">
+                <Plus className="h-3.5 w-3.5" aria-hidden="true" />Add logo
+              </button>
+            )}
           </div>
-          <p className="mt-1 text-[11px] text-zinc-400">{style.logo === "default" ? "The platform logo your admin set." : style.logo === "custom" ? "Your own logo, in this browser." : "Documents without a logo."}</p>
+          <p className="mt-1 text-[11px] text-zinc-400">
+            {logos.length ? "Side by side at the top, in this order. " : "Documents without a logo. "}Up to {MAX_DOC_LOGOS}, kept in this browser.
+            {!style.platformLogo && defaultLogo && canAdd && <>{" "}<button type="button" onClick={() => onChange({ ...style, platformLogo: true })} className="font-semibold text-primary hover:underline">Add the platform logo</button></>}
+          </p>
           <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden" onChange={(e) => void upload(e.target.files?.[0])} />
           {error && <p role="alert" className="mt-1 text-xs text-red-700">{error}</p>}
         </div>
@@ -623,7 +650,7 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
       .catch(() => undefined);
     return () => { cancelled = true; };
   }, []);
-  const look: DocLook = { accent: docStyle.accent, logo: logoSource(docStyle, platformLogo) };
+  const look: DocLook = { accent: docStyle.accent, logos: logoSources(docStyle, platformLogo) };
   const draftKey = programStorageKey(PROGRAM_DRAFT_KEY, owner);
   const [step, setStep] = useState<Step>(1);
   const [form, setForm] = useState<Discovery>(EMPTY_DISCOVERY);
