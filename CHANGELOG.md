@@ -11,6 +11,12 @@ Database: three new tables, `course_preview_links`, `lesson_quizzes` and
 `quiz_attempts` (additive; the app also creates them on first use). Nothing
 existing changes.
 
+### Fixed
+- **Program Builder documents, long ones**: the chosen colour showed only on section
+  headings, so pages of curriculum looked uncoloured. Module titles and the pricing
+  table now use it, every page has a band in the theme colour (PDF and Word), and PDFs
+  print the exact colour. Modules and the pricing table no longer split across pages.
+
 ### Added
 - **Graded quizzes** (tutors and learners), modelled on Canvas Classic Quizzes: a
   fourth way to assess a lesson in step 3 of the lesson wizard. Ten question types

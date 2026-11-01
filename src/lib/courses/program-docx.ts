@@ -141,7 +141,7 @@ export function documentXml(blocks: DocBlock[], style: DocStyle = DEFAULT_DOC_ST
     + `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"`
     + ` xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"`
     + ` xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:body>${body}`
-    + `<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1300" w:right="1440" w:bottom="1300" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+    + `<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1300" w:right="1440" w:bottom="1300" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/><w:pgBorders w:offsetFrom="page"><w:top w:val="single" w:sz="24" w:space="24" w:color="${hex(style.accent)}"/></w:pgBorders></w:sectPr></w:body></w:document>`;
 }
 
 const paraStyle = (id: string, name: string, ppr: string, rpr: string) =>
@@ -154,7 +154,7 @@ const stylesXml = (BRAND: string) => `<?xml version="1.0" encoding="UTF-8" stand
   + paraStyle("Kicker", "Kicker", `<w:spacing w:after="40"/>`, `<w:b/><w:color w:val="${BRAND}"/><w:spacing w:val="20"/><w:sz w:val="18"/>`)
   + paraStyle("Title", "Title", `<w:spacing w:after="160"/><w:pBdr><w:bottom w:val="single" w:sz="18" w:space="6" w:color="${BRAND}"/></w:pBdr>`, `<w:b/><w:color w:val="18181B"/><w:sz w:val="44"/>`)
   + paraStyle("Heading1", "heading 1", `<w:keepNext/><w:spacing w:before="300" w:after="100"/><w:outlineLvl w:val="0"/>`, `<w:b/><w:color w:val="${BRAND}"/><w:sz w:val="28"/>`)
-  + paraStyle("Heading2", "heading 2", `<w:keepNext/><w:spacing w:before="200" w:after="60"/><w:outlineLvl w:val="1"/>`, `<w:b/><w:color w:val="18181B"/><w:sz w:val="23"/>`)
+  + paraStyle("Heading2", "heading 2", `<w:keepNext/><w:spacing w:before="200" w:after="60"/><w:outlineLvl w:val="1"/>`, `<w:b/><w:color w:val="${BRAND}"/><w:sz w:val="23"/>`)
   + paraStyle("Label", "Label", `<w:keepNext/><w:spacing w:before="80" w:after="40"/>`, `<w:b/><w:caps/><w:color w:val="${BRAND}"/><w:sz w:val="17"/>`)
   + paraStyle("Bullet", "Bullet", `<w:tabs><w:tab w:val="left" w:pos="360"/></w:tabs><w:spacing w:after="60"/><w:ind w:left="360" w:hanging="360"/>`, ``)
   + paraStyle("TableText", "Table text", `<w:spacing w:after="0"/>`, ``)

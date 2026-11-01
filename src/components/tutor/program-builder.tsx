@@ -88,6 +88,16 @@ function NoticeBox({ notice }: { notice: Notice }) {
 /** How the downloaded documents look: the accent colour and the logo (null for none). */
 type DocLook = { accent: string; logo: string | null };
 const lookStyle = (look: DocLook) => ({ "--doc-accent": look.accent }) as React.CSSProperties;
+/** The printed copy: a band in the theme colour repeats at the top of every page. */
+function PrintFrame({ look, children }: { look: DocLook; children: ReactNode }) {
+  return (
+    <table className="program-print-frame" style={lookStyle(look)}>
+      <thead><tr><th><span aria-hidden="true" className="program-print-band" /></th></tr></thead>
+      <tbody><tr><td>{children}</td></tr></tbody>
+    </table>
+  );
+}
+
 function DocLogo({ look }: { look: DocLook }) {
   // eslint-disable-next-line @next/next/no-img-element
   return look.logo ? <img src={look.logo} alt="" className="mb-4 max-h-12 max-w-[14rem] object-contain" /> : null;
@@ -98,7 +108,7 @@ function ProposalDocument({ proposal, onChange, printing = false, look }: { prop
   // On screen every line is editable; the printed copy is the same text, plain.
   const E = ({ value, onEdit, as = "span", className, label, multiline }: { value: string; onEdit: (next: string) => void; as?: "span" | "p" | "h4" | "div" | "li" | "td" | "b"; className?: string; label: string; multiline?: boolean }) =>
     printing ? createElement(as, { className }, value) : <Editable value={value} onChange={onEdit} as={as} className={className} label={label} multiline={multiline} />;
-  const heading = "mb-2 mt-6 text-[15px] font-semibold text-[color:var(--doc-accent)]";
+  const heading = "mb-2 mt-6 break-after-avoid text-[15px] font-semibold text-[color:var(--doc-accent)]";
 
   return (
     <article id={printing ? undefined : "program-proposal"} style={lookStyle(look)} className={cn("bg-white text-zinc-900", printing ? "p-2" : "mx-auto max-w-[860px] rounded border border-zinc-200 px-6 py-10 shadow-soft sm:px-14 sm:py-12")}>
@@ -132,8 +142,8 @@ function ProposalDocument({ proposal, onChange, printing = false, look }: { prop
       <h2 className={heading}>Curriculum</h2>
       <div className="space-y-3">
         {proposal.modules.map((module, i) => (
-          <div key={i}>
-            {E({ value: module.title, onEdit: (v) => set("modules", proposal.modules.map((m, j) => (j === i ? { ...m, title: v } : m))), as: "h4", className: "text-sm font-semibold text-zinc-900", label: `Module ${i + 1} title` })}
+          <div key={i} className="break-inside-avoid">
+            {E({ value: module.title, onEdit: (v) => set("modules", proposal.modules.map((m, j) => (j === i ? { ...m, title: v } : m))), as: "h4", className: "text-sm font-semibold text-[color:var(--doc-accent)]", label: `Module ${i + 1} title` })}
             {E({ value: module.summary, onEdit: (v) => set("modules", proposal.modules.map((m, j) => (j === i ? { ...m, summary: v } : m))), as: "div", className: "text-[13px] text-zinc-600", label: `Module ${i + 1} contents`, multiline: true })}
           </div>
         ))}
@@ -159,9 +169,9 @@ function ProposalDocument({ proposal, onChange, printing = false, look }: { prop
       </ul>
 
       <h2 className={heading}>Investment</h2>
-      <table className="mt-2 w-full border-collapse text-sm">
+      <table className="mt-2 w-full break-inside-avoid border-collapse text-sm">
         <thead>
-          <tr className="border-b-2 border-zinc-200 text-left text-xs tracking-wide text-zinc-600">
+          <tr className="border-b-2 border-[color:var(--doc-accent)] text-left text-xs tracking-wide text-zinc-600">
             <th className="w-[55%] px-2.5 py-2 font-semibold">Item</th>
             <th className="px-2.5 py-2 font-semibold">Basis</th>
             <th className="px-2.5 py-2 text-right font-semibold">Amount</th>
@@ -178,7 +188,7 @@ function ProposalDocument({ proposal, onChange, printing = false, look }: { prop
               </tr>
             );
           })}
-          <tr className="border-t-2 border-zinc-900 font-bold">
+          <tr className="border-t-2 border-[color:var(--doc-accent)] font-bold">
             <td className="px-2.5 py-2">Total — first cohort</td>
             <td />
             {E({ value: proposal.total, onEdit: (v) => set("total", v), as: "td", className: "px-2.5 py-2 text-right", label: "Total amount" })}
@@ -428,7 +438,7 @@ function AllPreviewLinks({ onTurnedOff }: { onTurnedOff: (id: number) => void })
 
 // ── The curriculum blueprint, as printed (Download PDF) ────────────────────
 function BlueprintDocument({ curriculum, employer, look }: { curriculum: Curriculum; employer: string; look: DocLook }) {
-  const heading = "mb-2 mt-6 text-[15px] font-semibold text-[color:var(--doc-accent)]";
+  const heading = "mb-2 mt-6 break-after-avoid text-[15px] font-semibold text-[color:var(--doc-accent)]";
   const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
   return (
     <article style={lookStyle(look)} className="bg-white p-2 text-zinc-900">
@@ -455,7 +465,7 @@ function BlueprintDocument({ curriculum, employer, look }: { curriculum: Curricu
       <div className="space-y-4">
         {curriculum.modules.map((module, i) => (
           <section key={i} className="break-inside-avoid rounded border border-zinc-200 px-4 py-3">
-            <h3 className="text-[15px] font-semibold text-zinc-900">Module {i + 1}: {module.title}</h3>
+            <h3 className="text-[15px] font-semibold text-[color:var(--doc-accent)]">Module {i + 1}: {module.title}</h3>
             {module.description && <p className="mt-1 text-[13px] text-zinc-600">{module.description}</p>}
             <div className="mt-2 grid grid-cols-2 gap-4 text-[13px]">
               <div>
@@ -1125,8 +1135,8 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
           <ProposalDocument proposal={proposal} onChange={setProposal} look={look} />
         </div>
       )}
-      {printRoot && printing === "proposal" && proposal && createPortal(<ProposalDocument proposal={proposal} printing look={look} />, printRoot)}
-      {printRoot && printing === "blueprint" && curriculum && createPortal(<BlueprintDocument curriculum={curriculum} employer={form.employer} look={look} />, printRoot)}
+      {printRoot && printing === "proposal" && proposal && createPortal(<PrintFrame look={look}><ProposalDocument proposal={proposal} printing look={look} /></PrintFrame>, printRoot)}
+      {printRoot && printing === "blueprint" && curriculum && createPortal(<PrintFrame look={look}><BlueprintDocument curriculum={curriculum} employer={form.employer} look={look} /></PrintFrame>, printRoot)}
 
       {/* Lined up with the content above: the curriculum column in steps 1–2, the proposal's width in step 3. */}
       <div className={step === 3 && proposal ? "mx-auto max-w-[860px]" : "grid gap-5 lg:grid-cols-[400px_1fr]"}>

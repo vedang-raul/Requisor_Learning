@@ -485,6 +485,12 @@ body {
    into .program-print-root (a direct child of <body>) while it is open. */
 .program-print-root { display: none; }
 @media print {
+  /* The chosen theme exactly (browsers otherwise darken light colours in print), and on every page:
+     a table header repeats on each printed page, with its space reserved, so it never covers text. */
+  .program-print-root, .program-print-root * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .program-print-frame { width: 100%; border-collapse: collapse; }
+  .program-print-frame > thead > tr > th, .program-print-frame > tbody > tr > td { padding: 0; font-weight: normal; text-align: left; }
+  .program-print-band { display: block; border-top: 4px solid var(--doc-accent); margin-bottom: 4mm; }
   body.print-program-document > *:not(.program-print-root) { display: none !important; }
   body.print-program-document { background: #fff !important; }
   body.print-program-document > .program-print-root { display: block !important; }

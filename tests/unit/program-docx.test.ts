@@ -28,3 +28,14 @@ describe("Program Builder Word documents", () => {
     expect(xml).toContain("R&amp;D &lt;tools&gt; &quot;x&quot; ok");
   });
 });
+
+describe("the theme colour on every page of a long Word file", () => {
+  const blocks = [{ kind: "subheading" as const, runs: [{ text: "Module 1" }] }];
+  it("puts a band in the theme colour at the top of every page", () => {
+    expect(documentXml(blocks, { accent: "#9F1239" })).toContain('<w:pgBorders w:offsetFrom="page"><w:top w:val="single" w:sz="24" w:space="24" w:color="9F1239"/></w:pgBorders>');
+  });
+  it("colours module titles with the theme", async () => {
+    const styles = await buildDocx(blocks, { accent: "#9F1239" }).file("word/styles.xml")!.async("string");
+    expect(styles).toMatch(/w:styleId="Heading2"[\s\S]*?<w:color w:val="9F1239"\/>/);
+  });
+});
