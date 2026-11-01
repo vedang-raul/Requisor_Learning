@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import { isValidAssignmentAi, readAssignmentAi } from "@/lib/ai/assignment-ai";
 import { manageReach, manageSql, reachParams, type ScopeUser } from "../server/course-scope";
 import { db } from "@/lib/server/db";
+import { PREVIEW_LINK_TABLES, QUIZ_TABLES } from "@/lib/server/feature-tables";
 import { seedCourses } from "@/lib/courses/data";
 import type { Course, CourseModule, Lesson, Resource } from "@/lib/types";
 import { extractYouTubeId, PLACEHOLDER_VIDEO } from "@/lib/utils";
@@ -172,6 +173,9 @@ export function ensureCourseCatalog(): Promise<void> {
       const client = await db.connect();
       try {
         await initializeCourseCatalog(client);
+        // Here, not only on first use: Publish copies tables from the development database.
+        await client.query(PREVIEW_LINK_TABLES);
+        await client.query(QUIZ_TABLES);
       } finally {
         client.release();
       }

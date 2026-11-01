@@ -11,6 +11,7 @@
  */
 import { createHash, randomBytes } from "node:crypto";
 import { db } from "@/lib/server/db";
+import { PREVIEW_LINK_TABLES } from "@/lib/server/feature-tables";
 import { getCourses } from "@/lib/courses/course-catalog";
 import { PREVIEW_LINK_DAYS, pickPreviewModules, previewModuleChoices } from "@/lib/courses/preview-modules";
 import type { Course } from "@/lib/types";
@@ -29,22 +30,7 @@ let schemaPromise: Promise<void> | undefined;
 
 /** Creates the links table where it doesn't exist yet (also in scripts/migrate.js). */
 export function ensurePreviewLinks(): Promise<void> {
-  schemaPromise ??= db.query(`
-    CREATE TABLE IF NOT EXISTS course_preview_links (
-      id SERIAL PRIMARY KEY,
-      token_hash CHAR(64) NOT NULL UNIQUE,
-      course_slug VARCHAR(80) NOT NULL REFERENCES courses(slug) ON DELETE CASCADE,
-      module_keys JSONB NOT NULL,
-      label VARCHAR(160) NOT NULL DEFAULT '',
-      created_by INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      expires_at TIMESTAMPTZ NOT NULL,
-      revoked_at TIMESTAMPTZ,
-      view_count INT NOT NULL DEFAULT 0,
-      last_viewed_at TIMESTAMPTZ
-    );
-    CREATE INDEX IF NOT EXISTS course_preview_links_course_idx ON course_preview_links (course_slug);
-  `).then(() => undefined).catch((error) => { schemaPromise = undefined; throw error; });
+  schemaPromise ??= db.query(PREVIEW_LINK_TABLES).then(() => undefined).catch((error) => { schemaPromise = undefined; throw error; });
   return schemaPromise;
 }
 
