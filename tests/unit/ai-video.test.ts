@@ -1,6 +1,6 @@
 import {
   FEATURED_PRESENTERS, orderPresenters, aiVideoBriefReady, aiVideoScriptPrompt, cleanVideoScript, createPresenterVideo, getPresenterVideo, heygenVideoRequest, listPresenters,
-  listVoices, presenterLook, readAiVideoBrief, readVideoStatus, scriptSeconds, AiVideoError, heygenConfigured,
+  expectedRenderSeconds, listVoices, presenterLook, renderWait, readAiVideoBrief, readVideoStatus, scriptSeconds, AiVideoError, heygenConfigured,
 } from "@/lib/video/ai-video";
 
 describe("AI lesson videos", () => {
@@ -38,8 +38,16 @@ describe("AI lesson videos", () => {
     expect(aiVideoBriefReady(brief)).toBe(true);
     expect(aiVideoBriefReady(readAiVideoBrief({ audience: "managers" }))).toBe(false);
     const prompt = aiVideoScriptPrompt(brief);
-    expect(prompt).toContain("about 300 words");
+    expect(prompt).toContain("300 words at the very most");
     expect(prompt.match(/<\/video-brief>/g)).toHaveLength(1);
+  });
+
+  it("estimates a render from the script, and says when it has gone past that", () => {
+    expect(expectedRenderSeconds("word ".repeat(150))).toBe(230);
+    expect(renderWait(230, 230)).toBe("on-time");
+    expect(renderWait(231, 230)).toBe("late");
+    expect(renderWait(690, 230)).toBe("late");
+    expect(renderWait(691, 230)).toBe("very-late");
   });
 
   it("strips markup, labels and stage directions from a script", () => {

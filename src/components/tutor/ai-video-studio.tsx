@@ -7,7 +7,7 @@ import { Input, Textarea } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { trackEvent } from "@/lib/analytics";
 import {
-  SCRIPT_MAX_CHARS, SCRIPT_MIN_CHARS, scriptSeconds, scriptWordCount, VIDEO_BACKGROUNDS, VIDEO_MINUTES, VIDEO_TONES,
+  expectedRenderSeconds, renderWait, SCRIPT_MAX_CHARS, SCRIPT_MIN_CHARS, scriptSeconds, scriptWordCount, VIDEO_BACKGROUNDS, VIDEO_MINUTES, VIDEO_TONES,
   type VideoPresenter, type VideoVoice,
 } from "@/lib/video/ai-video";
 
@@ -32,15 +32,6 @@ type Setup = {
 const selectClass = "focus-ring h-10 w-full rounded-xl border border-border bg-white px-3 text-sm text-zinc-900";
 const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 
-/**
- * How long a render is likely to take, in seconds. The video service reports no
- * percentage, so this is an estimate from the script's length: a short clip took
- * about a minute, and longer scripts take proportionally longer.
- */
-function expectedRenderSeconds(script: string): number {
-  return Math.round(45 + scriptSeconds(script) * 3);
-}
-
 /** Progress while a video renders: a bar that fills on the estimate, the time so far, and what is happening. */
 function RenderProgress({ job }: { job: Job }) {
   const [now, setNow] = useState(() => Date.now());
@@ -53,8 +44,8 @@ function RenderProgress({ job }: { job: Job }) {
   const expected = expectedRenderSeconds(job.script);
   // Fills quickly at first and ever more slowly, so it keeps moving but never claims to be done before it is.
   const percent = Math.min(96, Math.round(100 * (1 - Math.exp(-elapsed / (expected * 0.55)))));
-  const stage = percent < 15 ? "Sending the script to the presenter" : percent < 45 ? "Generating the voice" : percent < 85 ? "Animating the presenter" : "Finishing the video";
-  const overdue = elapsed > expected * 2.5;
+  const wait = renderWait(elapsed, expected);
+  const stage = wait !== "on-time" ? "Still rendering" : percent < 15 ? "Sending the script to the presenter" : percent < 45 ? "Generating the voice" : percent < 85 ? "Animating the presenter" : "Finishing the video";
   return (
     <div role="status" aria-live="polite" className="space-y-2">
       <div className="flex items-center justify-between gap-3 text-sm">
@@ -73,10 +64,16 @@ function RenderProgress({ job }: { job: Job }) {
       </div>
       <p className="text-xs text-zinc-600">
         {clock(elapsed)} so far · usually about {clock(expected)} for a script this long.{" "}
-        {overdue
-          ? "This one is taking longer than usual, but it is still rendering."
-          : "You can keep editing the lesson; it carries on if you leave this step."}
+        {wait === "on-time" && "You can keep editing the lesson; it carries on if you leave this step."}
       </p>
+      {wait !== "on-time" && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          {wait === "late"
+            ? "This one is taking longer than usual, so please be patient. The video service is busy at times, and your video is still being made."
+            : "Thanks for your patience: this one is taking much longer than usual, but it's still in progress."}{" "}
+          There&apos;s no need to start again, as each new video is charged. You can keep editing, or leave this step and come back: it will appear under Your recent AI videos.
+        </p>
+      )}
       <p className="text-[11px] text-zinc-500">The bar is an estimate: the video service doesn&apos;t report exact progress.</p>
     </div>
   );
@@ -338,7 +335,7 @@ export function AiVideoStudio({ lessonTitle, lessonDescription, lessonTakeaways,
           placeholder="The words the presenter will say. Draft it with AI above, or write your own."
         />
         <p className="text-xs text-zinc-500">
-          {words > 0 ? `${words} words · about ${clock(scriptSeconds(script))} when spoken. ` : ""}The presenter says exactly this, so read it through before making the video.
+          {words > 0 ? `${words} words · about ${clock(scriptSeconds(script))} when spoken. ` : ""}The presenter says exactly this, so read it through before making the video. Shorter scripts are ready sooner.
         </p>
       </section>
 
@@ -391,7 +388,7 @@ export function AiVideoStudio({ lessonTitle, lessonDescription, lessonTakeaways,
               {busy === "create" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Film className="h-4 w-4" />}Generate the video
             </Button>
             <span className="text-xs text-zinc-500">
-              {!scriptOk ? "Write the script first." : !presenterId ? "Choose a presenter." : "Each video is charged to the HeyGen account. Rendering takes a few minutes."}
+              {!scriptOk ? "Write the script first." : !presenterId ? "Choose a presenter." : `Each video is charged to the HeyGen account. A script this long usually takes about ${clock(expectedRenderSeconds(script))} to render.`}
             </span>
           </div>
         </section>

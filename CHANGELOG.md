@@ -80,6 +80,33 @@ existing changes.
   list, with Show hidden; learners still see them.
 
 ### Changed
+- **AI video waits**: past the estimate, tutors are asked to be patient and told not to
+  start again, since each video is charged. The estimate now comes from our own
+  renders and shows before making the video. The AI writes scripts to a firm word
+  limit, with no padding.
+- **"Fill this step with AI" covers all of step 3**: it writes whatever the chosen
+  assessment needs: the brief, guardrails, rubric, points, due date, or a whole quiz with
+  its settings, instructions, feedback and every question type except plain text. A question
+  that fails the quiz check is left out. Each part also has its own AI button, and
+  Undo restores everything. Before, on a quiz it wrote a brief that wasn't on screen. The
+  way of assessing, the hand-in switch and which learner data is used stay the tutor's.
+- **Program Builder runs in order, for the assistant too**: the proposal is created only
+  from the end of the curriculum step. The step bar opens it only once it exists. The AI
+  assistant now knows which step you're on, suggests only what fits that step, and
+  can't make a proposal before a curriculum has been reviewed: asked early, it builds the
+  curriculum and stops there. A curriculum needs discovery notes or a topic: with neither,
+  the assistant asks for them and the page says what's missing.
+- **Program Builder documents can be fully reshaped**: on the curriculum and the
+  proposal, every list line, module and pricing row can be added, removed and moved;
+  clearing a line now removes its bullet. Section headings and labels can be reworded,
+  sections removed and put back, and your own sections added. The PDF and Word files
+  follow all of it, and leave out anything blank.
+- **Program Builder is a three-step flow**, one step on screen at a time: Start (an
+  existing course or a new discovery call), Curriculum, Proposal. Finished steps can be
+  reopened from the step bar. Logos and colour can be changed on both Curriculum and
+  Proposal, and the curriculum now shows them on screen as well as in its downloads.
+  Going back to edit the curriculum updates the proposal and keeps its pricing and
+  preview link. All your preview links moved behind a Preview links button.
 - **Program Builder assistant**: on the Program Builder page the AI assistant is a
   separate flow, with its own conversation, instructions and actions. It only
   builds the employer program there and sends course work to the Tutor Workspace;

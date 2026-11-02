@@ -93,7 +93,8 @@ export function aiVideoScriptPrompt(brief: AiVideoBrief): string {
   ].filter(Boolean) as string[];
   return [
     "Write the script for a short teaching video in which one presenter talks straight to camera.",
-    `Length: about ${words} words (roughly ${brief.minutes} minute${brief.minutes === 1 ? "" : "s"} when spoken). Tone: ${brief.tone}.`,
+    `Length: ${words} words at the very most (${brief.minutes} minute${brief.minutes === 1 ? "" : "s"} when spoken). Tone: ${brief.tone}.`,
+    "The limit is firm: every extra word makes the video slower to make and costs more. Cover the points that must be covered and leave out the rest. Don't pad, repeat yourself or restate the title.",
     "It will be read aloud by a text-to-speech presenter, so write ONLY the words to be spoken:",
     "- no headings, bullet points, stage directions, speaker labels, emoji or markdown",
     "- short sentences that sound natural out loud; write numbers and abbreviations the way they are said",
@@ -135,6 +136,20 @@ export function scriptWordCount(script: string): number {
 /** Spoken length in seconds, at the presenter's usual pace. */
 export function scriptSeconds(script: string): number {
   return Math.round((scriptWordCount(script) / WORDS_PER_MINUTE) * 60);
+}
+
+/**
+ * How long a render is likely to take, in seconds. The video service reports no
+ * percentage or estimate, so this comes from our own renders: about two minutes
+ * however short the clip, then roughly two seconds per second of speech.
+ */
+export function expectedRenderSeconds(script: string): number {
+  return 110 + scriptSeconds(script) * 2;
+}
+
+/** What to tell a tutor while they wait: on time, past the estimate, or far past it. */
+export function renderWait(elapsedSeconds: number, expectedSeconds: number): "on-time" | "late" | "very-late" {
+  return elapsedSeconds > expectedSeconds * 3 ? "very-late" : elapsedSeconds > expectedSeconds ? "late" : "on-time";
 }
 
 // ── HeyGen (v3 API) ─────────────────────────────────────────────────────────
