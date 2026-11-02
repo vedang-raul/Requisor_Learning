@@ -12,7 +12,7 @@ import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/
 /**
  * Writes fields of a lesson for the tutor's lesson editor.
  *   POST { fields: ["title", "description", …], context: { the form so far } }
- *   →    { values: { title?, description?, durationMin?, section?, body?, assignment?, guardrails?, takeaways? } }
+ *   →    { values: { title?, description?, durationMin?, section?, body?, assignment?, guardrails?, rubric?, points?, dueDate?, quiz?, takeaways? } }
  * Nothing is saved: the values go into the form for the tutor to review.
  */
 const BASE_URL = "https://api.x.ai/v1";
@@ -57,7 +57,7 @@ export async function POST(req: Request) {
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
           body: JSON.stringify({
             model: MODEL,
-            max_tokens: fields.includes("body") ? 2600 : 1200,
+            max_tokens: fields.includes("quiz") ? 6000 : fields.includes("body") ? 2600 : fields.includes("rubric") ? 1800 : 1200,
             response_format: { type: "json_object" },
             messages: [{ role: "user", content: lessonAiPrompt(fields, context) }],
           }),

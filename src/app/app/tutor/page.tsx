@@ -1528,7 +1528,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
   const [aiBusyStep, setAiBusyStep] = useState(false);
   const [aiNote, setAiNote] = useState<{ ok: boolean; text: string } | null>(null);
   // What the fields held before the last AI write, so it can be undone.
-  const [aiUndo, setAiUndo] = useState<LessonAiValues | null>(null);
+  const [aiUndo, setAiUndo] = useState<(() => void) | null>(null);
 
   const step: WizardStep = WIZARD_STEPS[stepIndex].key;
   const detectedVideoId = format === "video" && youtubeId.trim() ? extractYouTubeId(youtubeId) : null;
@@ -1648,9 +1648,9 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
   // ── AI help ───────────────────────────────────────────────────────────────
   const AI_FIELD_LABELS: Record<LessonAiField, string> = {
     title: "title", description: "description", durationMin: "duration", section: "module",
-    body: "lesson text", assignment: "assignment", guardrails: "guardrails", takeaways: "key takeaways",
+    body: "lesson text", assignment: "assignment", guardrails: "guardrails", rubric: "rubric", points: "points", dueDate: "due date", quiz: "quiz", takeaways: "key takeaways",
   };
-  const aiCurrent = (): Required<LessonAiValues> => ({
+  const aiCurrent = () => ({
     title, description, durationMin: Number(duration) || 0, section, body, assignment, guardrails, takeaways: takeawayList,
   });
   function applyAiValues(values: LessonAiValues) {
@@ -1661,13 +1661,27 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
     if (values.body !== undefined) { setBody(values.body); if (values.body) setBodyFileUrl(undefined); }
     if (values.assignment !== undefined) setAssignment(values.assignment);
     if (values.guardrails !== undefined) setGuardrails(values.guardrails);
+    if (values.points !== undefined) setAssignmentMarks(String(values.points));
+    if (values.dueDate !== undefined) setAssignmentDueDate(values.dueDate);
+    // Saved criteria keep their ids, so grades already given stay attached to them.
+    if (values.rubric !== undefined) setCriteria(values.rubric.map((c, i) => ({ id: criteria[i]?.id, title: c.title, description: c.description, maxPoints: String(c.maxPoints) })));
+    // A due date the tutor already set stays.
+    if (values.quiz !== undefined) setQuiz({ ...values.quiz, settings: { ...values.quiz.settings, dueDate: quiz.settings.dueDate ?? values.quiz.settings.dueDate } });
     if (values.takeaways !== undefined) setTakeaways(values.takeaways.join("\n"));
   }
-  /** Which of these fields are still empty. */
-  const aiEmpty = (fields: LessonAiField[]) => {
-    const now = aiCurrent();
-    return fields.filter((field) => (field === "takeaways" ? now.takeaways.length === 0 : field === "durationMin" ? !duration.trim() : !String(now[field]).trim()));
+  const aiFilled = (field: LessonAiField): boolean => {
+    switch (field) {
+      case "takeaways": return takeawayList.length > 0;
+      case "durationMin": return Boolean(duration.trim());
+      case "rubric": return criteria.some((c) => c.title.trim());
+      case "points": return Boolean(assignmentMarks);
+      case "dueDate": return Boolean(assignmentDueDate);
+      case "quiz": return quiz.questions.length > 0;
+      default: return Boolean(aiCurrent()[field].trim());
+    }
   };
+  /** Which of these fields are still empty. */
+  const aiEmpty = (fields: LessonAiField[]) => fields.filter((field) => !aiFilled(field));
   async function writeWithAi(fields: LessonAiField[], fromStep = false) {
     if (!fields.length || aiBusy) return;
     if (!title.trim() && !aiHint.trim() && !description.trim() && !body.trim()) {
@@ -1686,7 +1700,10 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
           fields,
           context: {
             courseTitle, hint: aiHint, title, description, section, durationMin: Number(duration) || null, format,
-            body, assignment, guardrails, takeaways: takeawayList, requiresSubmission,
+            body, assignment, guardrails, takeaways: takeawayList, requiresSubmission, personalised: aiAssignment,
+            transcript: format === "video" ? transcript.slice(0, 8000) : "",
+            rubric: criteria.filter((c) => c.title.trim()).map((c) => `${c.title.trim()} (${c.maxPoints} points)`).join("; "),
+            quiz: quiz.questions.map((q) => q.text).join(" | ").slice(0, 3000),
           },
         }),
       });
@@ -1697,7 +1714,14 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
       }
       const written = fields.filter((field) => data.values![field] !== undefined);
       const before = aiCurrent();
-      setAiUndo(Object.fromEntries(written.map((field) => [field, before[field]])) as LessonAiValues);
+      const earlier = { criteria, quiz, assignmentMarks, assignmentDueDate };
+      setAiUndo(() => () => {
+        applyAiValues(Object.fromEntries(written.filter((field) => field in before).map((field) => [field, before[field as keyof typeof before]])) as LessonAiValues);
+        if (written.includes("rubric")) setCriteria(earlier.criteria);
+        if (written.includes("quiz")) setQuiz(earlier.quiz);
+        if (written.includes("points")) setAssignmentMarks(earlier.assignmentMarks);
+        if (written.includes("dueDate")) setAssignmentDueDate(earlier.assignmentDueDate);
+      });
       applyAiValues(data.values);
       trackEvent("lesson_ai_completed", { ...analyticsData, written_count: written.length });
       setFormError(null);
@@ -1717,7 +1741,13 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
   const AI_STEP_FIELDS: Record<WizardStep, LessonAiField[]> = {
     details: ["title", "description", "durationMin", "section"],
     video: videoMode === "text" || videoMode === "code" ? ["body"] : [],
-    assignment: aiAssignment ? ["assignment", "guardrails"] : ["assignment"],
+    // Whatever is on screen for the way this lesson is assessed. A due date already set is the tutor's to keep.
+    assignment: quizOn ? (allowUploads && quizState === "ready" ? ["quiz"] : []) : [
+      ...(aiAssignment ? ["guardrails" as const] : []),
+      "assignment",
+      ...(requiresSubmission && !assignmentDueDate ? ["dueDate" as const] : []),
+      ...(!requiresSubmission ? [] : gradeWith === "score" ? ["points" as const] : allowUploads && rubricState === "ready" ? ["rubric" as const] : []),
+    ],
     takeaways: ["takeaways"],
     publish: [],
   };
@@ -1851,7 +1881,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
                   <p role="status" className={cn("mt-1.5 text-xs", aiNote.ok ? "text-emerald-800" : "text-red-700")}>
                     {aiNote.text}
                     {aiNote.ok && aiUndo && (
-                      <button type="button" onClick={() => { applyAiValues(aiUndo); setAiUndo(null); setAiNote(null); }} className="ml-2 font-semibold text-primary hover:underline">Undo</button>
+                      <button type="button" onClick={() => { aiUndo(); setAiUndo(null); setAiNote(null); }} className="ml-2 font-semibold text-primary hover:underline">Undo</button>
                     )}
                   </p>
                 )}
@@ -2037,11 +2067,8 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
 
                     {mode === "each" && (
                       <div className="space-y-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-sm font-semibold text-zinc-900">Rules every learner&apos;s brief must follow</p>
-                          {aiButton("guardrails", Boolean(guardrails.trim()))}
-                        </div>
-                        <Field label="Guardrails">
+                        <p className="text-sm font-semibold text-zinc-900">Rules every learner&apos;s brief must follow</p>
+                        <Field label="Guardrails" action={aiButton("guardrails", Boolean(guardrails.trim()))}>
                           <span className="mb-1.5 block text-xs font-normal text-zinc-500">
                             What skill it tests, what must be included or avoided, the difficulty, the length, and what they hand in.
                           </span>
@@ -2119,14 +2146,14 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
                     !allowUploads ? <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">Save the course first, then add the quiz.</p>
                       : quizState === "loading" ? <p className="flex items-center gap-2 text-sm text-zinc-500"><Loader2 className="h-4 w-4 animate-spin" />Loading the quiz…</p>
                         : quizState === "error" ? <p role="alert" className="text-sm text-red-700">Couldn&apos;t load this lesson&apos;s quiz, so it won&apos;t be changed when you save. Reopen the lesson to try again.</p>
-                          : <QuizBuilder value={quiz} onChange={(next) => { setQuiz(next); setFormError(null); }} />
+                          : <QuizBuilder value={quiz} onChange={(next) => { setQuiz(next); setFormError(null); }} aiAction={aiButton("quiz", quiz.questions.length > 0)} />
                   )}
 
                   {requiresSubmission && (
                     <div className={section}>
                       <p className="text-base font-semibold text-zinc-900">Hand-in and grading</p>
                       <div className="grid gap-3 sm:grid-cols-2">
-                        <Field label="Due date"><Input type="date" value={assignmentDueDate} onChange={(e) => setAssignmentDueDate(e.target.value)} required /></Field>
+                        <Field label="Due date" action={aiButton("dueDate", Boolean(assignmentDueDate))}><Input type="date" value={assignmentDueDate} onChange={(e) => setAssignmentDueDate(e.target.value)} required /></Field>
                       </div>
                       <p className="text-xs text-zinc-500">Learners upload one PDF or Word (.docx) file, up to 10 MB, by the end of the due date.</p>
                       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-zinc-100 pt-3">
@@ -2144,7 +2171,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
                       {rubricState === "loading" && <p className="flex items-center gap-2 text-sm text-zinc-500"><Loader2 className="h-4 w-4 animate-spin" />Loading the rubric…</p>}
                       {rubricState === "error" && <p role="alert" className="text-sm text-red-700">Couldn&apos;t load this lesson&apos;s rubric, so it won&apos;t be changed when you save. Reopen the lesson to try again.</p>}
                       {gradeWith === "score" && (
-                        <Field label="Total points"><Input type="number" min="1" max="10000" step="1" value={assignmentMarks} onChange={(e) => setAssignmentMarks(e.target.value)} placeholder="e.g. 100" required className="sm:max-w-[12rem]" /></Field>
+                        <Field label="Total points" action={aiButton("points", Boolean(assignmentMarks))}><Input type="number" min="1" max="10000" step="1" value={assignmentMarks} onChange={(e) => setAssignmentMarks(e.target.value)} placeholder="e.g. 100" required className="sm:max-w-[12rem]" /></Field>
                       )}
                       {gradeWith === "rubric" && rubricState === "ready" && (
                         <div className="overflow-hidden rounded-xl border border-zinc-200">
@@ -2167,10 +2194,13 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
                             ))}
                           </ul>
                           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-zinc-200 bg-zinc-50 px-3 py-2.5">
-                            <button type="button" disabled={criteria.length >= 20} onClick={() => setCriteria((prev) => [...prev, { title: "", description: "", maxPoints: "10" }])}
-                              className="focus-ring inline-flex items-center gap-1.5 rounded-lg border border-dashed border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:border-primary/50 hover:text-primary disabled:opacity-40">
-                              <Plus className="h-3.5 w-3.5" />Add criterion
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button type="button" disabled={criteria.length >= 20} onClick={() => setCriteria((prev) => [...prev, { title: "", description: "", maxPoints: "10" }])}
+                                className="focus-ring inline-flex items-center gap-1.5 rounded-lg border border-dashed border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:border-primary/50 hover:text-primary disabled:opacity-40">
+                                <Plus className="h-3.5 w-3.5" />Add criterion
+                              </button>
+                              {aiButton("rubric", criteria.some((c) => c.title.trim()))}
+                            </div>
                             <span className={cn("flex items-center gap-1.5 text-sm font-semibold", rubricTotal > 0 ? "text-primary" : "text-zinc-500")}>
                               {rubricTotal > 0 && <Check className="h-4 w-4" />}Total {rubricTotal} points
                             </span>

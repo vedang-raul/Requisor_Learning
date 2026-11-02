@@ -244,7 +244,7 @@ function QuestionCard({ q, index, number, count, onChange, onMove, onCopy, onRem
   );
 }
 
-export function QuizBuilder({ value, onChange }: { value: Quiz; onChange: (q: Quiz) => void }) {
+export function QuizBuilder({ value, onChange, aiAction }: { value: Quiz; onChange: (q: Quiz) => void; /** Beside the Questions heading: writes the quiz with AI. */ aiAction?: ReactNode }) {
   const s = value.settings;
   const setS = (patch: Partial<QuizSettings>) => onChange({ ...value, settings: { ...s, ...patch } });
   const setQ = (questions: Question[]) => onChange({ ...value, questions });
@@ -296,8 +296,9 @@ export function QuizBuilder({ value, onChange }: { value: Quiz; onChange: (q: Qu
       </>)}
 
       <div className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <p className="text-base font-semibold text-zinc-900">Questions <span className="font-normal text-zinc-500">· {value.questions.filter((q) => q.type !== "text_only").length} · {Math.round(total * 100) / 100} points</span></p>
+          {aiAction}
         </div>
         {value.questions.length === 0 && <p className="rounded-xl border border-dashed border-zinc-300 px-4 py-6 text-center text-sm text-zinc-500">No questions yet. Add the first one below.</p>}
         <ol className="space-y-3">
