@@ -61,6 +61,16 @@ describe("assistant workspaces", () => {
   it("refuses a tool from the other workspace even when asked for it", async () => {
     const ctx = { userId: 1, role: "tutor" as const };
     expect((await runAssistantTool("propose_create_course", "{}", { ...ctx, workspace: "program_builder" })).content).toMatch(/aren't changed from the Program Builder/);
+    const generate = (args: object, programStage?: object) => runAssistantTool("propose_program_builder", JSON.stringify({ action: "generate", ...args }), { ...ctx, workspace: "program_builder", programStage });
+    expect((await generate({ level: "Beginner", modules: 4 })).content).toMatch(/nothing to build from/i);
+    expect((await generate({ topic: "Safety" })).content).toMatch(/proposed/i);
+    expect((await generate({ transcript: "We spoke about safety" })).content).toMatch(/proposed/i);
+    expect((await generate({}, { topic: "From the page" })).content).toMatch(/proposed/i);
+    expect((await generate({ modules: 5 }, { hasCurriculum: true, step: 2 })).content).toMatch(/proposed/i);
+    const propose = (programStage?: { hasCurriculum: boolean; step: number }) => runAssistantTool("propose_program_builder", JSON.stringify({ action: "proposal", topic: "Safety" }), { ...ctx, workspace: "program_builder", programStage });
+    expect((await propose()).content).toMatch(/no curriculum/i);
+    expect((await propose({ hasCurriculum: true, step: 1 })).content).toMatch(/hasn't reached/i);
+    expect((await propose({ hasCurriculum: true, step: 2 })).content).toMatch(/proposed/i);
     expect((await runAssistantTool("propose_program_builder", "{}", { ...ctx, workspace: "courses" })).content).toMatch(/isn't run from here/);
   });
 });

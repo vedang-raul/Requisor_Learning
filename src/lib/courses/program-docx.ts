@@ -5,7 +5,7 @@
  */
 import JSZip from "jszip";
 import type { Curriculum, Proposal } from "@/lib/courses/program-builder";
-import { BLUEPRINT_LABEL } from "@/lib/courses/program-builder";
+import { CURRICULUM_FACTS, CURRICULUM_LABELS, docLabel, docShown, PROPOSAL_LABELS } from "@/lib/courses/program-builder";
 import { isPreviewUrl } from "@/lib/courses/preview-modules";
 
 type Run = { text: string; bold?: boolean };
@@ -26,64 +26,69 @@ const run = (text: string, bold = false): Run => ({ text, bold });
 const block = (kind: Exclude<DocBlock["kind"], "table">, ...runs: (Run | string)[]): DocBlock =>
   ({ kind, runs: runs.map((r) => (typeof r === "string" ? run(r) : r)) });
 
+const hasText = (b: DocBlock) => b.kind === "table" || b.runs.some((r) => r.text.trim());
+type Doc = Curriculum | Proposal;
+/** A section's heading and contents; nothing when it was taken out or has nothing in it. */
+function section(doc: Doc, key: string, labels: Record<string, string>, body: DocBlock[]): DocBlock[] {
+  const content = body.filter(hasText);
+  return docShown(doc, key) && content.length ? [block("heading", docLabel(doc, key, labels)), ...content] : [];
+}
+const extraBlocks = (doc: Doc) => (doc.custom?.extras ?? []).flatMap((extra) => [block("heading", extra.title), block("paragraph", extra.body)]);
+
 export function blueprintBlocks(curriculum: Curriculum, employer: string, date: string): DocBlock[] {
+  const label = (key: string) => docLabel(curriculum, key, CURRICULUM_LABELS);
+  const facts = CURRICULUM_FACTS.filter((key) => docShown(curriculum, key));
   const blocks: DocBlock[] = [
-    block("kicker", BLUEPRINT_LABEL.toUpperCase()),
+    block("kicker", label("kicker")),
     block("title", curriculum.title),
     block("paragraph", curriculum.description),
   ];
   if (employer.trim()) blocks.push(block("paragraph", "Prepared for ", run(employer.trim(), true)));
+  if (facts.length) blocks.push({ kind: "table", header: facts.map(label), rows: [facts.map((key) => curriculum[key])] });
   blocks.push(
-    { kind: "table", header: ["Audience", "Level", "Format", "Duration"], rows: [[curriculum.audience, curriculum.level, curriculum.format, curriculum.duration]] },
-    block("heading", "Learning outcomes"),
-    ...curriculum.outcomes.map((outcome) => block("bullet", outcome)),
-    block("heading", "Modules"),
+    ...section(curriculum, "outcomes", CURRICULUM_LABELS, curriculum.outcomes.map((outcome) => block("bullet", outcome))),
+    ...section(curriculum, "modules", CURRICULUM_LABELS, curriculum.modules.flatMap((module, i) => [
+      block("subheading", `Module ${i + 1}: ${module.title}`),
+      block("paragraph", module.description),
+      ...(module.submodules.length ? [block("label", label("submodules")), ...module.submodules.map((sub) => block("bullet", sub))] : []),
+      ...(module.activities.length ? [block("label", label("activities")), ...module.activities.map((activity) => block("bullet", activity))] : []),
+    ])),
+    ...section(curriculum, "assessment", CURRICULUM_LABELS, [block("paragraph", curriculum.assessment)]),
+    ...extraBlocks(curriculum),
+    ...(docShown(curriculum, "footer") ? [block("footer", `${label("footer")} · ${date}`)] : []),
   );
-  curriculum.modules.forEach((module, i) => {
-    blocks.push(block("subheading", `Module ${i + 1}: ${module.title}`));
-    if (module.description) blocks.push(block("paragraph", module.description));
-    blocks.push(block("label", "Submodules"), ...module.submodules.map((sub) => block("bullet", sub)));
-    if (module.activities.length) blocks.push(block("label", "Learning activities"), ...module.activities.map((activity) => block("bullet", activity)));
-  });
-  blocks.push(
-    block("heading", "Assessment & evidence"),
-    block("paragraph", curriculum.assessment),
-    block("footer", `Generated with the Alma 41 Program Builder · ${date}`),
-  );
-  return blocks;
+  return blocks.filter(hasText);
 }
 
 export function proposalBlocks(proposal: Proposal): DocBlock[] {
+  const label = (key: string) => docLabel(proposal, key, PROPOSAL_LABELS);
+  const total = docShown(proposal, "total");
+  const rows = [...proposal.pricing.map((row) => [row.item, row.basis, row.amount]), ...(total ? [[label("total"), "", proposal.total]] : [])];
   return [
-    block("kicker", "CUSTOM TRAINING PROPOSAL"),
+    block("kicker", label("kicker")),
     block("title", proposal.title),
-    block("paragraph", "Prepared for ", run(proposal.employer, true)),
+    ...(proposal.employer.trim() ? [block("paragraph", "Prepared for ", run(proposal.employer, true))] : []),
     block("paragraph", [proposal.date, proposal.preparedBy, proposal.platform].filter(Boolean).join(" · ")),
-    block("heading", "Need identified"),
-    block("paragraph", proposal.need),
-    block("heading", "Program description"),
-    block("paragraph", proposal.description),
-    block("heading", "Learning outcomes"),
-    ...proposal.outcomes.map((outcome) => block("bullet", outcome)),
-    block("heading", "Curriculum"),
-    ...proposal.modules.flatMap((module) => [block("subheading", module.title), block("paragraph", module.summary)]),
+    ...section(proposal, "need", PROPOSAL_LABELS, [block("paragraph", proposal.need)]),
+    ...section(proposal, "description", PROPOSAL_LABELS, [block("paragraph", proposal.description)]),
+    ...section(proposal, "outcomes", PROPOSAL_LABELS, proposal.outcomes.map((outcome) => block("bullet", outcome))),
+    ...section(proposal, "modules", PROPOSAL_LABELS, proposal.modules.flatMap((module) => [block("subheading", module.title), block("paragraph", module.summary)])),
     ...(proposal.preview && isPreviewUrl(proposal.preview.url) ? [
       block("heading", "Preview the course"),
       block("paragraph", "See the selected modules for yourself, no account needed: ", run(proposal.preview.url, true)),
       block("paragraph", `The link is available until ${proposal.preview.until}.`),
     ] : []),
-    block("heading", "Delivery & measurement"),
-    block("paragraph", proposal.delivery),
-    ...proposal.deliveryPoints.map((point) => block("bullet", point)),
-    block("heading", "Investment"),
-    {
-      kind: "table", header: ["Item", "Basis", "Amount"], alignLast: true,
-      rows: [...proposal.pricing.map((row) => [row.item, row.basis, row.amount]), ["Total — first cohort", "", proposal.total]],
-      bold: [proposal.pricing.length],
-    },
-    block("paragraph", proposal.pricingNote),
-    block("footer", `Generated with the Alma 41 Program Builder · ${proposal.date}`),
-  ];
+    ...section(proposal, "delivery", PROPOSAL_LABELS, [block("paragraph", proposal.delivery), ...proposal.deliveryPoints.map((point) => block("bullet", point))]),
+    ...section(proposal, "investment", PROPOSAL_LABELS, [
+      ...(rows.length ? [{
+        kind: "table" as const, header: [label("item"), label("basis"), label("amount")], alignLast: true, rows,
+        ...(total ? { bold: [proposal.pricing.length] } : {}),
+      }] : []),
+      block("paragraph", proposal.pricingNote),
+    ]),
+    ...extraBlocks(proposal),
+    ...(docShown(proposal, "footer") ? [block("footer", `${label("footer")} · ${proposal.date}`)] : []),
+  ].filter(hasText);
 }
 
 // ── WordprocessingML ────────────────────────────────────────────────────────

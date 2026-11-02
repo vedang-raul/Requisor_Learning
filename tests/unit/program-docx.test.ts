@@ -38,4 +38,22 @@ describe("the theme colour on every page of a long Word file", () => {
     const styles = await buildDocx(blocks, { accent: "#9F1239" }).file("word/styles.xml")!.async("string");
     expect(styles).toMatch(/w:styleId="Heading2"[\s\S]*?<w:color w:val="9F1239"\/>/);
   });
+
+  it("follows the tutor's changes: sections out, headings reworded, own sections, nothing blank", () => {
+    const curriculum = composeCurriculum({ ...EMPTY_DISCOVERY, topic: "Estimating" });
+    const base = buildProposal(curriculum, "", new Date(2026, 9, 8));
+    const text = JSON.stringify(proposalBlocks({
+      ...base, employer: "", need: "", outcomes: [], pricingNote: "",
+      custom: { hidden: ["description", "total", "footer"], labels: { investment: "Fees", amount: "Cost" }, extras: [{ title: "Our team", body: "Who teaches it" }, { title: "", body: "" }] },
+    }));
+    for (const gone of ["Need identified", "Program description", "Learning outcomes", "Total — first cohort", "Generated with", "Prepared for", "Investment"]) expect(text).not.toContain(gone);
+    for (const kept of ["Fees", "Cost", "Our team", "Who teaches it"]) expect(text).toContain(kept);
+    expect(proposalBlocks({ ...base, custom: {} }).filter((b) => b.kind !== "table" && !b.runs.some((r) => r.text.trim()))).toEqual([]);
+
+    const blueprint = blueprintBlocks({ ...curriculum, modules: [{ title: "Only", description: "", submodules: [], activities: [] }], custom: { hidden: ["level", "assessment"], labels: { audience: "Who" } } }, "", "today");
+    const table = blueprint.find((b) => b.kind === "table");
+    expect(table).toMatchObject({ header: ["Who", "Format", "Duration"] });
+    expect(JSON.stringify(blueprint)).not.toContain("Submodules");
+    expect(JSON.stringify(blueprint)).not.toContain("Assessment");
+  });
 });

@@ -1,5 +1,5 @@
 import {
-  analyzeTranscript, buildProposal, cleanDiscoveryFields, composeCurriculum, EMPTY_DISCOVERY, mergeAiCurriculum, readProgramCommand, SAMPLE_TRANSCRIPT, sampleDiscovery,
+  analyzeTranscript, buildProposal, cleanDiscoveryFields, composeCurriculum, EMPTY_DISCOVERY, curriculumGate, mergeAiCurriculum, moveAt, proposalGate, readProgramCommand, refreshProposal, removeAt, renumberModules, stepOpen, SAMPLE_TRANSCRIPT, sampleDiscovery,
   programStorageKey, programDraftSummary, sendProgramCommand, takeProgramCommand, hasProgramCommand, PROGRAM_DRAFT_KEY,
 } from "@/lib/courses/program-builder";
 
@@ -97,6 +97,46 @@ describe("Program Builder", () => {
     expect(p.modules[0].summary).toBe(c.modules[0].submodules.join(" · "));
     expect(p.pricing).toHaveLength(3);
     expect(buildProposal(c, "", new Date()).employer).toBe("Employer Partner");
+  });
+
+  it("keeps the steps in order: the proposal comes after a curriculum the tutor has in front of them", () => {
+    expect([stepOpen(1, false, false), stepOpen(2, false, false), stepOpen(3, false, false)]).toEqual([true, false, false]);
+    expect([stepOpen(2, true, false), stepOpen(3, true, false)]).toEqual([true, false]);
+    expect(stepOpen(3, true, true)).toBe(true);
+
+    expect(curriculumGate(null)).toMatch(/nothing to build from/i);
+    expect(curriculumGate({ topic: "  " })).toMatch(/nothing to build from/i);
+    expect(curriculumGate({ topic: "Safety" })).toBeNull();
+    expect(curriculumGate({ hasTranscript: true })).toBeNull();
+    expect(curriculumGate({ hasCurriculum: true })).toBeNull();
+
+    expect(proposalGate(null)).toMatch(/no curriculum/i);
+    expect(proposalGate({ hasCurriculum: false, step: 2 })).toMatch(/no curriculum/i);
+    expect(proposalGate({ hasCurriculum: true, step: 1 })).toMatch(/hasn't reached/i);
+    expect(proposalGate({ hasCurriculum: true, step: "2" })).toMatch(/hasn't reached/i);
+    expect(proposalGate({ hasCurriculum: true, step: 2 })).toBeNull();
+    expect(proposalGate({ hasCurriculum: true, hasProposal: true, step: 3 })).toBeNull();
+  });
+
+  it("edits lists: removes, moves within bounds, renumbers proposal modules", () => {
+    expect(removeAt(["a", "b", "c"], 1)).toEqual(["a", "c"]);
+    expect(moveAt(["a", "b", "c"], 2, -1)).toEqual(["a", "c", "b"]);
+    expect(moveAt(["a", "b"], 0, -1)).toEqual(["a", "b"]);
+    expect(moveAt(["a", "b"], 1, 1)).toEqual(["a", "b"]);
+    expect(renumberModules([{ title: "Module 3: Risk", summary: "" }, { title: "Own title", summary: "" }]).map((m) => m.title)).toEqual(["Module 1: Risk", "Own title"]);
+  });
+
+  it("refreshes a proposal from a changed curriculum without losing what only the proposal holds", () => {
+    const c = composeCurriculum({ ...EMPTY_DISCOVERY, topic: "Estimating", employer: "Findorff" });
+    const before = {
+      ...buildProposal(c, "Findorff", new Date(2026, 9, 8)),
+      total: "$12,000",
+      preview: { id: 7, url: "https://example.test/p/x", until: "November 20, 2026" },
+    };
+    const edited = { ...c, title: "Estimating, revised", outcomes: ["One outcome"] };
+    const after = refreshProposal(before, edited, "", new Date(2027, 0, 1));
+    expect(after).toMatchObject({ title: "Estimating, revised", outcomes: ["One outcome"], total: "$12,000", preview: before.preview, employer: "Findorff", date: before.date });
+    expect(refreshProposal(before, edited, "Mortenson", new Date()).employer).toBe("Mortenson");
   });
 
   it("accepts only real discovery fields in a command from the assistant", () => {

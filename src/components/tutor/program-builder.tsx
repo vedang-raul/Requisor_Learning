@@ -2,7 +2,7 @@
 
 import { createElement, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft, ArrowRight, BookOpenCheck, Check, Copy, Download, FileText, Link2, Loader2, Plus, Printer, RotateCcw, Sparkles, Wand2, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpenCheck, Check, ChevronDown, ChevronUp, Copy, Download, FileText, Link2, Loader2, MessagesSquare, Plus, Printer, RotateCcw, Sparkles, Wand2, X } from "lucide-react";
 import { DATA_CHANGED_EVENT } from "@/components/assistant/assistant-action-card";
 import { DEFAULT_COURSE_ICON, getCategoryCover } from "@/components/course/category-icon";
 import { Button } from "@/components/ui/button";
@@ -15,31 +15,43 @@ import { isPreviewUrl, PREVIEW_LINK_DAYS, previewModuleChoices } from "@/lib/cou
 import type { MyPreviewLink, PreviewLinkSummary } from "@/lib/courses/preview-links";
 import { DEFAULT_PROGRAM_DOC_STYLE, DOC_THEMES, loadDocStyle, logoSources, MAX_DOC_LOGOS, MAX_LOGO_BYTES, saveDocStyle, type ProgramDocStyle } from "@/lib/courses/program-doc-style";
 import {
-  analyzeTranscript, BLUEPRINT_LABEL, blueprintSlug, buildProposal, composeCurriculum, courseChoiceGroups, curriculumFromCourse, curriculumToCourse, EMPTY_DISCOVERY, FORMATS, INDUSTRIES, LEVELS, MODULE_COUNTS,
-  PROGRAM_COMMAND_EVENT, PROGRAM_DRAFT_KEY, programStorageKey, sampleDiscovery, takeProgramCommand,
+  analyzeTranscript, BLUEPRINT_LABEL, blueprintSlug, buildProposal, composeCurriculum, courseChoiceGroups, CURRICULUM_FACTS, CURRICULUM_LABELS, CURRICULUM_SECTIONS, curriculumFromCourse, curriculumToCourse,
+  docHide, docLabel, docRelabel, docShow, docShown, EMPTY_DISCOVERY, FORMATS, INDUSTRIES, LEVELS, MODULE_COUNTS, moveAt,
+  curriculumGate, PROGRAM_COMMAND_EVENT, PROGRAM_DRAFT_KEY, PROGRAM_STATE_EVENT, programStorageKey, proposalGate, PROPOSAL_LABELS, PROPOSAL_SECTIONS, refreshProposal, removeAt, renumberModules, sampleDiscovery, stepOpen, takeProgramCommand, withCustom,
   type Curriculum, type Discovery, type Industry, type Level, type Proposal,
 } from "@/lib/courses/program-builder";
 import { askConfirm } from "@/components/ui/confirm-dialog";
 
 /**
- * Program Builder: employer need → curriculum → priced proposal.
- *   1. Discovery   paste a discovery-call transcript or fill the fields
- *   2. Curriculum  generated in the standard shape; every line is click-to-edit. The first one
- *                  is saved as a draft "Curriculum Blueprint" course in the tutor's courses, and
- *                  can be downloaded as a PDF
- *   3. Proposal    assembled from the curriculum as edited; fill in pricing and export as PDF
+ * Program Builder: employer need → curriculum → priced proposal, one step on screen at a time, in
+ * order: the proposal is created only from the end of step 2, by the tutor or at their request.
+ *   1. Start       pick one of the tutor's courses, or paste a discovery-call transcript or fill the fields
+ *   2. Curriculum  from the course or generated in the standard shape; every line is click-to-edit.
+ *                  A generated one is saved as a draft "Curriculum Blueprint" course in the tutor's
+ *                  courses. Logos and colour can be changed here, and it downloads as PDF or Word
+ *   3. Proposal    assembled from the curriculum as edited; logos and colour again, fill in pricing and export
  * The AI assistant can drive all three steps: it sends commands (see src/lib/courses/program-builder.ts)
  * that fill the discovery fields, generate the curriculum and assemble the proposal.
  */
 type Step = 1 | 2 | 3;
+/** Where a program starts from, chosen on step 1. */
+type Origin = "course" | "discovery";
+const ORIGINS = [
+  { key: "course", title: "An existing course", detail: "Offer a course you already teach: its modules and lessons become the curriculum.", Icon: BookOpenCheck },
+  { key: "discovery", title: "A new discovery call", detail: "Paste the call's transcript or notes, and generate a curriculum for this employer.", Icon: MessagesSquare },
+] as const;
 type Notice = { kind: "ok" | "warn"; text: string } | null;
 
 const selectClass = "focus-ring h-10 w-full rounded-xl border border-border bg-white px-3 text-sm text-zinc-900 transition-colors hover:border-zinc-300";
 
-/** Text that can be edited in place. The change is kept when the field loses focus. */
-function Editable({ value, onChange, as = "span", className, label, multiline = false }: {
-  value: string; onChange: (next: string) => void; as?: "span" | "p" | "h1" | "h4" | "div" | "li" | "td" | "b";
-  className?: string; label: string; multiline?: boolean;
+/**
+ * Text that can be edited in place. The change is kept when the field loses focus.
+ * Cleared, it calls onEmpty if given (a list line removes itself); a `required`
+ * field goes back to what it said. Anything else stays empty, with `label` as a hint.
+ */
+function Editable({ value, onChange, as = "span", className, label, multiline = false, onEmpty, required = false, autoFocus = false }: {
+  value: string; onChange: (next: string) => void; as?: "span" | "p" | "h1" | "h2" | "h4" | "div" | "li" | "td" | "th" | "b";
+  className?: string; label: string; multiline?: boolean; onEmpty?: () => void; required?: boolean; autoFocus?: boolean;
 }) {
   const ref = useRef<HTMLElement | null>(null);
   // Follow changes made elsewhere (a regenerate, the assistant) unless the user is typing here.
@@ -47,6 +59,11 @@ function Editable({ value, onChange, as = "span", className, label, multiline = 
     const el = ref.current;
     if (el && document.activeElement !== el && el.textContent !== value) el.textContent = value;
   }, [value]);
+  // A line just added opens ready to type in.
+  useEffect(() => {
+    if (autoFocus && !value) ref.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   return createElement(as, {
     ref,
     contentEditable: true,
@@ -54,21 +71,109 @@ function Editable({ value, onChange, as = "span", className, label, multiline = 
     role: "textbox",
     "aria-label": label,
     "aria-multiline": multiline,
+    "data-placeholder": label,
     spellCheck: true,
     onBlur: (event: { currentTarget: HTMLElement }) => {
-      const next = (event.currentTarget.textContent ?? "").replace(/\s+/g, " ").trim();
+      const el = event.currentTarget;
+      const next = (el.textContent ?? "").replace(/\s+/g, " ").trim();
+      if (!next) {
+        if (required) { el.textContent = value; return; }
+        el.textContent = ""; // browsers leave a stray line break behind
+        if (onEmpty) { onEmpty(); return; }
+      }
       if (next !== value) onChange(next);
     },
     onKeyDown: (event: KeyboardEvent<HTMLElement>) => {
       if (event.key === "Enter" && !(multiline && event.shiftKey)) { event.preventDefault(); event.currentTarget.blur(); }
+      if (event.key === "Backspace" && onEmpty && !event.currentTarget.textContent?.trim()) { event.preventDefault(); event.currentTarget.blur(); }
     },
     onPaste: (event: React.ClipboardEvent<HTMLElement>) => {
       // Keep pasted text plain.
       event.preventDefault();
       document.execCommand("insertText", false, event.clipboardData.getData("text/plain"));
     },
-    className: cn("rounded-sm outline-none outline-offset-2 transition hover:outline-dashed hover:outline-1 hover:outline-primary/50 focus:bg-primary/5 focus:outline focus:outline-2 focus:outline-primary", className),
+    className: cn("rounded-sm outline-none outline-offset-2 transition hover:outline-dashed hover:outline-1 hover:outline-primary/50 focus:bg-primary/5 focus:outline focus:outline-2 focus:outline-primary", as !== "td" && as !== "th" && "empty:inline-block empty:min-w-[6rem]", "empty:before:font-normal empty:before:text-zinc-400 empty:before:content-[attr(data-placeholder)]", className),
   }, value);
+}
+
+/** Shown on hover or while editing the row (and always on touch screens). */
+const showControls = "opacity-0 transition focus-within:opacity-100 [@media(hover:none)]:opacity-100";
+const rowControls = cn(showControls, "group-focus-within/item:opacity-100 group-hover/item:opacity-100");
+const moduleControls = cn(showControls, "group-focus-within/module:opacity-100 group-hover/module:opacity-100");
+const sectionControls = cn(showControls, "group-hover/section:opacity-100");
+const controlButton = "focus-ring flex h-6 w-6 items-center justify-center rounded text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-30";
+
+/** Move up, move down and remove, for a row of a list. The row needs "group/item relative" (or group/module, with moduleControls). */
+function ItemControls({ noun, index, count, onMove, onRemove, visibility = rowControls }: { noun: string; index: number; count: number; onMove: (by: -1 | 1) => void; onRemove: () => void; visibility?: string }) {
+  return (
+    <span className={cn("absolute right-0 top-0 flex rounded-md bg-white/90", visibility)}>
+      <button type="button" className={controlButton} disabled={index === 0} onClick={() => onMove(-1)} aria-label={`Move ${noun} ${index + 1} up`} title="Move up"><ChevronUp className="h-3.5 w-3.5" aria-hidden="true" /></button>
+      <button type="button" className={controlButton} disabled={index === count - 1} onClick={() => onMove(1)} aria-label={`Move ${noun} ${index + 1} down`} title="Move down"><ChevronDown className="h-3.5 w-3.5" aria-hidden="true" /></button>
+      <button type="button" className={cn(controlButton, "hover:text-red-600")} onClick={onRemove} aria-label={`Remove ${noun} ${index + 1}`} title="Remove"><X className="h-3.5 w-3.5" aria-hidden="true" /></button>
+    </span>
+  );
+}
+
+function AddButton({ onClick, children }: { onClick: () => void; children: ReactNode }) {
+  return (
+    <button type="button" onClick={onClick} className="focus-ring mt-1.5 inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-xs font-semibold text-primary hover:bg-primary/5">
+      <Plus className="h-3.5 w-3.5" aria-hidden="true" />{children}
+    </button>
+  );
+}
+
+/** A list of one-line items: edit, reorder, remove, add. Clearing a line removes it. */
+function BulletList({ items, onChange, noun, listClass, itemClass }: { items: string[]; onChange: (next: string[]) => void; noun: string; listClass: string; itemClass?: string }) {
+  return (
+    <>
+      <ul className={listClass}>
+        {items.map((item, i) => (
+          <li key={i} className={cn("group/item relative pr-[4.75rem]", itemClass)}>
+            <Editable value={item} onChange={(v) => onChange(items.map((x, j) => (j === i ? v : x)))} onEmpty={() => onChange(removeAt(items, i))} label={`${noun} ${i + 1}`} multiline autoFocus />
+            <ItemControls noun={noun.toLowerCase()} index={i} count={items.length} onMove={(by) => onChange(moveAt(items, i, by))} onRemove={() => onChange(removeAt(items, i))} />
+          </li>
+        ))}
+      </ul>
+      <AddButton onClick={() => onChange([...items, ""])}>Add {noun.toLowerCase()}</AddButton>
+    </>
+  );
+}
+
+/** Removes a section; the section needs "group/section relative". */
+function RemoveSection({ name, onRemove }: { name: string; onRemove: () => void }) {
+  return (
+    <button type="button" onClick={onRemove} aria-label={`Remove the section ${name}`} title="Remove section"
+      className={cn(controlButton, sectionControls, "absolute right-0 top-0 hover:text-red-600")}>
+      <X className="h-3.5 w-3.5" aria-hidden="true" />
+    </button>
+  );
+}
+
+/** The tutor's own sections, after the standard ones. */
+function ExtraSections({ extras, onChange, printing = false, heading }: { extras: { title: string; body: string }[]; onChange?: (next: { title: string; body: string }[]) => void; printing?: boolean; heading: string }) {
+  if (printing) {
+    return <>{extras.filter((x) => x.title || x.body).map((x, i) => (
+      <div key={i}>{x.title && <h2 className={heading}>{x.title}</h2>}{x.body && <p className="text-sm leading-relaxed">{x.body}</p>}</div>
+    ))}</>;
+  }
+  const edit = (i: number, change: Partial<{ title: string; body: string }>) => onChange?.(extras.map((x, j) => (j === i ? { ...x, ...change } : x)));
+  return <>{extras.map((x, i) => (
+    <div key={i} className="group/section relative">
+      <Editable as="h2" value={x.title} onChange={(v) => edit(i, { title: v })} className={cn(heading, "block pr-8")} label="Section heading" autoFocus />
+      <RemoveSection name={x.title || "new section"} onRemove={() => onChange?.(removeAt(extras, i))} />
+      <Editable as="p" value={x.body} onChange={(v) => edit(i, { body: v })} className="block text-sm leading-relaxed" label="Section text" multiline />
+    </div>
+  ))}</>;
+}
+
+/** Add a section of your own, or put back one that was removed. */
+function SectionsBar({ removed, onRestore, onAdd }: { removed: { key: string; label: string }[]; onRestore: (key: string) => void; onAdd: () => void }) {
+  return (
+    <div className="mt-6 flex flex-wrap items-center gap-x-2 border-t border-dashed border-zinc-200 pt-2.5">
+      <AddButton onClick={onAdd}>Add section</AddButton>
+      {removed.map((r) => <AddButton key={r.key} onClick={() => onRestore(r.key)}>Put back: {r.label}</AddButton>)}
+    </div>
+  );
 }
 
 function FieldLabel({ htmlFor, children }: { htmlFor: string; children: ReactNode }) {
@@ -110,49 +215,64 @@ function DocLogo({ look }: { look: DocLook }) {
 
 function ProposalDocument({ proposal, onChange, printing = false, look }: { proposal: Proposal; onChange?: (next: Proposal) => void; printing?: boolean; look: DocLook }) {
   const set = <K extends keyof Proposal>(key: K, value: Proposal[K]) => onChange?.({ ...proposal, [key]: value });
-  // On screen every line is editable; the printed copy is the same text, plain.
-  const E = ({ value, onEdit, as = "span", className, label, multiline }: { value: string; onEdit: (next: string) => void; as?: "span" | "p" | "h4" | "div" | "li" | "td" | "b"; className?: string; label: string; multiline?: boolean }) =>
-    printing ? createElement(as, { className }, value) : <Editable value={value} onChange={onEdit} as={as} className={className} label={label} multiline={multiline} />;
+  // On screen every line is editable; the printed copy is the same text, plain, without what's blank.
+  const E = ({ value, onEdit, as = "span", className, label, multiline, required }: { value: string; onEdit: (next: string) => void; as?: "span" | "p" | "h2" | "h4" | "div" | "li" | "td" | "th" | "b"; className?: string; label: string; multiline?: boolean; required?: boolean }) =>
+    printing ? (value || as === "td" || as === "th" ? createElement(as, { className }, value) : null) : <Editable value={value} onChange={onEdit} as={as} className={className} label={label} multiline={multiline} required={required} />;
   const heading = "mb-2 mt-6 break-after-avoid text-[15px] font-semibold text-[color:var(--doc-accent)]";
+  const label = (key: string) => docLabel(proposal, key, PROPOSAL_LABELS);
+  const L = (key: string, as: "p" | "h2" | "td" | "th" | "span", className: string) =>
+    E({ value: label(key), onEdit: (v) => onChange?.(docRelabel(proposal, key, v)), as, className, label: `${PROPOSAL_LABELS[key]} (label)`, required: true });
+  const section = (key: string, empty: boolean, body: ReactNode) => (!docShown(proposal, key) || (printing && empty) ? null : (
+    <div className="group/section relative">
+      {L(key, "h2", cn(heading, "pr-8"))}
+      {!printing && <RemoveSection name={label(key)} onRemove={() => onChange?.(docHide(proposal, key))} />}
+      {body}
+    </div>
+  ));
+  const showTotal = docShown(proposal, "total");
+  const extras = proposal.custom?.extras ?? [];
 
   return (
     <article id={printing ? undefined : "program-proposal"} style={lookStyle(look)} className={cn("bg-white text-zinc-900", printing ? "p-2" : "mx-auto max-w-[860px] rounded border border-zinc-200 px-6 py-10 shadow-soft sm:px-14 sm:py-12")}>
       <DocLogo look={look} />
       <header className="mb-6 flex flex-col gap-4 border-b-[3px] border-[color:var(--doc-accent)] pb-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-xs font-bold tracking-[0.08em] text-[color:var(--doc-accent)]">CUSTOM TRAINING PROPOSAL</p>
-          <h1 className="mt-1 text-2xl font-bold text-zinc-900">{proposal.title}</h1>
+          {L("kicker", "p", "text-xs font-bold tracking-[0.08em] text-[color:var(--doc-accent)]")}
+          {printing ? <h1 className="mt-1 text-2xl font-bold text-zinc-900">{proposal.title}</h1> : <Editable as="h1" value={proposal.title} onChange={(v) => set("title", v)} className="mt-1 block text-2xl font-bold text-zinc-900" label="Proposal title" required />}
         </div>
         <div className="text-[12.5px] text-zinc-600 sm:text-right">
-          <span className="block">Prepared for {E({ value: proposal.employer, onEdit: (v) => set("employer", v), as: "b", className: "text-zinc-900", label: "Employer" })}</span>
+          {(!printing || proposal.employer) && <span className="block">Prepared for {E({ value: proposal.employer, onEdit: (v) => set("employer", v), as: "b", className: "text-zinc-900", label: "Employer" })}</span>}
           {E({ value: proposal.date, onEdit: (v) => set("date", v), className: "block", label: "Date" })}
           {E({ value: proposal.preparedBy, onEdit: (v) => set("preparedBy", v), className: "block", label: "Prepared by" })}
           {E({ value: proposal.platform, onEdit: (v) => set("platform", v), className: "block", label: "Platform line" })}
         </div>
       </header>
 
-      <h2 className={heading}>Need identified</h2>
-      {E({ value: proposal.need, onEdit: (v) => set("need", v), as: "p", className: "text-sm leading-relaxed", label: "Need identified", multiline: true })}
+      {section("need", !proposal.need, E({ value: proposal.need, onEdit: (v) => set("need", v), as: "p", className: "text-sm leading-relaxed", label: "Need identified", multiline: true }))}
 
-      <h2 className={heading}>Program description</h2>
-      {E({ value: proposal.description, onEdit: (v) => set("description", v), as: "p", className: "text-sm leading-relaxed", label: "Program description", multiline: true })}
+      {section("description", !proposal.description, E({ value: proposal.description, onEdit: (v) => set("description", v), as: "p", className: "text-sm leading-relaxed", label: "Program description", multiline: true }))}
 
-      <h2 className={heading}>Learning outcomes</h2>
-      <ul className="ml-5 list-disc space-y-1 text-sm">
-        {proposal.outcomes.map((outcome, i) => (
-          <li key={i}>{E({ value: outcome, onEdit: (v) => set("outcomes", proposal.outcomes.map((o, j) => (j === i ? v : o))), label: `Outcome ${i + 1}`, multiline: true })}</li>
-        ))}
-      </ul>
+      {section("outcomes", !proposal.outcomes.length, printing
+        ? <ul className="ml-5 list-disc space-y-1 text-sm">{proposal.outcomes.map((outcome, i) => <li key={i}>{outcome}</li>)}</ul>
+        : <BulletList items={proposal.outcomes} onChange={(next) => set("outcomes", next)} noun="Outcome" listClass="ml-5 list-disc space-y-1 text-sm" />)}
 
-      <h2 className={heading}>Curriculum</h2>
-      <div className="space-y-3">
-        {proposal.modules.map((module, i) => (
-          <div key={i} className="break-inside-avoid">
-            {E({ value: module.title, onEdit: (v) => set("modules", proposal.modules.map((m, j) => (j === i ? { ...m, title: v } : m))), as: "h4", className: "text-sm font-semibold text-[color:var(--doc-accent)]", label: `Module ${i + 1} title` })}
-            {E({ value: module.summary, onEdit: (v) => set("modules", proposal.modules.map((m, j) => (j === i ? { ...m, summary: v } : m))), as: "div", className: "text-[13px] text-zinc-600", label: `Module ${i + 1} contents`, multiline: true })}
+      {section("modules", !proposal.modules.length, (
+        <>
+          <div className="space-y-3">
+            {proposal.modules.map((module, i) => {
+              const replace = (next: Proposal["modules"]) => set("modules", renumberModules(next));
+              return (
+                <div key={i} className={cn("break-inside-avoid", !printing && "group/item relative")}>
+                  {E({ value: module.title, onEdit: (v) => set("modules", proposal.modules.map((m, j) => (j === i ? { ...m, title: v } : m))), as: "h4", className: "pr-[4.75rem] text-sm font-semibold text-[color:var(--doc-accent)]", label: `Module ${i + 1} title`, required: true })}
+                  {E({ value: module.summary, onEdit: (v) => set("modules", proposal.modules.map((m, j) => (j === i ? { ...m, summary: v } : m))), as: "div", className: "text-[13px] text-zinc-600", label: `Module ${i + 1} contents`, multiline: true })}
+                  {!printing && <ItemControls noun="module" index={i} count={proposal.modules.length} onMove={(by) => replace(moveAt(proposal.modules, i, by))} onRemove={() => replace(removeAt(proposal.modules, i))} />}
+                </div>
+              );
+            })}
           </div>
-        ))}
-      </div>
+          {!printing && <AddButton onClick={() => set("modules", [...proposal.modules, { title: `Module ${proposal.modules.length + 1}: New module`, summary: "" }])}>Add module</AddButton>}
+        </>
+      ))}
 
       {proposal.preview && isPreviewUrl(proposal.preview.url) && (
         <>
@@ -165,47 +285,76 @@ function ProposalDocument({ proposal, onChange, printing = false, look }: { prop
         </>
       )}
 
-      <h2 className={heading}>Delivery &amp; measurement</h2>
-      {E({ value: proposal.delivery, onEdit: (v) => set("delivery", v), as: "p", className: "text-sm leading-relaxed", label: "Delivery", multiline: true })}
-      <ul className="ml-5 mt-2 list-disc space-y-1 text-sm">
-        {proposal.deliveryPoints.map((point, i) => (
-          <li key={i}>{E({ value: point, onEdit: (v) => set("deliveryPoints", proposal.deliveryPoints.map((p, j) => (j === i ? v : p))), label: `Delivery point ${i + 1}`, multiline: true })}</li>
-        ))}
-      </ul>
+      {section("delivery", !proposal.delivery && !proposal.deliveryPoints.length, (
+        <>
+          {E({ value: proposal.delivery, onEdit: (v) => set("delivery", v), as: "p", className: "text-sm leading-relaxed", label: "Delivery", multiline: true })}
+          {printing
+            ? <ul className="ml-5 mt-2 list-disc space-y-1 text-sm">{proposal.deliveryPoints.map((point, i) => <li key={i}>{point}</li>)}</ul>
+            : <BulletList items={proposal.deliveryPoints} onChange={(next) => set("deliveryPoints", next)} noun="Delivery point" listClass="ml-5 mt-2 list-disc space-y-1 text-sm" />}
+        </>
+      ))}
 
-      <h2 className={heading}>Investment</h2>
-      <table className="mt-2 w-full break-inside-avoid border-collapse text-sm">
-        <thead>
-          <tr className="border-b-2 border-[color:var(--doc-accent)] text-left text-xs tracking-wide text-zinc-600">
-            <th className="w-[55%] px-2.5 py-2 font-semibold">Item</th>
-            <th className="px-2.5 py-2 font-semibold">Basis</th>
-            <th className="px-2.5 py-2 text-right font-semibold">Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          {proposal.pricing.map((row, i) => {
-            const edit = (key: "item" | "basis" | "amount") => (v: string) => set("pricing", proposal.pricing.map((r, j) => (j === i ? { ...r, [key]: v } : r)));
-            return (
-              <tr key={i} className="border-b border-zinc-200">
-                {E({ value: row.item, onEdit: edit("item"), as: "td", className: "px-2.5 py-2", label: `Pricing item ${i + 1}` })}
-                {E({ value: row.basis, onEdit: edit("basis"), as: "td", className: "px-2.5 py-2", label: `Pricing basis ${i + 1}` })}
-                {E({ value: row.amount, onEdit: edit("amount"), as: "td", className: "px-2.5 py-2 text-right", label: `Pricing amount ${i + 1}` })}
-              </tr>
-            );
-          })}
-          <tr className="border-t-2 border-[color:var(--doc-accent)] font-bold">
-            <td className="px-2.5 py-2">Total — first cohort</td>
-            <td />
-            {E({ value: proposal.total, onEdit: (v) => set("total", v), as: "td", className: "px-2.5 py-2 text-right", label: "Total amount" })}
-          </tr>
-        </tbody>
-      </table>
-      {E({ value: proposal.pricingNote, onEdit: (v) => set("pricingNote", v), as: "p", className: "mt-2 text-xs text-zinc-600", label: "Pricing note", multiline: true })}
+      {section("investment", !proposal.pricing.length && !showTotal && !proposal.pricingNote, (
+        <>
+          {(!printing || proposal.pricing.length > 0 || showTotal) && (
+            <table className="mt-2 w-full break-inside-avoid border-collapse text-sm">
+              <thead>
+                <tr className="border-b-2 border-[color:var(--doc-accent)] text-left text-xs tracking-wide text-zinc-600">
+                  {L("item", "th", "w-[55%] px-2.5 py-2 font-semibold")}
+                  {L("basis", "th", "px-2.5 py-2 font-semibold")}
+                  {L("amount", "th", "px-2.5 py-2 text-right font-semibold")}
+                  {!printing && <th className="w-[4.75rem]" />}
+                </tr>
+              </thead>
+              <tbody>
+                {proposal.pricing.map((row, i) => {
+                  const edit = (key: "item" | "basis" | "amount") => (v: string) => set("pricing", proposal.pricing.map((r, j) => (j === i ? { ...r, [key]: v } : r)));
+                  return (
+                    <tr key={i} className="group/item border-b border-zinc-200">
+                      {E({ value: row.item, onEdit: edit("item"), as: "td", className: "px-2.5 py-2", label: `Pricing item ${i + 1}` })}
+                      {E({ value: row.basis, onEdit: edit("basis"), as: "td", className: "px-2.5 py-2", label: `Pricing basis ${i + 1}` })}
+                      {E({ value: row.amount, onEdit: edit("amount"), as: "td", className: "px-2.5 py-2 text-right", label: `Pricing amount ${i + 1}` })}
+                      {!printing && (
+                        <td className="relative">
+                          <ItemControls noun="pricing row" index={i} count={proposal.pricing.length} onMove={(by) => set("pricing", moveAt(proposal.pricing, i, by))} onRemove={() => set("pricing", removeAt(proposal.pricing, i))} />
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+                {showTotal && (
+                  <tr className="group/section border-t-2 border-[color:var(--doc-accent)] font-bold">
+                    {L("total", "td", "px-2.5 py-2")}
+                    <td />
+                    {E({ value: proposal.total, onEdit: (v) => set("total", v), as: "td", className: "px-2.5 py-2 text-right", label: "Total amount" })}
+                    {!printing && <td className="relative"><RemoveSection name={label("total")} onRemove={() => onChange?.(docHide(proposal, "total"))} /></td>}
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          )}
+          {!printing && <AddButton onClick={() => set("pricing", [...proposal.pricing, { item: "", basis: "", amount: "$ —" }])}>Add pricing row</AddButton>}
+          {E({ value: proposal.pricingNote, onEdit: (v) => set("pricingNote", v), as: "p", className: "mt-2 text-xs text-zinc-600", label: "Pricing note", multiline: true })}
+        </>
+      ))}
 
-      <footer className="mt-8 flex break-before-avoid justify-between border-t border-zinc-200 pt-4 text-xs text-zinc-600">
-        <span>Generated with the Alma 41 Program Builder</span>
-        <span>{proposal.date}</span>
-      </footer>
+      <ExtraSections extras={extras} printing={printing} heading={heading} onChange={(next) => onChange?.(withCustom(proposal, { extras: next }))} />
+
+      {docShown(proposal, "footer") && (
+        <footer className="group/section relative mt-8 flex break-before-avoid justify-between gap-4 border-t border-zinc-200 pt-4 text-xs text-zinc-600">
+          {L("footer", "span", "")}
+          <span className={printing ? undefined : "pr-8"}>{proposal.date}</span>
+          {!printing && <span className="absolute right-0 top-3"><RemoveSection name="the footer" onRemove={() => onChange?.(docHide(proposal, "footer"))} /></span>}
+        </footer>
+      )}
+
+      {!printing && (
+        <SectionsBar
+          removed={PROPOSAL_SECTIONS.filter((key) => !docShown(proposal, key)).map((key) => ({ key, label: key === "footer" ? "Footer" : label(key) }))}
+          onRestore={(key) => onChange?.(docShow(proposal, key))}
+          onAdd={() => onChange?.(withCustom(proposal, { extras: [...extras, { title: "", body: "" }] }))}
+        />
+      )}
     </article>
   );
 }
@@ -445,55 +594,180 @@ function AllPreviewLinks({ onTurnedOff }: { onTurnedOff: (id: number) => void })
 function BlueprintDocument({ curriculum, employer, look }: { curriculum: Curriculum; employer: string; look: DocLook }) {
   const heading = "mb-2 mt-6 break-after-avoid text-[15px] font-semibold text-[color:var(--doc-accent)]";
   const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  const label = (key: string) => docLabel(curriculum, key, CURRICULUM_LABELS);
+  const shown = (key: string, filled: boolean) => docShown(curriculum, key) && filled;
+  const facts = CURRICULUM_FACTS.filter((key) => docShown(curriculum, key));
   return (
     <article style={lookStyle(look)} className="bg-white p-2 text-zinc-900">
       <DocLogo look={look} />
       <header className="mb-5 border-b-[3px] border-[color:var(--doc-accent)] pb-4">
-        <p className="text-xs font-bold tracking-[0.08em] text-[color:var(--doc-accent)]">{BLUEPRINT_LABEL.toUpperCase()}</p>
+        <p className="text-xs font-bold tracking-[0.08em] text-[color:var(--doc-accent)]">{label("kicker")}</p>
         <h1 className="mt-1 text-2xl font-bold text-zinc-900">{curriculum.title}</h1>
         <p className="mt-2 text-sm leading-relaxed text-zinc-700">{curriculum.description}</p>
         {employer.trim() && <p className="mt-2 text-[12.5px] text-zinc-600">Prepared for <b className="text-zinc-900">{employer.trim()}</b></p>}
       </header>
-      <dl className="grid grid-cols-4 gap-2 text-sm">
-        {([["Audience", curriculum.audience], ["Level", curriculum.level], ["Format", curriculum.format], ["Duration", curriculum.duration]] as const).map(([label, value]) => (
-          <div key={label} className="rounded border border-zinc-200 px-2.5 py-2">
-            <dt className="text-[11px] font-bold uppercase tracking-wide text-zinc-500">{label}</dt>
-            <dd className="font-semibold">{value}</dd>
-          </div>
-        ))}
-      </dl>
-
-      <h2 className={heading}>Learning outcomes</h2>
-      <ul className="ml-5 list-disc space-y-1 text-sm">{curriculum.outcomes.map((outcome, i) => <li key={i}>{outcome}</li>)}</ul>
-
-      <h2 className={heading}>Modules</h2>
-      <div className="space-y-4">
-        {curriculum.modules.map((module, i) => (
-          <section key={i} className="break-inside-avoid rounded border border-zinc-200 px-4 py-3">
-            <h3 className="text-[15px] font-semibold text-[color:var(--doc-accent)]">Module {i + 1}: {module.title}</h3>
-            {module.description && <p className="mt-1 text-[13px] text-zinc-600">{module.description}</p>}
-            <div className="mt-2 grid grid-cols-2 gap-4 text-[13px]">
-              <div>
-                <p className="mb-1 text-xs font-bold text-[color:var(--doc-accent)]">SUBMODULES</p>
-                <ul className="ml-4 list-disc space-y-0.5">{module.submodules.map((sub, j) => <li key={j}>{sub}</li>)}</ul>
-              </div>
-              <div>
-                <p className="mb-1 text-xs font-bold text-[color:var(--doc-accent)]">LEARNING ACTIVITIES</p>
-                <ul className="ml-4 list-disc space-y-0.5">{module.activities.map((activity, j) => <li key={j}>{activity}</li>)}</ul>
-              </div>
+      {facts.length > 0 && (
+        <dl className="grid gap-2 text-sm" style={{ gridTemplateColumns: `repeat(${facts.length}, minmax(0, 1fr))` }}>
+          {facts.map((key) => (
+            <div key={key} className="rounded border border-zinc-200 px-2.5 py-2">
+              <dt className="text-[11px] font-bold uppercase tracking-wide text-zinc-500">{label(key)}</dt>
+              <dd className="font-semibold">{curriculum[key]}</dd>
             </div>
-          </section>
-        ))}
-      </div>
+          ))}
+        </dl>
+      )}
 
-      <h2 className={heading}>Assessment &amp; evidence</h2>
-      <p className="text-sm leading-relaxed">{curriculum.assessment}</p>
+      {shown("outcomes", curriculum.outcomes.length > 0) && (
+        <>
+          <h2 className={heading}>{label("outcomes")}</h2>
+          <ul className="ml-5 list-disc space-y-1 text-sm">{curriculum.outcomes.map((outcome, i) => <li key={i}>{outcome}</li>)}</ul>
+        </>
+      )}
 
-      <footer className="mt-8 flex justify-between border-t border-zinc-200 pt-4 text-xs text-zinc-600">
-        <span>Generated with the Alma 41 Program Builder</span>
-        <span>{date}</span>
-      </footer>
+      {shown("modules", curriculum.modules.length > 0) && (
+        <>
+          <h2 className={heading}>{label("modules")}</h2>
+          <div className="space-y-4">
+            {curriculum.modules.map((module, i) => (
+              <section key={i} className="break-inside-avoid rounded border border-zinc-200 px-4 py-3">
+                <h3 className="text-[15px] font-semibold text-[color:var(--doc-accent)]">Module {i + 1}: {module.title}</h3>
+                {module.description && <p className="mt-1 text-[13px] text-zinc-600">{module.description}</p>}
+                <div className="mt-2 grid grid-cols-2 gap-4 text-[13px]">
+                  {module.submodules.length > 0 && (
+                    <div>
+                      <p className="mb-1 text-xs font-bold uppercase text-[color:var(--doc-accent)]">{label("submodules")}</p>
+                      <ul className="ml-4 list-disc space-y-0.5">{module.submodules.map((sub, j) => <li key={j}>{sub}</li>)}</ul>
+                    </div>
+                  )}
+                  {module.activities.length > 0 && (
+                    <div>
+                      <p className="mb-1 text-xs font-bold uppercase text-[color:var(--doc-accent)]">{label("activities")}</p>
+                      <ul className="ml-4 list-disc space-y-0.5">{module.activities.map((activity, j) => <li key={j}>{activity}</li>)}</ul>
+                    </div>
+                  )}
+                </div>
+              </section>
+            ))}
+          </div>
+        </>
+      )}
+
+      {shown("assessment", Boolean(curriculum.assessment)) && (
+        <>
+          <h2 className={heading}>{label("assessment")}</h2>
+          <p className="text-sm leading-relaxed">{curriculum.assessment}</p>
+        </>
+      )}
+
+      <ExtraSections extras={curriculum.custom?.extras ?? []} printing heading={heading} />
+
+      {docShown(curriculum, "footer") && (
+        <footer className="mt-8 flex justify-between border-t border-zinc-200 pt-4 text-xs text-zinc-600">
+          <span>{label("footer")}</span>
+          <span>{date}</span>
+        </footer>
+      )}
     </article>
+  );
+}
+
+/** The curriculum on screen, as it will look: every line, heading and list can be changed. */
+function CurriculumEditor({ curriculum, onChange, look, badge }: { curriculum: Curriculum; onChange: (next: Curriculum) => void; look: DocLook; badge: string }) {
+  const edit = (change: Partial<Curriculum>) => onChange({ ...curriculum, ...change });
+  const editModule = (index: number, change: Partial<Curriculum["modules"][number]>) => edit({ modules: curriculum.modules.map((m, i) => (i === index ? { ...m, ...change } : m)) });
+  const label = (key: string) => docLabel(curriculum, key, CURRICULUM_LABELS);
+  const L = (key: string, as: "p" | "h4" | "span", className: string) => (
+    <Editable as={as} value={label(key)} onChange={(v) => onChange(docRelabel(curriculum, key, v))} className={className} label={`${CURRICULUM_LABELS[key]} (label)`} required />
+  );
+  const hide = (key: string) => onChange(docHide(curriculum, key));
+  const sectionHeading = (key: string) => (
+    <>
+      {L(key, "h4", "mb-2.5 mt-6 block border-b border-zinc-200 pb-1.5 pr-8 text-[15px] font-semibold text-[color:var(--doc-accent)]")}
+      <RemoveSection name={label(key)} onRemove={() => hide(key)} />
+    </>
+  );
+  const extras = curriculum.custom?.extras ?? [];
+  const facts = CURRICULUM_FACTS.filter((key) => docShown(curriculum, key));
+  return (
+    <Card className="p-5" style={lookStyle(look)}>
+      <DocLogo look={look} />
+      <div className="mb-4 border-b-[3px] border-[color:var(--doc-accent)] pb-4">
+        <span className="mb-2 inline-block rounded-full border border-[color:var(--doc-accent)] px-2.5 py-0.5 text-[11.5px] font-bold tracking-wide text-[color:var(--doc-accent)]">{badge}</span>
+        {L("kicker", "p", "block text-xs font-bold tracking-[0.08em] text-[color:var(--doc-accent)]")}
+        <Editable as="h1" value={curriculum.title} onChange={(v) => edit({ title: v })} className="mt-1 block text-2xl font-bold text-zinc-900" label="Program title" required />
+        <Editable as="p" value={curriculum.description} onChange={(v) => edit({ description: v })} className="mt-2 block max-w-[72ch] text-sm text-zinc-600" label="Program description" multiline />
+      </div>
+      {facts.length > 0 && (
+        <dl className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+          {facts.map((key) => (
+            <div key={key} className="group/section relative rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2.5">
+              <dt>{L(key, "span", "block pr-6 text-[11px] font-bold uppercase tracking-wide text-zinc-500")}</dt>
+              <dd><Editable value={curriculum[key]} onChange={(v) => edit({ [key]: v })} className="block text-sm font-semibold text-zinc-900" label={CURRICULUM_LABELS[key]} /></dd>
+              <RemoveSection name={label(key)} onRemove={() => hide(key)} />
+            </div>
+          ))}
+        </dl>
+      )}
+
+      {docShown(curriculum, "outcomes") && (
+        <div className="group/section relative">
+          {sectionHeading("outcomes")}
+          <BulletList items={curriculum.outcomes} onChange={(outcomes) => edit({ outcomes })} noun="Outcome" listClass="ml-5 list-disc space-y-2 text-sm text-zinc-800" />
+        </div>
+      )}
+
+      {docShown(curriculum, "modules") && (
+        <div className="group/section relative">
+          {sectionHeading("modules")}
+          <div className="space-y-3">
+            {curriculum.modules.map((module, i) => (
+              <section key={i} className="group/module relative rounded-xl border border-zinc-200 bg-white px-4 py-3.5">
+                <h5 className="pr-[4.75rem] text-[15.5px] font-semibold text-zinc-900">
+                  Module {i + 1}: <Editable value={module.title} onChange={(v) => editModule(i, { title: v })} label={`Module ${i + 1} title`} required />
+                </h5>
+                <span className="absolute right-2 top-2 block h-6 w-[4.5rem]"><ItemControls noun="module" index={i} count={curriculum.modules.length} onMove={(by) => edit({ modules: moveAt(curriculum.modules, i, by) })} onRemove={() => edit({ modules: removeAt(curriculum.modules, i) })} visibility={moduleControls} /></span>
+                <Editable as="div" value={module.description} onChange={(v) => editModule(i, { description: v })} className="mb-2.5 block text-[13.5px] text-zinc-600" label={`Module ${i + 1} description`} multiline />
+                <div className="grid gap-3.5 md:grid-cols-2">
+                  <div>
+                    {L("submodules", "p", "mb-1.5 block text-xs font-bold uppercase text-[color:var(--doc-accent)]")}
+                    <BulletList items={module.submodules} onChange={(submodules) => editModule(i, { submodules })} noun="Submodule" listClass="space-y-1 text-[13.5px] text-zinc-800"
+                      itemClass="pl-4 before:absolute before:left-0.5 before:top-[9px] before:h-1.5 before:w-1.5 before:rounded-sm before:bg-[color:var(--doc-accent)]" />
+                  </div>
+                  <div>
+                    {L("activities", "p", "mb-1.5 block text-xs font-bold uppercase text-[color:var(--doc-accent)]")}
+                    <BulletList items={module.activities} onChange={(activities) => editModule(i, { activities })} noun="Activity" listClass="space-y-1 text-[13.5px] text-zinc-800"
+                      itemClass="pl-4 before:absolute before:left-0.5 before:top-[9px] before:h-1.5 before:w-1.5 before:rounded-full before:bg-zinc-500" />
+                  </div>
+                </div>
+              </section>
+            ))}
+          </div>
+          <AddButton onClick={() => edit({ modules: [...curriculum.modules, { title: "New module", description: "", submodules: [], activities: [] }] })}>Add module</AddButton>
+        </div>
+      )}
+
+      {docShown(curriculum, "assessment") && (
+        <div className="group/section relative">
+          {sectionHeading("assessment")}
+          <Editable as="p" value={curriculum.assessment} onChange={(v) => edit({ assessment: v })} className="block text-sm text-zinc-800" label="Assessment and evidence" multiline />
+        </div>
+      )}
+
+      <ExtraSections extras={extras} heading="mb-2 mt-6 text-[15px] font-semibold text-[color:var(--doc-accent)]" onChange={(next) => onChange(withCustom(curriculum, { extras: next }))} />
+
+      {docShown(curriculum, "footer") && (
+        <div className="group/section relative mt-8 border-t border-zinc-200 pt-4 text-xs text-zinc-600">
+          {L("footer", "span", "")}
+          <span className="absolute right-0 top-3"><RemoveSection name="the footer" onRemove={() => hide("footer")} /></span>
+        </div>
+      )}
+
+      <SectionsBar
+        removed={CURRICULUM_SECTIONS.filter((key) => !docShown(curriculum, key)).map((key) => ({ key, label: key === "footer" ? "Footer" : label(key) }))}
+        onRestore={(key) => onChange(docShow(curriculum, key))}
+        onAdd={() => onChange(withCustom(curriculum, { extras: [...extras, { title: "", body: "" }] }))}
+      />
+    </Card>
   );
 }
 
@@ -559,7 +833,7 @@ function DocumentStyleControls({ style, onChange, defaultLogo }: { style: Progra
   return (
     <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
       <p className="text-sm font-semibold text-zinc-900">Document style</p>
-      <p className="text-xs text-zinc-500">For the PDF and Word files only.</p>
+      <p className="text-xs text-zinc-500">Shown below and on the PDF and Word files.</p>
       <div className="mt-3 flex flex-wrap items-start gap-x-8 gap-y-3">
         <div>
           <p className="text-xs font-medium text-zinc-700">Logos</p>
@@ -632,6 +906,8 @@ function WordButton({ size, onDownload }: { size?: "sm"; onDownload: () => Promi
 }
 
 type Blueprint = { slug: string; title: string };
+/** What the proposal is written from: the curriculum's own headings and sections aren't part of it. */
+const basisOf = (curriculum: Curriculum, employer: string) => JSON.stringify([{ ...curriculum, custom: undefined }, employer]);
 
 export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenCourse?: (slug: string) => void }) {
   const { upsertCourse } = useStore();
@@ -656,14 +932,21 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
   const [form, setForm] = useState<Discovery>(EMPTY_DISCOVERY);
   const [curriculum, setCurriculum] = useState<Curriculum | null>(null);
   const [proposal, setProposal] = useState<Proposal | null>(null);
+  const [origin, setOrigin] = useState<Origin | null>(null);
+  // What the proposal was last built from, so returning to it keeps it unless that has changed since.
+  const [proposalBasis, setProposalBasis] = useState("");
+  const [proposalNote, setProposalNote] = useState<Notice>(null);
+  const [showLinks, setShowLinks] = useState(false);
   const [useAi, setUseAi] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [analyzeNote, setAnalyzeNote] = useState<Notice>(null);
   const [genNote, setGenNote] = useState<Notice>(null);
-  const curriculumRef = useRef<HTMLDivElement>(null);
   // The latest values, for commands from the assistant, which run across several awaits.
   const formRef = useRef(form); formRef.current = form;
   const curriculumState = useRef(curriculum); curriculumState.current = curriculum;
+  const stepRef = useRef(step); stepRef.current = step;
+  const proposalState = useRef(proposal); proposalState.current = proposal;
+  const proposalBasisRef = useRef(proposalBasis); proposalBasisRef.current = proposalBasis;
   const useAiRef = useRef(useAi); useAiRef.current = useAi;
 
   // ── The curriculum blueprint course ───────────────────────────────────────
@@ -776,10 +1059,11 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
     const base = composeCurriculum(source);
     const show = (next: Curriculum) => {
       setCurriculum(next);
+      proposalState.current = null;
       setProposal(null);
       setSourceCourse(null);
+      setOrigin("discovery");
       setStep(2);
-      setTimeout(() => curriculumRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80); // after the card first renders
       void saveBlueprint(next, "auto");
     };
     if (!useAiRef.current) { show(base); setGenNote(null); return base; }
@@ -808,27 +1092,56 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
     if (!course) { setCourseNote({ kind: "warn", text: "Pick one of your courses first." }); return; }
     const next = curriculumFromCourse(course, formRef.current);
     setCurriculum(next);
+    proposalState.current = null;
     setProposal(null);
     setSourceCourse({ slug: course.slug, title: course.title });
     setGenNote(null);
-    setCourseNote({ kind: "ok", text: `Built from "${course.title}". Add the employer above, then create the proposal.` });
+    setCourseNote(null);
     setStep(2);
-    setTimeout(() => curriculumRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80); // after the card first renders
   }
 
-  const editCurriculum = (change: Partial<Curriculum>) => setCurriculum((current) => (current ? { ...current, ...change } : current));
-  const editModule = (index: number, change: Partial<Curriculum["modules"][number]>) =>
-    setCurriculum((current) => (current ? { ...current, modules: current.modules.map((m, i) => (i === index ? { ...m, ...change } : m)) } : current));
+  /** Starting again would throw away edits, so it checks first. */
+  const confirmReplace = async () => !curriculum || askConfirm("Replace your current curriculum and proposal? Your edits to them will be lost.", { confirmLabel: "Replace", danger: true });
+  async function continueWithCourse() {
+    if (curriculum && sourceCourse?.slug === pickedCourse) { setStep(2); return; } // the same course: carry on with the work so far
+    if (await confirmReplace()) applyCourse();
+  }
+  async function generateFromForm() {
+    if (curriculumGate({ topic: form.topic, hasTranscript: Boolean(form.transcript.trim()) })) { setGenNote({ kind: "warn", text: "Paste the discovery call notes or enter a training topic first." }); return; }
+    if (await confirmReplace()) void generate();
+  }
+  async function rebuild() {
+    if (!(await confirmReplace())) return;
+    if (sourceCourse) applyCourse(sourceCourse.slug); else void generate();
+  }
 
   // ── Step 3 ────────────────────────────────────────────────────────────────
   const createProposal = useCallback((from?: Curriculum) => {
     const current = from ?? curriculumState.current;
     if (!current) return;
-    setProposal(buildProposal(current, formRef.current.employer, new Date()));
+    const employer = formRef.current.employer;
+    const basis = basisOf(current, employer);
+    const previous = proposalState.current;
+    setProposalNote(null);
+    if (!previous) setProposal(buildProposal(current, employer, new Date()));
+    else if (basis !== proposalBasisRef.current) {
+      setProposal(refreshProposal(previous, current, employer, new Date()));
+      setProposalNote({ kind: "ok", text: "Updated from your curriculum. Your pricing, delivery details and preview link are kept." });
+    }
+    setProposalBasis(basis);
     setStep(3);
+  }, []);
+
+  function goToStep(next: Step) {
+    setShowLinks(false);
+    if (next === 3 && step !== 3) createProposal();
+    else setStep(next);
+  }
+  // One step at a time: each opens at its top.
+  useEffect(() => {
     window.scrollTo({ top: 0 });
     document.querySelector("main")?.scrollTo?.({ top: 0 });
-  }, []);
+  }, [step, showLinks]);
 
   // Work in progress survives switching tabs or reloading the page (this browser tab only).
   // Saving waits until the saved draft has been read back in, so an empty first render can't overwrite it.
@@ -836,13 +1149,16 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
   useEffect(() => {
     if (!draftKey) return;
     try {
-      const saved = JSON.parse(sessionStorage.getItem(draftKey) ?? "null") as { form?: Discovery; curriculum?: Curriculum | null; proposal?: Proposal | null; step?: Step; blueprint?: Blueprint | null; sourceCourse?: { slug?: unknown; title?: unknown } | null } | null;
+      const saved = JSON.parse(sessionStorage.getItem(draftKey) ?? "null") as { form?: Discovery; curriculum?: Curriculum | null; proposal?: Proposal | null; step?: Step; blueprint?: Blueprint | null; sourceCourse?: { slug?: unknown; title?: unknown } | null; origin?: Origin | null; proposalBasis?: string } | null;
       if (saved?.form && typeof saved.form === "object") {
         setForm({ ...EMPTY_DISCOVERY, ...saved.form });
         if (saved.curriculum?.modules) setCurriculum(saved.curriculum);
         if (typeof saved.blueprint?.slug === "string" && typeof saved.blueprint.title === "string") setBlueprint({ slug: saved.blueprint.slug, title: saved.blueprint.title });
-        if (typeof saved.sourceCourse?.slug === "string" && typeof saved.sourceCourse.title === "string") setSourceCourse({ slug: saved.sourceCourse.slug, title: saved.sourceCourse.title });
+        if (typeof saved.sourceCourse?.slug === "string" && typeof saved.sourceCourse.title === "string") { setSourceCourse({ slug: saved.sourceCourse.slug, title: saved.sourceCourse.title }); setPickedCourse(saved.sourceCourse.slug); }
+        // Drafts from before step 1 had a choice: work it out from what they hold.
+        setOrigin(saved.origin ?? (saved.sourceCourse ? "course" : saved.curriculum || saved.form.transcript || saved.form.topic ? "discovery" : null));
         if (saved.proposal?.pricing) setProposal(saved.proposal);
+        if (saved.proposal?.pricing && saved.curriculum) setProposalBasis(saved.proposalBasis ?? basisOf(saved.curriculum, saved.form.employer ?? ""));
         if (saved.step === 2 && saved.curriculum) setStep(2);
         if (saved.step === 3 && saved.proposal) setStep(3);
       }
@@ -851,8 +1167,8 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
   }, [draftKey]);
   useEffect(() => {
     if (!restored || !draftKey) return;
-    try { sessionStorage.setItem(draftKey, JSON.stringify({ form, curriculum, proposal, step, blueprint, sourceCourse })); } catch { /* storage is unavailable */ }
-  }, [restored, form, curriculum, proposal, step, blueprint, sourceCourse, draftKey]);
+    try { sessionStorage.setItem(draftKey, JSON.stringify({ form, curriculum, proposal, step, blueprint, sourceCourse, origin, proposalBasis })); window.dispatchEvent(new Event(PROGRAM_STATE_EVENT)); } catch { /* storage is unavailable */ }
+  }, [restored, form, curriculum, proposal, step, blueprint, sourceCourse, origin, proposalBasis, draftKey]);
   // A remembered draft course may have been deleted since (in My Courses, or elsewhere).
   const checkedBlueprint = useRef(false);
   useEffect(() => {
@@ -863,6 +1179,7 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
   }, [restored, findBlueprintCourse, blueprintGone]);
   function startOver() {
     setForm(EMPTY_DISCOVERY); setCurriculum(null); setProposal(null); setStep(1); setAnalyzeNote(null); setGenNote(null);
+    setOrigin(null); setProposalBasis(""); setProposalNote(null); setShowLinks(false);
     // The saved draft course stays in My Courses; the next program gets its own.
     setBlueprint(null); setBlueprintNote(null);
     setSourceCourse(null); setPickedCourse(""); setCourseNote(null);
@@ -880,19 +1197,28 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
     formRef.current = filled;
     setForm(filled);
     setAnalyzeNote(null);
+    setShowLinks(false);
     // Only fields that really differ count: the assistant often repeats what is already there,
     // and that must not throw away a curriculum the tutor has been editing.
     const changed = (Object.keys(command.form) as (keyof Discovery)[]).filter((key) => command.form[key] !== before[key]).length;
     if (command.run === "fill") {
-      setStep((current) => (current === 3 ? 2 : current));
+      // The fields are on step 1: go there when there's something new to check.
+      if (changed) { setOrigin("discovery"); setStep(1); } else setStep((current) => (current === 3 ? 2 : current));
       setAssistantNote(changed ? "The assistant filled in the discovery fields. Check them, then generate." : null);
       return;
     }
     if (command.run === "open-curriculum") { setStep(curriculumState.current ? 2 : 1); setAssistantNote(null); return; }
-    // A proposal needs a curriculum: build one first if there is none, or if the fields just changed.
-    const built = command.run === "generate" || !curriculumState.current || changed > 0 ? await generate(filled) : curriculumState.current;
-    if (command.run === "proposal") createProposal(built);
-    setAssistantNote(command.run === "proposal" ? "The assistant assembled this proposal. Fill in the investment amounts before exporting." : "The assistant built this curriculum. Every line is click-to-edit.");
+    // A new or rewritten curriculum always stops at step 2, even when the proposal was asked for: it gets reviewed first.
+    const rewrite = command.run === "generate" || !curriculumState.current || changed > 0;
+    const built = rewrite ? await generate(filled) : curriculumState.current;
+    if (command.run !== "proposal") { setAssistantNote("The assistant built this curriculum. Every line is click-to-edit."); return; }
+    if (!rewrite && !proposalGate({ hasCurriculum: true, step: stepRef.current })) {
+      createProposal(built ?? undefined);
+      setAssistantNote("The assistant assembled this proposal. Fill in the investment amounts before exporting.");
+      return;
+    }
+    setStep(2);
+    setAssistantNote("Review this curriculum first. When it's right, use Create proposal at the end of this page.");
   }, [generate, createProposal, owner]);
   useEffect(() => {
     if (!restored) return;
@@ -912,33 +1238,43 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
     setPrintRoot(root);
     return () => { root.remove(); document.body.classList.remove("print-program-document"); };
   }, []);
-  const printing = step === 3 && proposal ? "proposal" : step === 2 && curriculum ? "blueprint" : null;
+  const printing = showLinks ? null : step === 3 && proposal ? "proposal" : step === 2 && curriculum ? "blueprint" : null;
   // Preview links are for programs built on one of the tutor's own courses.
   const previewCourse = sourceCourse ? myCourses?.find((c) => c.slug === sourceCourse.slug) ?? null : null;
   useEffect(() => {
     document.body.classList.toggle("print-program-document", printing !== null);
   }, [printing]);
 
-  const steps: [Step, string][] = [[1, "Discovery"], [2, "Curriculum"], [3, "Proposal"]];
+  const steps: [Step, string][] = [[1, "Start"], [2, "Curriculum"], [3, "Proposal"]];
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-zinc-900">Program Builder</h2>
-          <p className="text-sm text-zinc-600">From an employer&apos;s need to a priced proposal. You can also ask the AI assistant to build one for you.{" "}
-            {(curriculum || form.transcript || form.topic) && <button type="button" onClick={startOver} className="font-medium text-primary hover:underline">Start a new program</button>}
-          </p>
+    <div className="mx-auto max-w-[860px] space-y-5">
+      <div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-zinc-900">Program Builder</h2>
+            <p className="text-sm text-zinc-600">From an employer&apos;s need to a priced proposal. You can also ask the AI assistant to build one for you.</p>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Button type="button" size="sm" variant="outline" aria-pressed={showLinks} onClick={() => setShowLinks((now) => !now)}><Link2 className="h-3.5 w-3.5" />Preview links</Button>
+            {(curriculum || form.transcript || form.topic) && <Button type="button" size="sm" variant="outline" onClick={startOver}><Plus className="h-3.5 w-3.5" />New program</Button>}
+          </div>
         </div>
-        <ol className="flex flex-wrap gap-1.5" aria-label="Program Builder steps">
-          {steps.map(([n, label]) => (
-            <li key={n} aria-current={step === n ? "step" : undefined} className={cn(
-              "rounded-full border px-3.5 py-1.5 text-[13px] font-semibold",
-              step === n ? "border-primary bg-primary text-white" : n < step ? "border-primary text-primary" : "border-zinc-200 bg-white text-zinc-500"
-            )}>
-              {n} · {label}
-            </li>
-          ))}
+        <ol className="mt-3 flex flex-wrap items-center gap-1.5" aria-label="Program Builder steps">
+          {steps.map(([n, label]) => {
+            const here = step === n && !showLinks;
+            const open = stepOpen(n, Boolean(curriculum), Boolean(proposal));
+            return (
+              <li key={n}>
+                <button type="button" disabled={!open} aria-current={here ? "step" : undefined} onClick={() => goToStep(n)} className={cn(
+                  "focus-ring rounded-full border px-3.5 py-1.5 text-[13px] font-semibold transition disabled:cursor-not-allowed",
+                  here ? "border-primary bg-primary text-white" : open ? "border-primary text-primary hover:bg-primary/5" : "border-zinc-200 bg-white text-zinc-500"
+                )}>
+                  {n} · {label}
+                </button>
+              </li>
+            );
+          })}
         </ol>
       </div>
 
@@ -949,29 +1285,49 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
         </p>
       )}
 
-      {step < 3 && (
-        <div className="grid items-start gap-5 lg:grid-cols-[400px_1fr]">
-          {/* Intake */}
-          <Card className="p-5">
-            <div className="mb-5 rounded-xl border border-primary/20 bg-primary/[0.03] p-3.5">
-              <p className="flex items-center gap-2 text-sm font-semibold text-zinc-900"><BookOpenCheck className="h-4 w-4 text-primary" aria-hidden="true" />Start from one of your courses</p>
-              <p className="mt-0.5 text-[13px] text-zinc-600">Offer a course you already teach: its modules and lessons become the program&apos;s curriculum, ready for a proposal.</p>
-              <div className="mt-2.5 flex gap-2">
-                <select aria-label="Your course" className={selectClass} value={pickedCourse} onChange={(e) => { setPickedCourse(e.target.value); setCourseNote(null); }} disabled={!myCourses?.length}>
-                  <option value="">{myCourses === null ? "Loading your courses…" : myCourses.length ? "Choose a course…" : "No courses with lessons yet"}</option>
-                  {courseChoiceGroups(myCourses ?? []).map((group) => (
-                    <optgroup key={group.label} label={`${group.label} (${group.courses.length})`}>
-                      {group.courses.map((c) => <option key={c.slug} value={c.slug}>{c.title} · {c.lessons.length} lesson{c.lessons.length === 1 ? "" : "s"}</option>)}
-                    </optgroup>
-                  ))}
-                </select>
-                <Button type="button" onClick={() => applyCourse()} disabled={!pickedCourse} className="shrink-0">Use course</Button>
-              </div>
-              <NoticeBox notice={courseNote} />
-            </div>
+      {showLinks && (
+        <AllPreviewLinks onTurnedOff={(id) => setProposal((p) => (p?.preview?.id === id ? { ...p, preview: undefined } : p))} />
+      )}
 
-            <h3 className="text-base font-semibold text-zinc-900">Employer discovery</h3>
-            <p className="mt-0.5 text-[13px] text-zinc-600">Paste the transcript of the discovery call (for example from a Concap recording), or fill the fields directly. Everything extracted stays editable.</p>
+      {!showLinks && step < 3 && <NoticeBox notice={genNote} />}
+      {!showLinks && step < 3 && <NoticeBox notice={courseNote} />}
+
+      {!showLinks && step === 1 && (
+        <div className="space-y-4">
+          <div role="group" aria-label="How to start" className="grid gap-3 sm:grid-cols-2">
+            {ORIGINS.map(({ key, title, detail, Icon }) => (
+              <button key={key} type="button" aria-pressed={origin === key} onClick={() => setOrigin(key)} className={cn(
+                "focus-ring rounded-xl border bg-white p-4 text-left transition",
+                origin === key ? "border-primary ring-1 ring-primary" : "border-zinc-200 hover:border-primary/50"
+              )}>
+                <span className="flex items-center gap-2 text-sm font-semibold text-zinc-900"><Icon className="h-4 w-4 text-primary" aria-hidden="true" />{title}</span>
+                <span className="mt-1 block text-[13px] text-zinc-600">{detail}</span>
+              </button>
+            ))}
+          </div>
+
+          {origin === "course" && (
+            <Card className="p-5">
+              <FieldLabel htmlFor="pb-course">Your course</FieldLabel>
+              <select id="pb-course" className={selectClass} value={pickedCourse} onChange={(e) => { setPickedCourse(e.target.value); setCourseNote(null); }} disabled={!myCourses?.length}>
+                <option value="">{myCourses === null ? "Loading your courses…" : myCourses.length ? "Choose a course…" : "No courses with lessons yet"}</option>
+                {courseChoiceGroups(myCourses ?? []).map((group) => (
+                  <optgroup key={group.label} label={`${group.label} (${group.courses.length})`}>
+                    {group.courses.map((c) => <option key={c.slug} value={c.slug}>{c.title} · {c.lessons.length} lesson{c.lessons.length === 1 ? "" : "s"}</option>)}
+                  </optgroup>
+                ))}
+              </select>
+              <FieldLabel htmlFor="pb-employer">Employer / organization</FieldLabel>
+              <Input id="pb-employer" value={form.employer} onChange={(e) => update("employer", e.target.value)} maxLength={160} placeholder="e.g. Findorff Construction" />
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button type="button" onClick={() => void continueWithCourse()} disabled={!pickedCourse}>Continue<ArrowRight className="h-4 w-4" /></Button>
+              </div>
+            </Card>
+          )}
+
+          {origin === "discovery" && (
+            <Card className="p-5">
+              <p className="text-[13px] text-zinc-600">Paste the transcript of the discovery call (for example from a Concap recording), or fill the fields directly. Everything extracted stays editable.</p>
 
             <FieldLabel htmlFor="pb-transcript">Discovery transcript / notes</FieldLabel>
             <Textarea id="pb-transcript" rows={7} value={form.transcript} onChange={(e) => update("transcript", e.target.value)} maxLength={6000} placeholder="Paste the meeting transcript or rough notes here…" />
@@ -1022,96 +1378,31 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
               <input type="checkbox" checked={useAi} onChange={(e) => setUseAi(e.target.checked)} className="mt-0.5 h-4 w-4 rounded border-zinc-300 accent-primary" />
               <span><span className="font-medium text-zinc-900">Write it with AI</span> so every line is tailored to the transcript. Untick to compose from the built-in curriculum engine, which works without AI.</span>
             </label>
-            <div className="mt-4">
-              <Button type="button" onClick={() => void generate()} disabled={generating}>
-                {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}Generate curriculum
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button type="button" onClick={() => void generateFromForm()} disabled={generating}>
+                  {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}Generate curriculum
+                </Button>
+              </div>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {!showLinks && step === 2 && curriculum && (
+        <div className="space-y-4">
+          <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-200 bg-white/95 px-4 py-2.5 backdrop-blur">
+            <p className="text-[13px] text-zinc-600">Click any line to edit it.</p>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={() => setStep(1)}><ArrowLeft className="h-3.5 w-3.5" />Back</Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => void rebuild()} disabled={generating}>
+                {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}{sourceCourse ? "Rebuild from the course" : "Regenerate"}
               </Button>
+              <WordButton size="sm" onDownload={() => downloadWord({ curriculum, employer: form.employer }, `${curriculum.title} — ${BLUEPRINT_LABEL}`, look)} />
+              <Button type="button" size="sm" variant="outline" onClick={() => printAsPdf(`${curriculum.title} — ${BLUEPRINT_LABEL}`)}><Download className="h-3.5 w-3.5" />Download PDF</Button>
             </div>
-            <NoticeBox notice={genNote} />
-          </Card>
-
-          {/* Curriculum */}
-          <div ref={curriculumRef} className="scroll-mt-4">
-            {!curriculum ? (
-              <Card className="p-5">
-                <h3 className="text-base font-semibold text-zinc-900">Curriculum</h3>
-                <p className="mt-0.5 text-[13px] text-zinc-600">The generated program appears here in the standard shape: title, description, learning outcomes, modules and submodules, learning activities. Every line is click-to-edit, so instructional judgment stays with the program team.</p>
-              </Card>
-            ) : (
-              <Card className="p-5">
-                <div className="mb-4 border-b-2 border-primary pb-4">
-                  <span className="mb-2 inline-block rounded-full border border-primary/30 bg-primary/5 px-2.5 py-0.5 text-[11.5px] font-bold tracking-wide text-primary">{sourceCourse ? `BASED ON YOUR COURSE: ${sourceCourse.title.toUpperCase()}` : "DRAFT — FOR PROGRAM TEAM REVIEW"}</span>
-                  <Editable as="h1" value={curriculum.title} onChange={(v) => editCurriculum({ title: v })} className="block text-2xl font-bold text-zinc-900" label="Program title" />
-                  <Editable as="p" value={curriculum.description} onChange={(v) => editCurriculum({ description: v })} className="mt-2 block max-w-[72ch] text-sm text-zinc-600" label="Program description" multiline />
-                </div>
-                <dl className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-                  {([["AUDIENCE", "audience"], ["LEVEL", "level"], ["FORMAT", "format"], ["DURATION", "duration"]] as const).map(([label, key]) => (
-                    <div key={key} className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2.5">
-                      <dt className="text-[11px] font-bold tracking-wide text-zinc-500">{label}</dt>
-                      <dd><Editable value={curriculum[key]} onChange={(v) => editCurriculum({ [key]: v })} className="block text-sm font-semibold text-zinc-900" label={label.toLowerCase()} /></dd>
-                    </div>
-                  ))}
-                </dl>
-
-                <h4 className="mb-2.5 mt-6 border-b border-zinc-200 pb-1.5 text-[15px] font-semibold text-primary">Learning outcomes</h4>
-                <ul className="ml-5 list-disc space-y-2 text-sm text-zinc-800">
-                  {curriculum.outcomes.map((outcome, i) => (
-                    <li key={i}><Editable value={outcome} onChange={(v) => editCurriculum({ outcomes: curriculum.outcomes.map((o, j) => (j === i ? v : o)) })} label={`Outcome ${i + 1}`} multiline /></li>
-                  ))}
-                </ul>
-
-                <h4 className="mb-2.5 mt-6 border-b border-zinc-200 pb-1.5 text-[15px] font-semibold text-primary">Modules</h4>
-                <div className="space-y-3">
-                  {curriculum.modules.map((module, i) => (
-                    <section key={i} className="rounded-xl border border-zinc-200 bg-white px-4 py-3.5">
-                      <h5 className="text-[15.5px] font-semibold text-zinc-900">
-                        Module {i + 1}: <Editable value={module.title} onChange={(v) => editModule(i, { title: v })} label={`Module ${i + 1} title`} />
-                      </h5>
-                      <Editable as="div" value={module.description} onChange={(v) => editModule(i, { description: v })} className="mb-2.5 block text-[13.5px] text-zinc-600" label={`Module ${i + 1} description`} multiline />
-                      <div className="grid gap-3.5 md:grid-cols-2">
-                        <div>
-                          <p className="mb-1.5 text-xs font-bold text-primary">SUBMODULES</p>
-                          <ul className="space-y-1 text-[13.5px] text-zinc-800">
-                            {module.submodules.map((sub, j) => (
-                              <li key={j} className="relative pl-4 before:absolute before:left-0.5 before:top-[9px] before:h-1.5 before:w-1.5 before:rounded-sm before:bg-primary">
-                                <Editable value={sub} onChange={(v) => editModule(i, { submodules: module.submodules.map((s, k) => (k === j ? v : s)) })} label={`Module ${i + 1} submodule ${j + 1}`} multiline />
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                        <div>
-                          <p className="mb-1.5 text-xs font-bold text-primary">LEARNING ACTIVITIES</p>
-                          <ul className="space-y-1 text-[13.5px] text-zinc-800">
-                            {module.activities.map((activity, j) => (
-                              <li key={j} className="relative pl-4 before:absolute before:left-0.5 before:top-[9px] before:h-1.5 before:w-1.5 before:rounded-full before:bg-zinc-500">
-                                <Editable value={activity} onChange={(v) => editModule(i, { activities: module.activities.map((a, k) => (k === j ? v : a)) })} label={`Module ${i + 1} activity ${j + 1}`} multiline />
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      </div>
-                    </section>
-                  ))}
-                </div>
-
-                <h4 className="mb-2.5 mt-6 border-b border-zinc-200 pb-1.5 text-[15px] font-semibold text-primary">Assessment &amp; evidence</h4>
-                <Editable as="p" value={curriculum.assessment} onChange={(v) => editCurriculum({ assessment: v })} className="block text-sm text-zinc-800" label="Assessment and evidence" multiline />
-
-                <div className="mt-5 flex flex-wrap gap-2">
-                  <Button type="button" onClick={() => createProposal()}>Create employer proposal<ArrowRight className="h-4 w-4" /></Button>
-                  <Button type="button" variant="outline" onClick={() => printAsPdf(`${curriculum.title} — ${BLUEPRINT_LABEL}`)}>
-                    <Download className="h-4 w-4" />Download PDF
-                  </Button>
-                  <WordButton onDownload={() => downloadWord({ curriculum, employer: form.employer }, `${curriculum.title} — ${BLUEPRINT_LABEL}`, look)} />
-                  <Button type="button" variant="outline" onClick={() => (sourceCourse ? applyCourse(sourceCourse.slug) : void generate())} disabled={generating}>
-                    {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}{sourceCourse ? "Rebuild from the course" : "Regenerate"}
-                  </Button>
-                </div>
-
-                <div className="mt-4">
-                  <DocumentStyleControls style={docStyle} onChange={changeDocStyle} defaultLogo={platformLogo} />
-                </div>
-
+          </div>
+          <DocumentStyleControls style={docStyle} onChange={changeDocStyle} defaultLogo={platformLogo} />
+          <CurriculumEditor curriculum={curriculum} onChange={setCurriculum} look={look} badge={sourceCourse ? `BASED ON YOUR COURSE: ${sourceCourse.title.toUpperCase()}` : "DRAFT — FOR PROGRAM TEAM REVIEW"} />
                 {sourceCourse ? (
                 <div className="mt-5 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
                   <p className="flex items-center gap-2 text-sm font-semibold text-zinc-900"><BookOpenCheck className="h-4 w-4 text-primary" aria-hidden="true" />Based on your course</p>
@@ -1139,42 +1430,31 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
                   <NoticeBox notice={blueprintNote} />
                 </div>
                 )}
-              </Card>
-            )}
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/25 bg-primary/5 px-4 py-3">
+            <p className="text-[13px] text-zinc-700">Happy with the curriculum? The proposal is written from it as it stands now.</p>
+            <Button type="button" onClick={() => createProposal()}>{proposal ? "Continue to proposal" : "Create proposal"}<ArrowRight className="h-4 w-4" /></Button>
           </div>
         </div>
       )}
 
-      {step === 3 && proposal && (
-        <div>
-          <div className="sticky top-0 z-10 mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-200 bg-white/95 px-4 py-2.5 backdrop-blur">
+      {!showLinks && step === 3 && proposal && (
+        <div className="space-y-4">
+          <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-200 bg-white/95 px-4 py-2.5 backdrop-blur">
             <p className="text-[13px] text-zinc-600">Click any line to edit it. Fill in the investment amounts before exporting.</p>
             <div className="flex flex-wrap gap-2">
-              <Button type="button" size="sm" variant="outline" onClick={() => setStep(2)}><ArrowLeft className="h-3.5 w-3.5" />Back to curriculum</Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setStep(2)}><ArrowLeft className="h-3.5 w-3.5" />Back</Button>
               <WordButton size="sm" onDownload={() => downloadWord({ proposal }, `${proposal.title} — Proposal`, look)} />
               <Button type="button" size="sm" onClick={() => printAsPdf(`${proposal.title} — Proposal`)}><Printer className="h-3.5 w-3.5" />Export PDF / Print</Button>
             </div>
           </div>
-          <div className="mx-auto mb-4 max-w-[860px]">
-            <DocumentStyleControls style={docStyle} onChange={changeDocStyle} defaultLogo={platformLogo} />
-          </div>
-          {previewCourse && (
-            <div className="mx-auto mb-4 max-w-[860px]">
-              <PreviewLinkPanel course={previewCourse} proposal={proposal} onChange={setProposal} label={form.employer.trim() || proposal.employer} />
-            </div>
-          )}
+          <NoticeBox notice={proposalNote} />
+          <DocumentStyleControls style={docStyle} onChange={changeDocStyle} defaultLogo={platformLogo} />
+          {previewCourse && <PreviewLinkPanel course={previewCourse} proposal={proposal} onChange={setProposal} label={form.employer.trim() || proposal.employer} />}
           <ProposalDocument proposal={proposal} onChange={setProposal} look={look} />
         </div>
       )}
       {printRoot && printing === "proposal" && proposal && createPortal(<PrintFrame look={look}><ProposalDocument proposal={proposal} printing look={look} /></PrintFrame>, printRoot)}
       {printRoot && printing === "blueprint" && curriculum && createPortal(<PrintFrame look={look}><BlueprintDocument curriculum={curriculum} employer={form.employer} look={look} /></PrintFrame>, printRoot)}
-
-      {/* Lined up with the content above: the curriculum column in steps 1–2, the proposal's width in step 3. */}
-      <div className={step === 3 && proposal ? "mx-auto max-w-[860px]" : "grid gap-5 lg:grid-cols-[400px_1fr]"}>
-        <div className={step === 3 && proposal ? undefined : "min-w-0 lg:col-start-2"}>
-          <AllPreviewLinks onTurnedOff={(id) => setProposal((p) => (p?.preview?.id === id ? { ...p, preview: undefined } : p))} />
-        </div>
-      </div>
 
     </div>
   );

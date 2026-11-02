@@ -23,7 +23,7 @@ import type { AssistantAction } from "@/lib/assistant/assistant-actions";
 import type { Course, Lesson } from "@/lib/types";
 import { getLessonTranscript } from "@/lib/courses/lesson-transcript";
 import { COURSE_ICONS, DEFAULT_COURSE_ICON, getCategoryCover, getCategoryMeta, isCourseIcon } from "@/components/course/category-icon";
-import { cleanDiscoveryFields, FORMATS, INDUSTRIES, PROGRAM_RUNS, type ProgramRun } from "@/lib/courses/program-builder";
+import { cleanDiscoveryFields, curriculumGate, FORMATS, INDUSTRIES, PROGRAM_RUNS, proposalGate, type ProgramRun, type ProgramStage } from "@/lib/courses/program-builder";
 import { transcriptForAi } from "@/lib/courses/transcript";
 
 export type AssistantRole = "employee" | "tutor" | "admin";
@@ -34,7 +34,7 @@ export type AssistantRole = "employee" | "tutor" | "admin";
  * builder (it offers to open it). Each has its own conversation.
  */
 export type AssistantWorkspace = "courses" | "program_builder";
-export type ToolContext = { userId: number; role: AssistantRole; superAdmin?: boolean; universityId?: number | null; workspace?: AssistantWorkspace };
+export type ToolContext = { userId: number; role: AssistantRole; superAdmin?: boolean; universityId?: number | null; workspace?: AssistantWorkspace; programStage?: ProgramStage };
 
 /** The only tools offered on the Program Builder page. */
 const PROGRAM_BUILDER_TOOLS = new Set(["propose_program_builder", "propose_open_page", "list_my_courses"]);
@@ -774,11 +774,16 @@ const TOOLS: ToolDef[] = [
       required: ["action"],
     },
     roles: MANAGERS,
-    async run(args) {
+    async run(args, ctx) {
       const run = PROGRAM_RUNS.find((r) => r === args.action) as ProgramRun | undefined;
       if (!run) return fail(`action must be one of: ${PROGRAM_RUNS.join(", ")}.`);
       const modules = int(args.modules);
       const form = cleanDiscoveryFields({ ...args, modules: Number.isSafeInteger(modules) ? modules : undefined });
+      const stage = ctx.programStage;
+      const blocked = run === "proposal" ? proposalGate(stage)
+        : run === "generate" ? curriculumGate({ ...stage, topic: form.topic || stage?.topic, hasTranscript: Boolean(form.transcript) || stage?.hasTranscript })
+        : null;
+      if (blocked) return fail(blocked);
       const summary = [
         ...(form.topic ? [form.topic] : []),
         [form.employer, form.audience, form.level, form.modules ? `${form.modules} modules` : "", form.industry ? INDUSTRIES.find((i) => i.key === form.industry)?.label : ""].filter(Boolean).join(" · "),

@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import { parseCourseLessonCount } from "@/lib/ai/course-interview";
 import { renderMarkdownLite, endsInOpenTag } from "@/components/ui/markdown-lite";
 import { useVoice } from "@/hooks/use-voice";
-import { programDraftSummary } from "@/lib/courses/program-builder";
+import { programDraftSummary, PROGRAM_STATE_EVENT } from "@/lib/courses/program-builder";
 import { PersonaAvatar } from "@/components/assistant/persona-avatar";
 import { AI_GUIDE_PREFERENCES_UPDATED, ASSISTANT_NAME } from "@/lib/assistant/personas";
 import { trackEvent } from "@/lib/analytics";
@@ -51,13 +51,15 @@ const LEARNER_QUICK_PROMPTS = [
   { icon: TrendingUp, label: "What grades did I get?" },
   { icon: Sparkles, label: "Give me a practice assignment" },
 ];
-/** On the Program Builder page: its own starting points, about the employer program only. */
-const PROGRAM_BUILDER_QUICK_PROMPTS = [
-  { icon: Sparkles, label: "Build a program from my discovery call notes" },
-  { icon: ListChecks, label: "Write the curriculum from what's filled in" },
-  { icon: BookPlus, label: "Make it 5 modules" },
-  { icon: TrendingUp, label: "Assemble the employer proposal" },
-];
+/** On the Program Builder page: about the employer program only, and only what fits the step the tutor is on. */
+const PROGRAM_BUILDER_QUICK_PROMPTS = {
+  start: [
+    { icon: Sparkles, label: "Build a program from my discovery call notes" },
+    { icon: ListChecks, label: "Write the curriculum from what's filled in" },
+  ],
+  curriculum: [{ icon: BookPlus, label: "Make it 5 modules" }],
+  proposal: [{ icon: ListChecks, label: "Go back to the curriculum" }],
+};
 const TUTOR_QUICK_PROMPTS = [
   { icon: Sparkles, label: "Design a course from my topic" },
   { icon: ListChecks, label: "What needs grading?" },
@@ -449,7 +451,15 @@ export function AiAssistant() {
   const didNavigateRef = useRef(false);
   const requestStartedAtRef = useRef(0);
   const requestFailedRef = useRef(false);
-  const quickPrompts = builderMode ? PROGRAM_BUILDER_QUICK_PROMPTS : isTutorMode ? TUTOR_QUICK_PROMPTS : LEARNER_QUICK_PROMPTS;
+  const [builderStep, setBuilderStep] = useState(1);
+  useEffect(() => {
+    if (!builderMode) return;
+    const sync = () => setBuilderStep(programDraftSummary(state.user?.email)?.step ?? 1);
+    sync();
+    window.addEventListener(PROGRAM_STATE_EVENT, sync);
+    return () => window.removeEventListener(PROGRAM_STATE_EVENT, sync);
+  }, [builderMode, state.user?.email]);
+  const quickPrompts = builderMode ? PROGRAM_BUILDER_QUICK_PROMPTS[builderStep === 3 ? "proposal" : builderStep === 2 ? "curriculum" : "start"] : isTutorMode ? TUTOR_QUICK_PROMPTS : LEARNER_QUICK_PROMPTS;
   const initials = (state.user?.name ?? "U").slice(0, 1).toUpperCase();
   const voice = useVoice();
   const waveBars = useMicWaveform(voice.isListening);
@@ -1099,7 +1109,7 @@ export function AiAssistant() {
           // A browser voice (no ElevenLabs): its language, so a Spanish voice gets a Spanish reply, not English in an accent.
           ...(!voice.premiumVoice && !voiceMuted && browserVoiceLang ? { voiceLanguage: browserVoiceLang } : {}),
           // On the Program Builder page: its own flow, and what is in the builder so the assistant can pick up there.
-          ...(builderMode ? { workspace: "program_builder", ...(programDraftSummary() ? { programBuilder: programDraftSummary() } : {}) } : {}),
+          ...(builderMode ? { workspace: "program_builder", ...(programDraftSummary(state.user?.email) ? { programBuilder: programDraftSummary(state.user?.email) } : {}) } : {}),
           ...(window.location.pathname.startsWith("/app/learn") ? { viewingLessonId: new URLSearchParams(window.location.search).get("lesson") ?? undefined } : {}),
           messages: next.map((m) => ({
             role: m.role,
@@ -1405,12 +1415,12 @@ export function AiAssistant() {
                 </span>
               </div>
               <div className="min-w-0 flex-1">
-                <p id="assistant-title" className="flex items-center gap-1 truncate text-base font-semibold text-zinc-900">
+                <p id="assistant-title" className={cn("flex items-center gap-1 font-semibold text-zinc-900", builderMode ? "text-[15px] leading-tight" : "truncate text-base")}>
                   {/* One name for the assistant, whichever voice it speaks in. */}
                   {builderMode ? "Program Builder Assistant" : isTutorMode ? "Requisor Assistant" : ASSISTANT_NAME}
                 </p>
-                <p className="truncate text-[13px] text-zinc-500">
-                  {builderMode ? "Employer programs: curriculum and proposal" : isTutorMode ? "Design courses, add lessons, grade and publish" : "Guidance, practice assignments, quizzes and grades"}
+                <p className={cn("text-[13px] text-zinc-500", builderMode ? "leading-tight" : "truncate")}>
+                  {builderMode ? "Employer programs" : isTutorMode ? "Design courses, add lessons, grade and publish" : "Guidance, practice assignments, quizzes and grades"}
                 </p>
               </div>
               {/* Mute/unmute TTS button — only shown when TTS is supported */}
@@ -1729,7 +1739,7 @@ export function AiAssistant() {
                           send(input);
                         }
                       }}
-                      placeholder={narrow ? "Ask me anything…" : isTutorMode ? "Ask me to grade, add a lesson…" : "Ask for a next step or a quiz…"}
+                      placeholder={narrow ? "Ask me anything…" : builderMode ? "Describe the employer's training need…" : isTutorMode ? "Ask me to grade, add a lesson…" : "Ask for a next step or a quiz…"}
                       disabled={streaming}
                       className="max-h-[160px] flex-1 resize-none bg-transparent py-2.5 text-base text-zinc-900 placeholder:text-zinc-500 focus:outline-none disabled:opacity-60"
                     />

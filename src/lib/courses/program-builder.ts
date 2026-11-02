@@ -41,6 +41,31 @@ export const EMPTY_DISCOVERY: Discovery = {
 };
 
 export type ProgramModule = { title: string; description: string; submodules: string[]; activities: string[] };
+/**
+ * What a tutor changed about a document's shape, beyond its text: sections taken
+ * out, headings reworded, and sections of their own. Keys are those of
+ * CURRICULUM_LABELS and PROPOSAL_LABELS.
+ */
+export type DocCustom = { hidden?: string[]; labels?: Record<string, string>; extras?: { title: string; body: string }[] };
+type Customizable = { custom?: DocCustom };
+
+export const docShown = (doc: Customizable, key: string) => !doc.custom?.hidden?.includes(key);
+export const docLabel = (doc: Customizable, key: string, labels: Record<string, string>) => doc.custom?.labels?.[key] || labels[key];
+export const withCustom = <T extends Customizable>(doc: T, change: Partial<DocCustom>): T => ({ ...doc, custom: { ...doc.custom, ...change } });
+export const docHide = <T extends Customizable>(doc: T, key: string): T => withCustom(doc, { hidden: [...(doc.custom?.hidden ?? []), key] });
+export const docShow = <T extends Customizable>(doc: T, key: string): T => withCustom(doc, { hidden: (doc.custom?.hidden ?? []).filter((k) => k !== key) });
+export const docRelabel = <T extends Customizable>(doc: T, key: string, text: string): T => withCustom(doc, { labels: { ...doc.custom?.labels, [key]: text } });
+
+export const removeAt = <T,>(items: T[], index: number): T[] => items.filter((_, i) => i !== index);
+/** The list with one item moved up (-1) or down (+1); unchanged at either end. */
+export function moveAt<T>(items: T[], index: number, by: -1 | 1): T[] {
+  const to = index + by;
+  if (index < 0 || index >= items.length || to < 0 || to >= items.length) return items;
+  const next = [...items];
+  [next[index], next[to]] = [next[to], next[index]];
+  return next;
+}
+
 export type Curriculum = {
   title: string;
   description: string;
@@ -54,6 +79,7 @@ export type Curriculum = {
   /** Used in the proposal, not shown on the curriculum. */
   needLine: string;
   delivery: string;
+  custom?: DocCustom;
 };
 
 const DOMAINS: Record<Industry, { artifacts: string[]; workflows: string[]; systems: string }> = {
@@ -321,7 +347,21 @@ export type Proposal = {
   pricingNote: string;
   /** A preview link for the proposal's readers (see src/lib/courses/preview-links.ts), when the tutor made one. */
   preview?: { id: number; url: string; until: string };
+  custom?: DocCustom;
 };
+
+const FOOTER_LINE = "Generated with the Alma 41 Program Builder";
+export const PROPOSAL_LABELS: Record<string, string> = {
+  kicker: "CUSTOM TRAINING PROPOSAL", need: "Need identified", description: "Program description", outcomes: "Learning outcomes",
+  modules: "Curriculum", delivery: "Delivery & measurement", investment: "Investment",
+  item: "Item", basis: "Basis", amount: "Amount", total: "Total — first cohort", footer: FOOTER_LINE,
+};
+/** What can be taken out of the proposal (and put back). */
+export const PROPOSAL_SECTIONS = ["need", "description", "outcomes", "modules", "delivery", "investment", "total", "footer"];
+
+/** Proposal modules carry their number in the title: keeps it right after one is moved or removed. */
+export const renumberModules = (modules: Proposal["modules"]) =>
+  modules.map((m, i) => ({ ...m, title: m.title.replace(/^Module \d+:/, `Module ${i + 1}:`) }));
 
 /** Assembles the employer proposal from the curriculum as it currently stands, edits included. */
 export function buildProposal(curriculum: Curriculum, employer: string, today: Date): Proposal {
@@ -351,8 +391,26 @@ export function buildProposal(curriculum: Curriculum, employer: string, today: D
   };
 }
 
+/**
+ * The proposal after its curriculum or employer changed: the parts written from
+ * the curriculum are brought up to date, and what only the proposal holds
+ * (pricing, delivery points, the preview link, who prepared it) stays.
+ */
+export function refreshProposal(previous: Proposal, curriculum: Curriculum, employer: string, today: Date): Proposal {
+  const { title, need, description, outcomes, modules, delivery } = buildProposal(curriculum, employer, today);
+  return { ...previous, title, need, description, outcomes, modules, delivery, employer: employer.trim() || previous.employer };
+}
+
 // ── Curriculum blueprint: the curriculum as a draft course ──────────────────
 export const BLUEPRINT_LABEL = "Curriculum Blueprint";
+export const CURRICULUM_LABELS: Record<string, string> = {
+  kicker: BLUEPRINT_LABEL.toUpperCase(), audience: "Audience", level: "Level", format: "Format", duration: "Duration",
+  outcomes: "Learning outcomes", modules: "Modules", submodules: "Submodules", activities: "Learning activities",
+  assessment: "Assessment & evidence", footer: FOOTER_LINE,
+};
+export const CURRICULUM_FACTS = ["audience", "level", "format", "duration"] as const;
+/** What can be taken out of the curriculum (and put back). */
+export const CURRICULUM_SECTIONS = [...CURRICULUM_FACTS, "outcomes", "modules", "assessment", "footer"];
 
 export function blueprintCourseTitle(curriculumTitle: string): string {
   const suffix = ` — ${BLUEPRINT_LABEL}`;
@@ -464,7 +522,8 @@ export function curriculumFromCourse(course: Course, form: Discovery): Curriculu
  * picks it up, whether it was already open or is opened for the purpose.
  *   fill             put these values in the discovery fields
  *   generate         fill, then write the curriculum
- *   proposal         fill, write a curriculum if needed, then assemble the proposal
+ *   proposal         assemble the proposal from a curriculum the tutor has in front of them;
+ *                    otherwise only as far as the curriculum, for them to review first
  *   open-curriculum  go back from the proposal to the curriculum
  */
 export const PROGRAM_RUNS = ["fill", "generate", "proposal", "open-curriculum"] as const;
@@ -472,6 +531,31 @@ export type ProgramRun = (typeof PROGRAM_RUNS)[number];
 export type ProgramCommand = { form: Partial<Discovery>; run: ProgramRun };
 
 export const PROGRAM_DRAFT_KEY = "requisor-program-builder";
+/** Announced whenever the builder's saved state changes, so the assistant can keep up. */
+export const PROGRAM_STATE_EVENT = "requisor:program-builder-state";
+
+/** How far a program has got, as the builder reports it. */
+export type ProgramStage = { hasCurriculum?: unknown; hasProposal?: unknown; step?: unknown; topic?: unknown; hasTranscript?: unknown };
+
+/** The steps open in order: the curriculum once there is one, the proposal only once it has been created from step 2. */
+export const stepOpen = (step: 1 | 2 | 3, hasCurriculum: boolean, hasProposal: boolean) => step === 1 || (step === 2 ? hasCurriculum : hasProposal);
+
+/** Why a curriculum can't be written yet, or null when it can: it needs discovery notes or a topic to work from. */
+export function curriculumGate(stage: ProgramStage | null | undefined): string | null {
+  if (stage?.hasCurriculum === true || stage?.hasTranscript === true || (typeof stage?.topic === "string" && stage.topic.trim())) return null;
+  return "There is nothing to build from yet. Ask the tutor to paste their discovery call notes, or to say what the employer needs. Don't make details up.";
+}
+
+/**
+ * Why the proposal can't be assembled yet, or null when it can: it comes after
+ * a curriculum the tutor has had in front of them. The stage comes from their
+ * browser, so this keeps the flow in order; it doesn't guard anything sensitive.
+ */
+export function proposalGate(stage: ProgramStage | null | undefined): string | null {
+  if (stage?.hasCurriculum !== true) return "There is no curriculum yet, and the proposal is built from it. Write the curriculum first (action generate) and let the tutor review it.";
+  if (stage.step !== 2 && stage.step !== 3) return "The tutor hasn't reached the curriculum step. Take them there first (action open-curriculum) so they can review it before the proposal.";
+  return null;
+}
 export function programStorageKey(base: string, owner?: string): string | null {
   const account = owner?.trim().toLowerCase();
   return account ? `${base}:${encodeURIComponent(account)}` : null;
@@ -540,16 +624,18 @@ export function takeProgramCommand(owner?: string): ProgramCommand | null {
 }
 
 /** A one-line account of the builder's saved state, for the assistant's context (browser only). */
-export function programDraftSummary(owner?: string): { topic: string; audience: string; employer: string; level: string; industry: string; modules: number; hasCurriculum: boolean; curriculumTitle: string; hasProposal: boolean } | null {
+export function programDraftSummary(owner?: string): { topic: string; audience: string; employer: string; level: string; industry: string; modules: number; hasCurriculum: boolean; curriculumTitle: string; hasProposal: boolean; step: number; hasTranscript: boolean } | null {
   const key = programStorageKey(PROGRAM_DRAFT_KEY, owner);
   if (!key) return null;
   try {
-    const saved = JSON.parse(sessionStorage.getItem(key) ?? "null") as { form?: Partial<Discovery>; curriculum?: Partial<Curriculum> | null; proposal?: unknown } | null;
+    const saved = JSON.parse(sessionStorage.getItem(key) ?? "null") as { form?: Partial<Discovery>; curriculum?: Partial<Curriculum> | null; proposal?: unknown; step?: unknown } | null;
     if (!saved?.form) return null;
     const form = { ...EMPTY_DISCOVERY, ...cleanDiscoveryFields(saved.form) };
     return {
       topic: form.topic, audience: form.audience, employer: form.employer, level: form.level, industry: form.industry, modules: form.modules,
       hasCurriculum: Boolean(saved.curriculum), curriculumTitle: text(saved.curriculum?.title, 160), hasProposal: Boolean(saved.proposal),
+      step: saved.step === 2 || saved.step === 3 ? saved.step : 1,
+      hasTranscript: Boolean(form.transcript?.trim()),
     };
   } catch {
     return null;
