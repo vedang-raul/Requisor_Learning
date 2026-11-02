@@ -11,6 +11,7 @@ import { Input, Textarea } from "@/components/ui/input";
 import { useStore } from "@/lib/store";
 import type { Course } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { trackEvent } from "@/lib/analytics";
 import { isPreviewUrl, PREVIEW_LINK_DAYS, previewModuleChoices } from "@/lib/courses/preview-modules";
 import type { MyPreviewLink, PreviewLinkSummary } from "@/lib/courses/preview-links";
 import { DEFAULT_PROGRAM_DOC_STYLE, DOC_THEMES, loadDocStyle, logoSources, MAX_DOC_LOGOS, MAX_LOGO_BYTES, saveDocStyle, type ProgramDocStyle } from "@/lib/courses/program-doc-style";
@@ -404,6 +405,7 @@ function PreviewLinkPanel({ course, proposal, onChange, label }: { course: Cours
       });
       const data = (await res.json().catch(() => ({}))) as { token?: string; link?: PreviewLinkSummary; error?: string };
       if (!res.ok || !data.token || !data.link) { setNote({ kind: "warn", text: data.error ?? "Couldn't make the link. Try again." }); return; }
+      trackEvent("preview_link_created");
       onChange({ ...proposal, preview: { id: data.link.id, url: `${window.location.origin}/p/${data.token}`, until: fmtDate(data.link.expiresAt) } });
       setNote({ kind: "ok", text: "Link made and added to the proposal. Copy it now: for safety it can't be shown again later." });
       linksChanged();
@@ -416,13 +418,18 @@ function PreviewLinkPanel({ course, proposal, onChange, label }: { course: Cours
     if (!(await askConfirm("Turn this link off? Anyone who has it will no longer be able to open the preview.", { confirmLabel: "Turn off", danger: true }))) return;
     const res = await fetch(`${api}&id=${id}`, { method: "DELETE" }).catch(() => null);
     if (!res?.ok) { setNote({ kind: "warn", text: "Couldn't turn the link off. Try again." }); return; }
+    trackEvent("preview_link_revoked");
     if (proposal.preview?.id === id) onChange({ ...proposal, preview: undefined });
     setNote({ kind: "ok", text: "Link turned off." });
     linksChanged();
   }
 
   async function copy(url: string) {
-    try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* clipboard blocked: the link is selectable */ }
+    try {
+      await navigator.clipboard.writeText(url);
+      trackEvent("preview_link_copied");
+      setCopied(true); setTimeout(() => setCopied(false), 2000);
+    } catch { /* clipboard blocked: the link is selectable */ }
   }
 
   const current = proposal.preview && isPreviewUrl(proposal.preview.url) ? proposal.preview : null;
@@ -515,6 +522,7 @@ function AllPreviewLinks({ onTurnedOff }: { onTurnedOff: (id: number) => void })
     if (!(await askConfirm(`Turn off the link for ${link.label || "this proposal"}? Anyone who has it will no longer be able to open the preview.`, { confirmLabel: "Turn off", danger: true }))) return;
     const res = await fetch(`/api/tutor/preview-links?id=${link.id}`, { method: "DELETE" }).catch(() => null);
     if (!res?.ok) { setNote({ kind: "warn", text: "Couldn't turn the link off. Try again." }); return; }
+    trackEvent("preview_link_revoked");
     setNote({ kind: "ok", text: "Link turned off." });
     onTurnedOff(link.id);
     linksChanged();
@@ -1055,6 +1063,7 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
 
   // ── Step 2 ────────────────────────────────────────────────────────────────
   const generate = useCallback(async (from?: Discovery): Promise<Curriculum> => {
+    trackEvent("program_generation_started");
     const source = from ?? formRef.current;
     const base = composeCurriculum(source);
     const show = (next: Curriculum) => {
@@ -1066,7 +1075,11 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
       setStep(2);
       void saveBlueprint(next, "auto");
     };
-    if (!useAiRef.current) { show(base); setGenNote(null); return base; }
+    if (!useAiRef.current) {
+      show(base); setGenNote(null);
+      trackEvent("program_curriculum_composed");
+      return base;
+    }
     setGenerating(true);
     setGenNote({ kind: "warn", text: "Writing the curriculum with AI…" });
     try {
@@ -1074,12 +1087,14 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
       const data = (await res.json().catch(() => ({}))) as { curriculum?: Curriculum; source?: string; reason?: string };
       if (!res.ok || !data.curriculum) throw new Error("unavailable");
       show(data.curriculum);
+      trackEvent("program_ai_generation_finished", { success: data.source === "ai" });
       setGenNote(data.source === "ai"
         ? { kind: "ok", text: "Written with AI from your discovery notes. Review every line before it goes to the employer." }
         : { kind: "warn", text: `Composed with the built-in engine instead (${data.reason ?? "AI unavailable"}).` });
       return data.curriculum;
     } catch {
       show(base);
+      trackEvent("program_ai_generation_finished", { success: false });
       setGenNote({ kind: "warn", text: "AI unavailable. Composed with the built-in engine instead." });
       return base;
     } finally {
@@ -1091,6 +1106,7 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
     const course = myCourses?.find((c) => c.slug === slug);
     if (!course) { setCourseNote({ kind: "warn", text: "Pick one of your courses first." }); return; }
     const next = curriculumFromCourse(course, formRef.current);
+    trackEvent("program_built_from_course");
     setCurriculum(next);
     proposalState.current = null;
     setProposal(null);
@@ -1123,8 +1139,10 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
     const basis = basisOf(current, employer);
     const previous = proposalState.current;
     setProposalNote(null);
-    if (!previous) setProposal(buildProposal(current, employer, new Date()));
-    else if (basis !== proposalBasisRef.current) {
+    if (!previous) {
+      setProposal(buildProposal(current, employer, new Date()));
+      trackEvent("program_proposal_created");
+    } else if (basis !== proposalBasisRef.current) {
       setProposal(refreshProposal(previous, current, employer, new Date()));
       setProposalNote({ kind: "ok", text: "Updated from your curriculum. Your pricing, delivery details and preview link are kept." });
     }
