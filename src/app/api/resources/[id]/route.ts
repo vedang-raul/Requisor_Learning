@@ -39,6 +39,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
          SELECT 1 FROM course_lessons l
          JOIN courses c ON c.slug=l.course_slug
          WHERE (l.body_file_url=$4 OR l.thumbnail_url=$4
+            OR l.assignment_brand->>'logoUrl'=$4 OR l.assignment_brand->>'bannerUrl'=$4
             OR l.resources @> jsonb_build_array(jsonb_build_object('url', $4)))
            AND (c.published OR c.owner_user_id=$3 OR c.university_id = $5::int)
        ) OR EXISTS (

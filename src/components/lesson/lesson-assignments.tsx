@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import Link from "next/link";
-import { CalendarClock, CheckCircle2, ClipboardCheck, Target } from "lucide-react";
+import { CalendarClock, CheckCircle2, ClipboardCheck, FileSignature, Loader2, Target } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Tag } from "@/components/ui/badge";
 import { AssignmentSubmission, type SubmissionStatus } from "@/components/lesson/assignment-submission";
@@ -10,11 +10,20 @@ import { LessonAssignment } from "@/components/lesson/lesson-assignment";
 import { dueDateLabel, dueInLabel } from "@/lib/courses/assignment-dates";
 import { cn } from "@/lib/utils";
 import type { Lesson } from "@/lib/types";
+import { BrandHeader } from "@/components/lesson/assignment-brand-header";
+import { AssignmentNdaPanel, type NdaSigned } from "@/components/lesson/assignment-nda-panel";
+import { rgbTriplet } from "@/lib/theme/university-theme";
+
+type NdaState = { status: "checking" } | { status: "unsigned"; text: string; brandName: string } | ({ status: "signed" } & NdaSigned) | { status: "error" };
 
 /**
  * Everything a learner is asked to do in a lesson, in one place: what is due
  * and when at the top, then the graded hand-in (one brief for everyone, or
  * one written for each learner) and the optional AI practice task.
+ *
+ * A branded assignment shows its sponsor at the top and is in the sponsor's
+ * colour. With an NDA, the brief, the hand-in and the practice task open only
+ * once the learner has signed (the brief isn't sent before that).
  */
 export function LessonAssignments({ lesson }: { lesson: Lesson }) {
   const curated = Boolean(lesson.assignmentAi);
@@ -25,7 +34,29 @@ export function LessonAssignments({ lesson }: { lesson: Lesson }) {
   const dueIn = due ? dueInLabel(due) : null;
   const points = graded ? lesson.assignmentMarks : undefined;
   // A curated lesson's own brief replaces the optional practice task.
-  const practice = !curated;
+  const brand = lesson.assignmentBrand;
+  const ndaRequired = Boolean(brand?.nda);
+  const [nda, setNda] = useState<NdaState>({ status: "checking" });
+  useEffect(() => {
+    if (!ndaRequired) return;
+    let cancelled = false;
+    setNda({ status: "checking" });
+    fetch(`/api/assignment/nda?lessonId=${encodeURIComponent(lesson.id)}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("nda"))))
+      .then((d: { required?: boolean; signed?: boolean; text?: string; brandName?: string } & Partial<NdaSigned>) => {
+        if (cancelled) return;
+        if (!d.required) setNda({ status: "signed", signedName: "", signedAt: "", brief: lesson.assignment ?? null });
+        else if (d.signed) setNda({ status: "signed", signedName: d.signedName ?? "", signedAt: d.signedAt ?? "", brief: d.brief ?? null });
+        else setNda({ status: "unsigned", text: d.text ?? "", brandName: d.brandName ?? brand?.name ?? "" });
+      })
+      .catch(() => { if (!cancelled) setNda({ status: "error" }); });
+    return () => { cancelled = true; };
+  }, [ndaRequired, lesson.id, lesson.assignment, brand?.name]);
+  const locked = ndaRequired && nda.status !== "signed";
+  const brief = ndaRequired ? (nda.status === "signed" ? nda.brief ?? undefined : undefined) : lesson.assignment;
+  const practice = !curated && !locked;
+  // The sponsor's colour runs through the whole assignment: every "primary" inside this card uses it.
+  const brandStyle = brand?.accent ? ({ "--brand-primary": rgbTriplet(brand.accent) } as CSSProperties) : undefined;
 
   const gradedNote = [
     // Once it's handed in, how long until (or since) the due date no longer matters.
@@ -35,7 +66,8 @@ export function LessonAssignments({ lesson }: { lesson: Lesson }) {
   ].filter(Boolean).join(" · ");
 
   return (
-    <Card className="overflow-hidden p-0">
+    <Card className="overflow-hidden p-0" style={brandStyle}>
+      {brand && <div className="border-b border-zinc-100 p-3 sm:p-4"><BrandHeader brand={brand} /></div>}
       <div className="border-b border-zinc-100 p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
@@ -89,8 +121,25 @@ export function LessonAssignments({ lesson }: { lesson: Lesson }) {
         )}
       </div>
 
+      {/* A branded assignment under an NDA: the agreement first. */}
+      {ndaRequired && nda.status === "checking" && (
+        <p className="flex items-center gap-2 p-4 text-sm text-zinc-500 sm:p-5"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />Loading the assignment…</p>
+      )}
+      {ndaRequired && nda.status === "error" && (
+        <p role="alert" className="p-4 text-sm text-red-700 sm:p-5">Couldn&apos;t load this assignment. Reload the page to try again.</p>
+      )}
+      {ndaRequired && nda.status === "unsigned" && (
+        <AssignmentNdaPanel lessonId={lesson.id} brandName={nda.brandName} text={nda.text} onSigned={(signed) => setNda({ status: "signed", ...signed })} />
+      )}
+      {ndaRequired && nda.status === "signed" && nda.signedName && (
+        <p className="flex items-center gap-2 border-b border-zinc-100 px-4 py-2.5 text-xs text-zinc-600 sm:px-5">
+          <FileSignature className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+          You signed the confidentiality agreement as {nda.signedName}{nda.signedAt ? ` on ${new Date(nda.signedAt).toLocaleDateString()}` : ""}. Keep {brand?.name}&apos;s information to this assignment.
+        </p>
+      )}
+
       {/* The graded task: one brief for everyone… */}
-      {graded && !curated && (
+      {graded && !curated && !locked && (
         <section className="border-b border-zinc-100 p-4 sm:p-5">
           <h4 className="flex flex-wrap items-center gap-2 text-base font-semibold text-zinc-900">
             <ClipboardCheck className="h-4 w-4 text-primary" aria-hidden="true" />
@@ -100,7 +149,7 @@ export function LessonAssignments({ lesson }: { lesson: Lesson }) {
           <div className="mt-3">
             <AssignmentSubmission
               lessonId={lesson.id}
-              assignmentBrief={lesson.assignment}
+              assignmentBrief={brief}
               totalMarks={lesson.assignmentMarks}
               dueDate={lesson.assignmentDueDate}
               embedded
@@ -111,7 +160,7 @@ export function LessonAssignments({ lesson }: { lesson: Lesson }) {
       )}
 
       {/* …or the learner's own brief, which carries the hand-in. */}
-      {curated && (
+      {curated && !locked && (
         <div className="p-4 sm:p-5">
           <LessonAssignment
             lessonId={lesson.id}

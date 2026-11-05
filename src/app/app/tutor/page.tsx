@@ -3,10 +3,11 @@
 import { FormEvent, ReactNode, SelectHTMLAttributes, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Activity, BarChart3, BookPlus, Check, CheckCircle2, Download, Eye, EyeOff, FileText, GraduationCap, Image as ImageIcon, Inbox, LayoutGrid, Paperclip, Upload,
-  ListChecks, Loader2, Pencil, Plus, RotateCcw, Send, Star, Terminal, Trash2, TrendingUp, Users, X,BookOpen, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock, Layers, Sparkles, Video, Youtube
+  GripVertical, ListChecks, Loader2, Pencil, Plus, RotateCcw, Send, Star, Terminal, Trash2, TrendingUp, Users, X,BookOpen, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock, Layers, Sparkles, Video, Youtube
 } from "lucide-react";
 import { RecordStudio } from "@/components/tutor/video-recorder";
 import { AiVideoStudio } from "@/components/tutor/ai-video-studio";
@@ -22,7 +23,7 @@ import { isLessonScheduled } from "@/lib/utils";
 import { DATA_CHANGED_EVENT } from "@/components/assistant/assistant-action-card";
 import { lessonBrief } from "@/lib/courses/lesson-brief";
 import { ShareCourseButton } from "@/components/course/share-course-button";
-import { addModule, assignLesson, groupByModule, moduleList, moveLesson, moveModule, removeModule, updateModule } from "@/lib/courses/modules";
+import { addModule, assignLesson, groupByModule, moduleList, moveLesson, moveModule, placeLesson, removeModule, updateModule, type LessonDrop } from "@/lib/courses/modules";
 import { isModuleHidden, readHiddenModules, toggleModule, writeHiddenModules } from "@/lib/courses/hidden-modules";
 import { partitionHidden, readHiddenCourses, writeHiddenCourses } from "@/lib/courses/hidden-courses";
 import { useStore } from "@/lib/store";
@@ -41,6 +42,8 @@ import { mergeSavedTutorCourse, reconcileTutorCourses, type TutorCourseSummary }
 import { SubmissionSourceBadge } from "@/components/lesson/submission-source-badge";
 import type { SubmissionSource } from "@/lib/courses/submission-source";
 import { askConfirm } from "@/components/ui/confirm-dialog";
+import { AssignmentBrandEditor, brandProblem, cleanBrand } from "@/components/tutor/assignment-brand-editor";
+import type { AssignmentBrand } from "@/lib/courses/assignment-brand";
 
 type TabKey = "analytics" | "courses" | "learners" | "ratings";
 type TutorCourse = TutorCourseSummary;
@@ -294,6 +297,8 @@ export default function TutorPage() {
       if (!course || typeof course !== "object" || !course.slug || !Array.isArray(course.lessons)) throw new Error("invalid");
       setTab("courses");
       setCreating(false);
+      // Straight to the draft's editor, not the top of the course list.
+      scrollToEditorRef.current = true;
       setAiDraft(true);
       setAiDraftVersion((version) => version + 1);
       setSelected({ ...course, published: false });
@@ -985,6 +990,16 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, onChangeC
   const [moduleDraft, setModuleDraft] = useState<{ original: string | null; title: string; description: string } | null>(null);
   const [moduleError, setModuleError] = useState<string | null>(null);
   const change = async (next: Course) => { if (next !== course && onChangeCourse) await onChangeCourse(next); };
+  // Drag and drop: the lesson being dragged, and where it would land.
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropAt, setDropAt] = useState<{ id: string; where: "before" | "after" } | { module: string | null } | null>(null);
+  const canDrag = Boolean(onChangeCourse) && !saving;
+  const endDrag = () => { setDragId(null); setDropAt(null); };
+  function dropLesson(drop: LessonDrop) {
+    const id = dragId;
+    endDrag();
+    if (id) void change(placeLesson(course, id, drop));
+  }
   function saveModuleDraft() {
     if (!moduleDraft) return;
     const title = moduleDraft.title.trim();
@@ -1112,9 +1127,42 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, onChangeC
                           initial={lesson.id === createdLesson?.id ? { opacity: 0, y: 12, backgroundColor: "rgb(209 250 229)" } : { opacity: 0, y: 8 }}
                           animate={{ opacity: 1, y: 0, backgroundColor: "rgb(255 255 255)" }}
                           exit={{ opacity: 0, x: -12, height: 0, marginTop: 0, overflow: "hidden" }}
-                          transition={{ duration: 0.3, delay: lesson.id === createdLesson?.id ? 0 : Math.min(number * 0.03, 0.2) }}
-                          className={cn("group flex items-center gap-3 rounded-xl border p-3 text-sm transition-colors", isEditing ? "border-primary/50 ring-2 ring-primary/15" : "hover:border-zinc-300")}
+                          transition={{ duration: 0.2 }}
+                          onDragOver={canDrag && dragId && dragId !== lesson.id ? (e) => {
+                            e.preventDefault(); e.stopPropagation();
+                            e.dataTransfer.dropEffect = "move";
+                            const box = e.currentTarget.getBoundingClientRect();
+                            const where = e.clientY < box.top + box.height / 2 ? "before" : "after";
+                            if (!(dropAt && "id" in dropAt && dropAt.id === lesson.id && dropAt.where === where)) setDropAt({ id: lesson.id, where });
+                          } : undefined}
+                          onDrop={canDrag && dragId && dragId !== lesson.id ? (e) => {
+                            e.preventDefault(); e.stopPropagation();
+                            const box = e.currentTarget.getBoundingClientRect();
+                            dropLesson(e.clientY < box.top + box.height / 2 ? { beforeId: lesson.id } : { afterId: lesson.id });
+                          } : undefined}
+                          className={cn("group relative flex items-center gap-3 rounded-xl border p-3 text-sm transition-colors", isEditing ? "border-primary/50 ring-2 ring-primary/15" : "hover:border-zinc-300",
+                            // The row being dragged; its opacity is the row animation's, so an outline instead.
+                            dragId === lesson.id && "outline-dashed outline-2 outline-offset-2 outline-zinc-300",
+                            dropAt && "id" in dropAt && dropAt.id === lesson.id && (dropAt.where === "before" ? "shadow-[0_-3px_0_0_rgb(var(--brand-primary,35_174_151))]" : "shadow-[0_3px_0_0_rgb(var(--brand-primary,35_174_151))]"))}
                         >
+                          {onChangeCourse && (
+                            <span
+                              draggable={canDrag}
+                              onDragStart={(e) => {
+                                setDragId(lesson.id);
+                                e.dataTransfer.effectAllowed = "move";
+                                e.dataTransfer.setData("text/plain", lesson.id);
+                                const li = e.currentTarget.closest("li");
+                                if (li) e.dataTransfer.setDragImage(li, 24, 24);
+                              }}
+                              onDragEnd={endDrag}
+                              title="Drag to move this lesson anywhere in the course"
+                              aria-hidden="true"
+                              className={cn("-ml-1 flex h-7 w-4 shrink-0 items-center justify-center text-zinc-300", canDrag ? "cursor-grab hover:text-zinc-500 active:cursor-grabbing" : "cursor-not-allowed")}
+                            >
+                              <GripVertical className="h-4 w-4" />
+                            </span>
+                          )}
                           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-xs font-bold text-primary">{number}</span>
                           {lessonThumbnail(lesson) ? (
                             // eslint-disable-next-line @next/next/no-img-element
@@ -1182,7 +1230,12 @@ function LessonsSection({ course, saving, onAddLesson, onDeleteLesson, onChangeC
               // A course with no modules yet: just the lessons, as before.
               if (!hasModules) return <div key="lessons">{rows}</div>;
               return (
-                <div key={group.title ?? "loose"} className={cn("rounded-2xl border p-3", group.title ? "border-zinc-200 bg-zinc-50/60" : "border-dashed border-zinc-300 bg-white", moduleHidden && "opacity-60 hover:opacity-100")}>
+                <div key={group.title ?? "loose"}
+                  // Dropped on the module itself (not on a lesson in it): to the end of this module.
+                  onDragOver={canDrag && dragId ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (!(dropAt && "module" in dropAt && dropAt.module === group.title)) setDropAt({ module: group.title }); } : undefined}
+                  onDrop={canDrag && dragId ? (e) => { e.preventDefault(); dropLesson({ module: group.title }); } : undefined}
+                  className={cn("rounded-2xl border p-3", group.title ? "border-zinc-200 bg-zinc-50/60" : "border-dashed border-zinc-300 bg-white",
+                    dropAt && "module" in dropAt && dropAt.module === group.title && "ring-2 ring-primary/40", moduleHidden && "opacity-60 hover:opacity-100")}>
                   {editingThis ? (
                     <ModuleForm draft={moduleDraft!} error={moduleError} saving={saving} onChange={setModuleDraft} onSave={saveModuleDraft} onCancel={() => { setModuleDraft(null); setModuleError(null); }} />
                   ) : (
@@ -1402,6 +1455,8 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
   // Step 2 decides the lesson format: a YouTube video (pasted, or made by
   // recorded in the Record tab), a text lesson, or a live Python "Try it
   // Yourself" tutorial. Neither is mandatory until publishing.
+  // AI video (HeyGen, charged per render) is for super admins for now; tutors see it as coming soon.
+  const aiVideoAllowed = useSession().data?.user?.superAdmin === true;
   const [videoMode, setVideoMode] = useState<"youtube" | "edit" | "ai" | "text" | "code">(
     lesson?.format === "reading" ? "text" : lesson?.format === "code-tutorial" ? "code" : "youtube"
   );
@@ -1505,6 +1560,10 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
   };
   // AI-curated assignment: the tutor's guardrails, and which learner data the AI may use.
   const [aiAssignment, setAiAssignment] = useState(Boolean(lesson?.assignmentAi));
+  // Branded assignment: a sponsor's name, logo, banner, colour and links, and an optional NDA.
+  const [brandOn, setBrandOn] = useState(Boolean(lesson?.assignmentBrand));
+  const [brand, setBrand] = useState<AssignmentBrand>(lesson?.assignmentBrand ?? { name: "", links: [] });
+  const brandIssue = brandOn ? brandProblem(brand) : null;
   const [guardrails, setGuardrails] = useState(lesson?.assignmentAi?.guardrails ?? "");
   const [aiData, setAiData] = useState<AssignmentDataKey[]>(lesson?.assignmentAi?.use ?? ASSIGNMENT_DATA.map((d) => d.key));
   const [aiPreview, setAiPreview] = useState<{ status: "idle" } | { status: "loading" } | { status: "error"; message: string } | { status: "ready"; assignment: string; learner: string; sample: number }>({ status: "idle" });
@@ -1543,7 +1602,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
   const contentOk = format === "video" ? Boolean(detectedVideoId) : format === "code-tutorial" ? Boolean(body.trim() || starterCode.trim()) : Boolean(body.trim() || bodyFileUrl);
   const pointsSet = gradeWith === "rubric" ? rubricTotal > 0 : Boolean(assignmentMarks);
   const quizCheck = quizOn ? checkQuiz(quiz) : null;
-  const assignmentOk = quizOn ? Boolean(quizCheck?.ok) : guardrailsOk && (!requiresSubmission || Boolean((assignment.trim() || aiAssignment) && pointsSet && assignmentDueDate));
+  const assignmentOk = quizOn ? Boolean(quizCheck?.ok) : guardrailsOk && !brandIssue && (!requiresSubmission || Boolean((assignment.trim() || aiAssignment) && pointsSet && assignmentDueDate));
   const completed = [
     detailsOk,
     visited[1] && contentOk,
@@ -1579,6 +1638,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
     if (rubricIssue) throw new Error(rubricIssue);
     if (requiresSubmission && gradeWith === "score" && !assignmentMarks) throw new Error("Set the total points for the submission (step 3).");
     if (!guardrailsOk) throw new Error("Write the guardrails for the AI-curated assignment, or switch it off (step 3).");
+    if (brandIssue) throw new Error(brandIssue);
     if (published && !contentOk) {
       throw new Error("Add a YouTube video, write a text lesson, or write a code tutorial (step 2) before publishing — or save it as a draft.");
     }
@@ -1598,6 +1658,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
       assignmentMarks: !requiresSubmission ? undefined : gradeWith === "rubric" ? rubricTotal : assignmentMarks ? Number(assignmentMarks) : undefined,
       assignmentDueDate: requiresSubmission && assignmentDueDate ? assignmentDueDate : undefined,
       assignmentAi: aiAssignment ? { guardrails: guardrails.trim(), use: ASSIGNMENT_DATA.map((d) => d.key).filter((key) => aiData.includes(key)) } : undefined,
+      assignmentBrand: brandOn && !quizOn ? cleanBrand(brand) : undefined,
       keyTakeaways: takeawayList,
       resources: finalResources,
       body: body.trim() ? body.trim() : undefined,
@@ -1924,7 +1985,13 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
                 <div className="flex w-fit flex-wrap gap-1 rounded-xl bg-zinc-100 p-1 text-xs font-medium" role="tablist" aria-label="Lesson content type">
                   <button type="button" role="tab" aria-selected={videoMode === "youtube"} onClick={() => setVideoMode("youtube")} className={cn("flex items-center gap-1.5 rounded-lg px-3 py-1.5", videoMode === "youtube" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}><Youtube className="h-3.5 w-3.5" />YouTube link</button>
                   <button type="button" role="tab" aria-selected={videoMode === "edit"} onClick={() => setVideoMode("edit")} className={cn("flex items-center gap-1.5 rounded-lg px-3 py-1.5", videoMode === "edit" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}><Video className="h-3.5 w-3.5" />Record</button>
-                  <button type="button" role="tab" aria-selected={videoMode === "ai"} onClick={() => setVideoMode("ai")} className={cn("flex items-center gap-1.5 rounded-lg px-3 py-1.5", videoMode === "ai" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}><Sparkles className="h-3.5 w-3.5" />AI video</button>
+                  {aiVideoAllowed ? (
+                    <button type="button" role="tab" aria-selected={videoMode === "ai"} onClick={() => setVideoMode("ai")} className={cn("flex items-center gap-1.5 rounded-lg px-3 py-1.5", videoMode === "ai" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}><Sparkles className="h-3.5 w-3.5" />AI video</button>
+                  ) : (
+                    <button type="button" role="tab" aria-selected={false} aria-disabled="true" disabled title="AI video lessons are coming soon" className="flex cursor-not-allowed items-center gap-1.5 rounded-lg px-3 py-1.5 text-zinc-400">
+                      <Sparkles className="h-3.5 w-3.5" />AI video<span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">Coming soon</span>
+                    </button>
+                  )}
                   <button type="button" role="tab" aria-selected={videoMode === "text"} onClick={() => setVideoMode("text")} className={cn("flex items-center gap-1.5 rounded-lg px-3 py-1.5", videoMode === "text" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}><BookOpen className="h-3.5 w-3.5" />Text lesson</button>
                   <button type="button" role="tab" aria-selected={videoMode === "code"} onClick={() => setVideoMode("code")} className={cn("flex items-center gap-1.5 rounded-lg px-3 py-1.5", videoMode === "code" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600")}><Terminal className="h-3.5 w-3.5" />Code tutorial</button>
                 </div>
@@ -1952,7 +2019,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
                     {transcriptNote && <span role="status" className={cn("mt-1 block text-xs", transcriptNote.ok ? "text-emerald-800" : "text-red-700")}>{transcriptNote.text}</span>}
                   </Field>
                 )}
-                {videoMode === "ai" && (
+                {videoMode === "ai" && aiVideoAllowed && (
                   <AiVideoStudio
                     lessonTitle={title}
                     lessonDescription={description}
@@ -2019,20 +2086,31 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
             )}
 
             {step === "assignment" && (() => {
-              // The three ways a lesson can be assessed, over the same fields as before.
-              const mode: "none" | "one" | "each" | "quiz" = quizOn ? "quiz" : aiAssignment ? "each" : requiresSubmission ? "one" : "none";
-              const pickMode = (next: "none" | "one" | "each" | "quiz") => {
+              // The ways a lesson can be assessed, over the same fields as before. Branded is one brief or a
+              // brief per learner (kind), with a sponsor's branding around it.
+              type Mode = "none" | "one" | "each" | "quiz" | "brand";
+              const mode: Mode = quizOn ? "quiz" : brandOn ? "brand" : aiAssignment ? "each" : requiresSubmission ? "one" : "none";
+              const kind: "none" | "one" | "each" = mode === "brand" ? (aiAssignment ? "each" : "one") : mode === "quiz" ? "none" : mode;
+              const pickMode = (next: Mode) => {
+                if (next === mode) return;
+                setBrandOn(next === "brand");
                 setQuizOn(next === "quiz");
-                setAiAssignment(next === "each");
-                setRequiresSubmission(next === "quiz" || next === "none" ? false : next === "one" || mode !== "each" ? true : requiresSubmission);
+                if (next === "brand") {
+                  // Keeps a brief already written; from None or Quiz it starts as one graded brief for all.
+                  if (mode === "none" || mode === "quiz") { setAiAssignment(false); setRequiresSubmission(true); }
+                } else {
+                  setAiAssignment(next === "each");
+                  setRequiresSubmission(next === "quiz" || next === "none" ? false : next === "one" || mode !== "each" ? true : requiresSubmission);
+                }
                 setAiPreview({ status: "idle" });
                 setFormError(null);
               };
-              const modes: { key: "none" | "one" | "each" | "quiz"; title: string; text: string }[] = [
+              const modes: { key: Mode; title: string; text: string }[] = [
                 { key: "none", title: "None", text: "Practice only. Nothing to hand in." },
                 { key: "one", title: "One brief for all", text: "Everyone gets the same brief you write." },
                 { key: "each", title: "A brief per learner", text: "AI writes each learner their own, inside your rules." },
                 { key: "quiz", title: "Quiz", text: "Graded questions, marked automatically." },
+                { key: "brand", title: "Branded", text: "Sponsored by a company: their logo, colour and links throughout, with an optional NDA." },
               ];
               const section = "space-y-3 rounded-2xl border border-border bg-white p-4";
               return (
@@ -2044,7 +2122,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
 
                   <div className={section}>
                     <p className="text-base font-semibold text-zinc-900">Graded assignment</p>
-                    <div role="radiogroup" aria-label="Graded assignment" className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                    <div role="radiogroup" aria-label="Graded assignment" className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
                       {modes.map((m) => (
                         <button key={m.key} type="button" role="radio" aria-checked={mode === m.key} onClick={() => pickMode(m.key)}
                           className={cn("focus-ring flex items-start gap-2.5 rounded-xl border p-3 text-left transition",
@@ -2057,15 +2135,28 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
                       ))}
                     </div>
 
-                    {(mode === "none" || mode === "one") && (
-                      <Field label={mode === "one" ? "The brief" : "Assignment (optional)"} action={aiButton("assignment", Boolean(assignment.trim()))}>
+                    {mode === "brand" && (
+                      <div role="radiogroup" aria-label="Who gets which brief" className="flex flex-wrap gap-2">
+                        {([["one", "One brief for all", "Everyone gets the same brief you write."], ["each", "A brief per learner", "AI writes each learner their own, inside your rules."]] as const).map(([key, title, text]) => (
+                          <button key={key} type="button" role="radio" aria-checked={kind === key}
+                            onClick={() => { setAiAssignment(key === "each"); if (key === "one") setRequiresSubmission(true); setAiPreview({ status: "idle" }); setFormError(null); }}
+                            className={cn("focus-ring flex-1 rounded-xl border px-3 py-2 text-left transition sm:min-w-[14rem]", kind === key ? "border-primary bg-primary/[0.05] ring-1 ring-primary/30" : "border-border hover:border-zinc-300")}>
+                            <span className="block text-sm font-semibold text-zinc-900">{title}</span>
+                            <span className="block text-xs text-zinc-500">{text}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {(kind === "none" || kind === "one") && mode !== "quiz" && (
+                      <Field label={kind === "one" ? "The brief" : "Assignment (optional)"} action={aiButton("assignment", Boolean(assignment.trim()))}>
                         <Textarea value={assignment} onChange={(e) => setAssignment(e.target.value)} maxLength={5000}
-                          placeholder={mode === "one" ? "What should every learner do and hand in?" : "What should learners do after this lesson? (optional)"} />
-                        {mode === "one" && <span className="mt-1 block text-xs font-normal text-zinc-500">Learners see this as their brief and upload a PDF or Word file.</span>}
+                          placeholder={kind === "one" ? "What should every learner do and hand in?" : "What should learners do after this lesson? (optional)"} />
+                        {kind === "one" && <span className="mt-1 block text-xs font-normal text-zinc-500">Learners see this as their brief and upload a PDF or Word file.</span>}
                       </Field>
                     )}
 
-                    {mode === "each" && (
+                    {kind === "each" && (
                       <div className="space-y-3">
                         <p className="text-sm font-semibold text-zinc-900">Rules every learner&apos;s brief must follow</p>
                         <Field label="Guardrails" action={aiButton("guardrails", Boolean(guardrails.trim()))}>
@@ -2140,6 +2231,11 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
                         </div>
                       </div>
                     )}
+                    {mode === "brand" && (
+                      <AssignmentBrandEditor value={brand} onChange={(next) => { setBrand(next); setFormError(null); }}
+                        allowUploads={allowUploads} uploading={uploading} setUploading={setUploading} savedLessonId={lesson?.assignmentBrand?.nda ? lesson.id : undefined} />
+                    )}
+                    {mode === "brand" && brandIssue && <p className="text-xs text-amber-700">{brandIssue.replace(" (step 3)", "")}</p>}
                   </div>
 
                   {mode === "quiz" && (

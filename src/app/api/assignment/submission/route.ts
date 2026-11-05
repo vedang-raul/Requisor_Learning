@@ -5,6 +5,7 @@ import { canSeeCourse } from "@/lib/server/course-scope";
 import { authOptions } from "@/lib/auth/auth";
 import { db } from "@/lib/server/db";
 import { findLessonLocation } from "@/lib/courses/course-catalog";
+import { ndaBlocks } from "@/lib/courses/assignment-nda";
 import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
 import { notifyUser } from "@/lib/server/notifications";
 import { sendAssignmentSubmittedEmail } from "@/lib/server/email";
@@ -56,6 +57,7 @@ export async function GET(req: Request) {
   );
   const user = userRows[0];
   if (!user) return Response.json({ error: "Profile not found." }, { status: 404 });
+  if (await ndaBlocks(user.id, location.lessonId)) return Response.json({ error: "Sign the confidentiality agreement for this assignment first.", nda: true }, { status: 403 });
   if (!await canSubmitAssignment(user.id, location.lessonId, location.requiresSubmission)) {
     return Response.json({ error: "Generate or receive an assignment before submitting work." }, { status: 409 });
   }
@@ -131,6 +133,7 @@ export async function POST(req: Request) {
   );
   const user = userRows[0];
   if (!user) return Response.json({ error: "Profile not found." }, { status: 404 });
+  if (await ndaBlocks(user.id, location.lessonId)) return Response.json({ error: "Sign the confidentiality agreement for this assignment first.", nda: true }, { status: 403 });
   if (!await canSubmitAssignment(user.id, location.lessonId, location.requiresSubmission)) {
     return Response.json({ error: "Generate or receive an assignment before submitting work." }, { status: 409 });
   }

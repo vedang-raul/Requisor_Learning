@@ -10,6 +10,8 @@ import { Tag } from "@/components/ui/badge";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { useSession } from "next-auth/react";
 import { adminPanelLabel } from "@/lib/auth/roles";
+import { useUniversityLayout } from "@/components/layout/university-layout-context";
+import { PartnerBadge } from "@/components/layout/partner-badge";
 
 const crumbNames: Record<string, string> = {
   app: "Home", dashboard: "Dashboard", paths: "Learning Paths", course: "Course",
@@ -27,12 +29,13 @@ export function Topbar() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const bar = useUniversityLayout().topbar;
 
-  // Keyboard shortcuts: "/" or Ctrl/Cmd+K to search, Esc to close
+  // Keyboard shortcuts: "/" or Ctrl/Cmd+K to search (unless the university turned search off), Esc to close
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const typing = ["INPUT", "TEXTAREA"].includes((e.target as HTMLElement)?.tagName);
-      if ((e.key === "/" && !typing) || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k")) {
+      if (bar.search && ((e.key === "/" && !typing) || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k"))) {
         e.preventDefault();
         setSearchOpen(true);
         setTimeout(() => inputRef.current?.focus(), 50);
@@ -41,7 +44,7 @@ export function Topbar() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [bar.search]);
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -67,9 +70,11 @@ export function Topbar() {
   const crumbs = (pathname ?? "").split("/").filter(Boolean);
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-zinc-200 bg-white px-4 md:px-6">
+    <header className={cn("sticky top-0 z-30 flex items-center gap-3 border-b border-zinc-200 bg-sidebar px-4 md:px-6", bar.compact ? "h-12" : "h-16")}>
       {/* Mobile navigation drawer */}
       <MobileNav />
+      {/* The university's own logo, when it chose to show it here */}
+      {bar.logo && <PartnerBadge className="shrink-0" logoClassName={bar.compact ? "h-7 w-7" : "h-9 w-9"} textClassName="hidden" useShortName />}
 
       {/* Breadcrumbs */}
       <nav aria-label="Breadcrumb" className="hidden min-w-0 items-center gap-1 text-sm text-zinc-500 sm:flex">
@@ -95,7 +100,7 @@ export function Topbar() {
       <div className="flex-1" />
 
       {/* Search trigger */}
-      <motion.button
+      {bar.search && <motion.button
         onClick={() => { setSearchOpen(true); setTimeout(() => inputRef.current?.focus(), 50); }}
         whileHover={{ y: -1 }}
         whileTap={{ scale: 0.98 }}
@@ -104,13 +109,13 @@ export function Topbar() {
         <motion.span whileHover={{ scale: 1.1 }} transition={springHover} className="inline-flex"><Search className="h-4 w-4" /></motion.span>
         <span className="flex-1 truncate text-left">Search courses, lessons…</span>
         <kbd className="hidden rounded-md border border-border bg-white px-1.5 py-0.5 text-[10px] text-zinc-500 lg:block">Ctrl K</kbd>
-      </motion.button>
+      </motion.button>}
 
       {/* XP */}
-      <motion.div whileHover={{ scale: 1.05 }} className="hidden items-center gap-2 lg:flex">
+      {bar.xp && <motion.div whileHover={{ scale: 1.05 }} className="hidden items-center gap-2 lg:flex">
         <Tag tone="primary"><Zap className="h-3 w-3" />{state.xp} XP</Tag>
-      </motion.div>
-      {state.user?.role === "tutor" && (
+      </motion.div>}
+      {bar.mode && state.user?.role === "tutor" && (
         <Tag className="hidden sm:inline-flex" tone={workspaceMode === "student" ? "accent" : "primary"}>
           <GraduationCap className="h-3 w-3" />
           {workspaceMode === "student" ? "Student mode" : "Tutor mode"}
@@ -175,7 +180,7 @@ export function Topbar() {
                       key={n.id}
                       initial={{ opacity: 0, x: -6 }}
                       animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.04 }}
+                      transition={{}}
                       onClick={n.link ? () => { setNotifOpen(false); router.push(n.link!); } : undefined}
                       className={cn(
                         "block w-full border-b border-zinc-100 px-4 py-3 text-left transition-colors last:border-0 hover:bg-zinc-50",
@@ -251,7 +256,7 @@ export function Topbar() {
                     key={i}
                     initial={{ opacity: 0, y: 4 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.03 }}
+                    transition={{}}
                     whileHover={{ x: 2 }}
                     onClick={() => { setSearchOpen(false); setQuery(""); router.push(r.href); }}
                     className="focus-ring flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-zinc-100"

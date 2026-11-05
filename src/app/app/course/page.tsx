@@ -51,7 +51,7 @@ function saveCachedAssessment(slug: string, userEmail: string, text: string, pro
 function CourseView() {
   const params = useSearchParams();
   const slug = params.get("slug");
-  const { state, toggleBookmark, toggleAssessmentComplete } = useStore();
+  const { state, catalogLoaded, toggleBookmark, toggleAssessmentComplete } = useStore();
   const userEmail = state.user?.email ?? "";
   const course = state.courses.find((c) => c.slug === slug);
   const { pct, completed, total, assessmentDone } = useCourseProgress(course);
@@ -130,6 +130,9 @@ function CourseView() {
       .filter((g) => g.items.length > 0);
   }, [course, lessons]);
 
+  if (!course && !catalogLoaded) {
+    return <p role="status" className="mx-auto mt-16 flex w-fit items-center gap-2 text-sm text-zinc-500"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />Loading the course…</p>;
+  }
   if (!course) {
     return (
       <div className="glass-card mx-auto mt-16 flex max-w-md flex-col items-center gap-3 p-10 text-center">

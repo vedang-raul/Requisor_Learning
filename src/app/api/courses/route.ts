@@ -1,5 +1,6 @@
 import { isLessonLive } from "@/lib/utils";
 import { HIDDEN_ASSIGNMENT_AI } from "@/lib/ai/assignment-ai";
+import { lessonForLearner } from "@/lib/courses/assignment-brand";
 import { manageReach, manageSql, newCourseUniversity, reachParams, seeReach, seeSql } from "@/lib/server/course-scope";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
@@ -25,7 +26,8 @@ export async function GET() {
       : (await getCourses(`WHERE c.published = TRUE AND ${seeSql("c", 1, 2)}`, see)).map((course) => ({
           ...course,
           lessons: course.lessons.filter((lesson) => isLessonLive(lesson))
-            .map((lesson) => (lesson.assignmentAi ? { ...lesson, assignmentAi: HIDDEN_ASSIGNMENT_AI } : lesson)),
+            // A branded assignment's brief stays on the server until the learner signs its NDA (/api/assignment/nda).
+            .map((lesson) => lessonForLearner(lesson.assignmentAi ? { ...lesson, assignmentAi: HIDDEN_ASSIGNMENT_AI } : lesson)),
         }));
     return NextResponse.json({ courses });
   }

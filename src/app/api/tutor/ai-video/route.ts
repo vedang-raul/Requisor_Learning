@@ -48,6 +48,8 @@ async function tutor(): Promise<{ userId: number } | Response> {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) return Response.json({ error: "Unauthorized" }, { status: 401 });
   if (session.user.role !== "admin" && session.user.role !== "tutor") return Response.json({ error: "Forbidden" }, { status: 403 });
+  // Each render is charged to the HeyGen account: for now only super admins make AI videos; tutors see "Coming soon".
+  if (session.user.superAdmin !== true) return Response.json({ error: "AI video is coming soon." }, { status: 403 });
   const userId = Number(session.user.id);
   if (!Number.isSafeInteger(userId) || userId < 1) return Response.json({ error: "Unauthorized" }, { status: 401 });
   return { userId };

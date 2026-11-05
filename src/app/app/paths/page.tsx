@@ -20,7 +20,7 @@ const statusFilters: { key: StatusFilter; label: string }[] = [
 ];
 
 export default function PathsPage() {
-  const { state } = useStore();
+  const { state, catalogLoaded } = useStore();
   const [status, setStatus] = useState<StatusFilter>("all");
   const [sort, setSort] = useState<SortKey>("newest");
   const [tutor, setTutor] = useState<string>("all");
@@ -111,7 +111,16 @@ export default function PathsPage() {
 
       {/* Grid */}
       <AnimatePresence mode="wait">
-        {courses.length === 0 ? (
+        {!catalogLoaded ? (
+          <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} aria-busy="true" aria-label="Loading learning paths" className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="glass-card overflow-hidden p-0">
+                <div className="h-28 animate-pulse bg-zinc-200/70" />
+                <div className="space-y-2 p-4"><div className="h-4 w-1/2 animate-pulse rounded bg-zinc-200" /><div className="h-3 w-5/6 animate-pulse rounded bg-zinc-100" /><div className="h-8 animate-pulse rounded-lg bg-zinc-100" /></div>
+              </div>
+            ))}
+          </motion.div>
+        ) : courses.length === 0 ? (
           <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="glass-card flex flex-col items-center gap-2 py-16 text-center">
             <p className="text-sm font-medium text-zinc-700">No paths match this filter</p>
             <p className="text-xs text-zinc-500">Try a different status filter above.</p>

@@ -23,6 +23,8 @@ export interface Lesson {
   requiresSubmission?: boolean;
   /** Set when the tutor has the AI write each learner their own assignment, inside these guardrails. */
   assignmentAi?: import("@/lib/ai/assignment-ai").AssignmentAi;
+  /** A sponsor's branding throughout the assignment, and optionally an NDA learners sign first. */
+  assignmentBrand?: import("@/lib/courses/assignment-brand").AssignmentBrand;
   /** The module this lesson is in (a title from the course's modules), if any. */
   section?: string;
   /** "reading" lessons are article/tool links with no video by design — not a video pending upload.
@@ -156,6 +158,8 @@ export interface AppState {
    *  through so it never goes stale or duplicates across hydrations. */
   serverNotifications: Notification[];
   sidebarCollapsed: boolean;
+  /** The person opened or collapsed the sidebar themselves: their choice wins over a university's default. */
+  sidebarTouched?: boolean;
   /** Course slugs whose capstone assessment the learner has marked complete. */
   assessmentCompletions: string[];
 }

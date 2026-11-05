@@ -62,13 +62,13 @@ export default function DashboardPage() {
       {/* Greeting */}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <motion.h1 initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} className="text-2xl font-bold md:text-3xl">
+          <motion.h1 initial={false} animate={{ opacity: 1, x: 0 }} className="text-2xl font-bold md:text-3xl">
             Welcome back{" "}
             <motion.span
               className="text-gradient inline-block"
-              initial={{ opacity: 0, y: 6 }}
+              initial={false}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
+              transition={{}}
             >
               {state.user?.name?.split(" ")[0] ?? "there"}
             </motion.span>{" "}
@@ -84,16 +84,16 @@ export default function DashboardPage() {
           <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ delay: 0.15 }}
+            transition={{}}
             className="mt-1 text-sm text-zinc-600"
           >
             Pick up where you left off your learning paths are waiting.
           </motion.p>
           {rankInfo && (
             <motion.div
-              initial={{ opacity: 0, y: 6 }}
+              initial={false}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.25 }}
+              transition={{}}
               className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700"
             >
               <Trophy className="h-3.5 w-3.5 text-amber-500" />
@@ -195,9 +195,9 @@ export default function DashboardPage() {
                 {watching.slice(0, 3).map(({ course, lesson, progress }, i) => (
                   <motion.div
                     key={lesson.id}
-                    initial={{ opacity: 0, x: -8 }}
+                    initial={false}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.05, duration: 0.25 }}
+                    transition={{ duration: 0.25 }}
                     whileHover={{ x: 3 }}
                   >
                     <Link
@@ -259,9 +259,9 @@ export default function DashboardPage() {
               {announcements.map((a, i) => (
                 <motion.div
                   key={a.id}
-                  initial={{ opacity: 0, y: 6 }}
+                  initial={false}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.05 }}
+                  transition={{}}
                   whileHover={{ x: 3 }}
                   className="group relative overflow-hidden rounded-xl border border-zinc-100 bg-white/[0.03] p-3.5 transition-colors duration-200 hover:border-primary/30 hover:shadow-sm"
                 >
@@ -290,9 +290,9 @@ export default function DashboardPage() {
                 return (
                   <motion.div
                     key={u.id}
-                    initial={{ opacity: 0, y: 6 }}
+                    initial={false}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.05 }}
+                    transition={{}}
                     whileHover={{ x: 3 }}
                     className="flex items-center gap-3 rounded-xl border border-zinc-100 bg-white/[0.03] p-3.5 transition-colors duration-200 hover:border-cyan-400/30 hover:shadow-sm"
                   >

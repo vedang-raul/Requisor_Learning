@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Building2, ImagePlus, Loader2, Pencil, Plus, Radio, Trash2, X } from "lucide-react";
+import { AlertTriangle, Building2, ImagePlus, Loader2, Palette, Pencil, Plus, Radio, Trash2, X } from "lucide-react";
 import { Card, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { cleanDomains, isPublicEmailDomain, MAX_UNIVERSITY_DOMAINS } from "@/lib/auth/roles";
 import { refreshBranding } from "@/lib/branding-client";
 import { askConfirm } from "@/components/ui/confirm-dialog";
+import { UniversityThemeEditor } from "@/components/admin/university-theme-editor";
+import type { UniversityTheme } from "@/lib/theme/university-theme";
 
 /**
  * For super admins: the universities on the platform, and which one the public
@@ -16,7 +18,7 @@ import { askConfirm } from "@/components/ui/confirm-dialog";
  */
 type UniversityRow = {
   id: number; name: string; shortName: string; domains: string[]; logoUrl: string | null;
-  people: number; pending: number; courses: number;
+  people: number; pending: number; courses: number; theme: UniversityTheme | null; font: { name: string; version: number } | null;
 };
 type Draft = { id: number | null; name: string; shortName: string; domains: string; logo: string | null | undefined; preview: string | null };
 
@@ -67,6 +69,7 @@ export function UniversitiesPanel({ onChanged }: { onChanged?: () => void }) {
   const [rows, setRows] = useState<UniversityRow[] | null>(null);
   const [publicPartnerId, setPublicPartnerId] = useState<number | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [themeFor, setThemeFor] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -240,12 +243,23 @@ export function UniversitiesPanel({ onChanged }: { onChanged?: () => void }) {
                     {row.domains.length ? row.domains.map((d) => `@${d}`).join(", ") : "No email domain"} · {row.people} people{row.pending ? ` (${row.pending} waiting)` : ""} · {row.courses} courses
                   </p>
                 </div>
+                <button type="button" onClick={() => setThemeFor((current) => (current === row.id ? null : row.id))} aria-expanded={themeFor === row.id}
+                  className={cn("focus-ring inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-medium", row.theme ? "border-primary/30 text-primary" : "border-zinc-200 text-zinc-700")}>
+                  {row.theme
+                    ? <span aria-hidden="true" className="h-3 w-3 rounded-full border border-black/10" style={{ background: row.theme.primary }} />
+                    : <Palette className="h-3.5 w-3.5" aria-hidden="true" />}
+                  Theme{row.theme ? "" : " (Requisor)"}
+                </button>
                 <button type="button" onClick={() => setDraft({ id: row.id, name: row.name, shortName: row.shortName === row.name ? "" : row.shortName, domains: row.domains.join(", "), logo: undefined, preview: row.logoUrl })} className="focus-ring inline-flex items-center gap-1 rounded-lg border border-zinc-200 px-2 py-1 text-xs font-medium text-zinc-700">
                   <Pencil className="h-3.5 w-3.5" aria-hidden="true" />Edit
                 </button>
                 <button type="button" onClick={() => remove(row)} className="focus-ring inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50">
                   <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />Remove
                 </button>
+                {themeFor === row.id && (
+                  <UniversityThemeEditor key={row.id} id={row.id} name={row.shortName} initial={row.theme} savedFont={row.font} onClose={() => setThemeFor(null)}
+                    onSaved={(text) => { setThemeFor(null); changed(text); }} />
+                )}
               </li>
             ))}
           </ul>

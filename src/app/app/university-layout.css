@@ -1,0 +1,23 @@
+/*
+ * A university's "dark" sidebar (src/lib/theme/university-layout.ts). The
+ * sidebar keeps its usual classes; inside a dark one, its greys turn light and
+ * its light fills turn translucent. The active item (white on the brand
+ * gradient) is unchanged.
+ */
+[data-sidebar-style="dark"] {
+  background-color: rgb(24 24 27 / 0.97) !important;
+  border-color: rgb(39 39 42) !important;
+}
+[data-sidebar-style="dark"] :is(.text-zinc-900, .text-zinc-800, .text-zinc-700) { color: rgb(244 244 245); }
+[data-sidebar-style="dark"] :is(.text-zinc-600, .text-zinc-500) { color: rgb(212 212 216); }
+[data-sidebar-style="dark"] .text-zinc-400 { color: rgb(161 161 170); }
+[data-sidebar-style="dark"] :is(.border-zinc-200, .border-zinc-100) { border-color: rgb(63 63 70); }
+[data-sidebar-style="dark"] .bg-zinc-100 { background-color: rgb(255 255 255 / 0.08); }
+[data-sidebar-style="dark"] .bg-zinc-200 { background-color: rgb(63 63 70); }
+[data-sidebar-style="dark"] .bg-zinc-50\/60 { background-color: rgb(255 255 255 / 0.05); }
+[data-sidebar-style="dark"] .bg-white { background-color: rgb(255 255 255 / 0.1); }
+[data-sidebar-style="dark"] .hover\:text-zinc-900:hover { color: #fff; }
+[data-sidebar-style="dark"] .hover\:bg-zinc-100:hover { background-color: rgb(255 255 255 / 0.08); }
+/* The brand colour, lightened so it stays readable on the dark background. */
+[data-sidebar-style="dark"] .text-primary { color: color-mix(in srgb, rgb(var(--brand-primary, 35 174 151)) 55%, white); }
+[data-sidebar-style="dark"] .hover\:bg-primary\/10:hover { background-color: rgb(255 255 255 / 0.08); }

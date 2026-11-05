@@ -29,6 +29,7 @@ export const AI_FEATURES = {
   voice: "Assistant voice",
   voice_input: "Voice input",
   video_render: "AI video rendering",
+  theme_ai: "University theme suggestions",
 } as const;
 export type AiFeature = keyof typeof AI_FEATURES;
 

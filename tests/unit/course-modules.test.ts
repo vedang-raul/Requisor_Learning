@@ -1,4 +1,4 @@
-import { addModule, assignLesson, groupByModule, moduleList, moveLesson, moveModule, removeModule, updateModule } from "@/lib/courses/modules";
+import { addModule, assignLesson, groupByModule, moduleList, moveLesson, moveModule, placeLesson, removeModule, updateModule } from "@/lib/courses/modules";
 import { validateCourse } from "@/lib/courses/course-catalog";
 import type { Course, Lesson } from "@/lib/types";
 
@@ -55,5 +55,19 @@ describe("course modules", () => {
     expect(validateCourse({ ...course([]), modules: "nope" }).ok).toBe(false);
     const none = validateCourse(course([]));
     expect(none.ok && "modules" in none.course).toBe(false);
+  });
+
+  it("drags a lesson anywhere: before or after any lesson, into another module, or to a module's end", () => {
+    const c = course([lesson("a", "One"), lesson("b", "One"), lesson("c", "Two"), lesson("d", "Two"), lesson("e")], [{ title: "One" }, { title: "Two" }]);
+    expect(shape(placeLesson(c, "c-d", { beforeId: "c-a" }))).toEqual(["One: d,a,b", "Two: c", "-: e"]);
+    expect(shape(placeLesson(c, "c-a", { afterId: "c-c" }))).toEqual(["One: b", "Two: c,a,d", "-: e"]);
+    expect(shape(placeLesson(c, "c-e", { afterId: "c-b" }))).toEqual(["One: a,b,e", "Two: c,d"]);
+    expect(shape(placeLesson(c, "c-a", { module: "Two" }))).toEqual(["One: b", "Two: c,d,a", "-: e"]);
+    expect(shape(placeLesson(c, "c-c", { module: null }))).toEqual(["One: a,b", "Two: d", "-: e,c"]);
+    expect(placeLesson(c, "c-a", { beforeId: "c-a" })).toBe(c);
+    expect(placeLesson(c, "c-a", { beforeId: "c-missing" })).toBe(c);
+    expect(placeLesson(c, "c-a", { module: "Nope" })).toBe(c);
+    // A course without modules: just a new place in the list.
+    expect(ids(placeLesson(course([lesson("a"), lesson("b"), lesson("c")]), "c-c", { beforeId: "c-a" }))).toEqual(["c", "a", "b"]);
   });
 });

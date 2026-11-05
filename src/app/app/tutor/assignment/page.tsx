@@ -31,7 +31,7 @@ interface Detail {
   submission: {
     id: number; studentName: string; studentEmail: string; fileName: string; mimeType: string;
     fileSize: number; submittedAt: string; lessonId: string; lessonTitle: string;
-    courseSlug: string; courseTitle: string;
+    courseSlug: string; courseTitle: string; sponsor?: string | null;
     dueDate: string | null; totalMarks: number | null;
     source: SubmissionSource;
     /** The learner's AI-generated brief (AI practice submissions only). */
@@ -85,6 +85,7 @@ interface SubmissionSummary {
   lessonId: string;
   lessonTitle: string;
   courseTitle: string;
+  sponsor?: string | null;
   source: SubmissionSource;
   dueDate: string | null;
   remark: string | null;
@@ -151,7 +152,7 @@ function SaveButton({ saving, saved, label, onClick, disabled }: { saving: boole
       <Button size="sm" onClick={onClick} disabled={disabled} className="relative min-w-[7.5rem] overflow-hidden shadow-sm">
         <AnimatePresence mode="wait" initial={false}>
           {saving ? (
-            <motion.span key="saving" className="flex items-center gap-1.5" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.15 }}>
+            <motion.span key="saving" className="flex items-center gap-1.5" initial={false} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.15 }}>
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…
             </motion.span>
           ) : saved ? (
@@ -159,7 +160,7 @@ function SaveButton({ saving, saved, label, onClick, disabled }: { saving: boole
               <CheckCircle2 className="h-3.5 w-3.5" /> Saved
             </motion.span>
           ) : (
-            <motion.span key="idle" className="flex items-center gap-1.5" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.15 }}>
+            <motion.span key="idle" className="flex items-center gap-1.5" initial={false} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.15 }}>
               <Save className="h-3.5 w-3.5" /> {label}
             </motion.span>
           )}
@@ -385,7 +386,7 @@ function SubmissionInbox() {
                         <Avatar name={submission.studentName} />
                         <div className="min-w-0">
                           <p className="truncate font-semibold text-zinc-900 group-hover:text-primary">{submission.studentName}</p>
-                          <p className="truncate text-sm text-zinc-500">{submission.lessonTitle} · {submission.courseTitle}</p>
+                          <p className="truncate text-sm text-zinc-500">{submission.lessonTitle} · {submission.courseTitle}{submission.sponsor ? ` · Sponsored by ${submission.sponsor}` : ""}</p>
                         </div>
                       </div>
                       <div className="min-w-0 text-sm">
@@ -452,12 +453,12 @@ function useSubmissionQueue(filter: SourceFilter, currentId: number, currentMark
 
 /** The grader's top bar: back to the queue, whose work this is, how many are left, and previous / next. */
 function GraderTopBar({
-  list, currentId, filter, studentName, lessonTitle, courseTitle, onNavigate,
+  list, currentId, filter, studentName, lessonTitle, courseTitle, sponsor, onNavigate,
 }: {
   list: SubmissionSummary[] | null;
   currentId: number;
   filter: SourceFilter;
-  studentName?: string; lessonTitle?: string; courseTitle?: string;
+  studentName?: string; lessonTitle?: string; courseTitle?: string; sponsor?: string | null;
   onNavigate: (id: number) => void;
 }) {
   const items = list ?? [];
@@ -477,7 +478,7 @@ function GraderTopBar({
           <Avatar name={studentName} />
           <div className="min-w-0">
             <p className="truncate font-semibold text-zinc-900">{studentName}</p>
-            <p className="truncate text-xs text-zinc-500">{lessonTitle} · {courseTitle}</p>
+            <p className="truncate text-xs text-zinc-500">{lessonTitle} · {courseTitle}{sponsor ? ` · Sponsored by ${sponsor}` : ""}</p>
           </div>
         </div>
       )}
@@ -697,6 +698,7 @@ function GradeView() {
       studentName={detail?.submission.studentName}
       lessonTitle={detail?.submission.lessonTitle}
       courseTitle={detail?.submission.courseTitle}
+      sponsor={detail?.submission.sponsor}
       onNavigate={goToSubmission}
     />
   );
@@ -776,7 +778,7 @@ function GradeView() {
         {/* What the learner was asked to do. AI practice briefs are violet and
             personalized per learner; tutor assignments show the lesson's own text. */}
         {submission.source === "ai" && submission.assignmentBrief && (
-          <motion.div variants={fadeUp} initial="hidden" animate="show" transition={{ delay: 0.04 }}>
+          <motion.div variants={fadeUp} initial="hidden" animate="show" transition={{}}>
             <Card className="border-violet-200 bg-violet-50/40 p-4">
               <details open className="group">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-medium text-zinc-900">
@@ -809,7 +811,7 @@ function GradeView() {
         )}
 
         {submission.source === "tutor" && (
-          <motion.div variants={fadeUp} initial="hidden" animate="show" transition={{ delay: 0.04 }}>
+          <motion.div variants={fadeUp} initial="hidden" animate="show" transition={{}}>
             <Card className="border-primary/20 p-4">
               <p className="flex items-center gap-2 text-sm font-medium text-zinc-900">
                 <ClipboardList className="h-4 w-4 text-primary" />
@@ -829,7 +831,7 @@ function GradeView() {
         )}
 
         {/* grading card */}
-        <motion.div variants={fadeUp} initial="hidden" animate="show" transition={{ delay: 0.08 }}>
+        <motion.div variants={fadeUp} initial="hidden" animate="show" transition={{}}>
           <Card className="space-y-3 p-4">
             <div>
               <p className="text-sm font-medium text-zinc-800">Tag</p>
@@ -946,7 +948,7 @@ function GradeView() {
         </motion.div>
       </div>
 
-        <motion.div variants={fadeUp} initial="hidden" animate="show" transition={{ delay: 0.16 }} className="min-w-0 lg:col-start-1 lg:row-start-1">
+        <motion.div variants={fadeUp} initial="hidden" animate="show" transition={{}} className="min-w-0 lg:col-start-1 lg:row-start-1">
           {/* Keyed so each submission gets a fresh viewer: its own undo history,
               tool and page — undo must never touch another student's markup. */}
           <DocumentMarkupViewer key={submission.id} submissionId={submission.id} mimeType={submission.mimeType} />
@@ -964,7 +966,7 @@ function AnimatedNumber({ value }: { value: number }) {
       <motion.span
         key={value}
         className="inline-block"
-        initial={{ opacity: 0, y: 6 }}
+        initial={false}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -6 }}
         transition={{ duration: 0.18 }}

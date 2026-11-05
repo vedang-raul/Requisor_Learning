@@ -111,6 +111,34 @@ export function assignLesson(course: Course, lessonId: string, moduleTitle: stri
   return arranged({ ...course, lessons: [...course.lessons.filter((l) => l.id !== lessonId), moved] }, modules);
 }
 
+export type LessonDrop = { beforeId: string } | { afterId: string } | { module: string | null };
+
+/**
+ * Moves a lesson to any place in the course (drag and drop): just before or
+ * after another lesson, joining that lesson's module, or to the end of a module
+ * (null: "Not in a module"). Unchanged when the place doesn't exist.
+ */
+export function placeLesson(course: Course, lessonId: string, drop: LessonDrop): Course {
+  const modules = moduleList(course);
+  const ordered = arranged(course, modules);
+  const lesson = ordered.lessons.find((l) => l.id === lessonId);
+  const targetId = "beforeId" in drop ? drop.beforeId : "afterId" in drop ? drop.afterId : null;
+  if (!lesson || targetId === lessonId) return course;
+  const rest = ordered.lessons.filter((l) => l.id !== lessonId);
+  if (targetId !== null) {
+    const at = rest.findIndex((l) => l.id === targetId);
+    if (at < 0) return course;
+    const moved = { ...lesson, section: rest[at].section };
+    rest.splice("beforeId" in drop ? at : at + 1, 0, moved);
+    return arranged({ ...ordered, lessons: rest }, modules);
+  }
+  const title = (drop as { module: string | null }).module;
+  const target = title ? modules.find((m) => key(m.title) === key(title)) : null;
+  if (title && !target) return course;
+  // Last in that module: arranged() keeps lessons in their order within each module.
+  return arranged({ ...ordered, lessons: [...rest, { ...lesson, section: target?.title }] }, modules);
+}
+
 /** Moves a lesson up or down within its module. */
 export function moveLesson(course: Course, lessonId: string, by: -1 | 1): Course {
   const modules = moduleList(course);

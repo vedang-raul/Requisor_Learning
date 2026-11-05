@@ -7,12 +7,14 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: "#F3F4F6",
+        // Brand colours follow a university's theme (src/lib/theme/university-theme.ts); the fallbacks are Requisor's own.
+        background: "rgb(var(--brand-background, 243 244 246) / <alpha-value>)",
+        sidebar: "rgb(var(--brand-sidebar, 255 255 255) / <alpha-value>)",
         card: "#FFFFFF",
         "card-hover": "#F9FAFB",
         border: "#E5E7EB",
-        primary: { DEFAULT: "#23AE97", foreground: "#FFFFFF" },
-        secondary: { DEFAULT: "#1C9583", foreground: "#FFFFFF" },
+        primary: { DEFAULT: "rgb(var(--brand-primary, 35 174 151) / <alpha-value>)", foreground: "#FFFFFF" },
+        secondary: { DEFAULT: "rgb(var(--brand-secondary, 28 149 131) / <alpha-value>)", foreground: "#FFFFFF" },
         accent: { DEFAULT: "#0E7490", foreground: "#FFFFFF" },
         muted: { DEFAULT: "#E5E7EB", foreground: "#6B7280" },
         paper: "#F3F4F6",
@@ -37,8 +39,8 @@ const config: Config = {
         "pulse-deep": "#17A78C",
       },
       fontFamily: {
-        sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
-        display: ["Bricolage Grotesque", "sans-serif"],
+        sans: ["var(--font-brand, Inter)", "ui-sans-serif", "system-ui", "sans-serif"],
+        display: ["var(--font-brand, 'Bricolage Grotesque')", "sans-serif"],
         mono: ["Spline Sans Mono", "monospace"],
       },
       borderRadius: {

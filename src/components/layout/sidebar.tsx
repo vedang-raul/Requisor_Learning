@@ -16,6 +16,8 @@ import { RequisorAI } from "@/components/ui/requisor-ai";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { getCategoryMeta } from "@/components/course/category-icon";
+import { useUniversityLayout } from "@/components/layout/university-layout-context";
+import { arrangeNav, navHidden, navName, type UniversityLayout } from "@/lib/theme/university-layout";
 
 // Flat list used by mobile-nav (courses excluded — handled by dropdown)
 export const navItems = [
@@ -32,9 +34,16 @@ export const navItems = [
   { href: "/app/settings/",   label: "Profile",    icon: CircleUserRound },
 ];
 
-/** A nav item's visible name: the admin panel is named for who's looking. */
+/** A nav item's visible name: the admin panel is named for who's looking, unless the university renamed it. */
 export function navLabel(item: { href: string; label: string }, superAdmin: boolean): string {
-  return item.href === "/app/admin/" ? adminPanelLabel(superAdmin) : item.label;
+  return item.href === "/app/admin/" && item.label === "Admin Panel" ? adminPanelLabel(superAdmin) : item.label;
+}
+
+/** The sidebar's background for a university's chosen style ("dark" also restyles its text, in university-layout.css). */
+export function sidebarSurface(layout: UniversityLayout): React.CSSProperties | undefined {
+  if (layout.sidebarStyle !== "tinted") return undefined;
+  const tint = "rgb(var(--brand-primary, 35 174 151) / 0.10)";
+  return { background: `linear-gradient(${tint}, ${tint}), rgb(var(--brand-sidebar, 255 255 255))` };
 }
 
 const springTransition = { type: "spring" as const, stiffness: 500, damping: 35 };
@@ -45,7 +54,11 @@ export function Sidebar() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const collapsed = state.sidebarCollapsed;
+  const layout = useUniversityLayout();
+  const onRight = layout.sidebarSide === "right";
+  // A university may start its members' sidebar collapsed; once someone opens or collapses it themselves, that wins.
+  const collapsed = state.sidebarTouched ? state.sidebarCollapsed : state.sidebarCollapsed || layout.sidebarStart === "collapsed";
+  const pathsLabel = navName(layout, "paths");
   const currentSlug = searchParams.get("slug");
   const navigationCourses = state.courses.map((course) => ({
     href: `/app/course/?slug=${encodeURIComponent(course.slug)}`,
@@ -70,19 +83,20 @@ export function Sidebar() {
     if (collapsed) setCoursesOpen(false);
   }, [collapsed]);
 
-  const topItems = [
-    { href: "/app/dashboard/", label: "Dashboard", icon: LayoutDashboard },
-  ];
-
-  const bottomItems = navItems.filter(
-    (item) => item.href !== "/app/dashboard/" &&
+  const roleItems = navItems.filter(
+    (item) =>
       (!("adminOnly" in item && item.adminOnly) || state.user?.role === "admin") &&
       (!("learnerOnly" in item && item.learnerOnly) || state.user?.role !== "tutor" || workspaceMode === "student") &&
       (!("tutorOnly" in item && item.tutorOnly) || state.user?.role === "admin" || (state.user?.role === "tutor" && workspaceMode === "tutor")) &&
       (!("employeeOnly" in item && item.employeeOnly) || state.user?.role === "employee") &&
       (!("notForAdmins" in item && item.notForAdmins) || state.user?.role !== "admin")
   );
-  const showLearnerNavigation = state.user?.role !== "tutor" || workspaceMode === "student";
+  const showLearnerNavigation = (state.user?.role !== "tutor" || workspaceMode === "student") && !navHidden(layout, "paths");
+  // The menu in the university's order and words; "Learning Paths" (with its courses) is one of the entries.
+  const menu = arrangeNav([
+    ...roleItems,
+    ...(showLearnerNavigation ? [{ href: "/app/paths/", label: pathsLabel, icon: Library }] : []),
+  ], layout);
 
   // How many graded assignments the learner still has to hand in, beside "Submissions".
   const learnerSubmissions = showLearnerNavigation && Boolean(state.user) && state.user?.role !== "admin";
@@ -169,10 +183,12 @@ export function Sidebar() {
     <motion.aside
       animate={{ width: collapsed ? 76 : 256 }}
       transition={{ type: "spring", stiffness: 260, damping: 30 }}
-      className="sticky top-0 z-40 hidden h-screen shrink-0 flex-col border-r border-zinc-200 bg-card/95 backdrop-blur-sm md:flex"
+      data-sidebar-style={layout.sidebarStyle}
+      style={sidebarSurface(layout)}
+      className={cn("sticky top-0 z-40 hidden h-screen shrink-0 flex-col border-zinc-200 bg-sidebar/95 backdrop-blur-sm md:flex", onRight ? "border-l" : "border-r")}
     >
       {/* Logo */}
-      <div className={cn("flex h-16 items-center gap-2.5 border-b border-zinc-200 px-4", collapsed && "justify-center px-2")}>
+      <div className={cn("flex items-center gap-2.5 border-b border-zinc-200 px-4", layout.topbar.compact ? "h-12" : "h-16", collapsed && "justify-center px-2")}>
         <motion.img
           src="/requisor.png"
           alt="Requisor logo"
@@ -198,11 +214,8 @@ export function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4" aria-label="Main navigation">
-        {/* Dashboard */}
-        {topItems.map((item, i) => renderItem(item, i))}
-
-        {/* Learning Paths + dropdown */}
-        {showLearnerNavigation && <div>
+        {menu.map((item, i) => item.href !== "/app/paths/" ? renderItem(item, i) : (
+        <div key="__paths">
           <button
             onClick={() => {
               router.push("/app/paths/");
@@ -210,7 +223,7 @@ export function Sidebar() {
             }}
             onMouseEnter={() => setHoveredItem("__paths")}
             onMouseLeave={() => setHoveredItem((h) => (h === "__paths" ? null : h))}
-            title={collapsed ? "Learning Paths" : undefined}
+            title={collapsed ? pathsLabel : undefined}
             className={cn(
               "focus-ring group relative flex w-full items-center gap-3 overflow-hidden rounded-xl px-3 py-2.5 text-sm transition-colors duration-150",
               learningActive ? "font-semibold text-white" : "font-medium text-zinc-600",
@@ -235,7 +248,7 @@ export function Sidebar() {
             {!collapsed && (
               <>
                 <span className={cn("relative z-10 flex-1 truncate text-left transition-colors duration-200", hoveredItem === "__paths" && !learningActive && "text-zinc-900")}>
-                  Learning Paths
+                  {pathsLabel}
                 </span>
                 <motion.span className="relative z-10" animate={{ rotate: coursesOpen ? 180 : 0 }} transition={{ duration: 0.2, ease: "easeInOut" }}>
                   <ChevronDown className={cn("h-3.5 w-3.5", learningActive ? "opacity-80" : "opacity-60")} />
@@ -300,10 +313,8 @@ export function Sidebar() {
               </motion.div>
             )}
           </AnimatePresence>
-        </div>}
-
-        {/* Remaining items */}
-        {bottomItems.map((item, i) => renderItem(item, i + 2))}
+        </div>
+        ))}
       </nav>
 
       {/* The partner university, set by super admins */}
@@ -347,13 +358,14 @@ export function Sidebar() {
           {!collapsed && "Log out"}
         </motion.button>
         <motion.button
-          onClick={toggleSidebar}
+          onClick={() => toggleSidebar(!collapsed)}
           whileHover={{ x: collapsed ? 0 : 2 }}
           whileTap={{ scale: 0.97 }}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           className={cn("focus-ring flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-zinc-600 transition-colors duration-200 hover:bg-zinc-100 hover:text-zinc-900", collapsed && "justify-center px-2")}
         >
-          <motion.span animate={{ rotate: collapsed ? 180 : 0 }} transition={{ type: "spring", stiffness: 300, damping: 25 }}>
+          {/* Points the way it will move: toward the edge to collapse, away from it to expand. */}
+          <motion.span animate={{ rotate: collapsed !== onRight ? 180 : 0 }} transition={{ type: "spring", stiffness: 300, damping: 25 }}>
             <ChevronsLeft className="h-[18px] w-[18px]" />
           </motion.span>
           {!collapsed && "Collapse"}

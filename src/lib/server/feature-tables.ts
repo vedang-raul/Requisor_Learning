@@ -55,3 +55,32 @@ export const QUIZ_TABLES = `
     CREATE INDEX IF NOT EXISTS quiz_attempts_lesson_idx ON quiz_attempts (lesson_id, submitted_at DESC);
     CREATE INDEX IF NOT EXISTS quiz_attempts_user_idx ON quiz_attempts (user_id, lesson_id);
   `;
+
+/**
+ * A university's theme for its members (src/lib/theme/university-theme.ts),
+ * null for Requisor's own look; and the font a super admin uploaded for it.
+ */
+/** Branded assignments' NDA signatures: who signed which lesson's agreement, and its exact text (see src/lib/courses/assignment-nda.ts). */
+export const ASSIGNMENT_NDA_TABLES = `
+    CREATE TABLE IF NOT EXISTS assignment_nda_signatures (
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      lesson_id VARCHAR(120) NOT NULL,
+      nda_hash CHAR(64) NOT NULL,
+      nda_text TEXT NOT NULL,
+      signed_name TEXT NOT NULL,
+      signed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, lesson_id, nda_hash)
+    );
+    CREATE INDEX IF NOT EXISTS assignment_nda_signatures_lesson_idx ON assignment_nda_signatures (lesson_id, signed_at DESC);
+  `;
+
+export const UNIVERSITY_THEME_TABLES = `
+    ALTER TABLE universities ADD COLUMN IF NOT EXISTS theme JSONB;
+    CREATE TABLE IF NOT EXISTS university_fonts (
+      university_id INTEGER PRIMARY KEY REFERENCES universities(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      format TEXT NOT NULL,
+      data BYTEA NOT NULL,
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `;

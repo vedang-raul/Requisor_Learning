@@ -12,6 +12,19 @@ Database: three new tables, `course_preview_links`, `lesson_quizzes` and
 existing changes.
 
 ### Fixed
+- **No more flash of other courses**: Learning Paths and the sidebar showed the seven built-in
+  courses for a moment on every load, unpublished ones included, before the real list arrived.
+  Pages now wait for the real list, with placeholders, and a course or lesson link no longer
+  flashes "not found" while it loads.
+- **Admin lesson edits kept the assignment intact**: saving a lesson from the admin panel
+  erased its points, due date and AI guardrails; they are now kept.
+- **Courses the AI makes open in the editor**: a course the assistant creates opens
+  straight away in My Courses, ready to change, and the chat closes so it's in view; the
+  card's button goes back to it. An AI course draft ("Review in course editor") now opens
+  at its editor rather than the top of the course list.
+- **Program Builder assistant**: asking it to build from discovery notes could end in
+  "returned an empty response". The suggestion now asks for the notes straight away, and
+  an empty AI reply is retried once before anything is shown.
 - **Course share links on the live site**: `/c/<course>` sent people to the server's
   internal address (`localhost:5000`) instead of the course.
 - **Program Builder documents, long ones**: the chosen colour showed only on section
@@ -20,6 +33,39 @@ existing changes.
   print the exact colour. Modules and the pricing table no longer split across pages.
 
 ### Added
+- **Drag and drop lessons** (tutors): in a course's "Modules & lessons", drag a lesson by its
+  handle to any place: before or after another lesson, into another module, or onto a module
+  to put it last there. The up and down arrows and the module picker still work.
+- **Branded assignments** (tutors): a fifth way to assess a lesson in step 3, for work a
+  company sponsors. It is one brief for all or a brief per learner, as before, with the
+  sponsor's name, logo, banner, colour and up to four links shown throughout: at the top
+  of the assignment, in its colour, and in learners' Submissions and the grader.
+  Optionally, learners sign a confidentiality agreement (an editable template filled with
+  the brand's name, not legal advice) before they can read the brief, get their own AI
+  brief or hand in; until then they see only the brand, title, due date and points. The
+  brief isn't sent to learners' browsers before they sign, and the AI assistant won't
+  reveal it. Each signature keeps the exact text agreed to; changing the text asks
+  learners to sign again; tutors see who signed and when. Database: adds
+  `course_lessons.assignment_brand` and an `assignment_nda_signatures` table.
+- **University themes** (super admins): Admin → Universities → Theme. Quickest:
+  describe the feel in a few words ("a bit of red mixed with brown") and the AI picks the
+  colours and font, made readable automatically; or pick one of eight ready-made styles.
+  Customise every detail sets a
+  university's main and secondary colours, page background, sidebar and top bar, and font
+  (one of eight hosted on the site, or the university's own uploaded as WOFF2, WOFF,
+  TTF or OTF, checked to be a real font file), with a live preview, warnings for colours that would be
+  hard to read and a darker shade to use instead, and Reset to Requisor. Its tutors,
+  learners and admins see it on every app page after signing in, applied before the
+  page shows. Public pages, super admins and other universities keep Requisor's look.
+  Database: adds `universities.theme` (nullable) and a `university_fonts` table. The home page plan is in
+  `docs/plans/university-theme-home-page.md`.
+- **University layouts** (super admins): in the same Theme panel, "Layout and navigation"
+  sets the sidebar's side (left or right, the mobile menu too), its style (light, tinted
+  with the main colour, or dark) and whether it starts collapsed; renames, reorders and
+  hides menu items (the dashboard always stays; hiding only takes an item off the menu);
+  and picks what the top bar shows: search, XP, the tutor/student badge, the university's
+  logo, and a shorter bar. Stored in the same theme, so no database change; ready-made
+  styles and AI suggestions change colours and font only and keep the layout.
 - **Program Builder course picker**: "Start from one of your courses" is sorted A to Z
   in Published and Drafts sections, with each course's lesson count.
 - **Several logos on Program Builder documents**: up to four, side by side at the top
@@ -80,6 +126,14 @@ existing changes.
   list, with Show hidden; learners still see them.
 
 ### Changed
+- **Smoother pages**: the course list is now requested as the app opens, alongside the
+  sign-in check instead of after it (the server still decides what each account sees). Pages
+  fade in once and everything on them appears together: the app-wide second fade, the
+  staggered one-after-another entrances, the sections and cards sliding up, and the list rows
+  sliding around when a list changed are gone. Value animations (progress rings, charts) stay,
+  and "reduce motion" still turns all motion off.
+- **AI video is for super admins for now**: the lesson wizard's AI video tab shows "Coming
+  soon" to tutors, and the AI video API refuses anyone else, since each render is charged.
 - **AI video waits**: past the estimate, tutors are asked to be patient and told not to
   start again, since each video is charged. The estimate now comes from our own
   renders and shows before making the video. The AI writes scripts to a firm word

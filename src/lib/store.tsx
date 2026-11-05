@@ -4,7 +4,6 @@ import { isLessonLive } from "@/lib/utils";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { AppState, Course, EarnedBadge, Lesson, Notification, UserState } from "./types";
-import { seedCourses } from "./courses/data";
 
 
 const STORAGE_KEY_BASE = "requisor-learning-v14"; // v14: added 4 DeepLearning.AI agent-building courses to Agentic AI
@@ -19,7 +18,9 @@ const workspaceModeKeyFor = (email: string) => `requisor-workspace-mode:${email.
 
 const initialState: AppState = {
   user: null,
-  courses: seedCourses,
+  // Empty until GET /api/courses answers (see catalogLoaded): never a built-in list that would
+  // flash courses this account can't see before the real ones arrive.
+  courses: [],
   progress: {},
   history: [],
   bookmarks: [],
@@ -38,10 +39,12 @@ const initialState: AppState = {
 interface StoreApi {
   state: AppState;
   hydrated: boolean;
+  /** True once the catalog has been loaded from the server (or failed to): until then, state.courses is empty. */
+  catalogLoaded: boolean;
   workspaceMode: WorkspaceMode;
   setWorkspaceMode: (mode: WorkspaceMode) => void;
   logout: () => void;
-  toggleSidebar: () => void;
+  toggleSidebar: (next?: boolean) => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   recordView: (courseSlug: string, lessonId: string) => void;
   setWatchPct: (lessonId: string, pct: number) => void;
@@ -62,15 +65,34 @@ interface StoreApi {
 
 const StoreContext = createContext<StoreApi | null>(null);
 
+/** The catalog this browser's signed-in account may see. The server decides, from the session cookie. */
+async function requestCatalog(): Promise<Course[]> {
+  const response = await fetch("/api/courses");
+  const data = await response.json() as { courses?: Course[]; error?: string };
+  if (!response.ok) throw new Error(data.error ?? "Couldn't load the course catalog.");
+  if (!Array.isArray(data.courses)) throw new Error("The course catalog response was invalid.");
+  return data.courses;
+}
+
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AppState>(initialState);
   const [hydrated, setHydrated] = useState(false);
+  const [catalogLoaded, setCatalogLoaded] = useState(false);
   const [workspaceMode, setWorkspaceModeState] = useState<WorkspaceMode>("tutor");
   const { data: session, status } = useSession();
   // Tracks whether the initial DB fetch has completed so we don't sync stale values back.
   const dbSynced = useRef(false);
   // Per-lesson debounce timers for note syncing
   const noteTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  // The catalog is asked for as the app opens, alongside the sign-in check rather than after
+  // it. Nothing changes about who sees what: the server reads the session cookie on this
+  // request too. The first catalog load below uses it; a signed-out answer (null) is ignored.
+  const earlyCatalog = useRef<{ at: number; courses: Promise<Course[] | null> } | null>(null);
+  useEffect(() => {
+    // Once: development runs this twice on purpose, and the request is the same.
+    if (earlyCatalog.current || !window.location.pathname.startsWith("/app")) return;
+    earlyCatalog.current = { at: Date.now(), courses: requestCatalog().catch(() => null) };
+  }, []);
 
   // Real auth: the signed-in user comes from the NextAuth session, not localStorage.
   const sessionUser: UserState | null = useMemo(() => {
@@ -123,12 +145,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     setHydrated(false);
+    setCatalogLoaded(false);
     try {
       const raw = localStorage.getItem(storageKeyFor(email));
       const saved = raw ? (JSON.parse(raw) as Partial<AppState>) : null;
        // Courses are deliberately not restored from this browser. The
        // authenticated catalog request below is authoritative.
-       setState(saved ? { ...initialState, ...saved, user: null, courses: seedCourses } : initialState);
+       setState(saved ? { ...initialState, ...saved, user: null, courses: [] } : initialState);
     } catch {
       setState(initialState); // corrupted storage — start fresh
     }
@@ -266,20 +289,21 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     let lastLoad = 0;
     const load = () => {
       lastLoad = Date.now();
-      fetch("/api/courses")
-        .then(async (response) => {
-          const data = await response.json() as { courses?: Course[]; error?: string };
-          if (!response.ok) throw new Error(data.error ?? "Couldn't load the course catalog.");
-          if (!Array.isArray(data.courses)) throw new Error("The course catalog response was invalid.");
-          return data.courses;
-        })
+      // The request already on its way since the app opened, used once and only while fresh.
+      const early = earlyCatalog.current;
+      earlyCatalog.current = null;
+      const catalog = early && Date.now() - early.at < 15_000
+        ? early.courses.then((courses) => courses ?? requestCatalog())
+        : requestCatalog();
+      catalog
         .then((courses) => {
           if (!cancelled) setState((current) => ({ ...current, courses }));
         })
         .catch(() => {
           // Retain the currently displayed catalog when offline. Mutations still
           // reject visibly to their caller instead of being stored locally.
-        });
+        })
+        .finally(() => { if (!cancelled) setCatalogLoaded(true); });
     };
     load();
     // Coming back to the tab reloads at most once every 30 seconds.
@@ -323,7 +347,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     void signOut({ callbackUrl: "/" });
   }, []);
 
-  const toggleSidebar = useCallback(() => setState((s) => ({ ...s, sidebarCollapsed: !s.sidebarCollapsed })), []);
+  // The person's own choice: from now on it wins over their university's default (see Sidebar).
+  const toggleSidebar = useCallback((next?: boolean) => setState((s) => ({ ...s, sidebarTouched: true, sidebarCollapsed: next ?? !s.sidebarCollapsed })), []);
   const setSidebarCollapsed = useCallback((collapsed: boolean) => setState((s) => (s.sidebarCollapsed === collapsed ? s : { ...s, sidebarCollapsed: collapsed })), []);
 
   const recordView = useCallback((courseSlug: string, lessonId: string) => {
@@ -549,6 +574,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     () => ({
       state: { ...state, user: sessionUser },
       hydrated: hydrated && status !== "loading",
+      catalogLoaded,
       workspaceMode: sessionUser?.role === "tutor"
         ? workspaceMode
         : sessionUser?.role === "admin"
@@ -560,7 +586,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       toggleAssessmentComplete,
       upsertCourse, deleteCourse, upsertLesson, deleteLesson, resetAll,
     }),
-    [state, sessionUser, hydrated, status, workspaceMode, setWorkspaceMode, logout, toggleSidebar, setSidebarCollapsed, recordView, setWatchPct, toggleComplete, toggleBookmark, toggleSavedLesson, setNote, markNotificationsRead, toggleAssessmentComplete, upsertCourse, deleteCourse, upsertLesson, deleteLesson, resetAll]
+    [state, sessionUser, hydrated, catalogLoaded, status, workspaceMode, setWorkspaceMode, logout, toggleSidebar, setSidebarCollapsed, recordView, setWatchPct, toggleComplete, toggleBookmark, toggleSavedLesson, setNote, markNotificationsRead, toggleAssessmentComplete, upsertCourse, deleteCourse, upsertLesson, deleteLesson, resetAll]
   );
 
   return <StoreContext.Provider value={api}>{children}</StoreContext.Provider>;

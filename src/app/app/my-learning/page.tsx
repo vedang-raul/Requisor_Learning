@@ -55,7 +55,7 @@ export default function MyLearningPage() {
   return (
     <PageTransition className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25 }}>
+        <motion.div initial={false} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25 }}>
           <h1 className="text-2xl font-bold md:text-3xl">My <span className="text-gradient">Learning</span></h1>
           <p className="mt-1 text-sm text-zinc-600">Everything you&apos;re watching, saving and finishing — in one place.</p>
         </motion.div>
@@ -108,7 +108,7 @@ export default function MyLearningPage() {
       </div>
 
       <AnimatePresence mode="wait">
-        <motion.div key={tab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.22 }}>
+        <motion.div key={tab} initial={false} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.22 }}>
           {tab === "continue" && (
             <div className="space-y-6">
               {watching.length === 0 && inProgressCourses.length === 0 ? (
@@ -121,9 +121,9 @@ export default function MyLearningPage() {
                       {watching.slice(0, 6).map(({ course, lesson, progress, at }, i) => (
                         <motion.div
                           key={lesson.id}
-                          initial={{ opacity: 0, y: 8 }}
+                          initial={false}
                           animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: i * 0.05, duration: 0.2 }}
+                          transition={{ duration: 0.2 }}
                           whileHover={{ x: 3 }}
                         >
                           <Link
@@ -159,9 +159,9 @@ export default function MyLearningPage() {
                         {inProgressCourses.map((c, i) => (
                           <motion.div
                             key={c.slug}
-                            initial={{ opacity: 0, y: 10 }}
+                            initial={false}
                             animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: i * 0.06 }}
+                            transition={{}}
                             whileHover={{ y: -4 }}
                           >
                             <CourseCard course={c} />
@@ -188,9 +188,9 @@ export default function MyLearningPage() {
                         {bookmarkedCourses.map((c, i) => (
                           <motion.div
                             key={c.slug}
-                            initial={{ opacity: 0, y: 10 }}
+                            initial={false}
                             animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: i * 0.06 }}
+                            transition={{}}
                             whileHover={{ y: -4 }}
                           >
                             <CourseCard course={c} />
@@ -205,9 +205,9 @@ export default function MyLearningPage() {
                       {savedLessons.map(({ course, lesson }, i) => (
                         <motion.div
                           key={lesson.id}
-                          initial={{ opacity: 0, y: 6 }}
+                          initial={false}
                           animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: i * 0.04, duration: 0.2 }}
+                          transition={{ duration: 0.2 }}
                           whileHover={{ x: 3 }}
                         >
                           <Link
@@ -238,9 +238,9 @@ export default function MyLearningPage() {
                 {completedCourses.map((c, i) => (
                   <motion.div
                     key={c.slug}
-                    initial={{ opacity: 0, y: 10 }}
+                    initial={false}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.06 }}
+                    transition={{}}
                     whileHover={{ y: -4 }}
                   >
                     <CourseCard course={c} />
@@ -262,9 +262,9 @@ export default function MyLearningPage() {
                   return (
                     <motion.div
                       key={i}
-                      initial={{ opacity: 0, y: 6 }}
+                      initial={false}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: Math.min(i, 12) * 0.03, duration: 0.18 }}
+                      transition={{ duration: 0.18 }}
                       whileHover={{ x: 3 }}
                     >
                       <Link

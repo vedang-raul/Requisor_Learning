@@ -2,7 +2,8 @@ import type { PoolClient } from "pg";
 import { isValidAssignmentAi, readAssignmentAi } from "@/lib/ai/assignment-ai";
 import { manageReach, manageSql, reachParams, type ScopeUser } from "../server/course-scope";
 import { db } from "@/lib/server/db";
-import { PREVIEW_LINK_TABLES, QUIZ_TABLES } from "@/lib/server/feature-tables";
+import { ASSIGNMENT_NDA_TABLES, PREVIEW_LINK_TABLES, QUIZ_TABLES, UNIVERSITY_THEME_TABLES } from "@/lib/server/feature-tables";
+import { isValidAssignmentBrand, readAssignmentBrand } from "@/lib/courses/assignment-brand";
 import { seedCourses } from "@/lib/courses/data";
 import type { Course, CourseModule, Lesson, Resource } from "@/lib/types";
 import { extractYouTubeId, PLACEHOLDER_VIDEO } from "@/lib/utils";
@@ -30,7 +31,7 @@ type CourseRow = {
 type LessonRow = {
   course_slug: string | null; id: string | null; lesson_title: string | null; lesson_description: string | null; youtube_id: string | null;
   duration_min: number | null; resources: Resource[] | null; key_takeaways: string[] | null; assignment: string | null;
-  assignment_marks: number | null; assignment_due_date: string | null; assignment_ai: unknown;
+  assignment_marks: number | null; assignment_due_date: string | null; assignment_ai: unknown; assignment_brand: unknown;
   section: string | null; format: "video" | "reading" | "code-tutorial" | null; requires_submission: boolean | null; body: string | null; body_file_url: string | null;
   thumbnail_url: string | null;
   starter_code: string | null;
@@ -66,6 +67,7 @@ export async function initializeCourseCatalog(client: CatalogClient): Promise<vo
         ADD COLUMN IF NOT EXISTS requires_submission BOOLEAN NOT NULL DEFAULT FALSE,
         ADD COLUMN IF NOT EXISTS assignment_marks INT,
         ADD COLUMN IF NOT EXISTS assignment_due_date DATE,
+        ADD COLUMN IF NOT EXISTS assignment_brand JSONB,
         ADD COLUMN IF NOT EXISTS published BOOLEAN NOT NULL DEFAULT TRUE,
         ADD COLUMN IF NOT EXISTS publish_at TIMESTAMPTZ,
         ADD COLUMN IF NOT EXISTS starter_code TEXT,
@@ -176,6 +178,8 @@ export function ensureCourseCatalog(): Promise<void> {
         // Here, not only on first use: Publish copies tables from the development database.
         await client.query(PREVIEW_LINK_TABLES);
         await client.query(QUIZ_TABLES);
+        await client.query(UNIVERSITY_THEME_TABLES);
+        await client.query(ASSIGNMENT_NDA_TABLES);
       } finally {
         client.release();
       }
@@ -217,7 +221,7 @@ export async function getCourses(where = "", params: unknown[] = []): Promise<Co
              c.base_assessment, c.owner_user_id, c.revision, c.published, c.syllabus, c.modules, c.university_id, u.name AS tutor_name,
             l.id, l.course_slug, l.title AS lesson_title, l.description AS lesson_description,
              l.youtube_id, l.duration_min, l.resources, l.key_takeaways, l.assignment,
-             l.assignment_marks, to_char(l.assignment_due_date, 'YYYY-MM-DD') AS assignment_due_date, l.assignment_ai,
+             l.assignment_marks, to_char(l.assignment_due_date, 'YYYY-MM-DD') AS assignment_due_date, l.assignment_ai, l.assignment_brand,
              l.section, l.format, l.body, l.body_file_url, l.thumbnail_url, l.starter_code, l.language, l.requires_submission, l.published AS lesson_published, l.publish_at
      FROM courses c
      LEFT JOIN course_lessons l ON l.course_slug = c.slug
@@ -244,6 +248,7 @@ export async function getCourses(where = "", params: unknown[] = []): Promise<Co
        ...(row.assignment_marks ? { assignmentMarks: row.assignment_marks } : {}),
        ...(row.assignment_due_date ? { assignmentDueDate: row.assignment_due_date } : {}),
       ...(readAssignmentAi(row.assignment_ai) ? { assignmentAi: readAssignmentAi(row.assignment_ai)! } : {}),
+      ...(readAssignmentBrand(row.assignment_brand) ? { assignmentBrand: readAssignmentBrand(row.assignment_brand)! } : {}),
       ...(row.body ? { body: row.body } : {}),
       ...(row.body_file_url ? { bodyFileUrl: row.body_file_url } : {}),
       ...(row.thumbnail_url ? { thumbnailUrl: row.thumbnail_url } : {}),
@@ -271,6 +276,8 @@ async function assertResourceFileOwnership(client: CatalogClient, course: Course
   const urls = course.lessons.flatMap((lesson) => [
     ...(lesson.bodyFileUrl ? [lesson.bodyFileUrl] : []),
     ...(lesson.thumbnailUrl ? [lesson.thumbnailUrl] : []),
+    ...(lesson.assignmentBrand?.logoUrl ? [lesson.assignmentBrand.logoUrl] : []),
+    ...(lesson.assignmentBrand?.bannerUrl ? [lesson.assignmentBrand.bannerUrl] : []),
     ...lesson.resources.map((resource) => resource.url),
   ]).filter(isResourceFileUrl);
   const ids = [...new Set(urls.map((url) => url.slice("/api/resources/".length)))];
@@ -314,7 +321,7 @@ export function validateCourse(value: unknown, expectedSlug?: string, requireRev
   for (const raw of c.lessons) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ok: false, error: "Invalid lesson." };
     const l = raw as Record<string, unknown>;
-    const lessonKeys = new Set(["id", "title", "description", "youtubeId", "durationMin", "resources", "keyTakeaways", "assignment", "assignmentMarks", "assignmentDueDate", "assignmentAi", "section", "format", "body", "bodyFileUrl", "thumbnailUrl", "starterCode", "language", "requiresSubmission", "published", "publishAt"]);
+    const lessonKeys = new Set(["id", "title", "description", "youtubeId", "durationMin", "resources", "keyTakeaways", "assignment", "assignmentMarks", "assignmentDueDate", "assignmentAi", "assignmentBrand", "section", "format", "body", "bodyFileUrl", "thumbnailUrl", "starterCode", "language", "requiresSubmission", "published", "publishAt"]);
     const format = l.format ?? "video";
     const isTextLesson = format === "reading" || format === "code-tutorial";
     const rawYoutubeId = typeof l.youtubeId === "string" ? l.youtubeId.trim() : "";
@@ -332,6 +339,7 @@ export function validateCourse(value: unknown, expectedSlug?: string, requireRev
       (l.assignmentMarks !== undefined && (!Number.isInteger(l.assignmentMarks) || (l.assignmentMarks as number) < 1 || (l.assignmentMarks as number) > 10000)) ||
       (l.assignmentDueDate !== undefined && !isIsoCalendarDate(l.assignmentDueDate)) ||
       (l.assignmentAi !== undefined && !isValidAssignmentAi(l.assignmentAi)) ||
+      (l.assignmentBrand !== undefined && !isValidAssignmentBrand(l.assignmentBrand)) ||
       (l.section !== undefined && !string(l.section, 200)) ||
       (l.format !== undefined && l.format !== "video" && l.format !== "reading" && l.format !== "code-tutorial") ||
       (!isTextLesson && !youtubeId) ||
@@ -398,9 +406,9 @@ export async function replaceCourse(
     await client.query("DELETE FROM course_lessons WHERE course_slug=$1", [course.slug]);
     for (let i = 0; i < course.lessons.length; i++) {
       const l = course.lessons[i];
-      await client.query(`INSERT INTO course_lessons (id,course_slug,title,description,youtube_id,duration_min,resources,key_takeaways,assignment,section,format,position,requires_submission,body,body_file_url,starter_code,language,assignment_marks,assignment_due_date,published,publish_at,assignment_ai,thumbnail_url)
-        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22::jsonb,$23)`,
-      [l.id, course.slug, l.title, l.description, l.youtubeId, l.durationMin, JSON.stringify(l.resources), JSON.stringify(l.keyTakeaways), l.assignment ?? null, l.section ?? null, l.format ?? "video", i, l.requiresSubmission ?? false, l.body ?? null, l.bodyFileUrl ?? null, l.starterCode ?? null, l.language ?? null, l.assignmentMarks ?? null, l.assignmentDueDate ?? null, l.published ?? true, l.published !== false && l.publishAt ? new Date(l.publishAt).toISOString() : null, l.assignmentAi ? JSON.stringify(l.assignmentAi) : null, l.thumbnailUrl ?? null]);
+      await client.query(`INSERT INTO course_lessons (id,course_slug,title,description,youtube_id,duration_min,resources,key_takeaways,assignment,section,format,position,requires_submission,body,body_file_url,starter_code,language,assignment_marks,assignment_due_date,published,publish_at,assignment_ai,thumbnail_url,assignment_brand)
+        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22::jsonb,$23,$24::jsonb)`,
+      [l.id, course.slug, l.title, l.description, l.youtubeId, l.durationMin, JSON.stringify(l.resources), JSON.stringify(l.keyTakeaways), l.assignment ?? null, l.section ?? null, l.format ?? "video", i, l.requiresSubmission ?? false, l.body ?? null, l.bodyFileUrl ?? null, l.starterCode ?? null, l.language ?? null, l.assignmentMarks ?? null, l.assignmentDueDate ?? null, l.published ?? true, l.published !== false && l.publishAt ? new Date(l.publishAt).toISOString() : null, l.assignmentAi ? JSON.stringify(l.assignmentAi) : null, l.thumbnailUrl ?? null, l.assignmentBrand ? JSON.stringify(l.assignmentBrand) : null]);
 
     }
     await client.query("COMMIT");
@@ -450,9 +458,9 @@ export async function updateOwnedCourse(course: Course, userId: number, manager:
     await client.query("DELETE FROM course_lessons WHERE course_slug=$1", [course.slug]);
     for (let i = 0; i < course.lessons.length; i++) {
       const l = course.lessons[i];
-      await client.query(`INSERT INTO course_lessons (id,course_slug,title,description,youtube_id,duration_min,resources,key_takeaways,assignment,section,format,position,requires_submission,body,body_file_url,starter_code,language,assignment_marks,assignment_due_date,published,publish_at,assignment_ai,thumbnail_url)
-        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22::jsonb,$23)`,
-      [l.id, course.slug, l.title, l.description, l.youtubeId, l.durationMin, JSON.stringify(l.resources), JSON.stringify(l.keyTakeaways), l.assignment ?? null, l.section ?? null, l.format ?? "video", i, l.requiresSubmission ?? false, l.body ?? null, l.bodyFileUrl ?? null, l.starterCode ?? null, l.language ?? null, l.assignmentMarks ?? null, l.assignmentDueDate ?? null, l.published ?? true, l.published !== false && l.publishAt ? new Date(l.publishAt).toISOString() : null, l.assignmentAi ? JSON.stringify(l.assignmentAi) : null, l.thumbnailUrl ?? null]);
+      await client.query(`INSERT INTO course_lessons (id,course_slug,title,description,youtube_id,duration_min,resources,key_takeaways,assignment,section,format,position,requires_submission,body,body_file_url,starter_code,language,assignment_marks,assignment_due_date,published,publish_at,assignment_ai,thumbnail_url,assignment_brand)
+        VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22::jsonb,$23,$24::jsonb)`,
+      [l.id, course.slug, l.title, l.description, l.youtubeId, l.durationMin, JSON.stringify(l.resources), JSON.stringify(l.keyTakeaways), l.assignment ?? null, l.section ?? null, l.format ?? "video", i, l.requiresSubmission ?? false, l.body ?? null, l.bodyFileUrl ?? null, l.starterCode ?? null, l.language ?? null, l.assignmentMarks ?? null, l.assignmentDueDate ?? null, l.published ?? true, l.published !== false && l.publishAt ? new Date(l.publishAt).toISOString() : null, l.assignmentAi ? JSON.stringify(l.assignmentAi) : null, l.thumbnailUrl ?? null, l.assignmentBrand ? JSON.stringify(l.assignmentBrand) : null]);
     }
     await client.query("COMMIT");
     course.revision = next;
@@ -567,11 +575,11 @@ export async function assignCourseTutor(slug: string, tutorId: number | null): P
     if (changed) {
       await client.query("UPDATE courses SET owner_user_id = $2, updated_at = NOW() WHERE slug = $1", [slug, tutorId]);
       if (tutorId !== null && current.owner_user_id !== null) {
-        const { rows: lessons } = await client.query<{ body_file_url: string | null; thumbnail_url: string | null; resources: { url?: string }[] | null }>(
-          "SELECT body_file_url, thumbnail_url, resources FROM course_lessons WHERE course_slug = $1",
+        const { rows: lessons } = await client.query<{ body_file_url: string | null; thumbnail_url: string | null; brand_logo: string | null; brand_banner: string | null; resources: { url?: string }[] | null }>(
+          "SELECT body_file_url, thumbnail_url, assignment_brand->>'logoUrl' AS brand_logo, assignment_brand->>'bannerUrl' AS brand_banner, resources FROM course_lessons WHERE course_slug = $1",
           [slug]
         );
-        const ids = [...new Set(lessons.flatMap((l) => [l.body_file_url ?? "", l.thumbnail_url ?? "", ...(l.resources ?? []).map((r) => r?.url ?? "")])
+        const ids = [...new Set(lessons.flatMap((l) => [l.body_file_url ?? "", l.thumbnail_url ?? "", l.brand_logo ?? "", l.brand_banner ?? "", ...(l.resources ?? []).map((r) => r?.url ?? "")])
           .filter(isResourceFileUrl).map((url) => url.slice("/api/resources/".length)))];
         if (ids.length) {
           await client.query(

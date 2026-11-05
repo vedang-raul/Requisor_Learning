@@ -8,7 +8,9 @@ import { useEffect, useState } from "react";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { RequisorAI } from "@/components/ui/requisor-ai";
-import { navItems, navLabel } from "@/components/layout/sidebar";
+import { navItems, navLabel, sidebarSurface } from "@/components/layout/sidebar";
+import { useUniversityLayout } from "@/components/layout/university-layout-context";
+import { arrangeNav, navHidden, navName } from "@/lib/theme/university-layout";
 import { useSession } from "next-auth/react";
 import { getCategoryMeta } from "@/components/course/category-icon";
 
@@ -19,6 +21,9 @@ export function MobileNav() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const layout = useUniversityLayout();
+  const onRight = layout.sidebarSide === "right";
+  const pathsLabel = navName(layout, "paths");
   const currentSlug = searchParams.get("slug");
   const navigationCourses = state.courses.map((course) => ({
     href: `/app/course/?slug=${encodeURIComponent(course.slug)}`,
@@ -45,7 +50,12 @@ export function MobileNav() {
       (!("employeeOnly" in item && item.employeeOnly) || state.user?.role === "employee") &&
       (!("notForAdmins" in item && item.notForAdmins) || state.user?.role !== "admin")
   );
-  const showLearnerNavigation = state.user?.role !== "tutor" || workspaceMode === "student";
+  const showLearnerNavigation = (state.user?.role !== "tutor" || workspaceMode === "student") && !navHidden(layout, "paths");
+  // The menu in the university's order and words; "Learning Paths" (with its courses) is one of the entries.
+  const menu = arrangeNav([
+    ...filteredItems,
+    ...(showLearnerNavigation ? [{ href: "/app/paths/", label: pathsLabel, icon: Library }] : []),
+  ], layout);
 
   const switchWorkspaceMode = () => {
     const nextMode = workspaceMode === "tutor" ? "student" : "tutor";
@@ -54,9 +64,6 @@ export function MobileNav() {
     if (nextMode === "student" && pathname?.startsWith("/app/tutor")) router.push("/app/dashboard/");
   };
 
-  // Split: dashboard first, rest after Learning Paths
-  const topItems    = filteredItems.filter((i) => i.href === "/app/dashboard/");
-  const bottomItems = filteredItems.filter((i) => i.href !== "/app/dashboard/");
 
   return (
     <div className="md:hidden">
@@ -78,11 +85,13 @@ export function MobileNav() {
             onClick={() => setOpen(false)}
           >
             <motion.aside
-              initial={{ x: -288 }}
+              initial={{ x: onRight ? 288 : -288 }}
               animate={{ x: 0 }}
-              exit={{ x: -288 }}
+              exit={{ x: onRight ? 288 : -288 }}
               transition={{ type: "spring", stiffness: 300, damping: 32 }}
-              className="flex h-full w-72 flex-col border-r border-zinc-200 bg-card"
+              data-sidebar-style={layout.sidebarStyle}
+              style={sidebarSurface(layout)}
+              className={cn("flex h-full w-72 flex-col border-zinc-200 bg-card", onRight ? "ml-auto border-l" : "border-r")}
               onClick={(e) => e.stopPropagation()}
               role="dialog"
               aria-label="Navigation menu"
@@ -100,28 +109,8 @@ export function MobileNav() {
               </div>
 
               <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4" aria-label="Main navigation">
-                {/* Dashboard */}
-                {topItems.map((item) => {
-                  const Icon = item.icon;
-                  const active = pathname === item.href || pathname === item.href.replace(/\/$/, "");
-                  return (
-                    <Link
-                      key={item.label}
-                      href={item.href}
-                      onClick={() => setOpen(false)}
-                      className={cn(
-                        "focus-ring flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
-                        active ? "bg-primary/10 text-primary" : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
-                      )}
-                    >
-                      <Icon className="h-[18px] w-[18px] shrink-0" />
-                      <span className="truncate">{navLabel(item, superAdmin)}</span>
-                    </Link>
-                  );
-                })}
-
-                {/* Learning Paths + dropdown */}
-                {showLearnerNavigation && <div>
+                {menu.map((item) => item.href === "/app/paths/" ? (
+                <div key="__paths">
                   <button
                     onClick={() => {
                       router.push("/app/paths/");
@@ -133,7 +122,7 @@ export function MobileNav() {
                     )}
                   >
                     <Library className={cn("h-[18px] w-[18px] shrink-0", learningActive && "text-primary")} />
-                    <span className="flex-1 truncate text-left">Learning Paths</span>
+                    <span className="flex-1 truncate text-left">{pathsLabel}</span>
                     <motion.span animate={{ rotate: coursesOpen ? 180 : 0 }} transition={{ duration: 0.2 }}>
                       <ChevronDown className="h-3.5 w-3.5 opacity-60" />
                     </motion.span>
@@ -175,10 +164,8 @@ export function MobileNav() {
                       </motion.div>
                     )}
                   </AnimatePresence>
-                </div>}
-
-                {/* Remaining items */}
-                {bottomItems.map((item) => {
+                </div>
+                ) : (() => {
                   const Icon = item.icon;
                   const active =
                     pathname === item.href ||
@@ -198,7 +185,7 @@ export function MobileNav() {
                       <span className="truncate">{navLabel(item, superAdmin)}</span>
                     </Link>
                   );
-                })}
+                })())}
               </nav>
 
               <div className="space-y-1 border-t border-zinc-200 p-3">

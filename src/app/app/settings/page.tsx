@@ -67,7 +67,6 @@ function Toggle({ on, onChange, label }: { on: boolean; onChange: (v: boolean) =
       className={cn("focus-ring relative h-6 w-11 rounded-full transition-colors duration-200", on ? "bg-gradient-to-r from-primary to-secondary" : "bg-zinc-300")}
     >
       <motion.span
-        layout
         transition={springSwitch}
         className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow"
         style={{ left: on ? 22 : 2 }}
@@ -255,7 +254,7 @@ function ProfileCard() {
             /* ── Edit mode ── */
             <motion.div
               key="edit"
-              initial={{ opacity: 0, y: 8 }}
+              initial={false}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.2 }}
@@ -342,7 +341,7 @@ function ProfileCard() {
             /* ── View mode ── */
             <motion.div
               key="view"
-              initial={{ opacity: 0, y: 8 }}
+              initial={false}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.2 }}
@@ -376,9 +375,9 @@ function ProfileCard() {
                 ].map(({ icon, label, value }, i) => (
                   <motion.div
                     key={label}
-                    initial={{ opacity: 0, x: -6 }}
+                    initial={false}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.04 }}
+                    transition={{}}
                     whileHover={{ x: 2 }}
                     className="px-4 py-3 transition-colors hover:bg-white"
                   >
@@ -840,9 +839,9 @@ function BugReportCard() {
                   return (
                     <motion.div
                       key={r.id}
-                      initial={{ opacity: 0, x: -6 }}
+                      initial={false}
                       animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.03 }}
+                      transition={{}}
                       whileHover={{ x: 2 }}
                       className="flex items-start justify-between gap-3 rounded-xl border border-zinc-100 bg-zinc-50/60 px-3.5 py-3 transition-colors hover:border-primary/20"
                     >
@@ -967,7 +966,7 @@ export default function SettingsPage() {
 
   return (
     <PageTransition className="mx-auto max-w-3xl space-y-6">
-      <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25 }}>
+      <motion.div initial={false} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25 }}>
         <h1 className="text-2xl font-bold md:text-3xl">Settings</h1>
         <p className="mt-1 text-sm text-zinc-600">Manage your profile and preferences.</p>
       </motion.div>
@@ -1007,9 +1006,9 @@ export default function SettingsPage() {
               return (
                 <motion.div
                   key={key}
-                  initial={{ opacity: 0, y: 6 }}
+                  initial={false}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.05 }}
+                  transition={{}}
                   whileHover={{ x: 2 }}
                   className="flex items-center justify-between rounded-xl border border-zinc-100 bg-white/[0.03] p-3.5 transition-colors hover:border-primary/20"
                 >

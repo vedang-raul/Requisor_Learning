@@ -3,6 +3,8 @@ jest.mock("next-auth/next", () => ({
 }));
 
 jest.mock("@/lib/auth/auth", () => ({ authOptions: {} }));
+// None of these lessons is a branded assignment under an NDA (tested in assignment-nda-route.test.ts).
+jest.mock("@/lib/courses/assignment-nda", () => ({ ndaBlocks: jest.fn(async () => false) }));
 
 jest.mock("@/lib/server/db", () => ({
   db: { query: jest.fn() },

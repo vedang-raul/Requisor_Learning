@@ -6,7 +6,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   CheckCircle2, ChevronLeft, ChevronRight, Circle, Clock, FileText, Link2,
   MessageSquare, NotebookPen, PlayCircle, Bookmark, BookmarkCheck,
-  Sparkles, SearchX, FileDown, GraduationCap, SkipForward, Trash2, ScrollText,
+  Sparkles, SearchX, FileDown, GraduationCap, SkipForward, Trash2, ScrollText, Loader2,
 } from "lucide-react";
 import { useStore, useCourseProgress } from "@/lib/store";
 import { cn, formatMinutes } from "@/lib/utils";
@@ -80,7 +80,7 @@ function LearnView() {
   const router = useRouter();
   const courseSlug = params.get("course");
   const lessonId = params.get("lesson");
-  const { state, toggleComplete, recordView, setNote, toggleSavedLesson, setWatchPct } = useStore();
+  const { state, catalogLoaded, toggleComplete, recordView, setNote, toggleSavedLesson, setWatchPct } = useStore();
   const [tab, setTab] = useState<TabKey>("description");
   const [celebrate, setCelebrate] = useState(false);
   const [courseDone, setCourseDone] = useState(false);
@@ -210,10 +210,13 @@ function LearnView() {
 
   const idx = useMemo(() => (course && lesson ? course.lessons.indexOf(lesson) : -1), [course, lesson]);
 
+  if ((!course || !lesson) && !catalogLoaded) {
+    return <p role="status" className="mx-auto mt-16 flex w-fit items-center gap-2 text-sm text-zinc-500"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />Loading the lesson…</p>;
+  }
   if (!course || !lesson) {
     return (
       <motion.div
-        initial={{ opacity: 0, y: 10 }}
+        initial={false}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25 }}
         className="glass-card mx-auto mt-16 flex max-w-md flex-col items-center gap-3 p-10 text-center"
@@ -318,7 +321,7 @@ function LearnView() {
 
       {/* Header row */}
       <motion.div
-        initial={{ opacity: 0, y: -6 }}
+        initial={false}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25 }}
         className="mb-4 flex flex-wrap items-center justify-between gap-3"
@@ -397,7 +400,7 @@ function LearnView() {
           <AnimatePresence>
             {autoAdvance !== null && next && (
               <motion.div
-                initial={{ opacity: 0, y: -8 }}
+                initial={false}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
                 className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3"
@@ -413,7 +416,7 @@ function LearnView() {
                       <AnimatePresence mode="popLayout">
                         <motion.span
                           key={autoAdvance}
-                          initial={{ opacity: 0, y: -4 }}
+                          initial={false}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: 4 }}
                           transition={{ duration: 0.15 }}
@@ -516,7 +519,7 @@ function LearnView() {
             </div>
             <div className="pt-5">
               <AnimatePresence mode="wait">
-                <motion.div key={tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
+                <motion.div key={tab} initial={false} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
                   {tab === "description" && (
                     <div className="space-y-5">
                       <p className="text-sm leading-relaxed text-zinc-700">{lesson.description}</p>
@@ -526,9 +529,9 @@ function LearnView() {
                           {lesson.keyTakeaways.map((k, i) => (
                             <motion.li
                               key={i}
-                              initial={{ opacity: 0, x: -6 }}
+                              initial={false}
                               animate={{ opacity: 1, x: 0 }}
-                              transition={{ delay: i * 0.05, duration: 0.2 }}
+                              transition={{ duration: 0.2 }}
                               className="flex items-start gap-2.5 text-sm text-zinc-700"
                             >
                               <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />{k}
@@ -546,9 +549,9 @@ function LearnView() {
                         <motion.a
                           key={i}
                           href={r.url}
-                          initial={{ opacity: 0, y: 6 }}
+                          initial={false}
                           animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: i * 0.05, duration: 0.2 }}
+                          transition={{ duration: 0.2 }}
                           whileHover={{ x: 3 }}
                           className="focus-ring group flex items-center gap-3 rounded-xl border border-zinc-100 bg-white/[0.03] p-3.5 transition-colors hover:border-primary/40 hover:shadow-sm"
                         >
@@ -580,7 +583,7 @@ function LearnView() {
                       <AnimatePresence>
                         {commentsError && (
                           <motion.div
-                            initial={{ opacity: 0, y: -6 }}
+                            initial={false}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0 }}
                             role="alert"
@@ -609,8 +612,7 @@ function LearnView() {
                           {comments.map((c) => (
                             <motion.div
                               key={c.id}
-                              layout
-                              initial={{ opacity: 0, y: 8 }}
+                              initial={false}
                               animate={{ opacity: 1, y: 0 }}
                               exit={{ opacity: 0, x: -12, height: 0, marginBottom: 0 }}
                               transition={{ duration: 0.2 }}
@@ -701,9 +703,9 @@ function LearnView() {
                 return (
                   <motion.div
                     key={l.id}
-                    initial={{ opacity: 0, x: -6 }}
+                    initial={false}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: Math.min(i, 10) * 0.02, duration: 0.2 }}
+                    transition={{ duration: 0.2 }}
                     whileHover={{ x: current ? 0 : 2 }}
                   >
                     <Link

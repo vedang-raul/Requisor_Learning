@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 
 import { getServerSession } from "next-auth/next";
+import { ndaBlocks } from "@/lib/courses/assignment-nda";
 import { seeReach } from "@/lib/server/course-scope";
 import { authOptions } from "@/lib/auth/auth";
 import { db, type DbUser } from "@/lib/server/db";
@@ -79,6 +80,7 @@ export async function GET(req: Request) {
   );
   const user = userRows[0];
   if (!user) return Response.json({ error: "Profile not found." }, { status: 404 });
+  if (await ndaBlocks(user.id, lesson.id)) return Response.json({ error: "Sign the confidentiality agreement for this assignment first.", nda: true }, { status: 403 });
 
   const { rows: cachedRows } = await db.query<{ content: string }>(
     "SELECT content FROM generated_assignments WHERE user_id = $1 AND lesson_id = $2",
@@ -111,6 +113,7 @@ export async function POST(req: Request) {
   );
   const user = userRows[0];
   if (!user) return Response.json({ error: "Profile not found." }, { status: 404 });
+  if (await ndaBlocks(user.id, lesson.id)) return Response.json({ error: "Sign the confidentiality agreement for this assignment first.", nda: true }, { status: 403 });
 
   // A repeat visit is a database read, not an AI generation: return it before
   // checking the provider key or consuming a generation rate-limit slot.

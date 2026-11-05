@@ -17,6 +17,8 @@ interface Submission {
   lessonExists: boolean;
   courseSlug: string;
   courseTitle: string;
+  /** A branded assignment's sponsor. */
+  sponsor?: string | null;
   fileName: string;
   fileSize: number;
   submittedAt: string;
@@ -37,6 +39,7 @@ interface Due {
   lessonTitle: string;
   courseSlug: string;
   courseTitle: string;
+  sponsor?: string | null;
   dueDate: string | null;
   totalMarks: number | null;
   lessonCompleted: boolean;
@@ -135,7 +138,7 @@ export default function SubmissionsPage() {
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="flex items-center gap-1.5 truncate font-semibold text-zinc-900">{d.kind === "quiz" && <ClipboardCheck className="h-4 w-4 shrink-0 text-primary" aria-label="Quiz" />}{d.lessonTitle}</p>
-                        <p className="truncate text-xs text-zinc-500">{d.kind === "quiz" ? "Quiz · " : ""}{d.courseTitle}{d.totalMarks ? ` · ${d.totalMarks} points` : ""}</p>
+                        <p className="truncate text-xs text-zinc-500">{d.kind === "quiz" ? "Quiz · " : ""}{d.courseTitle}{d.sponsor ? ` · Sponsored by ${d.sponsor}` : ""}{d.totalMarks ? ` · ${d.totalMarks} points` : ""}</p>
                       </div>
                       {dueIn && <Tag tone={dueIn.overdue ? "danger" : dueIn.soon ? "warning" : "default"} className="shrink-0">{dueIn.overdue ? dueIn.text : dueIn.text.replace(/^Due /, "")}</Tag>}
                     </div>
@@ -231,7 +234,7 @@ export default function SubmissionsPage() {
                   <li key={s.id} className={cn("grid grid-cols-2 gap-3 px-4 py-3.5 md:grid-cols-[minmax(0,1.6fr)_6.5rem_6.5rem_minmax(0,1fr)_auto] md:items-center", t === "Missing" && "bg-red-50/50")}>
                     <div className="col-span-2 min-w-0 md:col-span-1">
                       <p className="truncate font-semibold text-zinc-900">{s.lessonTitle}</p>
-                      <p className="truncate text-xs text-zinc-500">{s.courseTitle}</p>
+                      <p className="truncate text-xs text-zinc-500">{s.courseTitle}{s.sponsor ? ` · Sponsored by ${s.sponsor}` : ""}</p>
                       <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-zinc-500"><FileText className="h-3 w-3 shrink-0" aria-hidden="true" />{s.fileName} · {formatBytes(s.fileSize)}</p>
                     </div>
                     <div className="text-xs"><p className="text-zinc-500">Submitted</p><p className="font-medium text-zinc-800">{shortDate(s.submittedAt)}</p></div>

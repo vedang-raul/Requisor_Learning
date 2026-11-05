@@ -41,11 +41,11 @@ export async function GET(req: Request) {
       id: number; student_name: string | null; student_email: string;
       file_name: string; file_size: number; submitted_at: string;
       marks: number | null; graded_at: string | null; remark: string | null;
-      lesson_id: string; lesson_title: string | null; course_title: string; source: string; due_date: string | null;
+      lesson_id: string; lesson_title: string | null; course_title: string; source: string; due_date: string | null; sponsor: string | null;
     }>(
       `SELECT s.id, u.name AS student_name, u.email AS student_email,
               s.file_name, s.file_size, s.submitted_at, g.marks, g.graded_at, g.remark,
-              s.lesson_id, l.title AS lesson_title, c.title AS course_title, s.source,
+              s.lesson_id, l.title AS lesson_title, c.title AS course_title, s.source, l.assignment_brand->>'name' AS sponsor,
               to_char(l.assignment_due_date, 'YYYY-MM-DD') AS due_date
        FROM assignment_submissions s
        JOIN users u ON u.id = s.user_id
@@ -73,6 +73,7 @@ export async function GET(req: Request) {
         gradedAt: submission.graded_at,
         lessonId: submission.lesson_id,
         lessonTitle: submission.lesson_title ?? "Untitled lesson",
+        sponsor: submission.sponsor,
         courseTitle: submission.course_title,
         source: toSubmissionSource(submission.source),
         dueDate: submission.due_date,

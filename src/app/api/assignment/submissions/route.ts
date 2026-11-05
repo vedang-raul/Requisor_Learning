@@ -13,7 +13,7 @@ import { ensureQuizTables } from "@/lib/quiz/quiz-store";
  * so a course's later lessons don't crowd it before they get there.
  */
 const DUE_SQL = `
-  SELECT l.id AS lesson_id, l.title AS lesson_title, l.course_slug, c.title AS course_title,
+  SELECT l.id AS lesson_id, l.title AS lesson_title, l.course_slug, c.title AS course_title, l.assignment_brand->>'name' AS sponsor,
          to_char(l.assignment_due_date, 'YYYY-MM-DD') AS due_date, l.assignment_marks,
          EXISTS (SELECT 1 FROM lesson_completions lc WHERE lc.user_id = $1 AND lc.lesson_id = l.id) AS completed
     FROM course_lessons l
@@ -85,7 +85,7 @@ export async function GET(req: Request) {
   if (!user) return Response.json({ error: "Profile not found." }, { status: 404 });
 
   const { rows: dueRows } = await db.query<{
-    lesson_id: string; lesson_title: string; course_slug: string; course_title: string;
+    lesson_id: string; lesson_title: string; course_slug: string; course_title: string; sponsor: string | null;
     due_date: string | null; assignment_marks: number | null; completed: boolean;
   }>(DUE_SQL, [user.id]);
   await ensureQuizTables();
@@ -102,9 +102,9 @@ export async function GET(req: Request) {
     course_slug: string; course_title: string;
     file_name: string; file_size: number; submitted_at: string;
     marks: number | null; raw_score: number | null; raw_max: number | null; graded_at: string | null; remark: string | null;
-    assignment_due_date: string | null; assignment_marks: number | null;
+    assignment_due_date: string | null; assignment_marks: number | null; sponsor: string | null;
   }>(
-    `SELECT s.id, s.lesson_id, l.title AS lesson_title, (l.id IS NOT NULL) AS lesson_exists,
+    `SELECT s.id, s.lesson_id, l.title AS lesson_title, (l.id IS NOT NULL) AS lesson_exists, l.assignment_brand->>'name' AS sponsor,
             s.course_slug, c.title AS course_title,
             s.file_name, s.file_size, s.submitted_at, g.marks, g.raw_score, g.raw_max, g.graded_at, g.remark,
             to_char(l.assignment_due_date, 'YYYY-MM-DD') AS assignment_due_date, l.assignment_marks
@@ -136,12 +136,14 @@ export async function GET(req: Request) {
       remark: r.remark,
       dueDate: r.assignment_due_date,
       totalMarks: r.assignment_marks,
+      sponsor: r.sponsor,
     })),
     due: [
       ...dueRows.map((r) => ({
         kind: "file" as const,
         lessonId: r.lesson_id,
         lessonTitle: r.lesson_title,
+        sponsor: r.sponsor,
         courseSlug: r.course_slug,
         courseTitle: r.course_title,
         dueDate: r.due_date,

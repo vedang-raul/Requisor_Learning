@@ -109,7 +109,7 @@ export default function AdminPage() {
 
   return (
     <PageTransition className="space-y-6">
-      <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25 }} className="flex items-center gap-2.5">
+      <motion.div initial={false} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25 }} className="flex items-center gap-2.5">
         <motion.div
           className="rounded-xl bg-primary/10 p-2"
           animate={{ rotate: [0, -6, 6, 0] }}
@@ -165,7 +165,7 @@ export default function AdminPage() {
       </div>
 
       <AnimatePresence mode="wait">
-        <motion.div key={tab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.22 }}>
+        <motion.div key={tab} initial={false} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.22 }}>
           {tab === "analytics" && <Analytics analytics={analytics} loading={analyticsLoading} onRefresh={loadAnalytics} />}
           {tab === "activity" && superAdmin && <ActivityPanel universities={universities} />}
           {tab === "content" && <ContentManager />}
@@ -244,9 +244,9 @@ function Analytics({ analytics, loading, onRefresh }: { analytics: AnalyticsData
           return (
             <motion.div
               key={s.label}
-              initial={{ opacity: 0, y: 10 }}
+              initial={false}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.06 }}
+              transition={{}}
               whileHover={{ y: -4, scale: 1.01 }}
               className="group"
             >
@@ -293,7 +293,7 @@ function Analytics({ analytics, loading, onRefresh }: { analytics: AnalyticsData
                 const dbCount = analytics?.completionsByCourse.find((x) => x.courseSlug === c.slug)?.count ?? 0;
                 const pct = Math.round((dbCount / maxCourseCompletions) * 100);
                 return (
-                  <motion.div key={c.slug} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }}>
+                  <motion.div key={c.slug} initial={false} animate={{ opacity: 1, x: 0 }} transition={{}}>
                     <div className="mb-1.5 flex justify-between text-xs">
                       <span className="text-zinc-700">{c.title}</span>
                       <span className="text-zinc-500">{dbCount} completions</span>
@@ -335,9 +335,9 @@ function Analytics({ analytics, loading, onRefresh }: { analytics: AnalyticsData
               {(analytics?.users ?? []).slice(0, 8).map((u, i) => (
                 <motion.div
                   key={u.email}
-                  initial={{ opacity: 0, x: -6 }}
+                  initial={false}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.04 }}
+                  transition={{}}
                   whileHover={{ x: 2 }}
                   className="flex items-center gap-3 rounded-xl border border-zinc-100 bg-white/[0.03] px-3.5 py-2.5 transition-colors hover:border-primary/20"
                 >
@@ -443,9 +443,9 @@ function ContentManager() {
             return (
               <motion.button
                 key={c.slug}
-                initial={{ opacity: 0, x: -6 }}
+                initial={false}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: i * 0.04 }}
+                transition={{}}
                 whileHover={{ x: active ? 0 : 2 }}
                 onClick={() => { setAiDraft(null); setSelected(c.slug); }}
                 className={cn(
@@ -538,11 +538,10 @@ function ContentManager() {
                 {course.lessons.map((l, i) => (
                   <motion.div
                     key={l.id}
-                    layout
-                    initial={{ opacity: 0, y: 6 }}
+                    initial={false}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-                    transition={{ delay: Math.min(i, 10) * 0.03, duration: 0.2 }}
+                    transition={{ duration: 0.2 }}
                     whileHover={{ x: 2 }}
                     className="flex items-center gap-3 rounded-xl border border-zinc-100 bg-card/60 p-3 transition-colors hover:border-primary/20"
                   >
@@ -863,8 +862,13 @@ function LessonForm({ courseSlug, lesson, nextIndex, onSave, onClose }: { course
                 durationMin: Math.max(1, parseInt(duration) || 20),
                 resources: lesson?.resources ?? [],
                 keyTakeaways: lesson?.keyTakeaways ?? [],
+                // Everything about the assignment is kept as it is: this form doesn't edit it.
                 assignment: lesson?.assignment,
                 requiresSubmission: lesson?.requiresSubmission,
+                assignmentMarks: lesson?.assignmentMarks,
+                assignmentDueDate: lesson?.assignmentDueDate,
+                assignmentAi: lesson?.assignmentAi,
+                assignmentBrand: lesson?.assignmentBrand,
                 format: mode,
                 body: mode !== "video" && body.trim() ? body.trim() : undefined,
                 bodyFileUrl: mode === "reading" && !body.trim() ? lesson?.bodyFileUrl : undefined,
@@ -1244,7 +1248,7 @@ function ReviewsPanel() {
   return (
     <div className="space-y-6">
       {usingSeed && !loading && (
-        <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-2 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3.5 py-2.5 text-xs text-amber-700">
+        <motion.div initial={false} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-2 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3.5 py-2.5 text-xs text-amber-700">
           <MessageSquare className="h-3.5 w-3.5 shrink-0" />
           Showing demo reviews — connect a <code className="rounded bg-amber-500/15 px-1 py-0.5 font-mono">/api/admin/reviews</code> endpoint returning <code className="rounded bg-amber-500/15 px-1 py-0.5 font-mono">{"{ reviews: [...] }"}</code> to see live data.
         </motion.div>
@@ -1260,7 +1264,7 @@ function ReviewsPanel() {
         ].map((s, i) => {
           const Icon = s.icon;
           return (
-            <motion.div key={s.label} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }} whileHover={{ y: -4, scale: 1.01 }} className="group">
+            <motion.div key={s.label} initial={false} animate={{ opacity: 1, y: 0 }} transition={{}} whileHover={{ y: -4, scale: 1.01 }} className="group">
               <Card className="flex items-center gap-4 transition-shadow duration-300 group-hover:shadow-lg">
                 <motion.div whileHover={{ rotate: -6, scale: 1.08 }} transition={springHover2} className={cn("relative overflow-hidden rounded-2xl bg-gradient-to-br p-3", s.tint)}>
                   <motion.span className="pointer-events-none absolute inset-0 bg-gradient-to-r from-transparent via-white/50 to-transparent" initial={{ x: "-150%" }} whileHover={{ x: "150%" }} transition={{ duration: 0.6, ease: "easeInOut" }} />
@@ -1304,7 +1308,7 @@ function ReviewsPanel() {
       </div>
 
       <AnimatePresence mode="wait">
-        <motion.div key={section} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.2 }}>
+        <motion.div key={section} initial={false} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.2 }}>
 
           {/* ---- Overview: ratings by course + key phrases/keywords ---- */}
           {section === "overview" && (
@@ -1318,7 +1322,7 @@ function ReviewsPanel() {
                 ) : (
                   <div className="space-y-3">
                     {perCourse.map((c, i) => (
-                      <motion.div key={c.slug} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }} className="rounded-xl border border-zinc-100 p-3">
+                      <motion.div key={c.slug} initial={false} animate={{ opacity: 1, x: 0 }} transition={{}} className="rounded-xl border border-zinc-100 p-3">
                         <div className="flex items-center justify-between gap-2">
                           <p className="truncate text-sm font-medium text-zinc-800">{c.title}</p>
                           <div className="flex shrink-0 items-center gap-1.5">
@@ -1353,7 +1357,7 @@ function ReviewsPanel() {
                     {topPhrases.map((k, i) => {
                       const scale = 0.8 + (k.count / maxPhraseCount) * 0.55;
                       return (
-                        <motion.span key={k.phrase} initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }} whileHover={{ scale: scale * 1.06 }} transition={{ delay: i * 0.03, ...springHover2 }} style={{ fontSize: `${scale}rem` }} className="rounded-full border border-primary/20 bg-primary/5 px-3 py-1 font-medium text-primary">
+                        <motion.span key={k.phrase} initial={{ opacity: 0, scale: 0.7 }} animate={{ opacity: 1, scale: 1 }} whileHover={{ scale: scale * 1.06 }} transition={{ ...springHover2 }} style={{ fontSize: `${scale}rem` }} className="rounded-full border border-primary/20 bg-primary/5 px-3 py-1 font-medium text-primary">
                           {k.phrase} <span className="text-primary/50">· {k.count}</span>
                         </motion.span>
                       );
@@ -1377,7 +1381,7 @@ function ReviewsPanel() {
                   {lovedPhrases.length === 0 ? <p className="text-xs text-zinc-500">Nothing surfaced yet.</p> : (
                     <div className="space-y-2.5">
                       {lovedPhrases.map((p, i) => (
-                        <motion.div key={p.phrase} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }} className="rounded-xl border border-emerald-500/15 bg-emerald-500/5 p-3">
+                        <motion.div key={p.phrase} initial={false} animate={{ opacity: 1, x: 0 }} transition={{}} className="rounded-xl border border-emerald-500/15 bg-emerald-500/5 p-3">
                           <div className="flex items-center justify-between">
                             <span className="text-sm font-medium capitalize text-emerald-800">{p.phrase}</span>
                             <span className="text-[10px] text-emerald-600">{p.count} mention{p.count !== 1 ? "s" : ""}</span>
@@ -1394,7 +1398,7 @@ function ReviewsPanel() {
                   {hatedPhrases.length === 0 ? <p className="text-xs text-zinc-500">Nothing surfaced yet — that's a good sign.</p> : (
                     <div className="space-y-2.5">
                       {hatedPhrases.map((p, i) => (
-                        <motion.div key={p.phrase} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }} className="rounded-xl border border-red-500/15 bg-red-500/5 p-3">
+                        <motion.div key={p.phrase} initial={false} animate={{ opacity: 1, x: 0 }} transition={{}} className="rounded-xl border border-red-500/15 bg-red-500/5 p-3">
                           <div className="flex items-center justify-between">
                             <span className="text-sm font-medium capitalize text-red-800">{p.phrase}</span>
                             <span className="text-[10px] text-red-600">{p.count} mention{p.count !== 1 ? "s" : ""}</span>
@@ -1445,7 +1449,7 @@ function ReviewsPanel() {
                   const verdict = d.mentions === 0 ? "No signal yet" : d.pos > d.neg * 1.5 ? "Learners love this" : d.neg > d.pos * 1.5 ? "Common complaint" : "Mixed feedback";
                   const verdictColor = d.mentions === 0 ? "text-zinc-400" : d.pos > d.neg * 1.5 ? "text-emerald-600" : d.neg > d.pos * 1.5 ? "text-red-600" : "text-amber-600";
                   return (
-                    <motion.div key={aspect} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }} whileHover={{ y: -3 }} className="rounded-xl border border-zinc-100 p-3.5">
+                    <motion.div key={aspect} initial={false} animate={{ opacity: 1, y: 0 }} transition={{}} whileHover={{ y: -3 }} className="rounded-xl border border-zinc-100 p-3.5">
                       <div className="flex items-center justify-between">
                         <p className="text-sm font-medium text-zinc-800">{aspect}</p>
                         <span className="text-[10px] text-zinc-400">{d.mentions} mention{d.mentions !== 1 ? "s" : ""}</span>
@@ -1481,7 +1485,7 @@ function ReviewsPanel() {
                         <motion.div
                           initial={{ height: 0 }}
                           animate={{ height: `${(w.avg / 5) * 100}%` }}
-                          transition={{ delay: i * 0.04, duration: 0.5, ease: "easeOut" }}
+                          transition={{ duration: 0.5, ease: "easeOut" }}
                           className={cn("w-full rounded-full", w.posPct >= 0.6 ? "bg-emerald-500" : w.posPct >= 0.3 ? "bg-amber-400" : "bg-red-400")}
                         />
                       </div>
@@ -1537,7 +1541,7 @@ function ReviewsPanel() {
                       const flagged = isFlagged(r.body);
                       const dup = duplicateIds.has(r.id);
                       return (
-                        <motion.div key={r.id} layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ delay: Math.min(i, 10) * 0.03, duration: 0.2 }} whileHover={{ x: 2 }} className={cn("rounded-xl border bg-white/[0.03] p-3.5 transition-colors", flagged ? "border-red-300/60" : "border-zinc-100 hover:border-primary/20")}>
+                        <motion.div key={r.id} initial={false} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }} whileHover={{ x: 2 }} className={cn("rounded-xl border bg-white/[0.03] p-3.5 transition-colors", flagged ? "border-red-300/60" : "border-zinc-100 hover:border-primary/20")}>
                           <div className="flex flex-wrap items-start justify-between gap-2">
                             <div className="flex items-center gap-2.5">
                               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-secondary text-xs font-bold text-white">{r.userName[0]}</div>
@@ -1731,9 +1735,9 @@ function BugReportsPanel() {
               return (
                 <motion.div
                   key={report.id}
-                  initial={{ opacity: 0, y: 8 }}
+                  initial={false}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: Math.min(i, 8) * 0.03 }}
+                  transition={{}}
                 >
                   <Card className="p-0 overflow-hidden">
                     {/* Row */}

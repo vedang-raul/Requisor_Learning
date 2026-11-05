@@ -4,12 +4,12 @@ import { db } from "@/lib/server/db";
 import { skipEmailVerification } from "@/lib/server/email";
 import { requireAccess } from "@/lib/server/access";
 import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
-import { listUniversities, publicPartnerId, setPublicPartnerId } from "@/lib/server/universities";
+import { allUniversityLooks, listUniversities, publicPartnerId, setPublicPartnerId } from "@/lib/server/universities";
 import { MAX_LOGO_BYTES, readLogo, readUniversityInput } from "@/lib/server/university-input";
 
 /**
  * Universities, for super admins.
- *   GET                                     -> { universities (with people and course counts), publicPartnerId }
+ *   GET                                     -> { universities (with people and course counts, theme and uploaded font), publicPartnerId }
  *   POST   { name, shortName, domains, logo? }       add one
  *   PATCH  { id, name?, shortName?, domains?, logo? }  change one; logo null removes an uploaded logo
  *   DELETE { id }                            remove one (its people and courses stay, without a university)
@@ -33,7 +33,7 @@ const isDuplicate = (error: unknown) => (error as { code?: string })?.code === "
 export async function GET() {
   const who = await requireAccess("super");
   if (who instanceof Response) return who;
-  const [universities, counts, partner] = await Promise.all([
+  const [universities, counts, partner, looks] = await Promise.all([
     listUniversities(),
     db.query<{ university_id: number; people: string; pending: string; courses: string }>(
       `SELECT un.id AS university_id,
@@ -43,6 +43,7 @@ export async function GET() {
          FROM universities un`
     ),
     publicPartnerId(),
+    allUniversityLooks(),
   ]);
   const byId = new Map(counts.rows.map((r) => [r.university_id, r]));
   return Response.json({
@@ -51,6 +52,8 @@ export async function GET() {
       people: Number(byId.get(u.id)?.people ?? 0),
       pending: Number(byId.get(u.id)?.pending ?? 0),
       courses: Number(byId.get(u.id)?.courses ?? 0),
+      theme: looks.themes.get(u.id) ?? null,
+      font: looks.fonts.get(u.id) ?? null,
     })),
     publicPartnerId: partner,
   });

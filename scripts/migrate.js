@@ -250,6 +250,19 @@ p.query(`
   ALTER TABLE course_lessons ADD COLUMN IF NOT EXISTS assignment_due_date DATE;
   -- AI-curated assignment: the tutor's guardrails and which learner data may be used. NULL = off.
   ALTER TABLE course_lessons ADD COLUMN IF NOT EXISTS assignment_ai JSONB;
+  -- Branded assignment: the sponsor's name, logo, banner, colour, links and optional NDA text. NULL = not branded.
+  ALTER TABLE course_lessons ADD COLUMN IF NOT EXISTS assignment_brand JSONB;
+  -- Who signed a branded assignment's NDA, and the exact text they agreed to.
+  CREATE TABLE IF NOT EXISTS assignment_nda_signatures (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    lesson_id VARCHAR(120) NOT NULL,
+    nda_hash CHAR(64) NOT NULL,
+    nda_text TEXT NOT NULL,
+    signed_name TEXT NOT NULL,
+    signed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, lesson_id, nda_hash)
+  );
+  CREATE INDEX IF NOT EXISTS assignment_nda_signatures_lesson_idx ON assignment_nda_signatures (lesson_id, signed_at DESC);
   -- Per-lesson drafts: a tutor can keep an unfinished lesson hidden inside a
   -- live course. DEFAULT TRUE keeps every existing lesson visible.
   ALTER TABLE course_lessons ADD COLUMN IF NOT EXISTS published BOOLEAN NOT NULL DEFAULT TRUE;
@@ -738,6 +751,16 @@ p.query(`
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
   );
   CREATE UNIQUE INDEX IF NOT EXISTS universities_name_key ON universities (lower(name));
+  -- The look its members see (colours and font); null keeps Requisor's own.
+  ALTER TABLE universities ADD COLUMN IF NOT EXISTS theme JSONB;
+  -- A font a super admin uploaded for that look.
+  CREATE TABLE IF NOT EXISTS university_fonts (
+    university_id INTEGER PRIMARY KEY REFERENCES universities(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    format TEXT NOT NULL,
+    data BYTEA NOT NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+  );
 
   ALTER TABLE users
     ADD COLUMN IF NOT EXISTS university_id INT REFERENCES universities(id) ON DELETE SET NULL,

@@ -9,13 +9,13 @@ import { cn } from "@/lib/utils";
 import { parseCourseLessonCount } from "@/lib/ai/course-interview";
 import { renderMarkdownLite, endsInOpenTag } from "@/components/ui/markdown-lite";
 import { useVoice } from "@/hooks/use-voice";
-import { programDraftSummary, PROGRAM_STATE_EVENT } from "@/lib/courses/program-builder";
+import { ASK_FOR_DISCOVERY_NOTES, programDraftSummary, PROGRAM_STATE_EVENT } from "@/lib/courses/program-builder";
 import { PersonaAvatar } from "@/components/assistant/persona-avatar";
 import { AI_GUIDE_PREFERENCES_UPDATED, ASSISTANT_NAME } from "@/lib/assistant/personas";
 import { trackEvent } from "@/lib/analytics";
 import type { Course } from "@/lib/types";
 import { splitActionFrames, type AssistantAction } from "@/lib/assistant/assistant-actions";
-import { AssistantActionCard, cardPrompt, type ActionOutcome } from "@/components/assistant/assistant-action-card";
+import { AssistantActionCard, cardPrompt, CLOSE_ASSISTANT_EVENT, type ActionOutcome } from "@/components/assistant/assistant-action-card";
 import { classifySpokenAnswer, isStopCommand, isStopUtterance } from "@/lib/accessibility/voice-commands";
 import { startWakeWord, wakeWordAvailable, type WakeState, type WakeWordListener } from "@/lib/voice/wake-word";
 import { useAccessibility } from "@/components/layout/accessibility-provider";
@@ -52,9 +52,10 @@ const LEARNER_QUICK_PROMPTS = [
   { icon: Sparkles, label: "Give me a practice assignment" },
 ];
 /** On the Program Builder page: about the employer program only, and only what fits the step the tutor is on. */
+const BUILD_FROM_NOTES = "Build a program from my discovery call notes";
 const PROGRAM_BUILDER_QUICK_PROMPTS = {
   start: [
-    { icon: Sparkles, label: "Build a program from my discovery call notes" },
+    { icon: Sparkles, label: BUILD_FROM_NOTES },
     { icon: ListChecks, label: "Write the curriculum from what's filled in" },
   ],
   curriculum: [{ icon: BookPlus, label: "Make it 5 modules" }],
@@ -947,6 +948,13 @@ export function AiAssistant() {
       body: JSON.stringify({ id: feedbackId, rating: next, reply: message.content, question, mode: isTutorMode ? "tutor" : "learner" }),
     }).catch(() => { /* a lost rating is not worth interrupting the chat for */ });
   }
+  // A card that opens something to work on (a new course in the editor) closes the panel so it's in view.
+  const closePanelRef = useRef<() => void>(() => undefined);
+  useEffect(() => {
+    const onClose = () => closePanelRef.current();
+    window.addEventListener(CLOSE_ASSISTANT_EVENT, onClose);
+    return () => window.removeEventListener(CLOSE_ASSISTANT_EVENT, onClose);
+  }, []);
   function closePanel() {
     cancelActiveRequest();
     voice.cancelListening();
@@ -957,6 +965,7 @@ export function AiAssistant() {
     // Keyboard and screen-reader users land back on the button that opened it.
     setTimeout(() => launcherRef.current?.focus(), 0);
   }
+  closePanelRef.current = closePanel;
   function startRevealLoop() {
     // "Reduce motion": no typing-out effect, the reply appears as it arrives.
     const BASE_CPS = reduceMotion ? Number.POSITIVE_INFINITY : 60;
@@ -1527,12 +1536,16 @@ export function AiAssistant() {
                         key={label}
                         initial={{ opacity: 0, y: 6 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.2, delay: i * 0.05 }}
+                        transition={{ duration: 0.2 }}
                         whileHover={{ y: -2 }}
                         whileTap={{ scale: 0.97 }}
                         onClick={() => {
                           if (isTutorMode && !builderMode && label === "Design a course from my topic") startCourseInterview();
-                          else void send(label);
+                          // The notes come next, so there's nothing for the AI to do yet: ask for them here.
+                          else if (builderMode && label === BUILD_FROM_NOTES && !programDraftSummary(state.user?.email)?.hasTranscript) {
+                            setMessages([{ role: "user", content: label }, { role: "assistant", content: ASK_FOR_DISCOVERY_NOTES }]);
+                            setTimeout(() => textareaRef.current?.focus(), 80);
+                          } else void send(label);
                         }}
                         className="focus-ring group flex items-center gap-3 rounded-xl border border-border bg-white px-3.5 py-3 text-left text-sm font-medium text-zinc-700 shadow-soft transition-colors hover:border-primary/50 hover:text-primary"
                       >

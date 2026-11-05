@@ -19,9 +19,9 @@ function LeaderboardRow({ entry, index }: { entry: LeaderboardEntry; index: numb
   const { rank, name, xp, isSelf } = entry;
   return (
     <motion.div
-      initial={{ opacity: 0, x: -8 }}
+      initial={false}
       animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: index * 0.05, duration: 0.2 }}
+      transition={{ duration: 0.2 }}
       whileHover={{ x: 2 }}
       className={cn(
         "flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors duration-200",
@@ -81,7 +81,7 @@ export default function BadgesPage() {
 
   return (
     <PageTransition className="space-y-8">
-      <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25 }}>
+      <motion.div initial={false} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.25 }}>
         <h1 className="text-2xl font-bold md:text-3xl">Badges & <span className="text-gradient">Achievements</span></h1>
         <p className="mt-1 text-sm text-zinc-600">Complete learning paths to earn badges and rack up XP.</p>
       </motion.div>

@@ -15,6 +15,9 @@ import { ViewingAsBanner } from "@/components/admin/view-as";
 import { REPLAY_TOUR_KEY } from "@/lib/utils";
 import { trackEvent } from "@/lib/analytics";
 import { rememberAfterSignIn, takeAfterSignIn } from "@/lib/navigation/after-sign-in";
+import { UniversityLayoutProvider, useUniversityLayout } from "@/components/layout/university-layout-context";
+import type { UniversityLayout } from "@/lib/theme/university-layout";
+import { cn } from "@/lib/utils";
 
 interface MeData {
   onboardingDone: boolean;
@@ -25,6 +28,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   const { state, hydrated } = useStore();
   const router = useRouter();
   const pathname = usePathname();
+  const sidebarRight = useUniversityLayout().sidebarSide === "right";
   const [meData, setMeData] = useState<MeData | null>(null);
   const [meLoaded, setMeLoaded] = useState(false);
   const [replayTour, setReplayTour] = useState(false);
@@ -96,7 +100,7 @@ function Shell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="relative flex min-h-screen animate-in fade-in duration-200">
+    <div className={cn("relative flex min-h-screen", sidebarRight && "flex-row-reverse")}>
       <GradientBlobs />
       <Sidebar />
       <div className="relative flex min-w-0 flex-1 flex-col">
@@ -123,10 +127,13 @@ function Shell({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+/** The signed-in app around every page: sidebar, top bar, assistant, onboarding. */
+export function AppShell({ children, layout }: { children: React.ReactNode; layout?: UniversityLayout | null }) {
   return (
-    <Suspense>
-      <Shell children={children} />
-    </Suspense>
+    <UniversityLayoutProvider layout={layout ?? null}>
+      <Suspense>
+        <Shell children={children} />
+      </Suspense>
+    </UniversityLayoutProvider>
   );
 }

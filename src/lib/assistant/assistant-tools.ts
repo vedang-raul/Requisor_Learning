@@ -159,7 +159,10 @@ const TOOLS: ToolDef[] = [
           ...(transcript ? { video_transcript: transcript.text, ...(transcript.truncated ? { video_transcript_truncated: true } : {}) } : {}),
           ...(body ? { lesson_text: body.slice(0, 6000), ...(body.length > 6000 ? { lesson_text_truncated: true } : {}) } : {}),
           ...(lesson.bodyFileUrl ? { lesson_text_note: "The lesson's reading is an uploaded file you cannot open." } : {}),
-          ...(lesson.assignment ? { assignment: lesson.assignment.slice(0, 2000) } : { assignment: null }),
+          // A branded assignment under an NDA: learners read its brief only in the lesson, once they've signed.
+          ...(ctx.role === "employee" && lesson.assignmentBrand?.nda
+            ? { assignment: null, assignment_note: `The brief is confidential (sponsored by ${lesson.assignmentBrand.name}): the learner reads it in the lesson after signing the confidentiality agreement there. Never guess its contents.` }
+            : lesson.assignment ? { assignment: lesson.assignment.slice(0, 2000) } : { assignment: null }),
           ...(lesson.requiresSubmission ? { graded_submission: true, total_points: lesson.assignmentMarks ?? null, due_date: lesson.assignmentDueDate ?? null } : {}),
           resources: lesson.resources.map((r) => r.label).slice(0, 10),
           note: "This is ALL you know about this lesson. " + (!isVideo ? "" : transcript

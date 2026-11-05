@@ -23,6 +23,10 @@ export type ActionOutcome = { status: "done"; message: string } | { status: "can
 
 /** Screens listening for this reload their data after the assistant changes it. */
 export const DATA_CHANGED_EVENT = "requisor:data-changed";
+/** Asks the assistant's panel to close, so what a card just opened is in plain view. */
+export const CLOSE_ASSISTANT_EVENT = "requisor:close-assistant";
+/** Where a tutor edits one course: My Courses with that course open in the editor. */
+export const courseEditorHref = (slug: string) => `/app/tutor/?course=${encodeURIComponent(slug)}`;
 
 type State =
   | { phase: "idle" }
@@ -293,9 +297,14 @@ export function AssistantActionCard({ action, onOutcome, voiceAnswer, onAnnounce
           const res = await fetch("/api/courses", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(action.course) });
           const data = await readJson(res);
           if (!res.ok) throw new Error(res.status === 409 ? "A course with this name already exists." : String(data.error ?? "Couldn't create the course."));
-          finish(`Created "${action.course.title}" as a draft${action.course.lessons.length ? ` with ${action.course.lessons.length} lesson${action.course.lessons.length === 1 ? "" : "s"}` : ""}.`, {
-            href: "/app/tutor/", hrefLabel: "Open Tutor Workspace",
+          // The new course opens in the editor straight away, ready to tweak; the card keeps a link back to it.
+          const created = (data.course ?? {}) as { slug?: unknown };
+          const href = courseEditorHref(typeof created.slug === "string" && created.slug ? created.slug : action.course.slug);
+          finish(`Created "${action.course.title}" as a draft${action.course.lessons.length ? ` with ${action.course.lessons.length} lesson${action.course.lessons.length === 1 ? "" : "s"}` : ""}. It's open in the editor for you to review and change.`, {
+            href, hrefLabel: "Edit the course",
           }, true);
+          if (!byVoiceRef.current) router.push(href);
+          window.dispatchEvent(new Event(CLOSE_ASSISTANT_EVENT));
           return;
         }
         case "program_builder":
