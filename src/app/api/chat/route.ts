@@ -19,7 +19,7 @@ import {
   RequestBodyTooLargeError,
 } from "@/lib/server/request-body";
 import { runAssistantTool, toolsForRole, type AssistantWorkspace, type ToolContext } from "@/lib/assistant/assistant-tools";
-import type { ProgramStage } from "@/lib/courses/program-builder";
+import { ASK_FOR_DISCOVERY_NOTES, curriculumGate, type ProgramStage } from "@/lib/courses/program-builder";
 import { ttsCharacterName, ttsCharacterStyle, ttsConfigured } from "@/lib/ai/tts";
 import { getSpeechCatalog } from "@/lib/courses/speech-catalog";
 import { ACTION_FRAME, encodeActionFrame } from "@/lib/assistant/assistant-actions";
@@ -760,6 +760,7 @@ ${SIMPLE_LANGUAGE_NOTE}` : "";
           let outputLimited = false;
           let actionsEmitted = 0;
           let replyText = "";
+          let retriedEmpty = false;
 
           for (let round = 0; round < MAX_TOOL_ROUNDS && !outputLimited; round++) {
             const offerTools = tools.length > 0 && round < MAX_TOOL_ROUNDS - 1;
@@ -872,6 +873,12 @@ ${SIMPLE_LANGUAGE_NOTE}` : "";
             clientAbort.signal.removeEventListener("abort", onClientAbort);
 
             const calls = toolCalls.filter((c) => c && c.name);
+            // The model sometimes ends a round with nothing at all, often right after a refused tool. Ask once more.
+            if (!outputLimited && !clientCancelled && !clientAbort.signal.aborted && calls.length === 0 && !replyText.trim() && actionsEmitted === 0 && !retriedEmpty && round < MAX_TOOL_ROUNDS - 1) {
+              retriedEmpty = true;
+              convo.push({ role: "system", content: "Your last reply was empty. Answer the user now, in plain words." });
+              continue;
+            }
             if (outputLimited || calls.length === 0 || !toolContext) break;
 
             // Run the requested tools and continue the conversation.
@@ -899,7 +906,8 @@ ${SIMPLE_LANGUAGE_NOTE}` : "";
           }
 
           if (emittedChars === 0 && actionsEmitted === 0 && !outputLimited) {
-            controller.enqueue(encoder.encode("\n\n_Sorry, the AI assistant returned an empty response. Please try again._"));
+            const needsNotes = workspace === "program_builder" && curriculumGate(toolContext?.programStage) !== null;
+            controller.enqueue(encoder.encode(needsNotes ? ASK_FOR_DISCOVERY_NOTES : "\n\n_Sorry, the AI assistant returned an empty response. Please try again._"));
           } else if (actionsEmitted > 0 && replyText.trim() === "") {
             // A reply that is only a proposal still gets a one-line lead-in.
             controller.enqueue(encoder.encode("Here's what I've prepared — check the details, then confirm on the card or just say yes."));

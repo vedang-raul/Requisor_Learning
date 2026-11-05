@@ -540,6 +540,9 @@ export type ProgramStage = { hasCurriculum?: unknown; hasProposal?: unknown; ste
 /** The steps open in order: the curriculum once there is one, the proposal only once it has been created from step 2. */
 export const stepOpen = (step: 1 | 2 | 3, hasCurriculum: boolean, hasProposal: boolean) => step === 1 || (step === 2 ? hasCurriculum : hasProposal);
 
+/** What the assistant says when it has nothing to build a program from. */
+export const ASK_FOR_DISCOVERY_NOTES = "Paste your discovery call notes here, or tell me what the employer needs, and I'll build the program from that.";
+
 /** Why a curriculum can't be written yet, or null when it can: it needs discovery notes or a topic to work from. */
 export function curriculumGate(stage: ProgramStage | null | undefined): string | null {
   if (stage?.hasCurriculum === true || stage?.hasTranscript === true || (typeof stage?.topic === "string" && stage.topic.trim())) return null;

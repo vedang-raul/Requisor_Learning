@@ -407,6 +407,45 @@ describe("POST /api/chat role-aware assistant", () => {
     await expect(response.text()).resolves.toContain("returned an empty response");
   });
 
+  describe("empty replies", () => {
+    const sse = (body: string) => new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+    const words = (text: string) => `data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\ndata: [DONE]\n`;
+    const refusedTool = `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "propose_program_builder", arguments: "{\"action\":\"generate\"}" } }] } }] })}\ndata: [DONE]\n`;
+    const builderChat = (programBuilder?: object) => chatRequest({
+      workspace: "program_builder", ...(programBuilder ? { programBuilder } : {}),
+      messages: [{ role: "user", content: "Build a program from my discovery call notes" }],
+    });
+    beforeEach(() => mockSession.mockResolvedValue({ user: { id: "5", email: "tutor@example.test", role: "tutor" } }));
+
+    it("asks the model once more, and shows only the real answer", async () => {
+      global.fetch = jest.fn().mockResolvedValueOnce(sse("data: [DONE]\n")).mockResolvedValueOnce(sse(words("Paste your notes.")));
+      const text = await (await POST(builderChat())).text();
+      expect(text).toBe("Paste your notes.");
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("asks for the notes when a program has nothing to build from and the model stays silent", async () => {
+      global.fetch = jest.fn(async () => sse("data: [DONE]\n"));
+      const text = await (await POST(builderChat())).text();
+      expect(text).toContain("Paste your discovery call notes here");
+      expect(text).not.toContain("empty response");
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("also recovers when the silence follows a refused tool", async () => {
+      global.fetch = jest.fn().mockResolvedValueOnce(sse(refusedTool)).mockImplementation(async () => sse("data: [DONE]\n"));
+      const text = await (await POST(builderChat())).text();
+      expect(text).toContain("Paste your discovery call notes here");
+      expect(text).not.toContain("empty response");
+    });
+
+    it("doesn't ask for notes the tutor has already given", async () => {
+      global.fetch = jest.fn(async () => sse("data: [DONE]\n"));
+      const text = await (await POST(builderChat({ hasTranscript: true, step: 1 }))).text();
+      expect(text).toContain("returned an empty response");
+    });
+  });
+
   it("stops the upstream request when the client cancels the response stream", async () => {
     mockSession.mockResolvedValue({
       user: { id: "4", email: "learner@example.test", role: "employee" },
