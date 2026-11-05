@@ -7,6 +7,12 @@ only. How to cut a release is in [docs/RELEASING.md](docs/RELEASING.md).
 
 ## [Unreleased]
 
+### Added
+- **Privacy policy page** (`/privacy`): documents every category of data the Activity tab collects
+  (sign-in events, page views, location, device, AI usage), who can see it, lawful basis, third-party
+  services (ipapi.co, Google OAuth), user rights, and cookie details. The Activity tab footer now
+  links to it. No database changes.
+
 Database: three new tables, `course_preview_links`, `lesson_quizzes` and
 `quiz_attempts` (additive; the app also creates them on first use). Nothing
 existing changes.

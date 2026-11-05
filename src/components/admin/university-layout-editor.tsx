@@ -2,12 +2,27 @@
 
 import { ChevronDown, ChevronUp, Eye, EyeOff, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { DEFAULT_LAYOUT, MAX_NAV_LABEL, NAV_ENTRIES, type NavSetting, type UniversityLayout } from "@/lib/theme/university-layout";
+import { DEFAULT_LAYOUT, MAX_NAV_LABEL, NAV_ENTRIES, type NavKey, type NavSetting, type UniversityLayout } from "@/lib/theme/university-layout";
 
 /**
  * A university's layout, in its theme editor: where the sidebar sits and how it
  * looks, the menu's names, order and hidden items, and what the top bar shows.
  */
+
+const NAV_GROUP: Record<NavKey, "Everyone" | "Student view" | "Tutor view"> = {
+  dashboard:            "Everyone",
+  profile:              "Everyone",
+  paths:                "Student view",
+  "my-learning":        "Student view",
+  badges:               "Student view",
+  submissions:          "Student view",
+  tutor:                "Tutor view",
+  "program-builder":    "Tutor view",
+  "check-assignments":  "Tutor view",
+  admin:                "Tutor view",
+};
+
+const GROUP_LABELS: ("Everyone" | "Student view" | "Tutor view")[] = ["Tutor view", "Student view", "Everyone"];
 function Choice<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: [T, string][]; onChange: (v: T) => void }) {
   return (
     <div>
@@ -64,27 +79,39 @@ export function UniversityLayoutEditor({ value, onChange }: { value: UniversityL
             <RotateCcw className="h-3 w-3" aria-hidden="true" />Default names and order
           </button>
         </div>
-        <ul className="mt-1 divide-y divide-zinc-100 rounded-lg border border-zinc-200 bg-white">
-          {value.nav.map((n, i) => {
-            const entry = NAV_ENTRIES.find((e) => e.key === n.key)!;
+        <div className="mt-1 rounded-lg border border-zinc-200 bg-white">
+          {GROUP_LABELS.map((group) => {
+            const groupItems = value.nav.map((n, i) => ({ n, i })).filter(({ n }) => NAV_GROUP[n.key] === group);
+            if (groupItems.length === 0) return null;
             return (
-              <li key={n.key} className={cn("flex items-center gap-1.5 px-2 py-1", n.hidden && "bg-zinc-50")}>
-                <input value={n.label ?? ""} placeholder={entry.label} maxLength={MAX_NAV_LABEL} aria-label={`Name for ${entry.label}`}
-                  onChange={(e) => patchItem(i, { label: e.target.value || undefined })}
-                  className={cn("focus-ring h-7 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1.5 text-xs text-zinc-900 hover:border-zinc-200 focus:border-zinc-300", n.hidden && "text-zinc-400 line-through")} />
-                <button type="button" disabled={i === 0} onClick={() => move(i, -1)} aria-label={`Move ${entry.label} up`} className="focus-ring rounded p-1 text-zinc-500 hover:bg-zinc-100 disabled:opacity-30"><ChevronUp className="h-3.5 w-3.5" /></button>
-                <button type="button" disabled={i === value.nav.length - 1} onClick={() => move(i, 1)} aria-label={`Move ${entry.label} down`} className="focus-ring rounded p-1 text-zinc-500 hover:bg-zinc-100 disabled:opacity-30"><ChevronDown className="h-3.5 w-3.5" /></button>
-                <button type="button" disabled={!entry.canHide} onClick={() => patchItem(i, { hidden: !n.hidden || undefined })} title={entry.canHide ? (n.hidden ? "Show in the menu" : "Hide from the menu") : "The dashboard is always in the menu"}
-                  aria-label={n.hidden ? `Show ${entry.label}` : `Hide ${entry.label}`} className="focus-ring rounded p-1 text-zinc-500 hover:bg-zinc-100 disabled:opacity-30">
-                  {n.hidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                </button>
-              </li>
+              <div key={group} className="border-b border-zinc-100 last:border-0">
+                <p className="px-2 pt-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">{group}</p>
+                <ul className="divide-y divide-zinc-100">
+                  {groupItems.map(({ n, i }, gi) => {
+                    const entry = NAV_ENTRIES.find((e) => e.key === n.key)!;
+                    const isFirstInGroup = gi === 0;
+                    const isLastInGroup = gi === groupItems.length - 1;
+                    return (
+                      <li key={n.key} className={cn("flex items-center gap-1.5 px-2 py-1", n.hidden && "bg-zinc-50")}>
+                        <input value={n.label ?? ""} placeholder={entry.label} maxLength={MAX_NAV_LABEL} aria-label={`Name for ${entry.label}`}
+                          onChange={(e) => patchItem(i, { label: e.target.value || undefined })}
+                          className={cn("focus-ring h-7 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1.5 text-xs text-zinc-900 hover:border-zinc-200 focus:border-zinc-300", n.hidden && "text-zinc-400 line-through")} />
+                        <button type="button" disabled={isFirstInGroup} onClick={() => move(i, -1)} aria-label={`Move ${entry.label} up`} className="focus-ring rounded p-1 text-zinc-500 hover:bg-zinc-100 disabled:opacity-30"><ChevronUp className="h-3.5 w-3.5" /></button>
+                        <button type="button" disabled={isLastInGroup} onClick={() => move(i, 1)} aria-label={`Move ${entry.label} down`} className="focus-ring rounded p-1 text-zinc-500 hover:bg-zinc-100 disabled:opacity-30"><ChevronDown className="h-3.5 w-3.5" /></button>
+                        <button type="button" disabled={!entry.canHide} onClick={() => patchItem(i, { hidden: !n.hidden || undefined })} title={entry.canHide ? (n.hidden ? "Show in the menu" : "Hide from the menu") : "The dashboard is always in the menu"}
+                          aria-label={n.hidden ? `Show ${entry.label}` : `Hide ${entry.label}`} className="focus-ring rounded p-1 text-zinc-500 hover:bg-zinc-100 disabled:opacity-30">
+                          {n.hidden ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
             );
           })}
-        </ul>
+        </div>
         <p className="mt-1 text-[11px] text-zinc-500">
-          Type over a name to rename it. Each person only sees the items for their role (tutor items for tutors, and so on).
-          Hiding takes an item off the menu; the page still opens from a link.
+          Type over a name to rename it. Hiding takes an item off the menu; the page still opens from a link.
         </p>
       </div>
 

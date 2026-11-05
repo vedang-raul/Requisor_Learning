@@ -223,7 +223,8 @@ export function ActivityPanel({ universities }: { universities: University[] }) 
         </div>
       </Card>
       <p className="text-xs text-zinc-500">
-        Time counts only while the tab is open and in use (or a video is playing). Sign-in locations appear when the hosting provider reports them.
+        Time counts only while the tab is open and in use (or a video is playing). Sign-in locations appear when the hosting provider reports them.{" "}
+        <a href="/privacy" className="underline hover:text-zinc-700">Privacy policy</a>
       </p>
 
       {openId !== null && <ProfileDrawer userId={openId} days={days} onClose={() => setOpenId(null)} />}
