@@ -11,6 +11,8 @@ const nextConfig = {
     "localhost",
   ],
 
+  turbopack: {},
+
   async headers() {
     // ── HTTP security headers ────────────────────────────────────────────────
     // Applied to every response the server sends.  These are defence-in-depth
