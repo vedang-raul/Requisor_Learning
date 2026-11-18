@@ -81,7 +81,8 @@ type Block =
   | { type: "p"; lines: string[] }
   | { type: "ul"; items: string[] }
   | { type: "h"; level: 2 | 3; text: string }
-  | { type: "code"; language?: string; content: string };
+  | { type: "code"; language?: string; content: string }
+  | { type: "source"; line: string };
 
 /** Groups raw lines into paragraph/list/heading/code blocks — a "- " line starts a
  * list even mid-paragraph (e.g. a "By path:" header immediately followed by bullets),
@@ -128,6 +129,10 @@ function groupBlocks(content: string): Block[] {
     } else if (trimmed === "") {
       flushPara();
       flushList();
+    } else if (/^Source:\s*/i.test(trimmed)) {
+      flushPara();
+      flushList();
+      blocks.push({ type: "source", line: trimmed.replace(/^Source:\s*/i, "") });
     } else if (trimmed.startsWith("- ")) {
       flushPara();
       listBuffer.push(trimmed.slice(2));
@@ -149,6 +154,15 @@ export function renderMarkdownLite(content: string, cursor: React.ReactNode = nu
   const blocks = groupBlocks(content);
   return blocks.map((block, bi) => {
     const isLastBlock = bi === blocks.length - 1;
+    if (block.type === "source") {
+      return (
+        <div key={bi} className="mt-3 border-t border-zinc-100 pt-2">
+          <span className="mr-1.5 text-[11px] font-medium uppercase tracking-wide text-zinc-400">Source</span>
+          {formatInline(block.line, `${bi}-src`, resolveLesson)}
+          {isLastBlock && cursor}
+        </div>
+      );
+    }
     if (block.type === "code") {
       return (
         <pre key={bi} className="mb-3 overflow-x-auto rounded-xl bg-zinc-900 px-4 py-3 text-[12.5px] leading-relaxed text-zinc-100 last:mb-0">

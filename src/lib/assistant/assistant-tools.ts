@@ -25,6 +25,8 @@ import { getLessonTranscript } from "@/lib/courses/lesson-transcript";
 import { COURSE_ICONS, DEFAULT_COURSE_ICON, getCategoryCover, getCategoryMeta, isCourseIcon } from "@/components/course/category-icon";
 import { cleanDiscoveryFields, curriculumGate, FORMATS, INDUSTRIES, PROGRAM_RUNS, proposalGate, type ProgramRun, type ProgramStage } from "@/lib/courses/program-builder";
 import { transcriptForAi } from "@/lib/courses/transcript";
+import { xaiResponsesCall } from "@/lib/ai/responses-api";
+import type { AiSource } from "@/lib/ai/sources";
 
 export type AssistantRole = "employee" | "tutor" | "admin";
 /** Who the assistant acts for. superAdmin and universityId decide which universities' courses it reaches. */
@@ -34,7 +36,7 @@ export type AssistantRole = "employee" | "tutor" | "admin";
  * builder (it offers to open it). Each has its own conversation.
  */
 export type AssistantWorkspace = "courses" | "program_builder";
-export type ToolContext = { userId: number; role: AssistantRole; superAdmin?: boolean; universityId?: number | null; workspace?: AssistantWorkspace; programStage?: ProgramStage };
+export type ToolContext = { userId: number; role: AssistantRole; superAdmin?: boolean; universityId?: number | null; workspace?: AssistantWorkspace; programStage?: ProgramStage; pendingSources?: AiSource[] };
 
 /** The only tools offered on the Program Builder page. */
 const PROGRAM_BUILDER_TOOLS = new Set(["propose_program_builder", "propose_open_page", "list_my_courses"]);
@@ -1115,6 +1117,42 @@ const TOOLS: ToolDef[] = [
         { kind: "assign_tutor", id: newId(), courseSlug: slug, courseTitle: course.title, tutorId: tutor.id, tutorName: tutor.name || tutor.email },
         `Make ${tutor.name || tutor.email} the tutor of "${course.title}"; they'll be emailed.`
       );
+    },
+  },
+  {
+    name: "research_topic",
+    description: "Search the web to research a topic related to a course or lesson — pedagogy, subject matter, industry trends, statistics, or anything that would help build or teach a course. Returns a researched summary with cited sources that appear below the reply.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "The research question or topic to search for." },
+        context: { type: "string", description: "Optional extra context, e.g. the course subject or learner level." },
+      },
+      required: ["query"],
+    },
+    roles: ["employee", "tutor", "admin"] as AssistantRole[],
+    async run(args, ctx) {
+      const query = str(args.query, 500);
+      const context = str(args.context, 300);
+      if (!query) return fail("A research query is required.");
+      const apiKey = process.env.XAI_API_KEY ?? "";
+      if (!apiKey) return fail("Web search is not configured on this server.");
+      const userMessage = context ? `${query}\n\nContext: ${context}` : query;
+      const { text, citations } = await xaiResponsesCall(
+        { userId: ctx.userId, feature: "assistant" },
+        apiKey,
+        {
+          model: process.env.XAI_MODEL ?? "grok-3-mini",
+          instructions: "You are a concise research assistant. Use web search to find accurate, up-to-date information. Summarise in 3–6 sentences. Ground every claim in sources you found.",
+          input: [{ role: "user", content: userMessage }],
+          maxOutputTokens: 800,
+          webSearch: true,
+        }
+      );
+      if (citations.length > 0) {
+        ctx.pendingSources = [...(ctx.pendingSources ?? []), ...citations];
+      }
+      return { content: json({ summary: text, source_count: citations.length, note: "Present this summary to the user. Sources will appear in the chat automatically." }) };
     },
   },
 ];

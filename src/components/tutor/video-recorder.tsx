@@ -10,6 +10,8 @@ import { defaultScriptMinutes, followSpeech, lessonBriefKey, normalizeWord, pars
 import { lessonBrief } from "@/lib/courses/lesson-brief";
 import { cn } from "@/lib/utils";
 import { askConfirm } from "@/components/ui/confirm-dialog";
+import { AiSources } from "@/components/ai/AiSources";
+import type { AiSource } from "@/lib/ai/sources";
 
 /**
  * Lesson recording. The wizard's Record tab (RecordStudio) opens the recorder
@@ -379,6 +381,7 @@ export function VideoRecorder({
   const [scriptNotes, setScriptNotes] = useState("");
   const [writing, setWriting] = useState(false);
   const [scriptError, setScriptError] = useState<string | null>(null);
+  const [scriptSources, setScriptSources] = useState<AiSource[]>([]);
   useEffect(() => {
     let found: LessonBrief | null = null;
     try {
@@ -404,9 +407,10 @@ export function VideoRecorder({
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title, description: brief?.description ?? "", courseTitle: brief?.courseTitle ?? "", section: brief?.section ?? "", notes: scriptNotes, minutes: scriptMinutes }),
       });
-      const data = (await res.json().catch(() => ({}))) as { script?: string; error?: string };
+      const data = (await res.json().catch(() => ({}))) as { script?: string; sources?: AiSource[]; error?: string };
       if (!res.ok || !data.script) throw new Error(data.error || "Couldn't write a script right now.");
       setScript(data.script);
+      setScriptSources(Array.isArray(data.sources) ? data.sources : []);
     } catch (e) {
       setScriptError(e instanceof Error ? e.message : "Couldn't write a script right now.");
     } finally {
@@ -698,6 +702,7 @@ export function VideoRecorder({
                 </Button>
               </div>
               {scriptError && <p role="alert" className="text-xs text-red-700">{scriptError}</p>}
+              {!scriptError && scriptSources.length > 0 && <AiSources sources={scriptSources} />}
             </div>
             <label className="block text-sm font-medium text-zinc-800">
               Teleprompter script <span className="font-normal text-zinc-500">(optional)</span>

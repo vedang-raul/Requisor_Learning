@@ -1,4 +1,5 @@
 import type { Course, Lesson } from "@/lib/types";
+import type { AiSource } from "@/lib/ai/sources";
 
 /**
  * Actions the AI assistant can *propose* in chat. The model never changes
@@ -34,6 +35,26 @@ export type AssistantAction =
 /** ASCII record separator: frames an action inside the streamed reply. Model
  *  text is stripped of this character, so only the server can emit a frame. */
 export const ACTION_FRAME = "\u001e";
+
+/** ASCII unit separator: frames a sources list at the end of a streamed reply. */
+export const SOURCE_FRAME = "\u001f";
+
+export function encodeSourceFrame(sources: AiSource[]): string {
+  return `${SOURCE_FRAME}${JSON.stringify({ sources })}${SOURCE_FRAME}`;
+}
+
+export function splitSourceFrame(raw: string): { text: string; sources: AiSource[] | null } {
+  const start = raw.indexOf(SOURCE_FRAME);
+  if (start < 0) return { text: raw, sources: null };
+  const end = raw.indexOf(SOURCE_FRAME, start + 1);
+  if (end < 0) return { text: raw.slice(0, start), sources: null };
+  try {
+    const parsed = JSON.parse(raw.slice(start + 1, end)) as { sources?: AiSource[] };
+    return { text: raw.slice(0, start), sources: Array.isArray(parsed?.sources) ? parsed.sources : null };
+  } catch {
+    return { text: raw.slice(0, start), sources: null };
+  }
+}
 
 export function encodeActionFrame(action: AssistantAction): string {
   return `${ACTION_FRAME}${JSON.stringify(action)}${ACTION_FRAME}`;

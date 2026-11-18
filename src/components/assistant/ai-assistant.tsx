@@ -14,8 +14,11 @@ import { PersonaAvatar } from "@/components/assistant/persona-avatar";
 import { AI_GUIDE_PREFERENCES_UPDATED, ASSISTANT_NAME } from "@/lib/assistant/personas";
 import { trackEvent } from "@/lib/analytics";
 import type { Course } from "@/lib/types";
-import { splitActionFrames, type AssistantAction } from "@/lib/assistant/assistant-actions";
+import { splitActionFrames, splitSourceFrame, type AssistantAction } from "@/lib/assistant/assistant-actions";
 import { AssistantActionCard, cardPrompt, CLOSE_ASSISTANT_EVENT, type ActionOutcome } from "@/components/assistant/assistant-action-card";
+import { AiSources } from "@/components/ai/AiSources";
+import { parseSourceTags } from "@/lib/ai/sources";
+import type { AiSource } from "@/lib/ai/sources";
 import { classifySpokenAnswer, isStopCommand, isStopUtterance } from "@/lib/accessibility/voice-commands";
 import { startWakeWord, wakeWordAvailable, type WakeState, type WakeWordListener } from "@/lib/voice/wake-word";
 import { useAccessibility } from "@/components/layout/accessibility-provider";
@@ -27,6 +30,8 @@ type ChatMessage = {
   feedback?: "up" | "down"; feedbackId?: string;
   /** The user cut this reply short. */
   stopped?: boolean;
+  /** Source citations: real URLs from web search, or internal lesson/context references. */
+  sources?: AiSource[];
 };
 
 /** What the model is told happened to its proposals, so the conversation stays accurate. */
@@ -396,6 +401,8 @@ export function AiAssistant() {
   const [streaming, setStreaming] = useState(false);
   const [retryText, setRetryText] = useState<string | null>(null);
   const [courseDraft, setCourseDraft] = useState<Course | null>(null);
+  const [draftSources, setDraftSources] = useState<AiSource[]>([]);
+  const [draftFeedback, setDraftFeedback] = useState("");
   const [draftLoading, setDraftLoading] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
   const [courseInterviewStep, setCourseInterviewStep] = useState<number | null>(null);
@@ -437,6 +444,7 @@ export function AiAssistant() {
   // Raw streamed text including action frames; fullTextRef holds the visible part.
   const rawTextRef = useRef("");
   const replyActionsRef = useRef<AssistantAction[]>([]);
+  const replyWebSourcesRef = useRef<AiSource[]>([]);
   const [actionOutcomes, setActionOutcomes] = useState<Record<string, ActionOutcome>>({});
   const revealedRef = useRef(0);
   const rafRef = useRef<number | null>(null);
@@ -997,6 +1005,20 @@ export function AiAssistant() {
       } else {
         rafRef.current = null;
         setStreaming(false);
+        const { clean: cleanedText, sources: parsedSources } = parseSourceTags(fullTextRef.current);
+        const allSources = [...replyWebSourcesRef.current, ...parsedSources];
+        if (allSources.length > 0 || cleanedText !== fullTextRef.current) {
+          if (cleanedText !== fullTextRef.current) {
+            fullTextRef.current = cleanedText;
+            revealedRef.current = Math.min(revealedRef.current, cleanedText.length);
+          }
+          setMessages((prev) => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            if (last?.role === "assistant") updated[updated.length - 1] = { ...last, content: cleanedText, sources: allSources.length > 0 ? allSources : undefined };
+            return updated;
+          });
+        }
         const finalText = fullTextRef.current;
         // Screen readers hear the finished reply once (not word by word) — unless it's being spoken aloud.
         if (!speakingReplyRef.current && finalText.trim()) announce(plainForAnnouncement(finalText));
@@ -1085,6 +1107,7 @@ export function AiAssistant() {
     fullTextRef.current = "";
     rawTextRef.current = "";
     replyActionsRef.current = [];
+    replyWebSourcesRef.current = [];
     revealedRef.current = 0;
     networkDoneRef.current = false;
     pauseUntilRef.current = 0;
@@ -1137,7 +1160,9 @@ export function AiAssistant() {
         const { done, value } = await reader.read();
         if (done) break;
         rawTextRef.current += decoder.decode(value, { stream: true });
-        const split = splitActionFrames(rawTextRef.current);
+        const { text: withoutSources, sources: webSources } = splitSourceFrame(rawTextRef.current);
+        if (webSources) replyWebSourcesRef.current = webSources;
+        const split = splitActionFrames(withoutSources);
         fullTextRef.current = split.text;
         pumpSpeech(false);
         if (split.actions.length !== replyActionsRef.current.length) {
@@ -1204,6 +1229,8 @@ export function AiAssistant() {
     setActionOutcomes({});
     setRetryText(null);
     setCourseDraft(null);
+    setDraftSources([]);
+    setDraftFeedback("");
     setDraftError(null);
     setCourseInterviewStep(null);
     setCourseInterviewAnswers([]);
@@ -1216,6 +1243,8 @@ export function AiAssistant() {
     voice.cancelListening();
     voice.stopSpeaking();
     setCourseDraft(null);
+    setDraftSources([]);
+    setDraftFeedback("");
     setDraftError(null);
     setCourseInterviewAnswers([]);
     setCourseInterviewStep(0);
@@ -1229,7 +1258,7 @@ export function AiAssistant() {
     draftAbortRef.current = null;
     setDraftLoading(false);
   }
-  async function generateCourseDraft(answers: string[]) {
+  async function generateCourseDraft(answers: string[], feedback?: string) {
     if (!isTutorMode || draftLoading || streaming) return;
     if (answers.length !== COURSE_INTERVIEW_QUESTIONS.length) return;
     const lessonCount = Number(answers[5].match(/\d+/)?.[0]);
@@ -1263,13 +1292,16 @@ export function AiAssistant() {
             outcomes: answers[3],
             lessonFormat,
             lessonCount,
+            ...(feedback?.trim() ? { feedback: feedback.trim() } : {}),
           },
         }),
       });
-      const data = await response.json().catch(() => ({})) as { course?: Course; error?: string };
+      const data = await response.json().catch(() => ({})) as { course?: Course; sources?: AiSource[]; error?: string };
       if (!response.ok || !data.course) throw new Error(data.error ?? "Unable to generate a course draft.");
       if (draftRequestIdRef.current !== requestId) return;
       setCourseDraft(data.course);
+      setDraftSources(Array.isArray(data.sources) ? data.sources : [{ type: "context", label: "interview brief" }]);
+      setDraftFeedback("");
       trackEvent("ai_course_draft_generated", { lesson_count: data.course.lessons.length });
     } catch (error) {
       if (controller.signal.aborted || draftRequestIdRef.current !== requestId) return;
@@ -1283,13 +1315,14 @@ export function AiAssistant() {
   }
   function openCourseDraft() {
     if (!courseDraft) return;
+    const payload = { ...courseDraft, _aiSources: draftSources };
     try {
-      sessionStorage.setItem(COURSE_DRAFT_KEY, JSON.stringify(courseDraft));
+      sessionStorage.setItem(COURSE_DRAFT_KEY, JSON.stringify(payload));
     } catch {
       setDraftError("Your browser could not transfer the draft. Keep this chat open and try again.");
       return;
     }
-    window.dispatchEvent(new CustomEvent(COURSE_DRAFT_EVENT, { detail: courseDraft }));
+    window.dispatchEvent(new CustomEvent(COURSE_DRAFT_EVENT, { detail: payload }));
     closePanel();
     router.push(state.user?.role === "admin" ? "/app/admin/?aiCourseDraft=1" : "/app/tutor/?aiCourseDraft=1");
   }
@@ -1645,6 +1678,11 @@ export function AiAssistant() {
                       </div>
                     )}
                   </motion.div>,
+                  !isUser && !isLastAssistant && m.sources?.length ? (
+                    <div key={`sources-${i}`} className="pl-10">
+                      <AiSources sources={m.sources} />
+                    </div>
+                  ) : null,
                   actionCards,
                 ];
               })}
@@ -1679,9 +1717,32 @@ export function AiAssistant() {
                 >
                   <p className="font-semibold text-zinc-900">{courseDraft.title}</p>
                   <p className="mt-1 text-xs text-zinc-600">{courseDraft.lessons.length} lessons · {courseDraft.level} · Unpublished draft</p>
-                  <button type="button" onClick={openCourseDraft} className="focus-ring mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white">
-                    <BookPlus className="h-3.5 w-3.5" />Review in course editor
-                  </button>
+                  {draftSources.length > 0 && (
+                    <AiSources sources={draftSources} className="mt-1" />
+                  )}
+                  <div className="mt-2 space-y-1.5">
+                    <textarea
+                      value={draftFeedback}
+                      onChange={(e) => setDraftFeedback(e.target.value)}
+                      rows={2}
+                      placeholder="Feedback for AI — e.g. make it more advanced, focus on X…"
+                      className="focus-ring w-full resize-none rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-xs text-zinc-700 placeholder:text-zinc-400"
+                    />
+                    <div className="flex gap-1.5">
+                      <button
+                        type="button"
+                        disabled={draftLoading || !draftFeedback.trim()}
+                        onClick={() => generateCourseDraft(courseInterviewAnswers, draftFeedback)}
+                        className="focus-ring flex flex-1 items-center justify-center gap-1 rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary disabled:opacity-40"
+                      >
+                        {draftLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+                        Regenerate
+                      </button>
+                      <button type="button" onClick={openCourseDraft} className="focus-ring flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white">
+                        <BookPlus className="h-3.5 w-3.5" />Review in editor
+                      </button>
+                    </div>
+                  </div>
                 </motion.div>
               )}
             </div>

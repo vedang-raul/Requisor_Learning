@@ -20,6 +20,7 @@ import {
 } from "@/lib/server/request-body";
 import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
 import { withAiConcurrency, SemaphoreFullError, AI_UPSTREAM_TIMEOUT_MS } from "@/lib/ai/ai-semaphore";
+import { checkFreeTierCap, isFreeTier } from "@/lib/ai/free-tier-limits";
 
 const BASE_URL = "https://api.x.ai/v1";
 const MODEL = process.env.XAI_MODEL || "grok-3-mini";
@@ -129,6 +130,11 @@ export async function POST(req: Request) {
 
   const { limited, retryAfterMs } = await quizLimiter.check(String(user.id));
   if (limited) return rateLimitResponse(retryAfterMs, { json: true });
+
+  if (isFreeTier(session.user)) {
+    const cap = await checkFreeTierCap(user.id, "quiz", 1);
+    if (!cap.allowed) return Response.json({ error: "free_tier_limit", feature: "quiz", resetAt: cap.resetAt }, { status: 402 });
+  }
 
   const apiKey = process.env.XAI_API_KEY;
   if (!apiKey) return Response.json({ error: "Quiz generation is not configured." }, { status: 503 });

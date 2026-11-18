@@ -14,6 +14,8 @@ import { AiVideoStudio } from "@/components/tutor/ai-video-studio";
 import { QuizBuilder, emptyQuiz } from "@/components/tutor/quiz-builder";
 import { checkQuiz, type Quiz } from "@/lib/quiz/quiz";
 import type { LessonAiField, LessonAiValues } from "@/lib/ai/lesson-ai";
+import { AiSources } from "@/components/ai/AiSources";
+import type { AiSource } from "@/lib/ai/sources";
 import { trackEvent } from "@/lib/analytics";
 import { AssignmentBrief } from "@/components/lesson/lesson-assignment";
 import { parseAssignment } from "@/lib/ai/assignment-format";
@@ -245,6 +247,7 @@ export default function TutorPage() {
   const [creating, setCreating] = useState(false);
   const [aiDraft, setAiDraft] = useState(false);
   const [aiDraftVersion, setAiDraftVersion] = useState(0);
+  const [aiDraftSources, setAiDraftSources] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [analyticsSlug, setAnalyticsSlug] = useState<string | null>(null);
 
@@ -293,14 +296,16 @@ export default function TutorPage() {
     if (!hydrated || state.user?.role !== "tutor") return;
     const openDraft = (value: unknown) => {
       try {
-      const course = value as Course;
-      if (!course || typeof course !== "object" || !course.slug || !Array.isArray(course.lessons)) throw new Error("invalid");
+      const payload = value as Course & { _sources?: string[] };
+      if (!payload || typeof payload !== "object" || !payload.slug || !Array.isArray(payload.lessons)) throw new Error("invalid");
+      const { _sources, ...course } = payload;
       setTab("courses");
       setCreating(false);
       // Straight to the draft's editor, not the top of the course list.
       scrollToEditorRef.current = true;
       setAiDraft(true);
       setAiDraftVersion((version) => version + 1);
+      setAiDraftSources(Array.isArray(_sources) ? _sources : []);
       setSelected({ ...course, published: false });
       sessionStorage.removeItem(AI_COURSE_DRAFT_KEY);
     } catch {
@@ -483,7 +488,14 @@ export default function TutorPage() {
                 </div>
               )}
               {selected && <div ref={editorRef} tabIndex={-1} aria-label={`Editing ${selected.title}`} className="scroll-mt-24 space-y-4 outline-none">
-                {aiDraft && <div role="status" className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-sm text-violet-900"><strong>AI-generated draft:</strong> Review every field and lesson below. It is unpublished and has not been saved yet.</div>}
+                {aiDraft && (
+                  <div role="status" className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-sm text-violet-900">
+                    <strong>AI-generated draft:</strong> Review every field and lesson below. It is unpublished and has not been saved yet.
+                    {aiDraftSources.length > 0 && (
+                      <span className="ml-2 text-xs font-normal text-violet-600">Generated from: {aiDraftSources.join(" · ")}</span>
+                    )}
+                  </div>
+                )}
                 {!aiDraft && (
                   <CourseVisibilityBanner
                     course={selected}
@@ -1588,6 +1600,8 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
   const [aiNote, setAiNote] = useState<{ ok: boolean; text: string } | null>(null);
   // What the fields held before the last AI write, so it can be undone.
   const [aiUndo, setAiUndo] = useState<(() => void) | null>(null);
+  // Which sources the last AI write drew from (e.g. ["video transcript", "tutor note"]).
+  const [aiSources, setAiSources] = useState<AiSource[]>([]);
 
   const step: WizardStep = WIZARD_STEPS[stepIndex].key;
   const detectedVideoId = format === "video" && youtubeId.trim() ? extractYouTubeId(youtubeId) : null;
@@ -1768,7 +1782,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
           },
         }),
       });
-      const data = (await res.json().catch(() => ({}))) as { values?: LessonAiValues; error?: string };
+      const data = (await res.json().catch(() => ({}))) as { values?: LessonAiValues; sources?: AiSource[]; error?: string };
       if (!res.ok || !data.values) {
         trackEvent("lesson_ai_failed", analyticsData);
         setAiNote({ ok: false, text: data.error ?? "Couldn't write that right now. Try again." }); return;
@@ -1784,6 +1798,7 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
         if (written.includes("dueDate")) setAssignmentDueDate(earlier.assignmentDueDate);
       });
       applyAiValues(data.values);
+      setAiSources(Array.isArray(data.sources) ? data.sources : []);
       trackEvent("lesson_ai_completed", { ...analyticsData, written_count: written.length });
       setFormError(null);
       setAiNote({ ok: true, text: `AI wrote the ${written.map((field) => AI_FIELD_LABELS[field]).join(", ")}. Read it through and edit anything that isn't right.` });
@@ -1942,9 +1957,12 @@ function LessonWizard({ courseSlug, courseTitle, coursePublished, lesson, module
                   <p role="status" className={cn("mt-1.5 text-xs", aiNote.ok ? "text-emerald-800" : "text-red-700")}>
                     {aiNote.text}
                     {aiNote.ok && aiUndo && (
-                      <button type="button" onClick={() => { aiUndo(); setAiUndo(null); setAiNote(null); }} className="ml-2 font-semibold text-primary hover:underline">Undo</button>
+                      <button type="button" onClick={() => { aiUndo(); setAiUndo(null); setAiNote(null); setAiSources([]); }} className="ml-2 font-semibold text-primary hover:underline">Undo</button>
                     )}
                   </p>
+                )}
+                {aiNote?.ok && aiSources.length > 0 && (
+                  <AiSources sources={aiSources} className="mt-1" defaultOpen />
                 )}
               </div>
             )}

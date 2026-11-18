@@ -2,10 +2,10 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 import { getServerSession } from "next-auth/next";
-import { xaiFetch } from "@/lib/ai/usage";
 import { authOptions } from "@/lib/auth/auth";
 import { withAiConcurrency, SemaphoreFullError, AI_UPSTREAM_TIMEOUT_MS } from "@/lib/ai/ai-semaphore";
 import { lessonAiHasSubject, lessonAiPrompt, readLessonAiContext, readLessonAiFields, readLessonAiValues } from "@/lib/ai/lesson-ai";
+import { xaiResponsesCall } from "@/lib/ai/responses-api";
 import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
 import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
 
@@ -15,7 +15,6 @@ import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/
  *   →    { values: { title?, description?, durationMin?, section?, body?, assignment?, guardrails?, rubric?, points?, dueDate?, quiz?, takeaways? } }
  * Nothing is saved: the values go into the form for the tutor to review.
  */
-const BASE_URL = "https://api.x.ai/v1";
 const MODEL = process.env.XAI_MODEL || "grok-3-mini";
 const MAX_REQUEST_BYTES = 48 * 1024;
 const lessonAiLimiter = createRateLimiter(15, 60_000, "ai:tutor:lesson");
@@ -47,32 +46,32 @@ export async function POST(req: Request) {
   if (limited) return rateLimitResponse(retryAfterMs, { json: true });
 
   try {
-    const parsed = await withAiConcurrency(async () => {
+    const { text, citations } = await withAiConcurrency(async () => {
       const aborter = new AbortController();
       const timeoutId = setTimeout(() => aborter.abort("upstream_timeout"), AI_UPSTREAM_TIMEOUT_MS);
       try {
-        const res = await xaiFetch({ userId: session.user.id, feature: "lesson_ai" }, `${BASE_URL}/chat/completions`, {
-          method: "POST",
-          signal: aborter.signal,
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-          body: JSON.stringify({
+        return await xaiResponsesCall(
+          { userId: session.user.id, feature: "lesson_ai" },
+          apiKey,
+          {
             model: MODEL,
-            max_tokens: fields.includes("quiz") ? 6000 : fields.includes("body") ? 2600 : fields.includes("rubric") ? 1800 : 1200,
-            response_format: { type: "json_object" },
-            messages: [{ role: "user", content: lessonAiPrompt(fields, context) }],
-          }),
-        });
-        if (!res.ok) throw new Error(`upstream ${res.status}`);
-        const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-        const content = data.choices?.[0]?.message?.content ?? "";
-        return JSON.parse(content.slice(content.indexOf("{"), content.lastIndexOf("}") + 1)) as unknown;
+            instructions: "Always use the web_search tool at least once before writing your response. Every field you write must be grounded in sources you fetched.",
+            input: [{ role: "user", content: lessonAiPrompt(fields, context) }],
+            maxOutputTokens: fields.includes("quiz") ? 6000 : fields.includes("body") ? 2600 : fields.includes("rubric") ? 1800 : 1200,
+            webSearch: true,
+            signal: aborter.signal,
+          }
+        );
       } finally {
         clearTimeout(timeoutId);
       }
     });
+    const jsonText = text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
+    let parsed: unknown;
+    try { parsed = JSON.parse(jsonText); } catch { parsed = null; }
     const values = readLessonAiValues(fields, parsed);
     if (!Object.keys(values).length) return Response.json({ error: "The AI's answer couldn't be used. Try again." }, { status: 502 });
-    return Response.json({ values });
+    return Response.json({ values, sources: citations });
   } catch (error) {
     if (error instanceof SemaphoreFullError) return Response.json({ error: "The AI is busy. Try again in a moment." }, { status: 503 });
     console.error("[lesson-ai] generation failed", error instanceof Error ? error.message : "unknown");

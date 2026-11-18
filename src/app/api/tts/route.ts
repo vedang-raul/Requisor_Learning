@@ -7,6 +7,7 @@ import { authOptions } from "@/lib/auth/auth";
 import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
 import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
 import { speechText, ttsCharacters, ttsConfigured, ttsModel, ttsVoiceId } from "@/lib/ai/tts";
+import { checkFreeTierCap, isFreeTier } from "@/lib/ai/free-tier-limits";
 
 /**
  * Speaks the assistant's replies with an ElevenLabs voice.
@@ -42,6 +43,11 @@ export async function POST(req: Request) {
   const text = speechText((body as { text?: unknown } | null)?.text);
   if (!text) return Response.json({ error: "Nothing to say." }, { status: 400 });
   const voice = (body as { voice?: unknown } | null)?.voice;
+
+  if (isFreeTier(session.user)) {
+    const cap = await checkFreeTierCap(Number(session.user.id), "voice", text.length);
+    if (!cap.allowed) return Response.json({ error: "free_tier_limit", feature: "voice", resetAt: cap.resetAt }, { status: 402 });
+  }
 
   const { limited, retryAfterMs } = await speakLimiter.check(String(session.user.id));
   if (limited) return rateLimitResponse(retryAfterMs, { json: true });

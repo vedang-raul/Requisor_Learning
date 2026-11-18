@@ -29,6 +29,8 @@ import {
   parseAssignment,
   type StructuredAssignment,
 } from "@/lib/ai/assignment-format";
+import { AiSources } from "@/components/ai/AiSources";
+import type { AiSource } from "@/lib/ai/sources";
 
 const DIFFICULTY_TONE = { Beginner: "success", Intermediate: "warning", Advanced: "primary" } as const;
 const DIFFICULTY_LEVEL = { Beginner: 1, Intermediate: 2, Advanced: 3 } as const;
@@ -225,7 +227,7 @@ export function AssignmentBrief({ assignment: a, learnerName, wide = false }: {
 type AssignmentState =
   | { status: "idle" }
   | { status: "loading" }
-  | { status: "ready"; assignment: string; cached: boolean }
+  | { status: "ready"; assignment: string; cached: boolean; sources?: AiSource[] }
   | { status: "error"; message: string }
   /** The lesson is too thin to generate from; retrying won't help. */
   | { status: "unavailable"; message: string };
@@ -260,12 +262,13 @@ export function LessonAssignment({ lessonId, allowSubmission = false, curated = 
         const data = (await response.json().catch(() => ({}))) as {
           assignment?: string;
           cached?: boolean;
+          sources?: AiSource[];
           error?: string;
         };
         if (!response.ok || !data.assignment) {
           throw new Error(data.error || "Couldn't load your saved assignment.");
         }
-        setState({ status: "ready", assignment: data.assignment, cached: Boolean(data.cached) });
+        setState({ status: "ready", assignment: data.assignment, cached: Boolean(data.cached), sources: data.sources });
       } catch (error) {
         if (aborter.signal.aborted) return;
         setState({
@@ -291,6 +294,7 @@ export function LessonAssignment({ lessonId, allowSubmission = false, curated = 
       const data = (await response.json().catch(() => ({}))) as {
         assignment?: string;
         cached?: boolean;
+        sources?: AiSource[];
         error?: string;
         code?: string;
       };
@@ -301,7 +305,7 @@ export function LessonAssignment({ lessonId, allowSubmission = false, curated = 
       if (!response.ok || !data.assignment) {
         throw new Error(data.error || "Couldn't prepare an assignment right now.");
       }
-      setState({ status: "ready", assignment: data.assignment, cached: Boolean(data.cached) });
+      setState({ status: "ready", assignment: data.assignment, cached: Boolean(data.cached), sources: data.sources });
     } catch (error) {
       setState({
         status: "error",
@@ -388,6 +392,7 @@ export function LessonAssignment({ lessonId, allowSubmission = false, curated = 
               <p className="text-sm leading-relaxed text-zinc-800">{state.assignment}</p>
             </div>
           )}
+          {state.sources?.length ? <AiSources sources={state.sources} /> : null}
           <p className="text-xs text-zinc-500">
             {state.cached ? "Your saved assignment for this lesson." : "Saved for your next visit to this lesson."}
           </p>

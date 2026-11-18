@@ -2,9 +2,10 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 import { getServerSession } from "next-auth/next";
-import { xaiFetch } from "@/lib/ai/usage";
 import { authOptions } from "@/lib/auth/auth";
 import { withAiConcurrency, SemaphoreFullError, AI_UPSTREAM_TIMEOUT_MS } from "@/lib/ai/ai-semaphore";
+import { xaiResponsesCall } from "@/lib/ai/responses-api";
+import { labelledSourcesToAiSources } from "@/lib/ai/sources";
 import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
 import { InvalidJsonBodyError, readJsonBody, RequestBodyTooLargeError } from "@/lib/server/request-body";
 import {
@@ -17,7 +18,6 @@ import {
  * answer is laid over it, and if the AI is unavailable or answers badly the
  * engine's version is returned as it is, so the builder never comes back empty.
  */
-const BASE_URL = "https://api.x.ai/v1";
 const MODEL = process.env.XAI_MODEL || "grok-3-mini";
 const MAX_REQUEST_BYTES = 48 * 1024;
 const builderLimiter = createRateLimiter(8, 60_000, "ai:tutor:program-builder");
@@ -52,7 +52,7 @@ export async function POST(req: Request) {
   }
   const form = readDiscovery((body as { form?: unknown } | null)?.form);
   const base = composeCurriculum(form);
-  const engine = (reason: string) => Response.json({ curriculum: base, source: "engine", reason });
+  const engine = (reason: string) => Response.json({ curriculum: base, source: "engine", reason, sources: [] });
 
   const apiKey = process.env.XAI_API_KEY;
   if (!apiKey) return engine("AI isn't set up on this server");
@@ -78,28 +78,44 @@ export async function POST(req: Request) {
   ].join("\n");
 
   try {
-    const parsed = await withAiConcurrency(async () => {
+    const { text: rawText, citations } = await withAiConcurrency(async () => {
       const aborter = new AbortController();
       const timeoutId = setTimeout(() => aborter.abort("upstream_timeout"), AI_UPSTREAM_TIMEOUT_MS);
       try {
-        const res = await xaiFetch({ userId: session.user.id, feature: "program_builder" }, `${BASE_URL}/chat/completions`, {
-          method: "POST",
-          signal: aborter.signal,
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-          body: JSON.stringify({ model: MODEL, max_tokens: 3000, response_format: { type: "json_object" }, messages: [{ role: "user", content: prompt }] }),
-        });
-        if (!res.ok) throw new Error(`upstream ${res.status}`);
-        const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-        const content = data.choices?.[0]?.message?.content ?? "";
-        return JSON.parse(content.slice(content.indexOf("{"), content.lastIndexOf("}") + 1)) as unknown;
+        return await xaiResponsesCall(
+          { userId: session.user.id, feature: "program_builder" },
+          apiKey,
+          {
+            model: MODEL,
+            input: [{ role: "user", content: prompt }],
+            maxOutputTokens: 3000,
+            webSearch: true,
+            signal: aborter.signal,
+          }
+        );
       } finally {
         clearTimeout(timeoutId);
       }
     });
+    let parsed: unknown;
+    try {
+      const jsonText = rawText.slice(rawText.indexOf("{"), rawText.lastIndexOf("}") + 1);
+      parsed = JSON.parse(jsonText);
+    } catch {
+      return engine("the AI's answer couldn't be parsed");
+    }
     const curriculum = mergeAiCurriculum(base, parsed, form.modules);
     // Nothing usable came back: say so rather than pass the engine's work off as AI.
     if (curriculum.modules === base.modules && curriculum.title === base.title) return engine("the AI's answer couldn't be used");
-    return Response.json({ curriculum, source: "ai" });
+    // Build context source labels from which discovery fields were non-empty
+    const discoveryLabels: string[] = [];
+    if (form.employer) discoveryLabels.push("Employer details");
+    if (form.topic) discoveryLabels.push("Topic");
+    if (form.audience) discoveryLabels.push("Audience");
+    if (form.pains) discoveryLabels.push("Needs and goals");
+    if (form.transcript) discoveryLabels.push("Discovery transcript");
+    const sources = [...citations, ...labelledSourcesToAiSources(discoveryLabels)];
+    return Response.json({ curriculum, source: "ai", sources });
   } catch (error) {
     if (!(error instanceof SemaphoreFullError)) console.error("[program-builder] AI generation failed", error instanceof Error ? error.message : "unknown");
     return engine("the AI service didn't answer");

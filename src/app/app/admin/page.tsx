@@ -369,6 +369,7 @@ function ContentManager() {
   const [creatingCourse, setCreatingCourse] = useState(false);
   const [contentError, setContentError] = useState<string | null>(null);
   const [aiDraft, setAiDraft] = useState<Course | null>(null);
+  const [aiDraftSources, setAiDraftSources] = useState<string[]>([]);
   const course = aiDraft ?? state.courses.find((c) => c.slug === selected);
   // Which tutor teaches each course, for the list and its filter.
   const NO_TUTOR = "__none__";
@@ -383,9 +384,11 @@ function ContentManager() {
   useEffect(() => {
     const openDraft = (value: unknown) => {
       try {
-        const draft = value as Course;
-        if (!draft || typeof draft !== "object" || !draft.slug || !Array.isArray(draft.lessons)) throw new Error("invalid");
+        const payload = value as Course & { _sources?: string[] };
+        if (!payload || typeof payload !== "object" || !payload.slug || !Array.isArray(payload.lessons)) throw new Error("invalid");
+        const { _sources, ...draft } = payload;
         setAiDraft({ ...draft, published: false });
+        setAiDraftSources(Array.isArray(_sources) ? _sources : []);
         setSelected(draft.slug);
         setCreatingCourse(false);
         setCreatingLesson(false);
@@ -477,6 +480,9 @@ function ContentManager() {
             {aiDraft && (
               <div role="status" className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-sm text-violet-900">
                 <strong>AI-generated draft:</strong> Review the course and lessons below. It has not been saved or published.
+                {aiDraftSources.length > 0 && (
+                  <span className="ml-2 text-xs font-normal text-violet-600">Generated from: {aiDraftSources.join(" · ")}</span>
+                )}
               </div>
             )}
             <div className="flex flex-wrap items-center justify-between gap-2">

@@ -13,6 +13,7 @@ import {
 } from "@/lib/ai/personalized-learning";
 import { cleanTailoring } from "@/lib/ai/assignment-format";
 import { variationSeed } from "@/lib/ai/assignment-ai";
+import type { AiSource } from "@/lib/ai/sources";
 import { assignmentPrompt, generateAssignment } from "@/lib/ai/assignment-generate";
 import { createRateLimiter, rateLimitResponse } from "@/lib/server/rate-limit";
 import { SemaphoreFullError } from "@/lib/ai/ai-semaphore";
@@ -23,6 +24,18 @@ import {
 } from "@/lib/server/request-body";
 
 const MAX_ASSIGNMENT_REQUEST_BYTES = 1024;
+
+function sourcesFromStoredAssignment(content: string, lessonTitle: string): AiSource[] {
+  const sources: AiSource[] = [{ type: "lesson" as const, courseName: "", lessonTitle }];
+  try {
+    const parsed = JSON.parse(content) as { tailoredTo?: { background?: string; goal?: string; reinforces?: string[] } };
+    const t = parsed.tailoredTo;
+    if (t?.background) sources.push({ type: "context", label: "Your qualification" });
+    if (t?.goal) sources.push({ type: "context", label: "Your learning goal" });
+    if (t?.reinforces?.length) sources.push({ type: "context", label: "Quiz results" });
+  } catch { /* stored assignment is old plain text format — just show the lesson */ }
+  return sources;
+}
 
 // ── Per-user rate limiter ─────────────────────────────────────────────────────
 // Assignment generation: 10 per user per minute.
@@ -88,7 +101,7 @@ export async function GET(req: Request) {
   );
   if (!cachedRows[0]) return Response.json({ error: "No saved assignment." }, { status: 404 });
 
-  return Response.json({ assignment: cachedRows[0].content, cached: true });
+  return Response.json({ assignment: cachedRows[0].content, cached: true, sources: sourcesFromStoredAssignment(cachedRows[0].content, lesson.title) });
 }
 
 export async function POST(req: Request) {
@@ -122,7 +135,7 @@ export async function POST(req: Request) {
     [user.id, lesson.id]
   );
   if (cachedRows[0]) {
-    return Response.json({ assignment: cachedRows[0].content, cached: true });
+    return Response.json({ assignment: cachedRows[0].content, cached: true, sources: sourcesFromStoredAssignment(cachedRows[0].content, lesson.title) });
   }
 
   const { limited, retryAfterMs } = await assignmentLimiter.check(String(user.id));
@@ -180,7 +193,8 @@ export async function POST(req: Request) {
       "SELECT content FROM generated_assignments WHERE user_id = $1 AND lesson_id = $2",
       [user.id, lesson.id]
     );
-    return Response.json({ assignment: persistedRows[0]?.content ?? text, cached: false });
+    const finalContent = persistedRows[0]?.content ?? text;
+    return Response.json({ assignment: finalContent, cached: false, sources: sourcesFromStoredAssignment(finalContent, lesson.title) });
   } catch (err) {
     if (err instanceof SemaphoreFullError) {
       return Response.json(

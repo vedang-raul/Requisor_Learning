@@ -10,14 +10,18 @@
  * The SQL helpers take the positions of two query parameters, filled with
  * reachParams(): whether the person reaches everything, and their university.
  */
-export type ScopeUser = { role?: string | null; superAdmin?: boolean | null; universityId?: number | null };
+export type ScopeUser = { role?: string | null; superAdmin?: boolean | null; universityId?: number | null; pending?: boolean | null };
 export type Reach = { all: boolean; universityId: number | null };
 
 const university = (user: ScopeUser) => (typeof user.universityId === "number" && user.universityId > 0 ? user.universityId : null);
 
 /** The courses a person sees as a learner. */
 export function seeReach(user: ScopeUser): Reach {
-  return user.superAdmin ? { all: true, universityId: null } : { all: false, universityId: university(user) };
+  if (user.superAdmin) return { all: true, universityId: null };
+  // Pending students haven't been approved yet — treat them as unaffiliated so
+  // they only see platform-wide (NULL university_id) courses until approved.
+  if (user.pending) return { all: false, universityId: null };
+  return { all: false, universityId: university(user) };
 }
 
 /** The courses a person manages without owning them; nothing for tutors and students. */

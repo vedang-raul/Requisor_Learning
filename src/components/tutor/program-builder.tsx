@@ -22,6 +22,8 @@ import {
   type Curriculum, type Discovery, type Industry, type Level, type Proposal,
 } from "@/lib/courses/program-builder";
 import { askConfirm } from "@/components/ui/confirm-dialog";
+import { AiSources } from "@/components/ai/AiSources";
+import type { AiSource } from "@/lib/ai/sources";
 
 /**
  * Program Builder: employer need → curriculum → priced proposal, one step on screen at a time, in
@@ -949,6 +951,7 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
   const [generating, setGenerating] = useState(false);
   const [analyzeNote, setAnalyzeNote] = useState<Notice>(null);
   const [genNote, setGenNote] = useState<Notice>(null);
+  const [aiGenSources, setAiGenSources] = useState<AiSource[]>([]);
   // The latest values, for commands from the assistant, which run across several awaits.
   const formRef = useRef(form); formRef.current = form;
   const curriculumState = useRef(curriculum); curriculumState.current = curriculum;
@@ -1084,13 +1087,14 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
     setGenNote({ kind: "warn", text: "Writing the curriculum with AI…" });
     try {
       const res = await fetch("/api/tutor/program-builder/", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ form: source }) });
-      const data = (await res.json().catch(() => ({}))) as { curriculum?: Curriculum; source?: string; reason?: string };
+      const data = (await res.json().catch(() => ({}))) as { curriculum?: Curriculum; source?: string; reason?: string; sources?: AiSource[] };
       if (!res.ok || !data.curriculum) throw new Error("unavailable");
       show(data.curriculum);
       trackEvent("program_ai_generation_finished", { success: data.source === "ai" });
       setGenNote(data.source === "ai"
         ? { kind: "ok", text: "Written with AI from your discovery notes. Review every line before it goes to the employer." }
         : { kind: "warn", text: `Composed with the built-in engine instead (${data.reason ?? "AI unavailable"}).` });
+      setAiGenSources(Array.isArray(data.sources) ? data.sources : []);
       return data.curriculum;
     } catch {
       show(base);
@@ -1308,6 +1312,9 @@ export function ProgramBuilder({ owner, onOpenCourse }: { owner: string; onOpenC
       )}
 
       {!showLinks && step < 3 && <NoticeBox notice={genNote} />}
+      {!showLinks && step < 3 && genNote?.kind === "ok" && aiGenSources.length > 0 && (
+        <AiSources sources={aiGenSources} className="mt-2" defaultOpen />
+      )}
       {!showLinks && step < 3 && <NoticeBox notice={courseNote} />}
 
       {!showLinks && step === 1 && (

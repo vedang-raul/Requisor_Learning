@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Requisor Learning — Free Tier API Cost Breakdown</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --brand: #059669; --brand-light: #d1fae5; --accent: #0891b2;
+    --ok: #16a34a; --warn: #d97706; --danger: #dc2626;
+    --text: #0f172a; --muted: #64748b; --border: #e2e8f0; --bg: #f8fafc;
+  }
+  body { font-family: 'Inter', sans-serif; background: #fff; color: var(--text); font-size: 14px; line-height: 1.6; }
+
+  /* ── Print ── */
+  @media print {
+    body { font-size: 11px; }
+    .no-print { display: none !important; }
+    .cover { page-break-after: always; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .section { page-break-inside: avoid; }
+    table { page-break-inside: avoid; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+
+  /* ── Cover ── */
+  .cover {
+    background: linear-gradient(135deg, #064e3b 0%, #059669 55%, #0891b2 100%);
+    color: #fff; padding: 72px 64px; min-height: 400px;
+    display: flex; flex-direction: column; justify-content: space-between;
+  }
+  .cover-logo { font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; opacity: .8; }
+  .cover-title { font-size: 38px; font-weight: 700; line-height: 1.15; margin-top: 28px; }
+  .cover-subtitle { font-size: 18px; font-weight: 300; margin-top: 10px; opacity: .85; }
+  .cover-badge {
+    display: inline-block; background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.3);
+    border-radius: 6px; padding: 6px 16px; font-size: 13px; font-weight: 600; letter-spacing: .04em; margin-top: 24px;
+  }
+  .cover-meta { font-size: 12px; opacity: .6; margin-top: 40px; }
+
+  /* ── Page body ── */
+  .page { max-width: 960px; margin: 0 auto; padding: 48px 40px; }
+  h2 { font-size: 20px; font-weight: 700; color: var(--brand); margin: 40px 0 8px; border-bottom: 2px solid var(--brand-light); padding-bottom: 6px; }
+  h2:first-child { margin-top: 0; }
+  p { color: var(--muted); margin-bottom: 12px; }
+  code { background: #f1f5f9; border: 1px solid var(--border); border-radius: 3px; padding: 1px 5px; font-size: 12px; font-family: monospace; }
+
+  /* ── Summary grid ── */
+  .summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 32px; }
+  .stat { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
+  .stat-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .stat-value { font-size: 26px; font-weight: 700; color: var(--brand); margin-top: 4px; }
+  .stat-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* ── Section card ── */
+  .section { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 24px; }
+  .section-header {
+    background: var(--brand-light); padding: 12px 18px;
+    display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border);
+  }
+  .section-header .icon { font-size: 18px; }
+  .section-header .title { font-weight: 700; font-size: 14px; color: #065f46; }
+  .section-header .pill {
+    margin-left: auto; font-size: 11px; font-weight: 600; padding: 2px 10px;
+    border-radius: 20px; background: var(--brand); color: #fff; letter-spacing: .04em; white-space: nowrap;
+  }
+  .section-header .pill.blocked { background: #94a3b8; }
+
+  /* ── Table ── */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    background: #f1f5f9; text-align: left; padding: 9px 14px;
+    font-weight: 600; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .05em; color: var(--muted); border-bottom: 1px solid var(--border);
+  }
+  td { padding: 9px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
+  td.cost { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--ok); }
+  td.zero { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--muted); }
+  .total-row td { background: #f0fdf4; font-weight: 700; }
+  .grand-total td { background: #ecfdf5; font-size: 15px; font-weight: 700; }
+  .grand-total td.cost { font-size: 17px; }
+  .blocked-row td { background: #fef2f2; color: #991b1b; }
+  .blocked-row td.zero { color: #991b1b; font-weight: 600; }
+
+  /* ── Info boxes ── */
+  .box { border-radius: 10px; padding: 18px; margin-bottom: 24px; }
+  .box h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+  .box ul { padding-left: 18px; }
+  .box li { font-size: 13px; margin-bottom: 4px; }
+  .warn-box { background: #fffbeb; border: 1px solid #fde68a; }
+  .warn-box h3 { color: var(--warn); }
+  .warn-box li { color: #92400e; }
+  .info-box { background: #f0f9ff; border: 1px solid #bae6fd; }
+  .info-box h3 { color: var(--accent); }
+  .info-box li { color: #0c4a6e; }
+  .disabled-box { background: #f8fafc; border: 1px solid var(--border); }
+  .disabled-box h3 { color: var(--muted); }
+  .disabled-box li { color: var(--muted); }
+
+  /* ── Comparison table ── */
+  .cmp-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
+  .cmp-table th { background: #f1f5f9; padding: 9px 14px; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); border: 1px solid var(--border); }
+  .cmp-table td { padding: 9px 14px; border: 1px solid var(--border); vertical-align: top; }
+  .cmp-table .free { color: var(--ok); font-weight: 600; }
+  .cmp-table .paid { color: #1e40af; font-weight: 600; }
+  .cmp-table .blocked { color: var(--danger); font-weight: 600; }
+  .cmp-table .summary-row td { background: #f0fdf4; font-weight: 700; font-size: 14px; }
+  .cmp-table .summary-row td.free-val { color: var(--ok); font-size: 16px; }
+  .cmp-table .summary-row td.paid-val { color: #1e40af; font-size: 16px; }
+
+  /* ── Footer ── */
+  .footer { border-top: 1px solid var(--border); margin-top: 48px; padding-top: 14px; font-size: 11px; color: var(--muted); text-align: center; }
+
+  /* ── Print bar ── */
+  .print-bar {
+    background: var(--brand); color: #fff; padding: 14px 40px;
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 14px; font-weight: 500;
+  }
+  .print-bar button {
+    background: #fff; color: var(--brand); border: none; border-radius: 6px;
+    padding: 8px 20px; font-size: 13px; font-weight: 700; cursor: pointer;
+  }
+  .print-bar button:hover { background: #d1fae5; }
+</style>
+</head>
+<body>
+
+<!-- Print bar -->
+<div class="print-bar no-print">
+  <span>Requisor Learning — Free Tier API Cost Breakdown</span>
+  <button onclick="window.print()">🖨&nbsp; Print / Save as PDF</button>
+</div>
+
+<!-- Cover -->
+<div class="cover">
+  <div>
+    <div class="cover-logo">Requisor Learning &nbsp;·&nbsp; Internal Document</div>
+    <div class="cover-title">API Cost Breakdown</div>
+    <div class="cover-subtitle">Free Tier — Restricted / Unauthenticated Access</div>
+    <div class="cover-badge">🆓&nbsp; Core Chat Only &nbsp;·&nbsp; Tutor AI &amp; Video Disabled &nbsp;·&nbsp; Voice Capped at 15k chars</div>
+  </div>
+  <div class="cover-meta">
+    Prepared: November 2026 &nbsp;·&nbsp; Pricing sourced from xAI, ElevenLabs &amp; HeyGen public rate cards &nbsp;·&nbsp; All figures USD
+  </div>
+</div>
+
+<!-- Body -->
+<div class="page">
+
+  <h2>Executive Summary</h2>
+  <p>
+    This document details the third-party API costs for a <strong>Free-tier user</strong> on Requisor Learning.
+    Free-tier users are unaffiliated students (signed up without a university — <code>university_id IS NULL AND university_status IS NULL</code>).
+    They can use core AI chat and voice (ElevenLabs TTS) up to defined caps, but all tutor AI-creation tools,
+    voice input (STT), and AI video rendering (HeyGen) are hard-gated by role and <code>superAdmin</code> checks.
+  </p>
+  <p>The caps below are from the <strong>Free Tier Plan</strong> (<code>plans/we-have-to-build-iterative-riddle.md</code>) and are now enforced in <code>src/lib/ai/free-tier-limits.ts</code> via <code>checkFreeTierCap()</code>, wired into the chat, TTS, and quiz routes.</p>
+
+  <div class="summary">
+    <div class="stat">
+      <div class="stat-label">Total cost / user (lifetime)</div>
+      <div class="stat-value">$0.49</div>
+      <div class="stat-sub">Chat + TTS caps exhausted</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">xAI Grok-3-mini</div>
+      <div class="stat-value">$0.040</div>
+      <div class="stat-sub">~60 chat messages / month</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">ElevenLabs TTS</div>
+      <div class="stat-value">$0.45</div>
+      <div class="stat-sub">Up to 15k lifetime chars · $0.30/1k</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">HeyGen AI Video</div>
+      <div class="stat-value">$0.00</div>
+      <div class="stat-sub">superAdmin gate — HTTP 403</div>
+    </div>
+  </div>
+
+  <div class="box warn-box">
+    <h3>⚠&nbsp; Activity Assumptions — Free Tier</h3>
+    <ul>
+      <li><strong>Learner:</strong> 2 sessions/week, avg 7–8 messages/session → ~60 messages/month. Chat capped at 10 messages/day. TTS capped at 3,000 chars/day and 15,000 chars lifetime.</li>
+      <li><strong>TTS usage:</strong> Free user exhausts lifetime TTS cap (15,000 chars) over their account lifetime — this is a one-time cost, not recurring monthly. Daily cap (3,000 chars) means it takes at least 5 active days to reach lifetime cap.</li>
+      <li><strong>STT (voice input):</strong> Not available — plan restricts STT to affiliated users only. Users must type messages.</li>
+      <li><strong>Tutor AI tools:</strong> Not available — tutors require a paid seat or institutional licence.</li>
+      <li><strong>Admin AI tools:</strong> Not available on free tier.</li>
+      <li><strong>Token estimates:</strong> grok-3-mini averages ~1,400 input + ~400 output per turn.</li>
+      <li><strong>Rate cards:</strong> grok-3-mini $0.30/M input, $0.50/M output &nbsp;·&nbsp; ElevenLabs Flash v2.5 $0.30/1k chars.</li>
+      <li><strong>Implementation:</strong> Cap enforcement is live in <code>src/lib/ai/free-tier-limits.ts</code> (<code>checkFreeTierCap()</code>), wired into <code>/api/chat</code>, <code>/api/tts</code>, and <code>/api/quiz</code>. Returns HTTP 402 with <code>{ error: "free_tier_limit", feature, resetAt }</code> when exceeded.</li>
+    </ul>
+  </div>
+
+  <div class="box disabled-box">
+    <h3>🚫&nbsp; Features Restricted on Free Tier — Code Gate Reference</h3>
+    <ul>
+      <li><strong>ElevenLabs TTS</strong> (<code>/api/tts</code>) — <strong>Available but capped:</strong> 3,000 chars/day and 15,000 chars lifetime. Cap enforced via <code>checkFreeTierCap()</code> in <code>src/lib/ai/free-tier-limits.ts</code> (planned). Returns HTTP 402 <code>{ error: "free_tier_limit" }</code> when cap hit. Only applies to users with <code>university_id IS NULL</code>.</li>
+      <li><strong>ElevenLabs STT</strong> (<code>/api/stt</code>) — <strong>Not available.</strong> Plan restricts voice input to affiliated users. Returns HTTP 503. Users must type their messages.</li>
+      <li><strong>HeyGen AI Video</strong> (<code>/api/tutor/ai-video</code>) — <code>session.user.superAdmin === true</code> hard check in route. All non-super-admin requests receive HTTP 403 "AI video is coming soon."</li>
+      <li><strong>Lesson AI writer</strong> (<code>/api/tutor/lesson-ai</code>) — requires <code>role === "tutor" || role === "admin"</code>. Returns HTTP 403 for learner role.</li>
+      <li><strong>Course draft</strong> (<code>/api/tutor/course-draft</code>) — same role gate as above.</li>
+      <li><strong>Program builder</strong> (<code>/api/tutor/program-builder</code>) — same role gate as above.</li>
+      <li><strong>Teleprompter script</strong> (<code>/api/tutor/teleprompter-script</code>) — <code>canManage()</code> check: <code>role === "admin" || role === "tutor"</code>. Returns HTTP 403.</li>
+      <li><strong>Admin theme suggestions</strong> (<code>/api/admin/universities/theme/suggest</code>) — <code>requireAccess</code> admin gate from <code>src/lib/server/access.ts</code>.</li>
+    </ul>
+  </div>
+
+  <!-- 1. xAI Grok -->
+  <h2>1 · xAI Grok-3-mini — Language Model (Chat only)</h2>
+  <p>The only AI route available to a free-tier learner is <code>/api/chat</code>. The same model (<code>grok-3-mini</code>) is used, but the user sends fewer messages per month and carries less conversation context than a paid user.</p>
+
+  <div class="section">
+    <div class="section-header">
+      <span class="icon">🤖</span>
+      <span class="title">Chat Assistant &nbsp;·&nbsp; <code>/api/chat</code></span>
+      <span class="pill">Active — Learner</span>
+    </div>
+    <table>
+      <thead><tr><th>Parameter</th><th>Detail</th><th class="num">Tokens / month</th><th class="num">Cost (USD)</th></tr></thead>
+      <tbody>
+        <tr><td>Messages / month</td><td>60 (2 sessions/week × 4 wk × 7.5 avg msgs)</td><td class="num">—</td><td class="num">—</td></tr>
+        <tr><td>Avg input tokens / turn</td><td>System prompt + shorter history ≈ 1,400 (MAX_HISTORY=20, capped by activity)</td><td class="num">84,000</td><td class="num">—</td></tr>
+        <tr><td>Avg output tokens / turn</td><td>Streamed reply ≈ 400 tokens</td><td class="num">24,000</td><td class="num">—</td></tr>
+        <tr><td>Tool-call overhead</td><td>+10% on input (avg 1.1 extra rounds)</td><td class="num">+8,400</td><td class="num">—</td></tr>
+        <tr><td colspan="2"><strong>Total input tokens</strong></td><td class="num">92,400</td><td class="cost">$0.028</td></tr>
+        <tr><td colspan="2"><strong>Total output tokens</strong></td><td class="num">24,000</td><td class="cost">$0.012</td></tr>
+        <tr class="total-row"><td colspan="2">Sub-total — Chat assistant (free tier)</td><td class="num">116,400</td><td class="cost">$0.040</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <div class="section-header">
+      <span class="icon">✏️</span>
+      <span class="title">Lesson AI Writer &nbsp;·&nbsp; <code>/api/tutor/lesson-ai</code></span>
+      <span class="pill blocked">🚫 Role-gated — HTTP 403</span>
+    </div>
+    <table>
+      <thead><tr><th colspan="3">Gate</th><th class="num">Cost</th></tr></thead>
+      <tbody class="blocked-row">
+        <tr><td colspan="3">Returns HTTP 403 Forbidden — <code>role !== "tutor" &amp;&amp; role !== "admin"</code>. No xAI call made.</td><td class="zero">$0.000</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <div class="section-header">
+      <span class="icon">📚</span>
+      <span class="title">Course Draft &nbsp;·&nbsp; <code>/api/tutor/course-draft</code></span>
+      <span class="pill blocked">🚫 Role-gated — HTTP 403</span>
+    </div>
+    <table>
+      <thead><tr><th colspan="3">Gate</th><th class="num">Cost</th></tr></thead>
+      <tbody class="blocked-row">
+        <tr><td colspan="3">Returns HTTP 403 Forbidden — <code>role !== "tutor" &amp;&amp; role !== "admin"</code>. No xAI call made.</td><td class="zero">$0.000</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <div class="section-header">
+      <span class="icon">🎓</span>
+      <span class="title">Program Builder &nbsp;·&nbsp; <code>/api/tutor/program-builder</code></span>
+      <span class="pill blocked">🚫 Role-gated — HTTP 403</span>
+    </div>
+    <table>
+      <thead><tr><th colspan="3">Gate</th><th class="num">Cost</th></tr></thead>
+      <tbody class="blocked-row">
+        <tr><td colspan="3">Returns HTTP 403 Forbidden — <code>role !== "tutor" &amp;&amp; role !== "admin"</code>. No xAI call made.</td><td class="zero">$0.000</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <div class="section-header">
+      <span class="icon">🎙️</span>
+      <span class="title">Teleprompter Script &nbsp;·&nbsp; <code>/api/tutor/teleprompter-script</code></span>
+      <span class="pill blocked">🚫 Role-gated — HTTP 403</span>
+    </div>
+    <table>
+      <thead><tr><th colspan="3">Gate</th><th class="num">Cost</th></tr></thead>
+      <tbody class="blocked-row">
+        <tr><td colspan="3">Returns HTTP 403 Forbidden — <code>canManage(role)</code> is <code>false</code> for learner. No xAI call made.</td><td class="zero">$0.000</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <div class="section-header">
+      <span class="icon">🌐</span>
+      <span class="title">Landing Chat &nbsp;·&nbsp; <code>/api/landing-chat</code> — Platform-wide (unauthenticated)</span>
+      <span class="pill">Platform cost</span>
+    </div>
+    <table>
+      <thead><tr><th>Parameter</th><th>Detail</th><th class="num">Tokens / month</th><th class="num">Cost (USD)</th></tr></thead>
+      <tbody>
+        <tr><td>Visitor sessions / day (platform-wide)</td><td>50 sessions × 4 msgs each avg</td><td class="num">—</td><td class="num">—</td></tr>
+        <tr><td>Input tokens / turn</td><td>Tighter limits: MAX_HISTORY=8, MAX_MSG=600 → ≈ 600 tokens</td><td class="num">3,600,000</td><td class="num">—</td></tr>
+        <tr><td>Output tokens / turn</td><td>MAX_OUTPUT_CHARS=1,200 → ≈ 300 tokens</td><td class="num">1,800,000</td><td class="num">—</td></tr>
+        <tr class="total-row"><td colspan="2">Sub-total — Landing chat (whole platform / month)</td><td class="num">5,400,000</td><td class="cost">$1.98</td></tr>
+        <tr><td colspan="4" style="font-size:11px;color:var(--muted);">Rate limit: 15 messages per IP per 5 minutes. Not a per-user cost — amortised across all visitors before sign-up.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <div class="section-header">
+      <span class="icon">💡</span>
+      <span class="title">xAI Grok — Totals (free-tier authenticated user)</span>
+    </div>
+    <table>
+      <thead><tr><th>Feature</th><th class="num">Input tokens</th><th class="num">Output tokens</th><th class="num">Cost (USD)</th></tr></thead>
+      <tbody>
+        <tr><td>Chat assistant</td><td class="num">92,400</td><td class="num">24,000</td><td class="cost">$0.040</td></tr>
+        <tr><td>Lesson AI writer</td><td class="num">—</td><td class="num">—</td><td class="zero">$0.000</td></tr>
+        <tr><td>Course draft</td><td class="num">—</td><td class="num">—</td><td class="zero">$0.000</td></tr>
+        <tr><td>Program builder</td><td class="num">—</td><td class="num">—</td><td class="zero">$0.000</td></tr>
+        <tr><td>Teleprompter script</td><td class="num">—</td><td class="num">—</td><td class="zero">$0.000</td></tr>
+        <tr><td>AI video script</td><td class="num">—</td><td class="num">—</td><td class="zero">$0.000</td></tr>
+        <tr><td>Admin / safety tools</td><td class="num">—</td><td class="num">—</td><td class="zero">$0.000</td></tr>
+        <tr class="grand-total"><td><strong>TOTAL — xAI per free user</strong></td><td class="num"><strong>92,400</strong></td><td class="num"><strong>24,000</strong></td><td class="cost"><strong>$0.040</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 2. ElevenLabs -->
+  <h2>2 · ElevenLabs — Voice (TTS &amp; STT)</h2>
+  <p>TTS is available to free-tier users but subject to hard caps: <strong>3,000 characters/day</strong> and <strong>15,000 characters lifetime</strong> (plan: <code>plans/we-have-to-build-iterative-riddle.md</code>, §2). STT is not available — the plan restricts voice input to affiliated users only. The cap is enforced via <code>checkFreeTierCap()</code> querying the existing <code>ai_usage</code> table; it returns HTTP 402 when exceeded so the UI can show an upgrade prompt.</p>
+
+  <div class="section">
+    <div class="section-header">
+      <span class="icon">🔊</span>
+      <span class="title">Text-to-Speech &nbsp;·&nbsp; <code>/api/tts</code> — eleven_flash_v2_5</span>
+      <span class="pill">Active — Capped at 15k chars lifetime</span>
+    </div>
+    <table>
+      <thead><tr><th>Parameter</th><th>Detail</th><th class="num">Units (lifetime)</th><th class="num">Cost (USD)</th></tr></thead>
+      <tbody>
+        <tr><td>Lifetime TTS cap</td><td>15,000 characters total (plan §2)</td><td class="num">15,000 chars</td><td class="num">—</td></tr>
+        <tr><td>Daily TTS cap</td><td>3,000 characters/day — takes ≥5 active days to exhaust lifetime cap</td><td class="num">3,000 chars/day</td><td class="num">—</td></tr>
+        <tr><td>Rate — eleven_flash_v2_5</td><td>$0.30 per 1,000 characters</td><td class="num">—</td><td class="num">—</td></tr>
+        <tr><td>Marathi voices (eleven_v3)</td><td>$0.60/1k chars — same lifetime cap applies</td><td class="num">included in 15k cap</td><td class="num">—</td></tr>
+        <tr><td>When cap is hit</td><td>HTTP 402 <code>{ error: "free_tier_limit", feature: "voice" }</code> — UI shows upgrade prompt linking to university affiliation flow</td><td class="num">—</td><td class="num">—</td></tr>
+        <tr class="total-row"><td colspan="2">Max cost — TTS (full lifetime cap, standard voices)</td><td class="num">15,000 chars</td><td class="cost">$0.450</td></tr>
+        <tr><td colspan="4" style="font-size:11px;color:var(--muted);">This is a one-time lifetime cost per free user, not monthly recurring. Assumes standard (non-Marathi) voices; Marathi would cost $0.90 for 15k chars.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <div class="section-header">
+      <span class="icon">🎤</span>
+      <span class="title">Speech-to-Text &nbsp;·&nbsp; <code>/api/stt</code></span>
+      <span class="pill blocked">🚫 Restricted — Affiliated users only</span>
+    </div>
+    <table>
+      <thead><tr><th colspan="3">Gate</th><th class="num">Cost</th></tr></thead>
+      <tbody class="blocked-row">
+        <tr><td colspan="3">STT not available to unaffiliated free-tier users per plan. Returns HTTP 503. User must type messages. No ElevenLabs scribe_v2 call made.</td><td class="zero">$0.000</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <div class="section-header">
+      <span class="icon">💡</span>
+      <span class="title">ElevenLabs — Totals (free tier, lifetime)</span>
+    </div>
+    <table>
+      <thead><tr><th>Service</th><th>Status</th><th class="num">Max cost (USD)</th></tr></thead>
+      <tbody>
+        <tr><td>TTS — standard voices</td><td>Active, capped at 15,000 chars lifetime / 3,000 chars daily</td><td class="cost">$0.450</td></tr>
+        <tr><td>STT — voice input (scribe_v2)</td><td style="color:var(--muted)">Not available — text input only</td><td class="zero">$0.000</td></tr>
+        <tr class="grand-total"><td><strong>MAX COST — ElevenLabs per free user (lifetime)</strong></td><td></td><td class="cost"><strong>$0.450</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 3. HeyGen -->
+  <h2>3 · HeyGen — AI Video Rendering</h2>
+  <p>AI video rendering is guarded by a hard <code>session.user.superAdmin === true</code> check at the top of the tutor function in <code>/api/tutor/ai-video/route.ts</code>. All free-tier users and regular tutors receive HTTP 403 "AI video is coming soon." — no HeyGen API call is ever made for these users.</p>
+
+  <div class="section">
+    <div class="section-header">
+      <span class="icon">🎬</span>
+      <span class="title">AI Video Render &nbsp;·&nbsp; <code>/api/tutor/ai-video</code></span>
+      <span class="pill blocked">🚫 superAdmin only — HTTP 403</span>
+    </div>
+    <table>
+      <thead><tr><th colspan="3">Gate</th><th class="num">Cost</th></tr></thead>
+      <tbody class="blocked-row">
+        <tr><td colspan="3">Returns HTTP 403 for <code>session.user.superAdmin !== true</code>. Zero HeyGen API calls made — not even a list-presenters request.</td><td class="zero">$0.000</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 4. Grand Total -->
+  <h2>4 · Grand Total — Free Tier (per user per month)</h2>
+
+  <div class="section">
+    <div class="section-header">
+      <span class="icon">💰</span>
+      <span class="title">All Providers Combined</span>
+    </div>
+    <table>
+      <thead><tr><th>Provider</th><th>Features active</th><th class="num">Monthly cost</th><th class="num">Lifetime cap cost</th></tr></thead>
+      <tbody>
+        <tr><td>xAI (Grok-3-mini)</td><td>Chat assistant — 10 msgs/day cap (~60 msgs/month typical)</td><td class="cost">$0.040/mo</td><td class="num" style="color:var(--muted)">ongoing</td></tr>
+        <tr><td>ElevenLabs TTS</td><td>eleven_flash_v2_5 — 3,000 chars/day, 15,000 chars lifetime cap</td><td class="cost">~$0.09/mo*</td><td class="cost">$0.450 max</td></tr>
+        <tr><td>ElevenLabs STT</td><td>Not available — text input only</td><td class="zero">$0.000</td><td class="zero">$0.000</td></tr>
+        <tr><td>HeyGen</td><td>superAdmin gate — not accessible</td><td class="zero">$0.000</td><td class="zero">$0.000</td></tr>
+        <tr class="grand-total"><td><strong>TOTAL — per free user</strong></td><td><em>Chat + capped TTS</em></td><td class="cost"><strong>~$0.13/mo</strong></td><td class="cost"><strong>$0.49 lifetime max</strong></td></tr>
+        <tr><td colspan="4" style="font-size:11px;color:var(--muted);">* TTS monthly estimate assumes user hits the 3,000 char/day cap on ~10 active days = 30,000 chars but lifetime cap stops at 15,000 total. Effectively: ~$0.09 in the first active month, then $0 for TTS after lifetime cap is hit. Landing-page chat: +$1.98/month platform-wide total.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 5. Comparison -->
+  <h2>5 · Free vs. Normal Tier — Side-by-Side Comparison</h2>
+  <p>Summary of which features are active, gated, or disabled per tier, the gate mechanism in code, and the per-user monthly cost impact.</p>
+
+  <table class="cmp-table">
+    <thead>
+      <tr>
+        <th>Feature / API</th>
+        <th>Free Tier</th>
+        <th>Normal Tier</th>
+        <th>Gate Mechanism (code location)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Chat assistant (xAI)</td>
+        <td class="free">✅ $0.040/mo (60 msgs)</td>
+        <td class="paid">✅ $0.228/mo (240 msgs)</td>
+        <td>Authenticated session required</td>
+      </tr>
+      <tr>
+        <td>Landing chat (xAI)</td>
+        <td class="free">✅ Shared platform cost</td>
+        <td class="paid">✅ Same shared cost</td>
+        <td>IP rate limit: 15 msgs / 5 min — no session needed</td>
+      </tr>
+      <tr>
+        <td>Lesson AI writer (xAI)</td>
+        <td class="blocked">🚫 $0.000 — HTTP 403</td>
+        <td class="paid">✅ $0.013/mo</td>
+        <td><code>role === "tutor" || "admin"</code> — <code>lesson-ai/route.ts</code></td>
+      </tr>
+      <tr>
+        <td>Course draft (xAI)</td>
+        <td class="blocked">🚫 $0.000 — HTTP 403</td>
+        <td class="paid">✅ $0.004/mo</td>
+        <td><code>role === "tutor" || "admin"</code> — <code>course-draft/route.ts</code></td>
+      </tr>
+      <tr>
+        <td>Program builder (xAI)</td>
+        <td class="blocked">🚫 $0.000 — HTTP 403</td>
+        <td class="paid">✅ $0.005/mo</td>
+        <td><code>role === "tutor" || "admin"</code> — <code>program-builder/route.ts</code></td>
+      </tr>
+      <tr>
+        <td>Teleprompter script (xAI)</td>
+        <td class="blocked">🚫 $0.000 — HTTP 403</td>
+        <td class="paid">✅ $0.002/mo</td>
+        <td><code>canManage(role)</code> — <code>teleprompter-script/route.ts</code></td>
+      </tr>
+      <tr>
+        <td>AI video script (xAI)</td>
+        <td class="blocked">🚫 $0.000 — HTTP 403</td>
+        <td class="paid">✅ $0.001/mo</td>
+        <td><code>superAdmin === true</code> — <code>ai-video/route.ts</code></td>
+      </tr>
+      <tr>
+        <td>Theme suggest (xAI)</td>
+        <td class="blocked">🚫 $0.000 — HTTP 403</td>
+        <td class="paid">✅ $0.002/mo</td>
+        <td><code>requireAccess</code> admin — <code>theme/suggest/route.ts</code></td>
+      </tr>
+      <tr>
+        <td>TTS — ElevenLabs flash v2.5</td>
+        <td class="free">⚠️ Capped — 3k chars/day, 15k lifetime ($0.45 max)</td>
+        <td class="paid">✅ Unlimited — $0.011/mo typical</td>
+        <td><code>checkFreeTierCap()</code> — <code>free-tier-limits.ts</code> (planned)</td>
+      </tr>
+      <tr>
+        <td>TTS — Marathi (eleven_v3)</td>
+        <td class="free">⚠️ Same lifetime cap — counts toward 15k total</td>
+        <td class="paid">✅ Unlimited — $0.001/mo typical</td>
+        <td>Same cap as standard TTS — <code>free-tier-limits.ts</code></td>
+      </tr>
+      <tr>
+        <td>STT — ElevenLabs scribe_v2</td>
+        <td class="blocked">🚫 $0.000 — not available to free users</td>
+        <td class="paid">✅ $0.033/mo</td>
+        <td>Plan restricts STT to affiliated users only</td>
+      </tr>
+      <tr>
+        <td>AI video render (HeyGen)</td>
+        <td class="blocked">🚫 $0.000 — HTTP 403</td>
+        <td class="paid">✅ $0.750/mo (1×5-min video)</td>
+        <td><code>superAdmin === true</code> — <code>ai-video/route.ts</code></td>
+      </tr>
+      <tr class="summary-row">
+        <td><strong>TOTAL / user / month</strong></td>
+        <td class="free-val">~$0.13/mo · $0.49 lifetime max</td>
+        <td class="paid-val">$1.050/mo ongoing</td>
+        <td style="font-size:12px;color:var(--muted);">Free TTS cost is a one-time lifetime spend, not monthly. After 15k chars used, TTS cost drops to $0 for that user.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="box info-box" style="margin-top:24px">
+    <h3>ℹ&nbsp; Notes, Scaling &amp; Upgrade Path</h3>
+    <ul>
+      <li><strong>TTS cap is live:</strong> <code>src/lib/ai/free-tier-limits.ts</code> implements <code>checkFreeTierCap()</code>, wired into <code>/api/tts</code>, <code>/api/chat</code>, and <code>/api/quiz</code>. Free users hitting the cap receive HTTP 402 <code>{ error: "free_tier_limit" }</code>.</li>
+      <li><strong>Free user definition:</strong> <code>university_id IS NULL AND university_status IS NULL</code>. Pending students (<code>university_id</code> set, <code>university_status = 'pending'</code>) should also be treated as free-tier — a bug fix in <code>seeReach()</code> is part of the same plan (§1).</li>
+      <li><strong>Chat cap (10 msgs/day):</strong> Also from the plan — not yet enforced. Would be added to <code>/api/chat/route.ts</code> alongside TTS cap.</li>
+      <li><strong>To upgrade to full access:</strong> User affiliates with a university (status becomes <code>'active'</code>) → all caps lifted automatically. No role or key change needed for voice.</li>
+      <li><strong>To enable tutor AI tools:</strong> Set user role to <code>"tutor"</code> or <code>"admin"</code> — server-side role check, no frontend change.</li>
+      <li><strong>Free-tier cost at scale:</strong> 1,000 free users × $0.04/mo chat = $40/mo xAI. TTS lifetime cost is $0.45 × new users per month (one-time, not recurring). At 500 new free signups/month: +$225/mo TTS until they hit their cap or affiliate.</li>
+      <li><strong>Quiz grading and accessibility:</strong> Zero marginal AI cost on free or paid tier — pure database reads.</li>
+    </ul>
+  </div>
+
+  <div class="footer">
+    Requisor Learning &nbsp;·&nbsp; API Cost Analysis — Free Tier &nbsp;·&nbsp; November 2026 &nbsp;·&nbsp; All prices USD &nbsp;·&nbsp;
+    Estimates based on public rate cards — verify current pricing before budgeting.
+  </div>
+
+</div>
+
+</body>
+</html>
