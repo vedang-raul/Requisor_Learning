@@ -263,7 +263,7 @@ export const authOptions: NextAuthOptions = {
       // Public Google sign-in never grants a privileged role. Existing roles
       // are handled above; only the canonical admin address is elevated here.
       const createdRole = roleForEmail(profileEmail) === "admin" ? "admin" : "employee";
-      // A matching email domain places the person in that university straight away.
+      // A matching email domain places the person in that university (or company) straight away.
       const { rows: createdRows } = await db.query<Pick<DbUser, "id">>(
         `WITH matched AS (
            SELECT id FROM universities

@@ -20,7 +20,7 @@ type PersonRow = {
   requestedRole: string | null; lastLoginAt: string | null;
 };
 
-const ROLE_LABEL = { employee: "Student", tutor: "Tutor", admin: "University admin" } as const;
+const ROLE_LABEL = { employee: "Student", tutor: "Tutor", admin: "Admin" } as const;
 const selectClass = "focus-ring h-8 rounded-lg border border-zinc-200 bg-white px-2 text-xs text-zinc-800";
 
 export function PeoplePanel({ superAdmin, universities }: { superAdmin: boolean; universities: UniversityOption[] }) {
@@ -67,7 +67,7 @@ export function PeoplePanel({ superAdmin, universities }: { superAdmin: boolean;
     if (person.universityId !== universityId || person.status !== "active") {
       if (!(await act(person, { action: "move", universityId }, "moved"))) return;
     }
-    await act({ ...person, universityId, status: "active" }, { action: "set-role", role: "admin" }, "is now a university admin");
+    await act({ ...person, universityId, status: "active" }, { action: "set-role", role: "admin" }, "is now an admin");
   }
 
   const pendingCount = people?.filter((p) => p.status === "pending").length ?? 0;
@@ -156,13 +156,13 @@ export function PeoplePanel({ superAdmin, universities }: { superAdmin: boolean;
                             if (role === "admin" && superAdmin) {
                               // An admin runs one university: it has to be chosen first, never guessed.
                               if (p.universityId) void makeAdminOf(p, p.universityId);
-                              else setNote({ ok: false, text: `Choose ${p.name || p.email}'s university first, then make them its university admin.` });
+                              else setNote({ ok: false, text: `Choose ${p.name || p.email}'s organisation first, then make them its admin.` });
                             } else void act(p, { action: "set-role", role }, `is now a ${ROLE_LABEL[role].toLowerCase()}`);
                           }}
                         >
                           <option value="employee">Student</option>
                           <option value="tutor">Tutor</option>
-                          {superAdmin && <option value="admin">University admin</option>}
+                          {superAdmin && <option value="admin">Admin</option>}
                         </select>
                       ) : (
                         <span className="text-xs text-zinc-700">{ROLE_LABEL[p.role]}</span>

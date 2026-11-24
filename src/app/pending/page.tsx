@@ -52,7 +52,7 @@ export default function PendingApprovalPage() {
         <h1 className="mt-4 text-xl font-semibold text-zinc-900">Waiting for approval</h1>
         <p className="mt-2 text-sm leading-relaxed text-zinc-600">
           Your request to join {university ? <strong className="text-zinc-900">{university}</strong> : "your university"} has
-          been sent to its university admin. You&apos;ll be able to sign in to your courses as soon as they approve it, and
+          been sent to its admin. You&apos;ll be able to sign in to your courses as soon as they approve it, and
           we&apos;ll email you at <strong className="text-zinc-900">{session?.user?.email}</strong>.
         </p>
         <p className="mt-3 text-xs text-zinc-500">

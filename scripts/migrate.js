@@ -788,6 +788,9 @@ p.query(`
   SELECT 'public_partner', to_jsonb(id) FROM universities ORDER BY id LIMIT 1
   ON CONFLICT (key) DO NOTHING;
 
+  -- 'university' or 'company' — same table, same routing, same theming.
+  ALTER TABLE universities ADD COLUMN IF NOT EXISTS org_type VARCHAR(20) NOT NULL DEFAULT 'university';
+
   -- People whose email matches a university's domain belong to it.
   UPDATE users u SET university_id = un.id, university_status = 'active'
     FROM universities un

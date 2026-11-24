@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Alma 41 — Release Notes 1.2.2</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 13px;
+    color: #1a1a1a;
+    background: #fff;
+    padding: 48px 56px;
+    max-width: 760px;
+    margin: 0 auto;
+  }
+  .meta-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #888;
+    margin-bottom: 12px;
+  }
+  h1 {
+    font-size: 40px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin-bottom: 6px;
+  }
+  .subtitle {
+    font-size: 13px;
+    color: #555;
+    margin-bottom: 24px;
+  }
+  .version-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 24px;
+    font-size: 12px;
+  }
+  .version-table th {
+    background: #f5f5f5;
+    text-align: left;
+    padding: 7px 12px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #666;
+    border: 1px solid #e0e0e0;
+  }
+  .version-table td {
+    padding: 9px 12px;
+    border: 1px solid #e0e0e0;
+    font-weight: 600;
+  }
+  .summary-box {
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    padding: 14px 16px;
+    margin-bottom: 32px;
+    background: #fafafa;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .summary-box strong { font-weight: 700; }
+  h2 {
+    font-size: 18px;
+    font-weight: 700;
+    color: #c0392b;
+    margin-top: 32px;
+    margin-bottom: 2px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #e8e8e8;
+  }
+  .feature {
+    margin-top: 16px;
+    margin-bottom: 8px;
+  }
+  .feature-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .feature-title {
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .badge {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    padding: 2px 8px;
+    border-radius: 3px;
+    background: #f0f0f0;
+    color: #555;
+  }
+  ul {
+    padding-left: 0;
+    list-style: none;
+  }
+  ul li {
+    padding: 2px 0 2px 14px;
+    position: relative;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #333;
+  }
+  ul li::before {
+    content: "•";
+    position: absolute;
+    left: 0;
+    color: #888;
+  }
+  .release-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 16px;
+    font-size: 13px;
+  }
+  .release-table td {
+    padding: 10px 12px;
+    border: 1px solid #e0e0e0;
+    vertical-align: top;
+  }
+  .release-table td:first-child {
+    font-weight: 600;
+    white-space: nowrap;
+    width: 130px;
+    color: #444;
+  }
+  .footer {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 48px;
+    padding-top: 12px;
+    border-top: 1px solid #e8e8e8;
+    font-size: 11px;
+    color: #aaa;
+  }
+  @media print {
+    body { padding: 32px 40px; }
+    h2 { break-before: avoid; }
+    .feature { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<div class="meta-label">Release Notes</div>
+<h1>Alma 41 — version 1.2.2</h1>
+<p class="subtitle">What's new since version 1.2.1 (live on learning.requisor.io).</p>
+
+<table class="version-table">
+  <thead>
+    <tr>
+      <th>Version</th>
+      <th>Replaces</th>
+      <th>Release Commit</th>
+      <th>Database Changes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1.2.2</td>
+      <td>1.2.1 · 3bd49c6</td>
+      <td>Pending</td>
+      <td>Yes — adds <code>org_type</code> column to <code>universities</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="summary-box">
+  <strong>In short:</strong> The platform now supports both universities and companies as first-class partner types.
+  Super admins can designate any new or existing partner as a university or a company, with distinct icons and labels throughout the admin panel.
+  The role previously called "University Admin" is simplified to "Admin" across all user-facing surfaces, making the label work naturally for both partner types.
+</div>
+
+<!-- NEW FOR SUPER ADMINS -->
+<h2>New for super admins</h2>
+
+<div class="feature">
+  <div class="feature-header">
+    <span class="feature-title">Company / Organisation partner type</span>
+    <span class="badge">Super Admin</span>
+  </div>
+  <ul>
+    <li>When adding or editing a partner, super admins now choose between <strong>University</strong> and <strong>Company / Organisation</strong> via a type toggle in the form.</li>
+    <li>The choice is stored in a new <code>org_type</code> column (<code>VARCHAR(20)</code>, default <code>'university'</code>) on the <code>universities</code> table — existing partners are unaffected.</li>
+    <li>Each partner in the list now shows a coloured badge — green for University, blue for Company — so the type is visible at a glance.</li>
+    <li>The logo placeholder icon switches to a briefcase for companies and a building for universities, both in the list and in the create/edit form.</li>
+    <li>Name field placeholders update to match the chosen type (e.g. "Acme Corporation" for a company, "Milwaukee School of Engineering" for a university).</li>
+    <li>The confirmation dialog when removing a partner uses the correct label ("Remove company" vs "Remove university") and refers to the partner's admin generically.</li>
+    <li>Success toasts and error messages throughout the panel use context-aware wording ("added as a company", "A partner with that name already exists").</li>
+  </ul>
+</div>
+
+<!-- NEW FOR ADMINS -->
+<h2>New for admins</h2>
+
+<div class="feature">
+  <div class="feature-header">
+    <span class="feature-title">Admins can create courses</span>
+    <span class="badge">Admin</span>
+  </div>
+  <ul>
+    <li>Organisation admins can now create and manage courses directly from the Tutor Workspace, without needing a separate tutor account.</li>
+    <li>Courses created by an admin are automatically scoped to their organisation — no manual assignment needed.</li>
+    <li>The existing course creation API already permitted the admin role; this release confirms and documents that the full creation UI is accessible to admins.</li>
+  </ul>
+</div>
+
+<!-- IMPROVEMENTS FOR EVERYONE -->
+<h2>Improvements for everyone</h2>
+
+<div class="feature">
+  <div class="feature-header">
+    <span class="feature-title">"Admin" replaces "University Admin" everywhere</span>
+    <span class="badge">Everyone</span>
+  </div>
+  <ul>
+    <li>All user-facing labels, messages, and UI strings that previously said "university admin" now say "Admin" — shorter, clearer, and correct for both universities and companies.</li>
+    <li>The admin panel heading reads "Admin Panel" (instead of "University Admin Panel").</li>
+    <li>The role dropdown in People &amp; Roles shows "Admin" rather than "University admin".</li>
+    <li>Pending-approval and sign-up hint messages now refer to "the organisation's admin" rather than "university admin".</li>
+    <li>The error raised when a non-super-admin tries to promote someone to admin reads: "Only a super admin can make someone an admin."</li>
+    <li>The AI assistant's system prompt refers to org-level admins as "an ADMIN: they run one organisation".</li>
+    <li>The View As card and the theme editor description are updated to match.</li>
+  </ul>
+</div>
+
+<!-- FOR THE RELEASE TEAM -->
+<h2>For the release team</h2>
+
+<table class="release-table">
+  <tbody>
+    <tr>
+      <td>Commits in this release</td>
+      <td>Pending — changes are staged locally, not yet committed. Files changed: <code>universities-panel.tsx</code>, <code>universities.ts</code>, <code>university-input.ts</code>, <code>admin/universities/route.ts</code>, <code>migrate.js</code>, <code>admin/page.tsx</code>, <code>people-panel.tsx</code>, <code>people-rules.ts</code>, <code>login-screen.tsx</code>, <code>tutors-login/login.tsx</code>, <code>pending/page.tsx</code>, <code>view-as.tsx</code>, <code>university-theme-editor.tsx</code>, <code>chat/route.ts</code>, <code>auth.ts</code></td>
+    </tr>
+    <tr>
+      <td>Database</td>
+      <td><strong>Migration required.</strong> <code>scripts/migrate.js</code> adds <code>ALTER TABLE universities ADD COLUMN IF NOT EXISTS org_type VARCHAR(20) NOT NULL DEFAULT 'university'</code>. The migration is additive and safe to re-run. Existing partners default to <code>'university'</code> and are unaffected.</td>
+    </tr>
+    <tr>
+      <td>APIs</td>
+      <td>Additive. <code>POST /api/admin/universities</code> and <code>PATCH /api/admin/universities</code> now accept and persist an <code>orgType</code> field. The <code>GET</code> response now includes <code>orgType</code> on each university row.</td>
+    </tr>
+    <tr>
+      <td>Publish</td>
+      <td><code>npm run build</code> and deploy. Run <code>node scripts/migrate.js</code> (or let the Replit post-merge hook do it) to add the <code>org_type</code> column.</td>
+    </tr>
+    <tr>
+      <td>After publishing</td>
+      <td>Tag the release commit as v1.2.2 and date the CHANGELOG entry (see docs/RELEASING.md).</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="footer">
+  <span>Alma 41 by Requisor.AI · Release notes 1.2.2</span>
+  <span>25 November 2026</span>
+</div>
+
+</body>
+</html>

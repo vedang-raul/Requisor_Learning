@@ -202,7 +202,7 @@ export function UniversityThemeEditor({ id, name, initial, savedFont, onClose, o
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="text-sm font-semibold text-zinc-900">Theme for {name}</p>
-          <p className="text-[11px] text-zinc-500">What its tutors, learners and university admins see once they sign in. Public pages and other universities keep Requisor&apos;s look.</p>
+          <p className="text-[11px] text-zinc-500">What its tutors, learners and admins see once they sign in. Public pages and other organisations keep Requisor&apos;s look.</p>
         </div>
         <button type="button" onClick={onClose} aria-label="Close the theme" className="focus-ring rounded-md p-1 text-zinc-500 hover:bg-zinc-100"><X className="h-4 w-4" /></button>
       </div>

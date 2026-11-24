@@ -8,14 +8,13 @@ only. How to cut a release is in [docs/RELEASING.md](docs/RELEASING.md).
 ## [Unreleased]
 
 ### Added
+- **Companies / Organisations section** in the Super Admin Panel: a new "Companies" tab lets super admins add corporate partners the same way universities are added. Staff whose email domain matches a registered company domain are automatically placed in that company's environment at sign-up (Google OAuth and password signup both supported). A user belongs to either a university or a company, never both — university matching takes priority. The existing email-domain routing, session plumbing and pending-approval flow all work identically for companies.
 - **Privacy policy page** (`/privacy`): documents every category of data the Activity tab collects
   (sign-in events, page views, location, device, AI usage), who can see it, lawful basis, third-party
   services (ipapi.co, Google OAuth), user rights, and cookie details. The Activity tab footer now
   links to it. No database changes.
 
-Database: three new tables, `course_preview_links`, `lesson_quizzes` and
-`quiz_attempts` (additive; the app also creates them on first use). Nothing
-existing changes.
+Database: new `companies` table; new `company_id` and `company_status` columns on `users`; new index `users_company_idx`. All additive — nothing existing changes. Also three new tables, `course_preview_links`, `lesson_quizzes` and `quiz_attempts` (additive; the app also creates them on first use). Nothing existing changes.
 
 ### Fixed
 - **No more flash of other courses**: Learning Paths and the sidebar showed the seven built-in

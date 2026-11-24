@@ -244,7 +244,7 @@ export function LoginScreen() {
         else {
           trackEvent("account_created");
           const waiting = data?.pendingApproval
-            ? " Your request to join your university has gone to its university admin — you'll get access once they approve it."
+            ? " Your request to join your organisation has gone to its admin — you'll get access once they approve it."
             : "";
           setNotice((data?.verified
             ? "Account created! You can log in now with your email and password."
@@ -406,7 +406,7 @@ export function LoginScreen() {
                     {emailUniversity && String(emailUniversity.id) === universityId
                       ? `Your ${emailUniversity.shortName} email adds you to ${emailUniversity.shortName} straight away.`
                       : universityId
-                        ? "This email isn't on your university's list, so its university admin needs to approve you first. Use your university email to get in straight away."
+                        ? "This email isn't on your organisation's list, so its admin needs to approve you first. Use your organisation email to get in straight away."
                         : "You'll see the courses open to everyone."}
                   </p>
                 </div>

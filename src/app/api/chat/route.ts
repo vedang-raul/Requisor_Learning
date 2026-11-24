@@ -281,7 +281,7 @@ function programBuilderNote(raw: unknown): string {
 function adminNote(superAdmin: boolean): string {
   return `
 
-ADMIN — this user is ${superAdmin ? "the SUPER ADMIN (the Requisor team): every university on the platform" : "a UNIVERSITY ADMIN: they run one university"}. Beyond the tutor tools above you can:
+ADMIN — this user is ${superAdmin ? "the SUPER ADMIN (the Requisor team): every university on the platform" : "an ADMIN: they run one organisation"}. Beyond the tutor tools above you can:
 - get_university_overview: students, tutors, admins, people waiting for approval, tutor requests, courses, and the last week's learning activity${superAdmin ? " (for every university, or one by name)" : ""}.
 - list_people: who is at the university${superAdmin ? " (or any university)" : ""}, filtered to pending approvals, tutor requests, tutors, students or admins, or searched by name or email.
 - propose_review_person: approve someone waiting to join, or approve or decline a request to become a tutor (a confirmation card).

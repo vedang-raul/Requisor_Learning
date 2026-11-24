@@ -43,7 +43,7 @@ export function ViewAsCard() {
         <CardTitle>View as</CardTitle>
       </div>
       <p className="mb-4 text-sm text-zinc-600">
-        See Alma 41 exactly as a test student, tutor or university admin sees it. These are test accounts, never real people. A banner lets you switch back.
+        See Alma 41 exactly as a test student, tutor or admin sees it. These are test accounts, never real people. A banner lets you switch back.
       </p>
       <div className="grid gap-2 sm:grid-cols-3">
         {(Object.keys(VIEW_AS_LABELS) as ViewAsKind[]).map((kind) => {

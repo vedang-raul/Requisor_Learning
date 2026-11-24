@@ -119,7 +119,7 @@ export default function AdminPage() {
         </motion.div>
         <div>
           <h1 className="text-2xl font-bold md:text-3xl">
-            {superAdmin ? "Super Admin" : "University Admin"} <span className="text-gradient">Panel</span>
+            {superAdmin ? "Super Admin" : "Admin"} <span className="text-gradient">Panel</span>
           </h1>
           <p className="mt-1 text-sm text-zinc-600">
             {superAdmin ? "Super admin: every university on Alma 41." : ownUniversity ? `Manage ${ownUniversity.name} on Alma 41.` : "Manage content, users and analytics for Alma 41."}
@@ -138,7 +138,7 @@ export default function AdminPage() {
           ...(superAdmin ? [["activity", "Activity", Gauge]] : []),
           ["content", "Courses & Lessons", LayoutGrid],
           ["people", "People & roles", UserCog],
-          ...(superAdmin ? [["universities", "Universities", Building2]] : []),
+          ...(superAdmin ? [["universities", "Universities & Companies", Building2]] : []),
           ["reviews", "Reviews & Ratings", Star],
           // Bug reports are about the platform itself, so only the Requisor team handles them.
           ...(superAdmin ? [["bugs", "Bug Reports", Bug]] : []),

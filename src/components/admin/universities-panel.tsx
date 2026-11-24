@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, Building2, ImagePlus, Loader2, Palette, Pencil, Plus, Radio, Trash2, X } from "lucide-react";
+import { AlertTriangle, Briefcase, Building2, ImagePlus, Loader2, Palette, Pencil, Plus, Radio, Trash2, X } from "lucide-react";
 import { Card, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { cleanDomains, isPublicEmailDomain, MAX_UNIVERSITY_DOMAINS } from "@/lib/auth/roles";
@@ -19,10 +19,11 @@ import type { UniversityTheme } from "@/lib/theme/university-theme";
 type UniversityRow = {
   id: number; name: string; shortName: string; domains: string[]; logoUrl: string | null;
   people: number; pending: number; courses: number; theme: UniversityTheme | null; font: { name: string; version: number } | null;
+  orgType: "university" | "company";
 };
-type Draft = { id: number | null; name: string; shortName: string; domains: string; logo: string | null | undefined; preview: string | null };
+type Draft = { id: number | null; name: string; shortName: string; domains: string; logo: string | null | undefined; preview: string | null; orgType: "university" | "company" };
 
-const EMPTY: Draft = { id: null, name: "", shortName: "", domains: "", logo: undefined, preview: null };
+const EMPTY: Draft = { id: null, name: "", shortName: "", domains: "", logo: undefined, preview: null, orgType: "university" };
 const inputClass = "focus-ring h-9 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900";
 
 /**
@@ -51,15 +52,15 @@ function DomainsField({ value, onChange }: { value: string; onChange: (value: st
       {publicOnes.length > 0 && (
         <p role="alert" className="flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">
           <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          {publicOnes.map((d) => `@${d}`).join(", ")} {publicOnes.length === 1 ? "is a public email provider" : "are public email providers"} — anyone with an address there would join this university straight away.
+          {publicOnes.map((d) => `@${d}`).join(", ")} {publicOnes.length === 1 ? "is a public email provider" : "are public email providers"} — anyone with an address there would join this partner straight away.
         </p>
       )}
       {typedCount > domains.length && domains.length < MAX_UNIVERSITY_DOMAINS && (
         <p className="text-[11px] text-red-700">Some entries aren&apos;t valid domains and will be skipped.</p>
       )}
       <span className="block text-[11px] text-zinc-500">
-        People who sign up with an address on one of these domains join straight away; anyone else who picks this university waits for its university admin to approve them.
-        Add each subdomain students use separately, separated with commas (up to {MAX_UNIVERSITY_DOMAINS}).
+        People who sign up with an address on one of these domains join straight away; anyone else who picks this partner waits for its admin to approve them.
+        Add each subdomain separately, separated with commas (up to {MAX_UNIVERSITY_DOMAINS}).
       </span>
     </div>
   );
@@ -113,9 +114,9 @@ export function UniversitiesPanel({ onChanged }: { onChanged?: () => void }) {
     setSaving(true);
     setNote(null);
     try {
-      const body = { id: draft.id ?? undefined, name: draft.name, shortName: draft.shortName, domains: draft.domains, ...(draft.logo !== undefined ? { logo: draft.logo } : {}) };
+      const body = { id: draft.id ?? undefined, name: draft.name, shortName: draft.shortName, domains: draft.domains, orgType: draft.orgType, ...(draft.logo !== undefined ? { logo: draft.logo } : {}) };
       await send(draft.id ? "PATCH" : "POST", body);
-      changed(draft.id ? `${draft.name} was updated.` : `${draft.name} was added.`);
+      changed(draft.id ? `${draft.name} was updated.` : `${draft.name} was added as a ${draft.orgType}.`);
       setDraft(null);
     } catch (error) {
       setNote({ ok: false, text: (error as Error).message });
@@ -125,7 +126,8 @@ export function UniversitiesPanel({ onChanged }: { onChanged?: () => void }) {
   }
 
   async function remove(row: UniversityRow) {
-    if (!(await askConfirm(`Remove ${row.name}? Its ${row.people} people and ${row.courses} courses stay on the platform without a university, and its university admins become students.`, { confirmLabel: "Remove university", danger: true }))) return;
+    const label = row.orgType === "company" ? "company" : "university";
+    if (!(await askConfirm(`Remove ${row.name}? Its ${row.people} people and ${row.courses} courses stay on the platform without a ${label}, and its admins become students.`, { confirmLabel: `Remove ${label}`, danger: true }))) return;
     try {
       await send("DELETE", { id: row.id });
       changed(`${row.name} was removed.`);
@@ -176,13 +178,13 @@ export function UniversitiesPanel({ onChanged }: { onChanged?: () => void }) {
 
       {note && <p role={note.ok ? "status" : "alert"} className={cn("rounded-lg px-3 py-2 text-xs", note.ok ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-700")}>{note.text}</p>}
 
-      {/* The universities */}
+      {/* Universities & Companies */}
       <Card>
         <div className="mb-3 flex items-center justify-between gap-2">
-          <CardTitle>Universities</CardTitle>
+          <CardTitle>Universities &amp; Companies</CardTitle>
           {!draft && (
             <button type="button" onClick={() => setDraft({ ...EMPTY })} className="focus-ring inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white">
-              <Plus className="h-3.5 w-3.5" aria-hidden="true" />Add university
+              <Plus className="h-3.5 w-3.5" aria-hidden="true" />Add partner
             </button>
           )}
         </div>
@@ -190,22 +192,38 @@ export function UniversitiesPanel({ onChanged }: { onChanged?: () => void }) {
         {draft && (
           <div className="mb-4 space-y-3 rounded-xl border border-primary/20 bg-primary/[0.03] p-3">
             <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold text-zinc-900">{draft.id ? `Edit ${draft.name}` : "New university"}</p>
+              <p className="text-sm font-semibold text-zinc-900">{draft.id ? `Edit ${draft.name}` : "New partner"}</p>
               <button type="button" onClick={() => setDraft(null)} aria-label="Cancel" className="focus-ring rounded-md p-1 text-zinc-500 hover:bg-zinc-100"><X className="h-4 w-4" /></button>
+            </div>
+            {/* Type toggle */}
+            <div className="flex gap-2" role="radiogroup" aria-label="Partner type">
+              {(["university", "company"] as const).map((t) => (
+                <button key={t} type="button" role="radio" aria-checked={draft.orgType === t}
+                  onClick={() => setDraft({ ...draft, orgType: t })}
+                  className={cn("focus-ring inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition",
+                    draft.orgType === t ? "border-primary bg-primary/5 text-primary ring-1 ring-primary/30" : "border-zinc-200 text-zinc-600 hover:border-zinc-300")}>
+                  {t === "company" ? <Briefcase className="h-3.5 w-3.5" aria-hidden="true" /> : <Building2 className="h-3.5 w-3.5" aria-hidden="true" />}
+                  {t === "company" ? "Company / Organisation" : "University"}
+                </button>
+              ))}
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block text-xs font-medium text-zinc-700">Full name
-                <input className={cn(inputClass, "mt-1")} value={draft.name} maxLength={120} placeholder="e.g. Milwaukee School of Engineering" onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
+                <input className={cn(inputClass, "mt-1")} value={draft.name} maxLength={120}
+                  placeholder={draft.orgType === "company" ? "e.g. Acme Corporation" : "e.g. Milwaukee School of Engineering"}
+                  onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
               </label>
               <label className="block text-xs font-medium text-zinc-700">Short name
-                <input className={cn(inputClass, "mt-1")} value={draft.shortName} maxLength={40} placeholder="e.g. MSOE" onChange={(e) => setDraft({ ...draft, shortName: e.target.value })} />
+                <input className={cn(inputClass, "mt-1")} value={draft.shortName} maxLength={40}
+                  placeholder={draft.orgType === "company" ? "e.g. Acme" : "e.g. MSOE"}
+                  onChange={(e) => setDraft({ ...draft, shortName: e.target.value })} />
               </label>
             </div>
             <DomainsField value={draft.domains} onChange={(domains) => setDraft({ ...draft, domains })} />
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-zinc-200 bg-white">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                {draft.preview ? <img src={draft.preview} alt="Logo preview" className="h-12 w-12 object-contain" /> : <Building2 className="h-6 w-6 text-zinc-300" aria-hidden="true" />}
+                {draft.preview ? <img src={draft.preview} alt="Logo preview" className="h-12 w-12 object-contain" /> : draft.orgType === "company" ? <Briefcase className="h-6 w-6 text-zinc-300" aria-hidden="true" /> : <Building2 className="h-6 w-6 text-zinc-300" aria-hidden="true" />}
               </div>
               <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => pickLogo(e.target.files?.[0])} />
               <button type="button" onClick={() => fileRef.current?.click()} className="focus-ring inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700">
@@ -219,7 +237,7 @@ export function UniversitiesPanel({ onChanged }: { onChanged?: () => void }) {
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setDraft(null)} className="focus-ring rounded-lg border border-zinc-200 px-3 py-1.5 text-xs font-medium text-zinc-700">Cancel</button>
               <button type="button" disabled={saving || draft.name.trim().length < 3} onClick={save} className="focus-ring inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">
-                {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}{draft.id ? "Save changes" : "Add university"}
+                {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />}{draft.id ? "Save changes" : `Add ${draft.orgType}`}
               </button>
             </div>
           </div>
@@ -228,17 +246,22 @@ export function UniversitiesPanel({ onChanged }: { onChanged?: () => void }) {
         {!rows ? (
           <p className="flex items-center gap-2 text-sm text-zinc-500"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />Loading…</p>
         ) : rows.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-zinc-200 px-3 py-4 text-center text-sm text-zinc-500">No universities yet.</p>
+          <p className="rounded-xl border border-dashed border-zinc-200 px-3 py-4 text-center text-sm text-zinc-500">No partners yet.</p>
         ) : (
           <ul className="divide-y divide-zinc-100">
             {rows.map((row) => (
               <li key={row.id} className="flex flex-wrap items-center gap-3 py-2.5">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-white">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  {row.logoUrl ? <img src={row.logoUrl} alt="" className="h-8 w-8 object-contain" /> : <Building2 className="h-5 w-5 text-zinc-300" aria-hidden="true" />}
+                  {row.logoUrl ? <img src={row.logoUrl} alt="" className="h-8 w-8 object-contain" /> : row.orgType === "company" ? <Briefcase className="h-5 w-5 text-zinc-300" aria-hidden="true" /> : <Building2 className="h-5 w-5 text-zinc-300" aria-hidden="true" />}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-zinc-900">{row.name} <span className="font-normal text-zinc-500">· {row.shortName}</span></p>
+                  <p className="truncate text-sm font-medium text-zinc-900">
+                    {row.name} <span className="font-normal text-zinc-500">· {row.shortName}</span>
+                    <span className={cn("ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-medium", row.orgType === "company" ? "bg-blue-100 text-blue-700" : "bg-emerald-100 text-emerald-700")}>
+                      {row.orgType === "company" ? "Company" : "University"}
+                    </span>
+                  </p>
                   <p className="text-xs text-zinc-500">
                     {row.domains.length ? row.domains.map((d) => `@${d}`).join(", ") : "No email domain"} · {row.people} people{row.pending ? ` (${row.pending} waiting)` : ""} · {row.courses} courses
                   </p>
@@ -250,7 +273,7 @@ export function UniversitiesPanel({ onChanged }: { onChanged?: () => void }) {
                     : <Palette className="h-3.5 w-3.5" aria-hidden="true" />}
                   Theme{row.theme ? "" : " (Requisor)"}
                 </button>
-                <button type="button" onClick={() => setDraft({ id: row.id, name: row.name, shortName: row.shortName === row.name ? "" : row.shortName, domains: row.domains.join(", "), logo: undefined, preview: row.logoUrl })} className="focus-ring inline-flex items-center gap-1 rounded-lg border border-zinc-200 px-2 py-1 text-xs font-medium text-zinc-700">
+                <button type="button" onClick={() => setDraft({ id: row.id, name: row.name, shortName: row.shortName === row.name ? "" : row.shortName, domains: row.domains.join(", "), logo: undefined, preview: row.logoUrl, orgType: row.orgType })} className="focus-ring inline-flex items-center gap-1 rounded-lg border border-zinc-200 px-2 py-1 text-xs font-medium text-zinc-700">
                   <Pencil className="h-3.5 w-3.5" aria-hidden="true" />Edit
                 </button>
                 <button type="button" onClick={() => remove(row)} className="focus-ring inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50">

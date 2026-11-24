@@ -70,14 +70,14 @@ export async function POST(req: Request) {
   if (logo && "error" in logo) return Response.json({ error: logo.error }, { status: 400 });
   try {
     const { rows } = await db.query<{ id: number }>(
-      `INSERT INTO universities (name, short_name, email_domains, logo_data, logo_type)
-       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      [input.name, input.shortName, input.domains, logo?.data ?? null, logo?.type ?? null]
+      `INSERT INTO universities (name, short_name, email_domains, logo_data, logo_type, org_type)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+      [input.name, input.shortName, input.domains, logo?.data ?? null, logo?.type ?? null, input.orgType]
     );
     await adoptMatchingAccounts(rows[0].id, input.domains);
     return Response.json({ id: rows[0].id }, { status: 201 });
   } catch (error) {
-    if (isDuplicate(error)) return Response.json({ error: "A university with that name already exists." }, { status: 409 });
+    if (isDuplicate(error)) return Response.json({ error: "A partner with that name already exists." }, { status: 409 });
     throw error;
   }
 }
@@ -116,9 +116,10 @@ export async function PATCH(req: Request) {
               logo_data = CASE WHEN $5 THEN $6 ELSE logo_data END,
               logo_type = CASE WHEN $5 THEN $7 ELSE logo_type END,
               logo_path = CASE WHEN $5 THEN NULL ELSE logo_path END,
+              org_type = $8,
               updated_at = NOW()
         WHERE id = $1`,
-      [id, input.name, input.shortName, input.domains, body.logo !== undefined, logo?.data ?? null, logo?.type ?? null]
+      [id, input.name, input.shortName, input.domains, body.logo !== undefined, logo?.data ?? null, logo?.type ?? null, input.orgType]
     );
     if (!rowCount) return Response.json({ error: "University not found." }, { status: 404 });
     await adoptMatchingAccounts(id, input.domains);

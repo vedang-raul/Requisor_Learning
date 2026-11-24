@@ -31,12 +31,13 @@ export function readLogo(raw: unknown): LogoUpload | { error: string } {
 
 const tidy = (value: unknown, max: number) => (typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, max) : "");
 
-export type UniversityInput = { name: string; shortName: string; domains: string[] };
+export type UniversityInput = { name: string; shortName: string; domains: string[]; orgType: "university" | "company" };
 
-/** The name, short name and email domains of a university, cleaned. */
+/** The name, short name, email domains and org type of a university/company, cleaned. */
 export function readUniversityInput(body: Record<string, unknown>): UniversityInput | { error: string } {
   const name = tidy(body.name, 120);
-  if (name.length < 3) return { error: "Enter the university's full name." };
+  if (name.length < 3) return { error: "Enter the name." };
   const shortName = tidy(body.shortName, 40);
-  return { name, shortName, domains: cleanDomains(body.domains) };
+  const orgType = body.orgType === "company" ? "company" : "university";
+  return { name, shortName, domains: cleanDomains(body.domains), orgType };
 }

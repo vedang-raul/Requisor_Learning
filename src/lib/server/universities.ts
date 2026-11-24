@@ -9,14 +9,14 @@ import { FONT_FORMATS, type FontUpload } from "../theme/font-upload";
  * Universities: the partners whose tutors and students use the platform. Super
  * admins add them; people join one at sign-up, by email domain or by picking it.
  */
-export type University = { id: number; name: string; shortName: string; domains: string[]; logoUrl: string | null };
+export type University = { id: number; name: string; shortName: string; domains: string[]; logoUrl: string | null; orgType: "university" | "company" };
 
 type UniversityRow = {
   id: number; name: string; short_name: string; email_domains: string[] | null;
-  logo_path: string | null; has_logo_data: boolean; updated_at: Date;
+  logo_path: string | null; has_logo_data: boolean; updated_at: Date; org_type: string | null;
 };
 
-const COLUMNS = "id, name, short_name, email_domains, logo_path, (logo_data IS NOT NULL) AS has_logo_data, updated_at";
+const COLUMNS = "id, name, short_name, email_domains, logo_path, (logo_data IS NOT NULL) AS has_logo_data, updated_at, org_type";
 
 /** Where the logo is shown from: an uploaded one through the logo route, else a file shipped with the site. */
 function toUniversity(row: UniversityRow): University {
@@ -27,6 +27,7 @@ function toUniversity(row: UniversityRow): University {
     shortName: row.short_name || row.name,
     domains: row.email_domains ?? [],
     logoUrl: uploaded ?? row.logo_path ?? null,
+    orgType: row.org_type === "company" ? "company" : "university",
   };
 }
 
