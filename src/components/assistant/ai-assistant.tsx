@@ -1552,7 +1552,6 @@ export function AiAssistant() {
             )}
             {/* Messages: announced through the live region below, so streaming isn't read out word by word. */}
             <div ref={scrollRef} role="log" aria-label="Conversation" aria-live="off" className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
-              {draftError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{draftError}</div>}
               {messages.length === 0 && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.25 }} className="space-y-4">
                   <p className="text-[15px] font-light leading-relaxed text-zinc-600">
@@ -1743,6 +1742,16 @@ export function AiAssistant() {
                       </button>
                     </div>
                   </div>
+                </motion.div>
+              )}
+              {draftError && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  role="alert"
+                  className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+                >
+                  {draftError}
                 </motion.div>
               )}
             </div>

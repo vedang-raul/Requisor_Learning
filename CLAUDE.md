@@ -61,6 +61,8 @@ Jest runs in a `node` environment with ts-jest and maps `@/` to `src/`. Tests ar
 
 Before the user commits to GitHub or asks for a Replit deployment prompt, remind them to run the `security-reviewer` agent first. Do not generate a Replit deployment prompt until the security reviewer has been run and returned no BLOCKERs.
 
+**"Bob"** is the nickname for the security reviewer. When the user says "run Bob" or "ask Bob", invoke the `security-review` skill immediately.
+
 ## Version control and Replit
 
 - **Remotes.** `personal` is `vedang-raul/Requisor_Learning`, where our work goes: `git push personal HEAD:main`. `origin` is `Soham0507/Requisor_Learning`, a coworker's repo; never push there. Local work happens on branch `tutor-workspace-grader-autoedit`.

@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Bell, ChevronRight, Search, Sparkles, X, Zap, GraduationCap } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "@/lib/store";
-import { cn, formatMinutes } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { Tag } from "@/components/ui/badge";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { useSession } from "next-auth/react";
@@ -49,14 +49,11 @@ export function Topbar() {
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
-    const out: { type: "course" | "lesson"; title: string; sub: string; href: string }[] = [];
+    const out: { type: "course"; title: string; sub: string; href: string }[] = [];
     for (const c of state.courses) {
-      const courseHit = c.title.toLowerCase().includes(q) || c.tags.some((t) => t.toLowerCase().includes(q)) || c.tagline.toLowerCase().includes(q);
-      if (courseHit) out.push({ type: "course", title: c.title, sub: `${c.lessons.length} lessons · ${c.tags.slice(0, 3).join(", ")}`, href: `/app/course/?slug=${c.slug}` });
-      for (const l of c.lessons) {
-        if (l.title.toLowerCase().includes(q) || l.description.toLowerCase().includes(q)) {
-          out.push({ type: "lesson", title: l.title, sub: `${c.title} · ${formatMinutes(l.durationMin)}`, href: `/app/learn/?course=${c.slug}&lesson=${l.id}` });
-        }
+      if (!c.published) continue;
+      if (c.title.toLowerCase().includes(q) || c.tags.some((t) => t.toLowerCase().includes(q)) || c.tagline.toLowerCase().includes(q)) {
+        out.push({ type: "course", title: c.title, sub: `${c.lessons.length} lessons · ${c.tags.slice(0, 3).join(", ")}`, href: `/app/course/?slug=${c.slug}` });
       }
     }
     return out.slice(0, 8);
